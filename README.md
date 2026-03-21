@@ -38,6 +38,9 @@ cp .env.example .env
 # Build and start cluster (Postgres, webserver, daemon)
 docker compose up
 
+# After code changes, restart the code server (webserver/daemon stay up)
+docker compose restart dagster-code
+
 # Tear down
 docker compose down --volumes
 ```
