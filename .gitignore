@@ -1,29 +1,40 @@
-# Data
-data/
-backups/
+TODO*
+ai-findings/
+ai-plannings/
 
-# Python
+.claude/
+creds
+*.pem
+.zed
+*.ipynb
+.ipynb_checkpoints
+.mcp.json
+.playwright-mcp
+
+# Python-generated files
+.mypy_cache
+.pytest_cache
+.ruff_cache
 __pycache__/
-*.pyc
-*.pyo
-*.egg-info/
-dist/
+*.py[oc]
 build/
-.eggs/
+dist/
+wheels/
+*.egg-info
 
-# Virtual environment
-.venv/
-venv/
 
-# IDE
-.idea/
-.vscode/
-*.swp
-*.swo
+# Virtual environments
+.venv
 
-# OS
-.DS_Store
-Thumbs.db
+# Runtime data
+data/
+logs/
+NOTES/
 
-# Prefect
-.prefect/
+# Environment variables
+.env
+.env.deploy
+
+# Kubernetes secrets with real values
+k8s/secret.yaml
+k8s/secret.env
