@@ -31,6 +31,10 @@ uv run poe dev
 For a persistent deployment with PostgreSQL-backed storage:
 
 ```bash
+# Set up environment
+cp .env.example .env
+# Edit .env if needed
+
 # Build and start cluster (Postgres, webserver, daemon)
 docker compose up
 

@@ -10,13 +10,13 @@ services:
   postgres:
     image: postgres:14
     environment:
-      POSTGRES_USER: dagster
-      POSTGRES_PASSWORD: dagster
-      POSTGRES_DB: dagster
+      POSTGRES_USER: ${DAGSTER_PG_USERNAME}
+      POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      POSTGRES_DB: ${DAGSTER_PG_DB}
     volumes:
       - dagster_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U dagster"]
+      test: ["CMD-SHELL", "pg_isready -U ${DAGSTER_PG_USERNAME}"]
       interval: 5s
       timeout: 5s
       retries: 5
@@ -29,11 +29,11 @@ services:
         condition: service_healthy
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
-      DAGSTER_PG_HOST: postgres
-      DAGSTER_PG_PORT: 5432
-      DAGSTER_PG_USERNAME: dagster
-      DAGSTER_PG_PASSWORD: dagster
-      DAGSTER_PG_DB: dagster
+      DAGSTER_PG_HOST: ${DAGSTER_PG_HOST}
+      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
+      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
+      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     ports:
       - "${APP_HOST:-127.0.0.1}:3000:3000"
     restart: unless-stopped
@@ -45,11 +45,11 @@ services:
         condition: service_healthy
     environment:
       DAGSTER_HOME: /opt/dagster/dagster_home
-      DAGSTER_PG_HOST: postgres
-      DAGSTER_PG_PORT: 5432
-      DAGSTER_PG_USERNAME: dagster
-      DAGSTER_PG_PASSWORD: dagster
-      DAGSTER_PG_DB: dagster
+      DAGSTER_PG_HOST: ${DAGSTER_PG_HOST}
+      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
+      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
+      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     restart: unless-stopped
 
 volumes:
