@@ -1,3 +1,4 @@
+CLAUDE.md
 TODO*
 ai-findings/
 ai-plannings/
@@ -30,6 +31,10 @@ wheels/
 data/
 logs/
 NOTES/
+backups/
+
+# Dagster
+.tmp_dagster_home*
 
 # Environment variables
 .env

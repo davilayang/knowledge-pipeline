@@ -1,98 +1,44 @@
 # CLI entrypoint for the knowledge pipeline.
 #
-# Usage:
-#   python -m knowledge_pipeline index-knowledge
-#   python -m knowledge_pipeline index-knowledge --source medium --since 2026-03-01
-#   python -m knowledge_pipeline backup
-#   python -m knowledge_pipeline backup --max-backups 14
+# For full Dagster UI:
+#   dagster dev
+#   uv run poe dev
+#
+# For one-shot job execution:
+#   uv run poe index
+#   uv run poe backup
+#
+# This module provides a thin wrapper for backward compatibility:
+#   python -m knowledge_pipeline dev         → launch Dagster UI
+#   python -m knowledge_pipeline index       → run index job once
+#   python -m knowledge_pipeline backup      → run backup job once
 
-import argparse
-import logging
+import subprocess
 import sys
-from datetime import date
 
 
 def main() -> None:
-    logging.basicConfig(
-        level=logging.INFO,
-        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
-    )
+    args = sys.argv[1:]
+    module = "knowledge_pipeline.definitions"
 
-    parser = argparse.ArgumentParser(
-        prog="knowledge-pipeline",
-        description="Prefect-based orchestrator for newsletter knowledge indexing and backup",
-    )
-    sub = parser.add_subparsers(dest="command")
+    if not args or args[0] == "dev":
+        subprocess.run(["dagster", "dev", "-m", module], check=True)
 
-    # ── index-knowledge ──────────────────────────────────────────────────
-    ik = sub.add_parser(
-        "index-knowledge",
-        help="Copy raw_store.db and index content into ChromaDB",
-    )
-    ik.add_argument("--source", type=str, default=None, help="Filter by source_key")
-    ik.add_argument(
-        "--since",
-        type=date.fromisoformat,
-        default=None,
-        help="Only index content from this date onward (YYYY-MM-DD)",
-    )
-    ik.add_argument(
-        "--statuses",
-        nargs="+",
-        default=None,
-        help="Vector statuses to process (default: pending ready)",
-    )
-    ik.add_argument(
-        "--skip-copy",
-        action="store_true",
-        help="Skip copying raw_store.db (use existing local copy)",
-    )
-
-    # ── backup ───────────────────────────────────────────────────────────
-    bk = sub.add_parser(
-        "backup",
-        help="Backup newsletter-assistant databases",
-    )
-    bk.add_argument(
-        "--max-backups",
-        type=int,
-        default=None,
-        help="Number of backup directories to retain (default: 7)",
-    )
-    bk.add_argument(
-        "--db-files",
-        nargs="+",
-        default=None,
-        help="Database filenames to back up (default: all configured)",
-    )
-
-    args = parser.parse_args()
-
-    if args.command == "index-knowledge":
-        from knowledge_pipeline.flows.index_knowledge import index_knowledge
-
-        result = index_knowledge(
-            source_key=args.source,
-            since=args.since,
-            statuses=args.statuses,
-            skip_copy=args.skip_copy,
+    elif args[0] == "index":
+        subprocess.run(
+            ["dagster", "job", "execute", "-m", module, "-j", "index_knowledge_job"],
+            check=True,
         )
-        print(f"Done: {result}")
 
-    elif args.command == "backup":
-        from knowledge_pipeline.flows.backup import backup_databases
-
-        kwargs: dict = {}
-        if args.max_backups is not None:
-            kwargs["max_backups"] = args.max_backups
-        if args.db_files is not None:
-            kwargs["db_files"] = args.db_files
-
-        result = backup_databases(**kwargs)
-        print(f"Done: {result}")
+    elif args[0] == "backup":
+        subprocess.run(
+            ["dagster", "job", "execute", "-m", module, "-j", "backup_job"],
+            check=True,
+        )
 
     else:
-        parser.print_help()
+        print(f"Unknown command: {args[0]}")
+        print("Usage: python -m knowledge_pipeline [dev|index|backup]")
         sys.exit(1)
 
 

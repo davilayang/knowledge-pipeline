@@ -1,93 +1,56 @@
-# Prefect server infrastructure for knowledge-pipeline.
+# Dagster server infrastructure for knowledge-pipeline.
 #
 # Usage:
 #   docker compose up -d
 #   docker compose down
 #
-# UI:  http://localhost:4200
-#
-# Connect local flows:
-#   PREFECT_API_URL=http://localhost:4200/api python -m knowledge_pipeline index-knowledge
+# UI:  http://localhost:3000
 
 services:
   postgres:
     image: postgres:14
     environment:
-      POSTGRES_USER: prefect
-      POSTGRES_PASSWORD: prefect
-      POSTGRES_DB: prefect
+      POSTGRES_USER: dagster
+      POSTGRES_PASSWORD: dagster
+      POSTGRES_DB: dagster
     volumes:
-      - prefect_postgres:/var/lib/postgresql/data
+      - dagster_postgres:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U prefect"]
+      test: ["CMD-SHELL", "pg_isready -U dagster"]
       interval: 5s
       timeout: 5s
       retries: 5
     restart: unless-stopped
 
-  redis:
-    image: redis:7
-    volumes:
-      - prefect_redis:/data
-    healthcheck:
-      test: ["CMD-SHELL", "redis-cli ping"]
-      interval: 5s
-      timeout: 5s
-      retries: 5
-    restart: unless-stopped
-
-  prefect-server:
-    image: prefecthq/prefect:3-latest
+  dagster-webserver:
+    image: dagster/dagster-k8s:latest
     depends_on:
       postgres:
         condition: service_healthy
-      redis:
-        condition: service_healthy
     environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_SERVER_API_HOST: 0.0.0.0
-      PREFECT_SERVER_UI_API_URL: http://localhost:4200/api
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-    command: prefect server start --no-services
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_PG_HOST: postgres
+      DAGSTER_PG_PORT: 5432
+      DAGSTER_PG_USERNAME: dagster
+      DAGSTER_PG_PASSWORD: dagster
+      DAGSTER_PG_DB: dagster
     ports:
-      - "${APP_HOST:-127.0.0.1}:4200:4200"
-    healthcheck:
-      test: ["CMD", "python", "-c", "import urllib.request as u; u.urlopen('http://localhost:4200/api/health', timeout=1)"]
-      interval: 30s
-      timeout: 10s
-      retries: 3
-      start_period: 60s
+      - "${APP_HOST:-127.0.0.1}:3000:3000"
     restart: unless-stopped
 
-  prefect-services:
-    image: prefecthq/prefect:3-latest
+  dagster-daemon:
+    image: dagster/dagster-k8s:latest
     depends_on:
-      prefect-server:
+      postgres:
         condition: service_healthy
     environment:
-      PREFECT_API_DATABASE_CONNECTION_URL: postgresql+asyncpg://prefect:prefect@postgres:5432/prefect
-      PREFECT_MESSAGING_BROKER: prefect_redis.messaging
-      PREFECT_MESSAGING_CACHE: prefect_redis.messaging
-      PREFECT_REDIS_MESSAGING_HOST: redis
-      PREFECT_REDIS_MESSAGING_PORT: 6379
-      PREFECT_REDIS_MESSAGING_DB: 0
-    command: prefect server services start
+      DAGSTER_HOME: /opt/dagster/dagster_home
+      DAGSTER_PG_HOST: postgres
+      DAGSTER_PG_PORT: 5432
+      DAGSTER_PG_USERNAME: dagster
+      DAGSTER_PG_PASSWORD: dagster
+      DAGSTER_PG_DB: dagster
     restart: unless-stopped
-
-  prefect-worker:
-    image: prefecthq/prefect:3-latest
-    depends_on:
-      prefect-server:
-        condition: service_healthy
-    environment:
-      PREFECT_API_URL: http://prefect-server:4200/api
-    command: prefect worker start --pool local-pool
-    restart: on-failure
 
 volumes:
-  prefect_postgres:
-  prefect_redis:
+  dagster_postgres:
