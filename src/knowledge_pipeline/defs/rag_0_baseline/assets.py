@@ -6,7 +6,7 @@ import sqlite3
 import dagster as dg
 
 from knowledge_pipeline.lib.chunking import chunk_markdown
-from knowledge_pipeline.lib.config import DATA_DIR, SOURCE_RAW_STORE
+from knowledge_pipeline.config import DATA_DIR, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.store import ContentRow, get_contents, set_vector_status
 
 from .resources import RawStoreResource, VectorStoreResource

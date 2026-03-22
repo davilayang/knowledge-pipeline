@@ -6,7 +6,7 @@ import chromadb
 import dagster as dg
 from pydantic import PrivateAttr
 
-from knowledge_pipeline.lib.config import CHROMA_PATH, LOCAL_RAW_STORE, SOURCE_RAW_STORE
+from knowledge_pipeline.config import CHROMA_PATH, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 
