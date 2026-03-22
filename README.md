@@ -77,10 +77,10 @@ Copies SQLite databases from newsletter-assistant to timestamped backup director
 src/knowledge_pipeline/
   definitions.py          # Top-level Dagster Definitions (entrypoint)
   defs/                   # Dagster pipeline code
-    indexing/
+    index_contents/
       assets.py           # raw_store_copy → pending_contents → indexed_contents
       resources.py        # RawStoreResource, VectorStoreResource
-    backup/
+    backup_databases/
       ops.py              # backup_databases → cleanup_old_backups → log_summary
   lib/                    # Plain Python, no Dagster
     config.py             # Paths, settings (source project, local data, backup retention)

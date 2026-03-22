@@ -2,13 +2,13 @@
 
 import dagster as dg
 
-from knowledge_pipeline.defs.backup.ops import backup_job
-from knowledge_pipeline.defs.indexing.assets import (
+from knowledge_pipeline.defs.backup_databases.ops import backup_job
+from knowledge_pipeline.defs.index_contents.assets import (
     indexed_contents,
     pending_contents,
     raw_store_copy,
 )
-from knowledge_pipeline.defs.indexing.resources import RawStoreResource, VectorStoreResource
+from knowledge_pipeline.defs.index_contents.resources import RawStoreResource, VectorStoreResource
 
 index_knowledge_job = dg.define_asset_job(
     name="index_knowledge_job",
