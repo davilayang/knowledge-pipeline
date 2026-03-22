@@ -61,14 +61,6 @@ uv run poe index
 uv run poe backup
 ```
 
-**Via Python module:**
-
-```bash
-uv run python -m knowledge_pipeline dev      # launch Dagster UI
-uv run python -m knowledge_pipeline index    # run index job once
-uv run python -m knowledge_pipeline backup   # run backup job once
-```
-
 ### Index Knowledge Job
 
 Copies `raw_store.db` from the newsletter-assistant project, chunks pending content using markdown-aware splitting, embeds into ChromaDB, and updates vector status.
