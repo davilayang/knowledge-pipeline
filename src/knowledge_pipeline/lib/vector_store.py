@@ -49,9 +49,10 @@ def get_collection(
 def search(
     query: str,
     n_results: int = 5,
+    collection_name: str = COLLECTION_NAME,
     chroma_path: Path = CHROMA_PATH,
 ) -> list[SearchResult]:
-    collection = get_collection(chroma_path=chroma_path)
+    collection = get_collection(collection_name=collection_name, chroma_path=chroma_path)
     if collection.count() == 0:
         return []
 

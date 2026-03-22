@@ -18,7 +18,7 @@ ASSET_TAGS = {"domain": "knowledge"}
 
 
 @dg.asset(
-    group_name="indexing",
+    group_name="rag_0_baseline",
     compute_kind="filesystem",
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,
@@ -53,7 +53,7 @@ def raw_store_copy(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
 
 
 @dg.asset(
-    group_name="indexing",
+    group_name="rag_0_baseline",
     compute_kind="sqlite",
     deps=[raw_store_copy],
     owners=ASSET_OWNERS,
@@ -86,7 +86,7 @@ def pending_contents(
 
 
 @dg.asset(
-    group_name="indexing",
+    group_name="rag_0_baseline",
     compute_kind="chromadb",
     deps=[pending_contents],
     owners=ASSET_OWNERS,

@@ -27,7 +27,7 @@ class VectorStoreResource(dg.ConfigurableResource):
     """ChromaDB persistent client for embedding storage."""
 
     chroma_path: str = str(CHROMA_PATH)
-    collection_name: str = "contents"
+    collection_name: str = "baseline"
 
     _client: chromadb.ClientAPI | None = PrivateAttr(default=None)
 
