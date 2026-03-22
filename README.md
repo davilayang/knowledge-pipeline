@@ -62,7 +62,7 @@ uv run poe index
 uv run poe backup
 ```
 
-### Index Knowledge Job
+### Index Contents Job
 
 Copies `raw_store.db` from the newsletter-assistant project, chunks pending content using markdown-aware splitting, embeds into ChromaDB, and updates vector status.
 
@@ -76,13 +76,16 @@ Copies SQLite databases from newsletter-assistant to timestamped backup director
 
 ```
 src/knowledge_pipeline/
-  definitions.py          # Top-level Dagster Definitions (entrypoint)
-  defs/                   # Dagster pipeline code
+  definitions.py          # Merges all defs/ into a single Definitions object
+  defs/                   # Dagster pipeline code (each subfolder exports its own Definitions)
     index_contents/
+      __init__.py         # Job, schedule, and resource registration
       assets.py           # raw_store_copy → pending_contents → indexed_contents
       resources.py        # RawStoreResource, VectorStoreResource
     backup_databases/
+      __init__.py         # Job and resource registration
       ops.py              # backup_databases → cleanup_old_backups → log_summary
+      resources.py        # BackupResource
   lib/                    # Plain Python, no Dagster
     config.py             # Paths, settings (source project, local data, backup retention)
     store.py              # Read-only SQLite access to raw_store.db
