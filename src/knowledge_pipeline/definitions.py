@@ -1,3 +1,4 @@
+# src/knowledge_pipeline/definitions.py
 # Top-level Dagster Definitions — entrypoint for `dagster dev`.
 
 import dagster as dg

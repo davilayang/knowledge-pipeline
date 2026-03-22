@@ -1,6 +1,7 @@
 # Knowledge Pipeline
 
-Content indexing and backup pipeline for the newsletter-assistant knowledge system, using Dagster, SQLite, and ChromaDB.
+Content indexing and backup pipeline for the newsletter-assistant knowledge system, 
+using Dagster, SQLite, and ChromaDB.
 
 ## Prerequisites
 

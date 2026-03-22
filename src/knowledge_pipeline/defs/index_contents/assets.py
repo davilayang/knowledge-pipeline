@@ -2,7 +2,6 @@
 
 import logging
 import shutil
-from datetime import date
 
 import dagster as dg
 

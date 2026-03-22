@@ -2,8 +2,7 @@
 
 import logging
 import shutil
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import dagster as dg
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 @dg.op(description="Copy database files to a timestamped backup directory")
 def backup_databases(context: dg.OpExecutionContext) -> dict:
     """Copy each configured database file to a timestamped backup directory."""
-    timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     backup_subdir = BACKUP_DIR / timestamp
 
     results: list[dict] = []
