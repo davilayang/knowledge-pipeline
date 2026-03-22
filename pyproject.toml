@@ -4,9 +4,16 @@ version = "0.1.0"
 description = "Dagster-based orchestrator for newsletter knowledge indexing and backup"
 requires-python = ">=3.13"
 dependencies = [
-    "dagster>=1.9",
-    "dagster-webserver>=1.9",
-    "chromadb>=0.6",
+    "dagster>=1.12,<2.0",
+    "dagster-webserver>=1.12,<2.0",
+    "chromadb>=1.5,<2.0",
+    "poethepoet>=0.42,<1.0",
+]
+
+[dependency-groups]
+dev = [
+    "black>=24.0,<25.0",
+    "ruff>=0.8,<1.0",
 ]
 
 [build-system]
@@ -20,15 +27,49 @@ packages = ["src/knowledge_pipeline"]
 module_name = "knowledge_pipeline.definitions"
 code_location_name = "knowledge_pipeline"
 
-[tool.poe.tasks]
-dev = { cmd = "dagster dev", help = "Launch Dagster UI at localhost:3000" }
-index = { cmd = "dagster job execute -m knowledge_pipeline.definitions -j index_knowledge_job", help = "Run index job once from CLI" }
-backup = { cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_job", help = "Run backup job once from CLI" }
-check = ["fmt", "lint"]
-fmt = { cmd = "black src/" }
-lint = { cmd = "ruff check src/" }
-"fmt-fix" = { cmd = "black src/" }
-"lint-fix" = { cmd = "ruff check --fix src/" }
+# Poe the Poet (Scripting) #
+
+## Dagster ##
+
+[tool.poe.tasks.dev]
+cmd = "dagster dev"
+help = "Launch Dagster UI at localhost:3000"
+
+[tool.poe.tasks.index]
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j index_knowledge_job"
+help = "Run index job once from CLI"
+
+[tool.poe.tasks.backup]
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_job"
+help = "Run backup job once from CLI"
+
+## Code QA ##
+
+[tool.poe.tasks.check]
+sequence = ["fmt", "lint"]
+help = "Run all checks: formatting and linting"
+
+[tool.poe.tasks.fmt]
+cmd = "black --check src/"
+help = "Check code formatting with black (does not modify)"
+
+[tool.poe.tasks.fmt-fix]
+cmd = "black src/"
+help = "Fix code formatting issues automatically with black"
+
+[tool.poe.tasks.lint]
+cmd = "ruff check src/"
+help = "Check code linting with ruff (does not modify)"
+
+[tool.poe.tasks.lint-fix]
+cmd = "ruff check --fix src/"
+help = "Fix code linting issues automatically with ruff"
+
+[tool.poe.tasks.fix]
+sequence = ["fmt-fix", "lint-fix"]
+help = "Fix all issues: formatting with black and linting with ruff"
+
+## Dependency Configurations ##
 
 [tool.black]
 line-length = 100
