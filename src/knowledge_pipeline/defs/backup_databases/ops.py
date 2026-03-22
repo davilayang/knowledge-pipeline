@@ -93,9 +93,3 @@ def backup_graph():
     result = backup_databases()
     final = cleanup_old_backups(result)
     log_backup_summary(final)
-
-
-backup_job = backup_graph.to_job(
-    name="backup_job",
-    description="Back up SQLite databases from newsletter-assistant with retention cleanup",
-)

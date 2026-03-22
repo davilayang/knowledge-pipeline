@@ -36,11 +36,11 @@ cmd = "dagster dev"
 help = "Launch Dagster UI at localhost:3000"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j index_knowledge_job"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j index_contents_job"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_job"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_databases_job"
 help = "Run backup job once from CLI"
 
 ## Code QA ##
