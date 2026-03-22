@@ -6,6 +6,7 @@ import dagster as dg
 from knowledge_pipeline.defs.backup_databases.ops import backup_graph
 from knowledge_pipeline.defs.index_contents.assets import (
     indexed_contents,
+    no_indexing_errors,
     pending_contents,
     raw_store_copy,
 )
@@ -30,6 +31,7 @@ daily_index_schedule = dg.ScheduleDefinition(
 
 defs = dg.Definitions(
     assets=[raw_store_copy, pending_contents, indexed_contents],
+    asset_checks=[no_indexing_errors],
     jobs=[index_contents_job, backup_databases_job],
     schedules=[daily_index_schedule],
     resources={

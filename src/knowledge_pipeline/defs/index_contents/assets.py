@@ -1,12 +1,12 @@
 # Dagster assets for knowledge indexing: raw_store.db → ChromaDB.
 
 import logging
-import shutil
+import sqlite3
 
 import dagster as dg
 
 from knowledge_pipeline.lib.chunking import chunk_markdown
-from knowledge_pipeline.lib.config import DATA_DIR, SOURCE_DATA_DIR
+from knowledge_pipeline.lib.config import DATA_DIR, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.store import ContentRow, get_contents, set_vector_status
 
 from .resources import RawStoreResource, VectorStoreResource
@@ -20,16 +20,23 @@ logger = logging.getLogger(__name__)
     description="Copy raw_store.db from newsletter-assistant to local data/",
 )
 def raw_store_copy(context: dg.AssetExecutionContext) -> dg.MaterializeResult:
-    """Copy the source database so we never read from the live newsletter-assistant DB."""
-    source = SOURCE_DATA_DIR / "raw_store.db"
+    """Copy the source database using SQLite backup API for a consistent snapshot."""
+    source = SOURCE_RAW_STORE
     if not source.exists():
         raise FileNotFoundError(f"Source database not found: {source}")
 
     DATA_DIR.mkdir(parents=True, exist_ok=True)
     dest = DATA_DIR / "raw_store.db"
-    shutil.copy2(source, dest)
-    size = dest.stat().st_size
 
+    src_conn = sqlite3.connect(source)
+    dst_conn = sqlite3.connect(dest)
+    try:
+        src_conn.backup(dst_conn)
+    finally:
+        dst_conn.close()
+        src_conn.close()
+
+    size = dest.stat().st_size
     logger.info("Copied raw_store.db (%d bytes) to %s", size, dest)
     return dg.MaterializeResult(
         metadata={
@@ -86,7 +93,8 @@ def indexed_contents(
         )
 
     collection = vector_store.get_collection()
-    db_path = raw_store.get_path()
+    # Write status updates to the SOURCE database so they persist across runs
+    source_db_path = raw_store.get_source_path()
 
     indexed_count = 0
     skipped_count = 0
@@ -98,14 +106,14 @@ def indexed_contents(
         # Skip items with too little content
         if not item.content_md or len(item.content_md.strip()) < 50:
             logger.warning("Skipping %s — content too short", item.content_id)
-            set_vector_status(item.content_id, "skip", db_path=db_path)
+            set_vector_status(item.content_id, "skip", db_path=source_db_path)
             skipped_count += 1
             continue
 
         try:
             chunks = chunk_markdown(item.content_md)
             if not chunks:
-                set_vector_status(item.content_id, "skip", db_path=db_path)
+                set_vector_status(item.content_id, "skip", db_path=source_db_path)
                 skipped_count += 1
                 continue
 
@@ -135,7 +143,7 @@ def indexed_contents(
             ]
 
             collection.upsert(ids=ids, documents=documents, metadatas=metadatas)  # type: ignore[arg-type]
-            set_vector_status(item.content_id, "indexed", db_path=db_path)
+            set_vector_status(item.content_id, "indexed", db_path=source_db_path)
 
             indexed_count += 1
             total_chunks += len(chunks)
@@ -150,6 +158,7 @@ def indexed_contents(
 
         except Exception as exc:
             logger.error("Failed to index %s: %s", item.content_id, exc)
+            set_vector_status(item.content_id, "error", db_path=source_db_path)
             error_count += 1
 
     # Build a markdown summary for the Dagster UI
@@ -174,4 +183,17 @@ def indexed_contents(
             "total_chunks": dg.MetadataValue.int(total_chunks),
             "summary": dg.MetadataValue.md("\n".join(summary_lines)),
         }
+    )
+
+
+@dg.asset_check(asset=indexed_contents)
+def no_indexing_errors(
+    context: dg.AssetCheckExecutionContext,
+    raw_store: RawStoreResource,
+) -> dg.AssetCheckResult:
+    """Verify no items are stuck in error status after indexing."""
+    error_items = get_contents(vector_status="error", db_path=raw_store.get_source_path())
+    return dg.AssetCheckResult(
+        passed=len(error_items) == 0,
+        metadata={"error_count": len(error_items)},
     )

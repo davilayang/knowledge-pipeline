@@ -2,6 +2,7 @@
 
 import logging
 import shutil
+import sqlite3
 from datetime import UTC, datetime
 
 import dagster as dg
@@ -27,13 +28,15 @@ def backup_databases(context: dg.OpExecutionContext) -> dict:
 
         backup_subdir.mkdir(parents=True, exist_ok=True)
         dest = backup_subdir / db_name
-        shutil.copy2(source, dest)
 
-        # Copy WAL and SHM files if they exist
-        for suffix in ["-wal", "-shm"]:
-            wal_src = source.parent / f"{db_name}{suffix}"
-            if wal_src.exists():
-                shutil.copy2(wal_src, backup_subdir / f"{db_name}{suffix}")
+        # Use SQLite backup API for a consistent snapshot
+        src_conn = sqlite3.connect(source)
+        dst_conn = sqlite3.connect(dest)
+        try:
+            src_conn.backup(dst_conn)
+        finally:
+            dst_conn.close()
+            src_conn.close()
 
         size = dest.stat().st_size
         logger.info("Backed up %s (%d bytes) → %s", db_name, size, dest)

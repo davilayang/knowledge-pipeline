@@ -14,6 +14,7 @@ dependencies = [
 dev = [
     "black>=24.0,<25.0",
     "ruff>=0.8,<1.0",
+    "pytest>=8.0,<9.0",
 ]
 
 [build-system]
@@ -45,9 +46,13 @@ help = "Run backup job once from CLI"
 
 ## Code QA ##
 
+[tool.poe.tasks.test]
+cmd = "pytest -v"
+help = "Run tests with verbose output"
+
 [tool.poe.tasks.check]
-sequence = ["fmt", "lint"]
-help = "Run all checks: formatting and linting"
+sequence = ["fmt", "lint", "test"]
+help = "Run all checks: formatting, linting, and tests"
 
 [tool.poe.tasks.fmt]
 cmd = "black --check src/"
@@ -68,6 +73,9 @@ help = "Fix code linting issues automatically with ruff"
 [tool.poe.tasks.fix]
 sequence = ["fmt-fix", "lint-fix"]
 help = "Fix all issues: formatting with black and linting with ruff"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
 
 ## Dependency Configurations ##
 

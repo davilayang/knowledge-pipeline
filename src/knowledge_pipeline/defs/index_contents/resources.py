@@ -6,16 +6,20 @@ import chromadb
 import dagster as dg
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-from knowledge_pipeline.lib.config import CHROMA_PATH, LOCAL_RAW_STORE
+from knowledge_pipeline.lib.config import CHROMA_PATH, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 
 
 class RawStoreResource(dg.ConfigurableResource):
-    """Read-only access to the local copy of raw_store.db."""
+    """Read-only access to raw_store.db (local copy + source for status writes)."""
 
     db_path: str = str(LOCAL_RAW_STORE)
+    source_db_path: str = str(SOURCE_RAW_STORE)
 
     def get_path(self) -> Path:
         return Path(self.db_path)
+
+    def get_source_path(self) -> Path:
+        return Path(self.source_db_path)
 
 
 class VectorStoreResource(dg.ConfigurableResource):

@@ -1,10 +1,14 @@
 # Paths and settings for the knowledge pipeline.
 
+import os
 from pathlib import Path
 
 # Source: newsletter-assistant project
-NEWSLETTER_ASSISTANT_DIR = Path.home() / "GitHub" / "newsletter-assistant"
+NEWSLETTER_ASSISTANT_DIR = Path(
+    os.environ.get("NEWSLETTER_ASSISTANT_DIR", str(Path.home() / "GitHub" / "newsletter-assistant"))
+)
 SOURCE_DATA_DIR = NEWSLETTER_ASSISTANT_DIR / "data"
+SOURCE_RAW_STORE = SOURCE_DATA_DIR / "raw_store.db"
 
 # Local data directories
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
