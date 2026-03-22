@@ -7,7 +7,7 @@ from pathlib import Path
 
 import dagster as dg
 
-from knowledge_pipeline.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
+from knowledge_pipeline.lib.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
 
 logger = logging.getLogger(__name__)
 

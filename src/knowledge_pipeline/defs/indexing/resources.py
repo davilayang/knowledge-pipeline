@@ -6,7 +6,7 @@ import chromadb
 import dagster as dg
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-from knowledge_pipeline.config import CHROMA_PATH, LOCAL_RAW_STORE
+from knowledge_pipeline.lib.config import CHROMA_PATH, LOCAL_RAW_STORE
 
 
 class RawStoreResource(dg.ConfigurableResource):

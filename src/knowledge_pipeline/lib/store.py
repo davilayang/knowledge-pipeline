@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from datetime import date, datetime
 from pathlib import Path
 
-from knowledge_pipeline.config import LOCAL_RAW_STORE
+from knowledge_pipeline.lib.config import LOCAL_RAW_STORE
 
 
 @dataclass
