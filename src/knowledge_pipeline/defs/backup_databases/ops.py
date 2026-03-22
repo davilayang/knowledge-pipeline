@@ -7,20 +7,21 @@ from datetime import UTC, datetime
 
 import dagster as dg
 
-from knowledge_pipeline.lib.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
+from .resources import BackupResource
 
 logger = logging.getLogger(__name__)
 
 
 @dg.op(description="Copy database files to a timestamped backup directory")
-def backup_databases(context: dg.OpExecutionContext) -> dict:
+def backup_databases(context: dg.OpExecutionContext, backup: BackupResource) -> dict:
     """Copy each configured database file to a timestamped backup directory."""
     timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
-    backup_subdir = BACKUP_DIR / timestamp
+    source_dir = backup.get_source_dir()
+    backup_subdir = backup.get_backup_dir() / timestamp
 
     results: list[dict] = []
-    for db_name in DB_FILES:
-        source = SOURCE_DATA_DIR / db_name
+    for db_name in backup.db_files:
+        source = source_dir / db_name
         if not source.exists():
             logger.warning("Source database not found, skipping: %s", source)
             results.append({"name": db_name, "status": "not_found", "size_bytes": 0})
@@ -46,18 +47,21 @@ def backup_databases(context: dg.OpExecutionContext) -> dict:
 
 
 @dg.op(description="Remove old backup directories beyond retention limit")
-def cleanup_old_backups(context: dg.OpExecutionContext, backup_result: dict) -> dict:
-    """Remove oldest backups, keeping only MAX_BACKUPS most recent."""
-    if not BACKUP_DIR.exists():
+def cleanup_old_backups(
+    context: dg.OpExecutionContext, backup: BackupResource, backup_result: dict
+) -> dict:
+    """Remove oldest backups, keeping only max_backups most recent."""
+    backup_dir = backup.get_backup_dir()
+    if not backup_dir.exists():
         return {**backup_result, "old_removed": 0}
 
     subdirs = sorted(
-        [d for d in BACKUP_DIR.iterdir() if d.is_dir()],
+        [d for d in backup_dir.iterdir() if d.is_dir()],
         key=lambda d: d.name,
     )
 
     removed = 0
-    while len(subdirs) > MAX_BACKUPS:
+    while len(subdirs) > backup.max_backups:
         oldest = subdirs.pop(0)
         shutil.rmtree(oldest)
         logger.info("Removed old backup: %s", oldest.name)
@@ -94,5 +98,5 @@ def log_backup_summary(context: dg.OpExecutionContext, final_result: dict) -> No
 def backup_graph():
     """Graph: backup databases → cleanup old → log summary."""
     result = backup_databases()
-    final = cleanup_old_backups(result)
+    final = cleanup_old_backups(backup_result=result)
     log_backup_summary(final)

@@ -1,6 +1,4 @@
 # ChromaDB vector store — embed and search content chunks.
-#
-# Simplified from newsletter-assistant's knowledge.vector_store.
 
 from __future__ import annotations
 
@@ -13,6 +11,7 @@ from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 from knowledge_pipeline.lib.config import CHROMA_PATH
 
 COLLECTION_NAME = "contents"
+EMBEDDING_FUNCTION = DefaultEmbeddingFunction()
 
 
 @dataclass
@@ -24,15 +23,23 @@ class SearchResult:
     distance: float
 
 
+def get_client(chroma_path: Path = CHROMA_PATH) -> chromadb.ClientAPI:
+    """Create a ChromaDB persistent client."""
+    chroma_path.mkdir(parents=True, exist_ok=True)
+    return chromadb.PersistentClient(path=str(chroma_path))
+
+
 def get_collection(
+    client: chromadb.ClientAPI | None = None,
     collection_name: str = COLLECTION_NAME,
     chroma_path: Path = CHROMA_PATH,
 ) -> chromadb.Collection:
-    chroma_path.mkdir(parents=True, exist_ok=True)
-    client = chromadb.PersistentClient(path=str(chroma_path))
+    """Get or create a ChromaDB collection. Optionally reuse an existing client."""
+    if client is None:
+        client = get_client(chroma_path)
     return client.get_or_create_collection(
         name=collection_name,
-        embedding_function=DefaultEmbeddingFunction(),  # type: ignore[arg-type]
+        embedding_function=EMBEDDING_FUNCTION,  # type: ignore[arg-type]
         metadata={"hnsw:space": "cosine"},
     )
 
