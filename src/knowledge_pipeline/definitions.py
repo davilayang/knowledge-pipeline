@@ -1,39 +1,10 @@
 # src/knowledge_pipeline/definitions.py
 # Top-level Dagster Definitions — entrypoint for `dagster dev`.
+# Each defs/ subfolder exports its own Definitions; this file merges them.
 
 import dagster as dg
 
-from knowledge_pipeline.defs.backup_databases.ops import backup_graph
-from knowledge_pipeline.defs.index_contents.assets import (
-    indexed_contents,
-    pending_contents,
-    raw_store_copy,
-)
-from knowledge_pipeline.defs.index_contents.resources import RawStoreResource, VectorStoreResource
+from knowledge_pipeline.defs.backup_databases import defs as backup_defs
+from knowledge_pipeline.defs.index_contents import defs as index_defs
 
-index_contents_job = dg.define_asset_job(
-    name="index_contents_job",
-    selection=[raw_store_copy, pending_contents, indexed_contents],
-    description="Copy raw_store.db, then chunk and index pending content into ChromaDB",
-)
-
-backup_databases_job = backup_graph.to_job(
-    name="backup_databases_job",
-    description="Back up SQLite databases from newsletter-assistant with retention cleanup",
-)
-
-daily_index_schedule = dg.ScheduleDefinition(
-    job=index_contents_job,
-    cron_schedule="0 7 * * *",
-    default_status=dg.DefaultScheduleStatus.STOPPED,
-)
-
-defs = dg.Definitions(
-    assets=[raw_store_copy, pending_contents, indexed_contents],
-    jobs=[index_contents_job, backup_databases_job],
-    schedules=[daily_index_schedule],
-    resources={
-        "raw_store": RawStoreResource(),
-        "vector_store": VectorStoreResource(),
-    },
-)
+defs = dg.Definitions.merge(index_defs, backup_defs)
