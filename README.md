@@ -35,7 +35,7 @@ For a persistent deployment with PostgreSQL-backed storage:
 cp .env.example .env
 # Edit .env if needed
 
-# Build and start cluster (Postgres, webserver, daemon)
+# Start cluster (Postgres, code server, webserver, daemon)
 docker compose up
 
 # After code changes, restart the code server (webserver/daemon stay up)
@@ -75,17 +75,18 @@ Copies SQLite databases from newsletter-assistant to timestamped backup director
 
 ```
 src/knowledge_pipeline/
-  config.py               # Paths, settings (source project, local data, backup retention)
-  store.py                # Read-only SQLite access to raw_store.db
-  chunking.py             # Markdown-aware chunking (heading boundaries, paragraph packing)
-  vector_store.py         # ChromaDB operations (embed, search)
   definitions.py          # Top-level Dagster Definitions (entrypoint)
-  defs/
+  defs/                   # Dagster pipeline code
     indexing/
       assets.py           # raw_store_copy → pending_contents → indexed_contents
       resources.py        # RawStoreResource, VectorStoreResource
     backup/
       ops.py              # backup_databases → cleanup_old_backups → log_summary
+  lib/                    # Plain Python, no Dagster
+    config.py             # Paths, settings (source project, local data, backup retention)
+    store.py              # Read-only SQLite access to raw_store.db
+    chunking.py           # Markdown-aware chunking (heading boundaries, paragraph packing)
+    vector_store.py       # ChromaDB operations (embed, search)
 ```
 
 **Data flow:** `~/GitHub/newsletter-assistant/data/raw_store.db` → copy → `data/raw_store.db` → chunk → `data/chroma/`
