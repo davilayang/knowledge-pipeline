@@ -4,9 +4,9 @@ from .assets import indexed_contents, no_indexing_errors, pending_contents, raw_
 from .resources import RawStoreResource, VectorStoreResource
 
 index_contents_job = dg.define_asset_job(
-    name="index_contents_job",
+    name="rag_0_baseline_job",
     selection=[raw_store_copy, pending_contents, indexed_contents],
-    description="Copy raw_store.db, then chunk and index pending content into ChromaDB",
+    description="Baseline RAG: markdown chunking + default embedding + cosine retrieval",
 )
 
 daily_index_schedule = dg.ScheduleDefinition(
