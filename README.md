@@ -1,6 +1,7 @@
 # Knowledge Pipeline
 
-Content indexing and backup pipeline for the newsletter-assistant knowledge system, using Dagster, SQLite, and ChromaDB.
+Content indexing and backup pipeline for the newsletter-assistant knowledge system, 
+using Dagster, SQLite, and ChromaDB.
 
 ## Prerequisites
 
@@ -35,7 +36,7 @@ For a persistent deployment with PostgreSQL-backed storage:
 cp .env.example .env
 # Edit .env if needed
 
-# Build and start cluster (Postgres, webserver, daemon)
+# Start cluster (Postgres, code server, webserver, daemon)
 docker compose up
 
 # After code changes, restart the code server (webserver/daemon stay up)
@@ -61,14 +62,6 @@ uv run poe index
 uv run poe backup
 ```
 
-**Via Python module:**
-
-```bash
-uv run python -m knowledge_pipeline dev      # launch Dagster UI
-uv run python -m knowledge_pipeline index    # run index job once
-uv run python -m knowledge_pipeline backup   # run backup job once
-```
-
 ### Index Knowledge Job
 
 Copies `raw_store.db` from the newsletter-assistant project, chunks pending content using markdown-aware splitting, embeds into ChromaDB, and updates vector status.
@@ -83,17 +76,18 @@ Copies SQLite databases from newsletter-assistant to timestamped backup director
 
 ```
 src/knowledge_pipeline/
-  config.py               # Paths, settings (source project, local data, backup retention)
-  store.py                # Read-only SQLite access to raw_store.db
-  chunking.py             # Markdown-aware chunking (heading boundaries, paragraph packing)
-  vector_store.py         # ChromaDB operations (embed, search)
   definitions.py          # Top-level Dagster Definitions (entrypoint)
-  defs/
-    indexing/
+  defs/                   # Dagster pipeline code
+    index_contents/
       assets.py           # raw_store_copy → pending_contents → indexed_contents
       resources.py        # RawStoreResource, VectorStoreResource
-    backup/
+    backup_databases/
       ops.py              # backup_databases → cleanup_old_backups → log_summary
+  lib/                    # Plain Python, no Dagster
+    config.py             # Paths, settings (source project, local data, backup retention)
+    store.py              # Read-only SQLite access to raw_store.db
+    chunking.py           # Markdown-aware chunking (heading boundaries, paragraph packing)
+    vector_store.py       # ChromaDB operations (embed, search)
 ```
 
 **Data flow:** `~/GitHub/newsletter-assistant/data/raw_store.db` → copy → `data/raw_store.db` → chunk → `data/chroma/`

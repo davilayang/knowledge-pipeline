@@ -2,12 +2,11 @@
 
 import logging
 import shutil
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import dagster as dg
 
-from knowledge_pipeline.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
+from knowledge_pipeline.lib.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 @dg.op(description="Copy database files to a timestamped backup directory")
 def backup_databases(context: dg.OpExecutionContext) -> dict:
     """Copy each configured database file to a timestamped backup directory."""
-    timestamp = datetime.now(tz=timezone.utc).strftime("%Y-%m-%dT%H-%M-%SZ")
+    timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
     backup_subdir = BACKUP_DIR / timestamp
 
     results: list[dict] = []
@@ -94,9 +93,3 @@ def backup_graph():
     result = backup_databases()
     final = cleanup_old_backups(result)
     log_backup_summary(final)
-
-
-backup_job = backup_graph.to_job(
-    name="backup_job",
-    description="Back up SQLite databases from newsletter-assistant with retention cleanup",
-)
