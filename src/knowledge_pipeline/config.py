@@ -6,7 +6,7 @@ from pathlib import Path
 # Source: newsletter-assistant project
 NEWSLETTER_ASSISTANT_DIR = Path(
     os.environ.get("NEWSLETTER_ASSISTANT_DIR", str(Path.home() / "GitHub" / "newsletter-assistant"))
-)
+).expanduser()
 SOURCE_DATA_DIR = NEWSLETTER_ASSISTANT_DIR / "data"
 SOURCE_RAW_STORE = SOURCE_DATA_DIR / "raw_store.db"
 

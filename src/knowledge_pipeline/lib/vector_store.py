@@ -8,7 +8,7 @@ from pathlib import Path
 import chromadb
 from chromadb.utils.embedding_functions import DefaultEmbeddingFunction
 
-from knowledge_pipeline.lib.config import CHROMA_PATH
+from knowledge_pipeline.config import CHROMA_PATH
 
 COLLECTION_NAME = "contents"
 # DefaultEmbeddingFunction uses all-MiniLM-L6-v2 via onnxruntime.
