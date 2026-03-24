@@ -26,6 +26,7 @@ def create_backup_op(db_name: str) -> dg.OpDefinition:
     @dg.op(
         name=f"backup_{safe_name}",
         description=f"Backup sqlite database '{db_name}' by copying to storage",
+        ins={"preflight": dg.In(dagster_type=dg.Nothing)},
     )
     def _backup(context: dg.OpExecutionContext, backup: BackupResource) -> dict:
 
@@ -58,6 +59,22 @@ def create_backup_op(db_name: str) -> dg.OpDefinition:
 
 # Generate one op per configured database file
 backup_ops = [create_backup_op(db_name) for db_name in DB_FILES]
+
+
+@dg.op(
+    description="Log source directory contents before backup",
+    out=dg.Out(dagster_type=dg.Nothing),
+)
+def preflight_check(context: dg.OpExecutionContext, backup: BackupResource) -> None:
+    """Log files in the source directory so we can debug path issues."""
+    source_dir = backup.get_source_dir()
+    context.log.info("Source directory: %s (exists=%s)", source_dir, source_dir.exists())
+    if source_dir.exists():
+        for f in sorted(source_dir.iterdir()):
+            size = f.stat().st_size if f.is_file() else 0
+            context.log.info("  %s (%d bytes)", f.name, size)
+    else:
+        context.log.warning("Source directory does not exist!")
 
 
 @dg.op(
@@ -115,7 +132,8 @@ def log_summary(context: dg.OpExecutionContext, final_result: dict) -> None:
 def backup_graph():
     """Graph: one backup op per DB → collect → cleanup → log summary."""
 
-    results = [op() for op in backup_ops]
+    ready = preflight_check()
+    results = [op(ready) for op in backup_ops]
 
     final = cleanup_old_backups(results=results)
 
