@@ -4,7 +4,7 @@ from .assets import indexed_contents, no_indexing_errors, pending_contents, raw_
 from .resources import RawStoreResource, VectorStoreResource
 
 index_contents_job = dg.define_asset_job(
-    name="rag_0_baseline_job",
+    name="rag_0_baseline",
     selection=[raw_store_copy, pending_contents, indexed_contents],
     description="Baseline RAG: markdown chunking + default embedding + cosine retrieval",
 )

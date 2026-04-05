@@ -91,7 +91,7 @@ def pending_contents(
     deps=[pending_contents],
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,
-    code_version="1",
+    code_version="2",
     description="Chunk, embed, and upsert pending content into ChromaDB",
 )
 def indexed_contents(
@@ -155,7 +155,9 @@ def indexed_contents(
                 collection.delete(ids=existing["ids"])
 
             ids = [f"{item.content_id}::chunk{c.index}" for c in chunks]
-            documents = [c.text for c in chunks]
+            # Prepend title/author context so the embedding model can
+            # disambiguate chunks from different articles on similar topics.
+            documents = [f"Title: {item.title} | Author: {item.author}\n{c.text}" for c in chunks]
             metadatas = [
                 {
                     **metadata,

@@ -35,13 +35,15 @@ def get_collection(
     client: chromadb.ClientAPI | None = None,
     collection_name: str = COLLECTION_NAME,
     chroma_path: Path = CHROMA_PATH,
+    embedding_function: chromadb.EmbeddingFunction | None = None,
 ) -> chromadb.Collection:
     """Get or create a ChromaDB collection. Optionally reuse an existing client."""
     if client is None:
         client = get_client(chroma_path)
+    ef = embedding_function or EMBEDDING_FUNCTION
     return client.get_or_create_collection(
         name=collection_name,
-        embedding_function=EMBEDDING_FUNCTION,  # type: ignore[arg-type]
+        embedding_function=ef,  # type: ignore[arg-type]
         metadata={"hnsw:space": "cosine"},
     )
 

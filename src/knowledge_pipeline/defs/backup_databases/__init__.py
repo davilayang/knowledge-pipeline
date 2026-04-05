@@ -4,7 +4,7 @@ from .ops import backup_graph
 from .resources import BackupResource
 
 backup_databases_job = backup_graph.to_job(
-    name="backup_databases_job",
+    name="backup_databases",
     description="Back up SQLite databases from newsletter-assistant with retention cleanup",
 )
 
