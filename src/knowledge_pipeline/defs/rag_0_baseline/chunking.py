@@ -1,9 +1,12 @@
-# Graph asset: chunked_contents — fetch pending items, chunk in batches.
+# Graph asset: chunked_contents — fetch pending items, chunk in batches,
+# write results to JSON files in data/chunks/.
 
+import json
 import logging
 
 import dagster as dg
 
+from knowledge_pipeline.config import CHUNKS_DIR
 from knowledge_pipeline.lib.chunking import chunk_markdown
 from knowledge_pipeline.lib.store import get_contents, set_vector_status
 
@@ -69,37 +72,39 @@ def fan_out_chunk_batches(context: dg.OpExecutionContext, items: list[dict]):
 
 
 @dg.op
-def chunk_batch(context: dg.OpExecutionContext, batch: list[dict]) -> list[dict]:
-    """Chunk each item in the batch. Returns list of chunked item dicts."""
-    results = []
+def chunk_batch(context: dg.OpExecutionContext, batch: list[dict]) -> list[str]:
+    """Chunk each item and write to JSON files. Returns list of content_ids processed."""
+    CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+    content_ids = []
     for item in batch:
         try:
             chunks = chunk_markdown(item["content_md"])
             if not chunks:
                 continue
-            results.append(
-                {
-                    "content_id": item["content_id"],
-                    "title": item["title"],
-                    "author": item["author"],
-                    "url": item["url"],
-                    "source_key": item["source_key"],
-                    "content_date": item["content_date"],
-                    "chunks": [
-                        {"text": c.text, "heading": c.heading, "index": c.index} for c in chunks
-                    ],
-                }
-            )
+            record = {
+                "content_id": item["content_id"],
+                "title": item["title"],
+                "author": item["author"],
+                "url": item["url"],
+                "source_key": item["source_key"],
+                "content_date": item["content_date"],
+                "chunks": [
+                    {"text": c.text, "heading": c.heading, "index": c.index} for c in chunks
+                ],
+            }
+            path = CHUNKS_DIR / f"{item['content_id']}.json"
+            path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+            content_ids.append(item["content_id"])
         except Exception as exc:
             logger.error("Failed to chunk %s: %s", item["content_id"], exc)
-    context.log.info("Chunked %d items in batch", len(results))
-    return results
+    context.log.info("Chunked %d items in batch, wrote to %s", len(content_ids), CHUNKS_DIR)
+    return content_ids
 
 
 @dg.op
-def gather_chunks(results: list[list[dict]]) -> list[dict]:
-    """Flatten batched results. Required wrapper — .collect() can't be returned directly."""
-    return [item for batch in results for item in batch]
+def gather_chunk_ids(results: list[list[str]]) -> list[str]:
+    """Flatten batch results into a list of content_ids. Required wrapper for .collect()."""
+    return [cid for batch in results for cid in batch]
 
 
 # ---------------------------------------------------------------------------
@@ -109,11 +114,11 @@ def gather_chunks(results: list[list[dict]]) -> list[dict]:
 
 @dg.graph_asset(
     group_name="rag_0_baseline",
-    description="Chunk pending content into structured records with batched fan-out",
+    description="Chunk pending content and write to JSON files in data/chunks/",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
-def chunked_contents(raw_store_snapshot) -> list[dict]:
+def chunked_contents(raw_store_snapshot) -> list[str]:
     items = fetch_pending(raw_store_snapshot=raw_store_snapshot)
     batches = fan_out_chunk_batches(items)
     per_batch = batches.map(chunk_batch)
-    return gather_chunks(per_batch.collect())
+    return gather_chunk_ids(per_batch.collect())

@@ -1,96 +1,37 @@
-# Graph asset: indexed_contents — embed chunked content and upsert to ChromaDB.
+# Asset: indexed_contents — read pre-computed embeddings, upsert to ChromaDB,
+# update vector_status in source DB.
 
+import json
 import logging
 
 import dagster as dg
+from dagster import AssetExecutionContext
 
+from knowledge_pipeline.config import EMBEDDINGS_DIR
 from knowledge_pipeline.lib.store import set_vector_status
 
-from .chunking import BATCH_SIZE
 from .resources import RawStoreResource, VectorStoreResource
 
 logger = logging.getLogger(__name__)
 
 
-# ---------------------------------------------------------------------------
-# Ops
-# ---------------------------------------------------------------------------
-
-
-@dg.op(out=dg.DynamicOut())
-def fan_out_embed_batches(context: dg.OpExecutionContext, chunked_items: list[dict]):
-    """Split chunked items into batches for embedding."""
-    if not chunked_items:
-        context.log.info("No items to embed.")
-        return
-    for i in range(0, len(chunked_items), BATCH_SIZE):
-        batch = chunked_items[i : i + BATCH_SIZE]
-        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i}")
-
-
-@dg.op
-def embed_batch(
-    context: dg.OpExecutionContext,
-    batch: list[dict],
-    vector_store: VectorStoreResource,
-) -> list[dict]:
-    """Embed and upsert a batch of chunked items into ChromaDB."""
-    collection = vector_store.get_collection()
-    results = []
-
-    for item in batch:
-        chunks = item["chunks"]
-        metadata_base: dict = {
-            "title": item["title"],
-            "author": item["author"],
-            "content_date": item["content_date"],
-        }
-        if item["url"]:
-            metadata_base["url"] = item["url"]
-
-        # Delete pre-existing chunks for this content_id
-        existing = collection.get(where={"content_id": item["content_id"]})
-        if existing["ids"]:
-            collection.delete(ids=existing["ids"])
-
-        ids = [f"{item['content_id']}::chunk{c['index']}" for c in chunks]
-        # Prepend title/author context for embedding disambiguation
-        documents = [
-            f"Title: {item['title']} | Author: {item['author']}\n{c['text']}" for c in chunks
-        ]
-        metadatas = [
-            {
-                **metadata_base,
-                "content_id": item["content_id"],
-                "chunk_index": c["index"],
-                "heading": c["heading"],
-            }
-            for c in chunks
-        ]
-
-        collection.upsert(ids=ids, documents=documents, metadatas=metadatas)  # type: ignore[arg-type]
-        results.append(
-            {
-                "content_id": item["content_id"],
-                "title": item["title"][:60],
-                "source": item["source_key"],
-                "chunks": len(chunks),
-                "status": "indexed",
-            }
-        )
-
-    context.log.info("Embedded %d items in batch", len(results))
-    return results
-
-
-@dg.op
-def finalize(
-    context: dg.OpExecutionContext,
-    results: list[list[dict]],
+@dg.asset(
+    group_name="rag_0_baseline",
+    compute_kind="chromadb",
+    deps=["embedded_contents"],
+    description="Upsert pre-computed embeddings to ChromaDB and update vector_status",
+)
+def indexed_contents(
+    context: AssetExecutionContext,
     raw_store: RawStoreResource,
-) -> dict:
-    """Update vector_status in source DB and build summary. Wrapper for .collect()."""
-    all_results = [item for batch in results for item in batch]
+    vector_store: VectorStoreResource,
+) -> dg.MaterializeResult:
+    """Read embedding JSONs, upsert to ChromaDB, finalize status."""
+    if not EMBEDDINGS_DIR.exists():
+        context.log.warning("Embeddings directory not found: %s", EMBEDDINGS_DIR)
+        return dg.MaterializeResult(metadata={"indexed": dg.MetadataValue.int(0)})
+
+    collection = vector_store.get_collection()
     source_db_path = raw_store.get_source_path()
 
     indexed_count = 0
@@ -98,36 +39,63 @@ def finalize(
     total_chunks = 0
     details: list[dict] = []
 
-    for item in all_results:
+    for path in sorted(EMBEDDINGS_DIR.glob("*.json")):
+        record = json.loads(path.read_text(encoding="utf-8"))
+        content_id = record["content_id"]
+
         try:
-            set_vector_status(item["content_id"], "indexed", db_path=source_db_path)
+            chunks = record["chunks"]
+
+            # Delete pre-existing chunks for this content_id
+            existing = collection.get(where={"content_id": content_id})
+            if existing["ids"]:
+                collection.delete(ids=existing["ids"])
+
+            ids = [c["id"] for c in chunks]
+            documents = [c["document"] for c in chunks]
+            embeddings = [c["embedding"] for c in chunks]
+            metadatas = [c["metadata"] for c in chunks]
+
+            collection.upsert(
+                ids=ids,
+                documents=documents,
+                embeddings=embeddings,  # type: ignore[arg-type]
+                metadatas=metadatas,  # type: ignore[arg-type]
+            )
+            set_vector_status(content_id, "indexed", db_path=source_db_path)
             indexed_count += 1
-            total_chunks += item["chunks"]
-            details.append(item)
+            total_chunks += len(chunks)
+            details.append(
+                {
+                    "content_id": content_id,
+                    "title": record.get("metadata_base", {}).get("title", "")[:60],
+                    "source": record.get("source_key", ""),
+                    "chunks": len(chunks),
+                }
+            )
         except Exception as exc:
-            logger.error("Failed to finalize %s: %s", item["content_id"], exc)
-            set_vector_status(item["content_id"], "error", db_path=source_db_path)
+            logger.error("Failed to index %s: %s", content_id, exc)
+            set_vector_status(content_id, "error", db_path=source_db_path)
             error_count += 1
 
-    context.log.info("Finalized: %d indexed, %d errors", indexed_count, error_count)
-    return {
-        "indexed": indexed_count,
-        "errors": error_count,
-        "total_chunks": total_chunks,
-        "details": details,
-    }
+    summary_lines = [
+        f"**Indexed:** {indexed_count} items ({total_chunks} chunks)",
+        f"**Errors:** {error_count} items",
+    ]
+    if details:
+        summary_lines.append("\n| content_id | title | source | chunks |")
+        summary_lines.append("| --- | --- | --- | --- |")
+        for d in details:
+            summary_lines.append(
+                f"| `{d['content_id']}` | {d['title']} | {d['source']} | {d['chunks']} |"
+            )
 
-
-# ---------------------------------------------------------------------------
-# Graph asset
-# ---------------------------------------------------------------------------
-
-
-@dg.graph_asset(
-    group_name="rag_0_baseline",
-    description="Embed chunked content and upsert to ChromaDB with batched fan-out",
-)
-def indexed_contents(chunked_contents: list[dict]) -> dict:
-    batches = fan_out_embed_batches(chunked_contents)
-    per_batch = batches.map(embed_batch)
-    return finalize(per_batch.collect())
+    context.log.info("Indexed %d items, %d errors", indexed_count, error_count)
+    return dg.MaterializeResult(
+        metadata={
+            "indexed": dg.MetadataValue.int(indexed_count),
+            "errors": dg.MetadataValue.int(error_count),
+            "total_chunks": dg.MetadataValue.int(total_chunks),
+            "summary": dg.MetadataValue.md("\n".join(summary_lines)),
+        }
+    )

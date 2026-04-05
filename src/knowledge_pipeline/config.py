@@ -21,6 +21,8 @@ DB_FILES = ["raw_store.db", "sessions.db"]
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
 CHROMA_PATH = DATA_DIR / "chroma"
+CHUNKS_DIR = DATA_DIR / "chunks"
+EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
 # Backup retention
 MAX_BACKUPS = 7
