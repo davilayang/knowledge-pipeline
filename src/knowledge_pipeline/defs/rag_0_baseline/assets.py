@@ -91,7 +91,7 @@ def pending_contents(
     deps=[pending_contents],
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,
-    code_version="2",
+    code_version="1",
     description="Chunk, embed, and upsert pending content into ChromaDB",
 )
 def indexed_contents(
