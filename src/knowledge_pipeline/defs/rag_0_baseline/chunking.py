@@ -11,7 +11,13 @@ from .resources import RawStoreResource
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 10
+BATCH_SIZE = 3
+
+
+class FetchConfig(dg.Config):
+    """Runtime config for fetch_pending. Override max_items in the Launchpad for dev."""
+
+    max_items: int = 0  # 0 = no limit (prod default)
 
 
 # ---------------------------------------------------------------------------
@@ -20,7 +26,7 @@ BATCH_SIZE = 10
 
 
 @dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
-def fetch_pending(raw_store: RawStoreResource) -> list[dict]:
+def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
     """Query pending/ready items from raw_store, return as serializable dicts."""
     db_path = raw_store.get_path()
     items = []
@@ -44,6 +50,10 @@ def fetch_pending(raw_store: RawStoreResource) -> list[dict]:
                 "content_md": item.content_md,
             }
         )
+
+    if config.max_items > 0:
+        result = result[: config.max_items]
+
     return result
 
 
