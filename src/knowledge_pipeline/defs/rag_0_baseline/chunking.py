@@ -4,6 +4,7 @@
 import json
 import logging
 import re
+import shutil
 
 import dagster as dg
 
@@ -43,6 +44,11 @@ class FetchConfig(dg.Config):
 @dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
 def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
     """Query pending/ready items from raw_store, return as serializable dicts."""
+    # Clear stale chunks from previous runs
+    if CHUNKS_DIR.exists():
+        shutil.rmtree(CHUNKS_DIR)
+    CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+
     db_path = raw_store.get_path()
     items = []
     for status in ["pending", "ready"]:
@@ -52,7 +58,7 @@ def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict
     for item in items:
         if not item.content_md or len(item.content_md.strip()) < 50:
             logger.warning("Skipping %s — content too short", item.content_id)
-            set_vector_status(item.content_id, "skip", db_path=raw_store.get_source_path())
+            set_vector_status(item.content_id, "skip", db_path=raw_store.get_path())
             continue
         result.append(
             {

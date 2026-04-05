@@ -32,7 +32,7 @@ def indexed_contents(
         return dg.MaterializeResult(metadata={"indexed": dg.MetadataValue.int(0)})
 
     collection = vector_store.get_collection()
-    source_db_path = raw_store.get_source_path()
+    db_path = raw_store.get_path()
 
     indexed_count = 0
     error_count = 0
@@ -62,7 +62,7 @@ def indexed_contents(
                 embeddings=embeddings,  # type: ignore[arg-type]
                 metadatas=metadatas,  # type: ignore[arg-type]
             )
-            set_vector_status(content_id, "indexed", db_path=source_db_path)
+            set_vector_status(content_id, "indexed", db_path=db_path)
             indexed_count += 1
             total_chunks += len(chunks)
             details.append(
@@ -75,7 +75,7 @@ def indexed_contents(
             )
         except Exception as exc:
             logger.error("Failed to index %s: %s", content_id, exc)
-            set_vector_status(content_id, "error", db_path=source_db_path)
+            set_vector_status(content_id, "error", db_path=db_path)
             error_count += 1
 
     summary_lines = [

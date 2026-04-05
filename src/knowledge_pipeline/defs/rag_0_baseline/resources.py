@@ -9,6 +9,12 @@ from pydantic import PrivateAttr
 from knowledge_pipeline.config import CHROMA_PATH, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
+# Module-level cache for embedding functions. Dagster's multiprocess executor
+# creates a fresh resource instance per subprocess, so the PrivateAttr cache
+# on VectorStoreResource doesn't help across processes. This ensures each
+# process loads the model at most once.
+_EMBEDDING_FN_CACHE: dict[str, chromadb.EmbeddingFunction] = {}
+
 
 class RawStoreResource(dg.ConfigurableResource):
     """Read-only access to raw_store.db (local copy + source for status writes)."""
@@ -47,14 +53,21 @@ class VectorStoreResource(dg.ConfigurableResource):
     def _get_embedding_fn(self) -> chromadb.EmbeddingFunction | None:
         if self.embedding_model is None:
             return None  # use lib default (DefaultEmbeddingFunction)
-        if self._embedding_fn is None:
-            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+        if self.embedding_model in _EMBEDDING_FN_CACHE:
+            return _EMBEDDING_FN_CACHE[self.embedding_model]
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
-            self._embedding_fn = SentenceTransformerEmbeddingFunction(
-                model_name=self.embedding_model,
-                trust_remote_code=True,
-            )
-        return self._embedding_fn
+        ef = SentenceTransformerEmbeddingFunction(
+            model_name=self.embedding_model,
+            # nomic-embed-text and similar models require trust_remote_code
+            trust_remote_code=True,
+        )
+        _EMBEDDING_FN_CACHE[self.embedding_model] = ef
+        return ef
+
+    def get_embedding_fn(self) -> chromadb.EmbeddingFunction | None:
+        """Return the embedding function, or None to use the lib default."""
+        return self._get_embedding_fn()
 
     def get_collection(self) -> chromadb.Collection:
         return get_collection(

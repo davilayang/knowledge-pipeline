@@ -3,10 +3,12 @@
 
 import json
 import logging
+import shutil
 
 import dagster as dg
 
 from knowledge_pipeline.config import CHUNKS_DIR, EMBEDDINGS_DIR
+from knowledge_pipeline.lib.vector_store import EMBEDDING_FUNCTION
 
 from .chunking import BATCH_SIZE, _safe_filename
 from .resources import VectorStoreResource
@@ -22,6 +24,11 @@ logger = logging.getLogger(__name__)
 @dg.op(ins={"chunks_ready": dg.In(dagster_type=dg.Nothing)})
 def load_chunked_items(context: dg.OpExecutionContext) -> list[dict]:
     """Read all chunked item JSON files from data/chunks/."""
+    # Clear stale embeddings from previous runs
+    if EMBEDDINGS_DIR.exists():
+        shutil.rmtree(EMBEDDINGS_DIR)
+    EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
+
     if not CHUNKS_DIR.exists():
         context.log.warning("Chunks directory not found: %s", CHUNKS_DIR)
         return []
@@ -51,8 +58,7 @@ def embed_batch(
 ) -> list[str]:
     """Compute embeddings for a batch and write to JSON files. Returns content_ids."""
     EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
-    collection = vector_store.get_collection()
-    ef = collection._embedding_function  # noqa: SLF001
+    ef = vector_store.get_embedding_fn() or EMBEDDING_FUNCTION
     content_ids = []
 
     for item in batch:
