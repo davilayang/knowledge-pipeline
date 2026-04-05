@@ -8,7 +8,7 @@ import dagster as dg
 
 from knowledge_pipeline.config import CHUNKS_DIR, EMBEDDINGS_DIR
 
-from .chunking import BATCH_SIZE
+from .chunking import BATCH_SIZE, _safe_filename
 from .resources import VectorStoreResource
 
 logger = logging.getLogger(__name__)
@@ -93,7 +93,7 @@ def embed_batch(
             ],
         }
 
-        path = EMBEDDINGS_DIR / f"{item['content_id']}.json"
+        path = EMBEDDINGS_DIR / f"{_safe_filename(item['content_id'])}.json"
         path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
         content_ids.append(item["content_id"])
 

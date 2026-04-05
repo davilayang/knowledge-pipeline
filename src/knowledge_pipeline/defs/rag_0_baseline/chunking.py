@@ -3,6 +3,7 @@
 
 import json
 import logging
+import re
 
 import dagster as dg
 
@@ -15,6 +16,11 @@ from .resources import RawStoreResource
 logger = logging.getLogger(__name__)
 
 BATCH_SIZE = 3
+
+
+def _safe_filename(content_id: str) -> str:
+    """Sanitize content_id for use as a filename."""
+    return re.sub(r"[^a-zA-Z0-9_-]", "_", content_id)
 
 
 class FetchConfig(dg.Config):
@@ -77,26 +83,30 @@ def chunk_batch(context: dg.OpExecutionContext, batch: list[dict]) -> list[str]:
     CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
     content_ids = []
     for item in batch:
+        # Chunking errors are per-item — skip bad content, don't crash the batch.
         try:
             chunks = chunk_markdown(item["content_md"])
-            if not chunks:
-                continue
-            record = {
-                "content_id": item["content_id"],
-                "title": item["title"],
-                "author": item["author"],
-                "url": item["url"],
-                "source_key": item["source_key"],
-                "content_date": item["content_date"],
-                "chunks": [
-                    {"text": c.text, "heading": c.heading, "index": c.index} for c in chunks
-                ],
-            }
-            path = CHUNKS_DIR / f"{item['content_id']}.json"
-            path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
-            content_ids.append(item["content_id"])
         except Exception as exc:
             logger.error("Failed to chunk %s: %s", item["content_id"], exc)
+            continue
+
+        if not chunks:
+            continue
+
+        record = {
+            "content_id": item["content_id"],
+            "title": item["title"],
+            "author": item["author"],
+            "url": item["url"],
+            "source_key": item["source_key"],
+            "content_date": item["content_date"],
+            "chunks": [{"text": c.text, "heading": c.heading, "index": c.index} for c in chunks],
+        }
+        # File writes must succeed — propagate errors.
+        path = CHUNKS_DIR / f"{_safe_filename(item['content_id'])}.json"
+        path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
+        content_ids.append(item["content_id"])
+
     context.log.info("Chunked %d items in batch, wrote to %s", len(content_ids), CHUNKS_DIR)
     return content_ids
 
