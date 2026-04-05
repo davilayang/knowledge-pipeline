@@ -8,7 +8,6 @@ import shutil
 import dagster as dg
 
 from knowledge_pipeline.config import CHUNKS_DIR, EMBEDDINGS_DIR
-from knowledge_pipeline.lib.vector_store import EMBEDDING_FUNCTION
 
 from .chunking import BATCH_SIZE, _safe_filename
 from .resources import VectorStoreResource
@@ -58,7 +57,9 @@ def embed_batch(
 ) -> list[str]:
     """Compute embeddings for a batch and write to JSON files. Returns content_ids."""
     EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
-    ef = vector_store.get_embedding_fn() or EMBEDDING_FUNCTION
+    ef = vector_store.get_embedding_fn()
+    if ef is None:
+        raise dg.Failure("No embedding function configured on VectorStoreResource")
     content_ids = []
 
     for item in batch:
