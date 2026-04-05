@@ -218,17 +218,23 @@ def aggregate_results(context: dg.OpExecutionContext, eval_results: list[dict]) 
     return report
 
 
-@dg.op(description="Write eval report to data/eval_results/ as JSON and log markdown summary")
+@dg.op(description="Write eval report to data/eval_results/ as JSON + markdown")
 def write_report(context: dg.OpExecutionContext, report: dict) -> None:
-    """Write JSON report and log a markdown summary."""
+    """Write JSON and markdown reports, log summary."""
     EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
     timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
-    path = EVAL_RESULTS_DIR / f"eval_{timestamp}.json"
-    path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
-    context.log.info("Report written to %s", path)
 
-    # Log markdown summary
+    # JSON (machine-readable, for history/comparison)
+    json_path = EVAL_RESULTS_DIR / f"eval_{timestamp}.json"
+    json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    context.log.info("JSON report: %s", json_path)
+
+    # Markdown (human-readable)
     md = _build_markdown(report)
+    md_path = EVAL_RESULTS_DIR / f"eval_{timestamp}.md"
+    md_path.write_text(md, encoding="utf-8")
+    context.log.info("Markdown report: %s", md_path)
+
     context.log.info("\n%s", md)
 
 
