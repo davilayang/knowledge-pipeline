@@ -31,7 +31,7 @@ RAG_COLLECTIONS = ["baseline"]
     description="Validate eval config: query set version, collection availability",
     out=dg.Out(dagster_type=dg.Nothing),
 )
-def preflight_check(context: dg.OpExecutionContext) -> None:
+def eval_preflight_check(context: dg.OpExecutionContext) -> None:
     """Log eval configuration and verify collections exist."""
     client = get_client()
     existing = {c.name for c in client.list_collections()}
@@ -258,7 +258,7 @@ def _build_markdown(report: dict) -> str:
 @dg.graph()
 def eval_graph():
     """Graph: preflight → eval each collection → aggregate → write report."""
-    ready = preflight_check()
+    ready = eval_preflight_check()
     results = [op(ready) for op in eval_ops]
     report = aggregate_results(eval_results=results)
     write_report(report)
