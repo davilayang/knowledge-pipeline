@@ -1,6 +1,7 @@
 # Dagster ops for retrieval quality evaluation.
 # Uses op factory to generate one eval op per RAG collection.
 
+import hashlib
 import json
 import logging
 import time
@@ -8,8 +9,9 @@ from datetime import UTC, datetime
 
 import dagster as dg
 
-from knowledge_pipeline.config import EVAL_RESULTS_DIR
+from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
+from knowledge_pipeline.lib.store import count_contents
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
@@ -27,18 +29,47 @@ RAG_COLLECTIONS = ["baseline"]
 # ---------------------------------------------------------------------------
 
 
+def _hash_file(path) -> str:
+    """SHA-256 hash of a file (first 16 hex chars)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]
+
+
 @dg.op(
-    description="Validate eval config: query set version, collection availability",
+    description="Validate eval config: query set, dataset version, collections",
     out=dg.Out(dagster_type=dg.Nothing),
 )
 def eval_preflight_check(context: dg.OpExecutionContext) -> None:
-    """Log eval configuration and verify collections exist."""
-    client = get_client()
-    existing = {c.name for c in client.list_collections()}
-
+    """Log eval configuration, dataset version, and verify collections."""
+    # Query set
     context.log.info("Query set version: %s", QUERY_SET_VERSION)
     context.log.info("Queries: %d", len(EVAL_QUERIES))
     context.log.info("Date: %s", datetime.now(tz=UTC).isoformat())
+
+    if not EVAL_QUERIES:
+        raise dg.Failure("No eval queries defined — populate defs/evaluate/queries.py")
+
+    # Dataset version
+    if SOURCE_RAW_STORE.exists():
+        corpus_hash = _hash_file(SOURCE_RAW_STORE)
+        context.log.info("Source dataset: %s", SOURCE_RAW_STORE.name)
+        context.log.info("Corpus hash: %s", corpus_hash)
+    else:
+        context.log.warning("Source dataset not found: %s", SOURCE_RAW_STORE)
+
+    if LOCAL_RAW_STORE.exists():
+        local_hash = _hash_file(LOCAL_RAW_STORE)
+        row_count = count_contents(db_path=LOCAL_RAW_STORE)
+        context.log.info("Local DB: %s (hash=%s, %d rows)", LOCAL_RAW_STORE, local_hash, row_count)
+    else:
+        context.log.warning("Local DB not found: %s", LOCAL_RAW_STORE)
+
+    # Collections
+    client = get_client()
+    existing = {c.name for c in client.list_collections()}
 
     for name in RAG_COLLECTIONS:
         if name in existing:
@@ -46,9 +77,6 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
             context.log.info("Collection '%s': %d chunks", name, coll.count())
         else:
             context.log.warning("Collection '%s': NOT FOUND", name)
-
-    if not EVAL_QUERIES:
-        raise dg.Failure("No eval queries defined — populate defs/evaluate/queries.py")
 
     missing = [n for n in RAG_COLLECTIONS if n not in existing]
     if len(missing) == len(RAG_COLLECTIONS):
