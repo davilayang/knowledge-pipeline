@@ -1,12 +1,21 @@
 import dagster as dg
 
-from .assets import indexed_contents, no_indexing_errors, pending_contents, raw_store_copy
+from .assets import chunked_contents, embedded_contents, indexed_contents, raw_store_copy
 from .resources import RawStoreResource, VectorStoreResource
 
 index_contents_job = dg.define_asset_job(
-    name="rag_0_baseline_job",
-    selection=[raw_store_copy, pending_contents, indexed_contents],
+    name="rag_0_baseline",
+    selection=[raw_store_copy, chunked_contents, embedded_contents, indexed_contents],
     description="Baseline RAG: markdown chunking + default embedding + cosine retrieval",
+    config={
+        "execution": {
+            "config": {
+                "multiprocess": {
+                    "max_concurrent": 3,
+                },
+            },
+        },
+    },
 )
 
 daily_index_schedule = dg.ScheduleDefinition(
@@ -16,8 +25,7 @@ daily_index_schedule = dg.ScheduleDefinition(
 )
 
 defs = dg.Definitions(
-    assets=[raw_store_copy, pending_contents, indexed_contents],
-    asset_checks=[no_indexing_errors],
+    assets=[raw_store_copy, chunked_contents, embedded_contents, indexed_contents],
     jobs=[index_contents_job],
     schedules=[daily_index_schedule],
     resources={

@@ -9,6 +9,12 @@ from pydantic import PrivateAttr
 from knowledge_pipeline.config import CHROMA_PATH, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
+# Module-level cache for embedding functions. Dagster's multiprocess executor
+# creates a fresh resource instance per subprocess, so the PrivateAttr cache
+# on VectorStoreResource doesn't help across processes. This ensures each
+# process loads the model at most once.
+_EMBEDDING_FN_CACHE: dict[str, chromadb.EmbeddingFunction] = {}
+
 
 class RawStoreResource(dg.ConfigurableResource):
     """Read-only access to raw_store.db (local copy + source for status writes)."""
@@ -24,20 +30,48 @@ class RawStoreResource(dg.ConfigurableResource):
 
 
 class VectorStoreResource(dg.ConfigurableResource):
-    """ChromaDB persistent client for embedding storage."""
+    """ChromaDB persistent client for embedding storage.
+
+    Set ``embedding_model`` to use a SentenceTransformer model instead of the
+    ChromaDB default (all-MiniLM-L6-v2, 256-token limit).  For example,
+    ``"nomic-ai/nomic-embed-text-v1.5"`` supports 8192 tokens and scores
+    significantly higher on MTEB benchmarks.
+    """
 
     chroma_path: str = str(CHROMA_PATH)
     collection_name: str = "baseline"
+    embedding_model: str | None = None
 
     _client: chromadb.ClientAPI | None = PrivateAttr(default=None)
+    _embedding_fn: chromadb.EmbeddingFunction | None = PrivateAttr(default=None)
 
     def _get_client(self) -> chromadb.ClientAPI:
         if self._client is None:
             self._client = get_client(Path(self.chroma_path))
         return self._client
 
+    def _get_embedding_fn(self) -> chromadb.EmbeddingFunction | None:
+        if self.embedding_model is None:
+            return None  # use lib default (DefaultEmbeddingFunction)
+        if self.embedding_model in _EMBEDDING_FN_CACHE:
+            return _EMBEDDING_FN_CACHE[self.embedding_model]
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+        ef = SentenceTransformerEmbeddingFunction(
+            model_name=self.embedding_model,
+            # nomic-embed-text and similar models require trust_remote_code
+            trust_remote_code=True,
+        )
+        _EMBEDDING_FN_CACHE[self.embedding_model] = ef
+        return ef
+
+    def get_embedding_fn(self) -> chromadb.EmbeddingFunction | None:
+        """Return the embedding function, or None to use the lib default."""
+        return self._get_embedding_fn()
+
     def get_collection(self) -> chromadb.Collection:
         return get_collection(
             client=self._get_client(),
             collection_name=self.collection_name,
+            embedding_function=self._get_embedding_fn(),
         )

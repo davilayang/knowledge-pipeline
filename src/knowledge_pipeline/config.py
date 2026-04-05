@@ -1,26 +1,27 @@
 # Paths and settings for the knowledge pipeline.
 
-import os
 from pathlib import Path
 
-# Source: newsletter-assistant project
-NEWSLETTER_ASSISTANT_DIR = Path(
-    os.environ.get("NEWSLETTER_ASSISTANT_DIR", str(Path.home() / "GitHub" / "newsletter-assistant"))
-).expanduser()
-SOURCE_DATA_DIR = NEWSLETTER_ASSISTANT_DIR / "data"
-SOURCE_RAW_STORE = SOURCE_DATA_DIR / "raw_store.db"
-
-# Local data directories
+# Project root
 PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
+
+# Static dataset — pinned copy of production data for reproducible evaluation.
+# Lives in the project repo, not copied from an external source at runtime.
+DATASETS_DIR = PROJECT_DIR / "datasets"
+SOURCE_RAW_STORE = DATASETS_DIR / "raw_store_2026-04-05.db"
+
+# Working data directories (runtime artifacts, not checked in)
 DATA_DIR = PROJECT_DIR / "data"
 BACKUP_DIR = PROJECT_DIR / "backups"
-
-# Database files to back up from newsletter-assistant
-DB_FILES = ["raw_store.db", "sessions.db"]
 
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
 CHROMA_PATH = DATA_DIR / "chroma"
+CHUNKS_DIR = DATA_DIR / "chunks"
+EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
 
-# Backup retention
+# Backup settings
+BACKUP_SOURCE_DIR = Path.home() / "GitHub" / "newsletter-assistant" / "data"
+DB_FILES = ["raw_store.db", "sessions.db"]
 MAX_BACKUPS = 7

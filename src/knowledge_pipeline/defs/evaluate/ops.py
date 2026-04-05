@@ -1,0 +1,315 @@
+# Dagster ops for retrieval quality evaluation.
+# Uses op factory to generate one eval op per RAG collection.
+
+import hashlib
+import json
+import logging
+import time
+from datetime import UTC, datetime
+
+import dagster as dg
+
+from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
+from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
+from knowledge_pipeline.lib.store import count_contents
+from knowledge_pipeline.lib.vector_store import get_client, get_collection
+
+from .queries import EVAL_QUERIES, QUERY_SET_VERSION
+
+logger = logging.getLogger(__name__)
+
+K = 5
+
+# Collections to evaluate — add new ones as strategies are created.
+RAG_COLLECTIONS = ["baseline"]
+
+
+# ---------------------------------------------------------------------------
+# Preflight
+# ---------------------------------------------------------------------------
+
+
+def _hash_file(path) -> str:
+    """SHA-256 hash of a file (first 16 hex chars)."""
+    h = hashlib.sha256()
+    with open(path, "rb") as f:
+        for chunk in iter(lambda: f.read(65536), b""):
+            h.update(chunk)
+    return h.hexdigest()[:16]
+
+
+@dg.op(
+    description="Validate eval config: query set, dataset version, collections",
+    out=dg.Out(dagster_type=dg.Nothing),
+)
+def eval_preflight_check(context: dg.OpExecutionContext) -> None:
+    """Log eval configuration, dataset version, and verify collections."""
+    # Query set
+    context.log.info("Query set version: %s", QUERY_SET_VERSION)
+    context.log.info("Queries: %d", len(EVAL_QUERIES))
+    context.log.info("Date: %s", datetime.now(tz=UTC).isoformat())
+
+    if not EVAL_QUERIES:
+        raise dg.Failure("No eval queries defined — populate defs/evaluate/queries.py")
+
+    # Dataset version
+    if SOURCE_RAW_STORE.exists():
+        corpus_hash = _hash_file(SOURCE_RAW_STORE)
+        context.log.info("Source dataset: %s", SOURCE_RAW_STORE.name)
+        context.log.info("Corpus hash: %s", corpus_hash)
+    else:
+        context.log.warning("Source dataset not found: %s", SOURCE_RAW_STORE)
+
+    if LOCAL_RAW_STORE.exists():
+        local_hash = _hash_file(LOCAL_RAW_STORE)
+        row_count = count_contents(db_path=LOCAL_RAW_STORE)
+        context.log.info("Local DB: %s (hash=%s, %d rows)", LOCAL_RAW_STORE, local_hash, row_count)
+    else:
+        context.log.warning("Local DB not found: %s", LOCAL_RAW_STORE)
+
+    # Collections
+    client = get_client()
+    existing = {c.name for c in client.list_collections()}
+
+    for name in RAG_COLLECTIONS:
+        if name in existing:
+            coll = get_collection(client=client, collection_name=name)
+            context.log.info("Collection '%s': %d chunks", name, coll.count())
+        else:
+            context.log.warning("Collection '%s': NOT FOUND", name)
+
+    missing = [n for n in RAG_COLLECTIONS if n not in existing]
+    if len(missing) == len(RAG_COLLECTIONS):
+        raise dg.Failure(f"No collections found: {missing}")
+
+
+# ---------------------------------------------------------------------------
+# Per-collection eval op factory
+# ---------------------------------------------------------------------------
+
+
+def create_eval_op(collection_name: str) -> dg.OpDefinition:
+    """Factory: create an eval op for a single RAG collection."""
+
+    @dg.op(
+        name=f"evaluate_{collection_name}",
+        description=f"Run eval queries against '{collection_name}' collection",
+        ins={"ready": dg.In(dagster_type=dg.Nothing)},
+    )
+    def _eval(context: dg.OpExecutionContext) -> dict:
+        client = get_client()
+        existing = {c.name for c in client.list_collections()}
+
+        if collection_name not in existing:
+            context.log.warning("Collection '%s' not found, skipping", collection_name)
+            return {"collection": collection_name, "status": "not_found", "metrics": {}}
+
+        collection = get_collection(client=client, collection_name=collection_name)
+        if collection.count() == 0:
+            context.log.warning("Collection '%s' is empty, skipping", collection_name)
+            return {"collection": collection_name, "status": "empty", "metrics": {}}
+
+        per_query: list[dict] = []
+
+        for eq in EVAL_QUERIES:
+            start = time.perf_counter()
+            results = collection.query(
+                query_texts=[eq.query],
+                n_results=min(K, collection.count()),
+                include=["metadatas"],
+            )
+            latency_ms = (time.perf_counter() - start) * 1000
+
+            metas = results["metadatas"][0] if results["metadatas"] else []
+            retrieved = _unique_content_ids(metas)
+
+            r = recall_at_k(retrieved, eq.expected_content_ids, K)
+            p = precision_at_k(retrieved, eq.expected_content_ids, K)
+            m = mrr(retrieved, eq.expected_content_ids)
+
+            per_query.append(
+                {
+                    "query": eq.query,
+                    "category": eq.category,
+                    "recall": r,
+                    "precision": p,
+                    "mrr": m,
+                    "latency_ms": latency_ms,
+                    "retrieved_ids": retrieved,
+                    "expected_ids": eq.expected_content_ids,
+                }
+            )
+
+        context.log.info("Evaluated %d queries against '%s'", len(per_query), collection_name)
+        return {
+            "collection": collection_name,
+            "status": "ok",
+            "chunk_count": collection.count(),
+            "metrics": per_query,
+        }
+
+    return _eval
+
+
+# Generate one eval op per collection
+eval_ops = [create_eval_op(name) for name in RAG_COLLECTIONS]
+
+
+# ---------------------------------------------------------------------------
+# Aggregate + write report
+# ---------------------------------------------------------------------------
+
+
+@dg.op(description="Aggregate per-collection eval results into a comparison report")
+def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dict]) -> dict:
+    """Compute overall and per-category metrics from raw query results."""
+    report = {
+        "query_set_version": QUERY_SET_VERSION,
+        "timestamp": datetime.now(tz=UTC).isoformat(),
+        "num_queries": len(EVAL_QUERIES),
+        "collections": {},
+    }
+
+    for result in eval_run_results:
+        coll_name = result["collection"]
+        if result["status"] != "ok":
+            report["collections"][coll_name] = {"status": result["status"]}
+            continue
+
+        queries = result["metrics"]
+        by_cat: dict[str, dict] = {}
+
+        for q in queries:
+            cat = q["category"]
+            if cat not in by_cat:
+                by_cat[cat] = {"r": 0, "p": 0, "m": 0, "lat": 0, "n": 0}
+            by_cat[cat]["r"] += q["recall"]
+            by_cat[cat]["p"] += q["precision"]
+            by_cat[cat]["m"] += q["mrr"]
+            by_cat[cat]["lat"] += q["latency_ms"]
+            by_cat[cat]["n"] += 1
+
+        n = len(queries)
+        overall = {
+            "recall@5": sum(q["recall"] for q in queries) / n,
+            "precision@5": sum(q["precision"] for q in queries) / n,
+            "mrr": sum(q["mrr"] for q in queries) / n,
+            "avg_latency_ms": sum(q["latency_ms"] for q in queries) / n,
+        }
+        categories = {
+            cat: {
+                "num_queries": v["n"],
+                "recall@5": v["r"] / v["n"],
+                "precision@5": v["p"] / v["n"],
+                "mrr": v["m"] / v["n"],
+                "avg_latency_ms": v["lat"] / v["n"],
+            }
+            for cat, v in by_cat.items()
+        }
+
+        report["collections"][coll_name] = {
+            "status": "ok",
+            "chunk_count": result["chunk_count"],
+            "overall": overall,
+            "by_category": categories,
+        }
+
+    context.log.info("Aggregated results for %d collections", len(report["collections"]))
+    return report
+
+
+@dg.op(description="Write eval report to data/eval_results/ as JSON + markdown")
+def write_report(context: dg.OpExecutionContext, report: dict) -> None:
+    """Write JSON and markdown reports, log summary."""
+    EVAL_RESULTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now(tz=UTC).strftime("%Y-%m-%dT%H-%M-%SZ")
+
+    # JSON (machine-readable, for history/comparison)
+    json_path = EVAL_RESULTS_DIR / f"eval_{timestamp}.json"
+    json_path.write_text(json.dumps(report, indent=2, ensure_ascii=False), encoding="utf-8")
+    context.log.info("JSON report: %s", json_path)
+
+    # Markdown (human-readable)
+    md = _build_markdown(report)
+    md_path = EVAL_RESULTS_DIR / f"eval_{timestamp}.md"
+    md_path.write_text(md, encoding="utf-8")
+    context.log.info("Markdown report: %s", md_path)
+
+    context.log.info("\n%s", md)
+
+
+def _build_markdown(report: dict) -> str:
+    """Build a markdown summary from the report dict."""
+    lines = [f"# Eval Report — {report['timestamp']}\n"]
+    lines.append(f"Query set: {report['query_set_version']} ({report['num_queries']} queries)\n")
+
+    # Overall comparison
+    lines.append("## Overall\n")
+    lines.append("| Collection | Recall@5 | Precision@5 | MRR | Avg Latency |")
+    lines.append("| --- | --- | --- | --- | --- |")
+    for name, data in report["collections"].items():
+        if data.get("status") != "ok":
+            lines.append(f"| {name} | — | — | — | {data['status']} |")
+            continue
+        o = data["overall"]
+        lines.append(
+            f"| {name}"
+            f" | {o['recall@5']:.3f}"
+            f" | {o['precision@5']:.3f}"
+            f" | {o['mrr']:.3f}"
+            f" | {o['avg_latency_ms']:.0f}ms |"
+        )
+
+    # Per-category
+    cat_order = ["easy", "paraphrase", "buried", "cross", "negative"]
+    for name, data in report["collections"].items():
+        if data.get("status") != "ok":
+            continue
+        lines.append(f"\n## {name} — By Category\n")
+        lines.append("| Category | Queries | Recall@5 | Precision@5 | MRR | Latency |")
+        lines.append("| --- | --- | --- | --- | --- | --- |")
+        cats = data["by_category"]
+        for cat in cat_order:
+            if cat in cats:
+                c = cats[cat]
+                lines.append(
+                    f"| {cat}"
+                    f" | {c['num_queries']}"
+                    f" | {c['recall@5']:.3f}"
+                    f" | {c['precision@5']:.3f}"
+                    f" | {c['mrr']:.3f}"
+                    f" | {c['avg_latency_ms']:.0f}ms |"
+                )
+
+    return "\n".join(lines)
+
+
+# ---------------------------------------------------------------------------
+# Graph
+# ---------------------------------------------------------------------------
+
+
+@dg.graph()
+def eval_graph():
+    """Graph: preflight → eval each collection → aggregate → write report."""
+    ready = eval_preflight_check()
+    results = [op(ready) for op in eval_ops]
+    report = aggregate_results(eval_run_results=results)
+    write_report(report)
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _unique_content_ids(metadatas: list[dict]) -> list[str]:
+    """Extract unique content_ids preserving first-occurrence order."""
+    seen: set[str] = set()
+    ids: list[str] = []
+    for m in metadatas:
+        cid = m.get("content_id", "")
+        if cid and cid not in seen:
+            seen.add(cid)
+            ids.append(cid)
+    return ids

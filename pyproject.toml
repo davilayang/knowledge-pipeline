@@ -8,6 +8,7 @@ dependencies = [
     "dagster-webserver>=1.12,<2.0",
     "chromadb>=1.5,<2.0",
     "poethepoet>=0.42,<1.0",
+    "sentence-transformers>=3.0,<4.0",
 ]
 
 [dependency-groups]
@@ -43,6 +44,10 @@ help = "Run index job once from CLI"
 [tool.poe.tasks.backup]
 cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_databases_job"
 help = "Run backup job once from CLI"
+
+[tool.poe.tasks.eval]
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrievals"
+help = "Run evaluation across RAG strategies"
 
 ## Code QA ##
 

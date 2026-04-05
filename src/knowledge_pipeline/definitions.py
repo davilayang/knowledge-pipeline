@@ -4,6 +4,6 @@
 
 import dagster as dg
 
-from knowledge_pipeline.defs import backup_databases, rag_0_baseline
+from knowledge_pipeline.defs import backup_databases, evaluate, rag_0_baseline
 
-defs = dg.Definitions.merge(rag_0_baseline.defs, backup_databases.defs)
+defs = dg.Definitions.merge(rag_0_baseline.defs, backup_databases.defs, evaluate.defs)
