@@ -1,5 +1,5 @@
 # Dagster ops for retrieval quality evaluation.
-# Uses op factory to generate one eval op per RAG collection.
+# Uses op factory to generate one eval op per (collection, strategy) combo.
 
 import hashlib
 import json
@@ -11,17 +11,16 @@ import dagster as dg
 
 from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
+from knowledge_pipeline.lib.retrieval import build_strategy
 from knowledge_pipeline.lib.store import count_contents
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
+from .registry import EVAL_COMBOS, parse_combo
 
 logger = logging.getLogger(__name__)
 
 K = 5
-
-# Collections to evaluate — add new ones as strategies are created.
-RAG_COLLECTIONS = ["baseline"]
 
 
 # ---------------------------------------------------------------------------
@@ -71,29 +70,33 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
     client = get_client()
     existing = {c.name for c in client.list_collections()}
 
-    for name in RAG_COLLECTIONS:
+    collection_names = {coll for coll, _ in (parse_combo(c) for c in EVAL_COMBOS)}
+    for name in sorted(collection_names):
         if name in existing:
             coll = get_collection(client=client, collection_name=name)
             context.log.info("Collection '%s': %d chunks", name, coll.count())
         else:
             context.log.warning("Collection '%s': NOT FOUND", name)
 
-    missing = [n for n in RAG_COLLECTIONS if n not in existing]
-    if len(missing) == len(RAG_COLLECTIONS):
-        raise dg.Failure(f"No collections found: {missing}")
+    missing = [n for n in collection_names if n not in existing]
+    if len(missing) == len(collection_names):
+        raise dg.Failure(f"No collections found: {sorted(missing)}")
 
 
 # ---------------------------------------------------------------------------
-# Per-collection eval op factory
+# Per-(collection, strategy) eval op factory
 # ---------------------------------------------------------------------------
 
 
-def create_eval_op(collection_name: str) -> dg.OpDefinition:
-    """Factory: create an eval op for a single RAG collection."""
+def create_eval_op(collection_name: str, strategy_spec: str) -> dg.OpDefinition:
+    """Factory: create an eval op for a single (collection, strategy) combo."""
 
     @dg.op(
-        name=f"evaluate_{collection_name}",
-        description=f"Run eval queries against '{collection_name}' collection",
+        name=f"evaluate_{collection_name}__{strategy_spec}",
+        description=(
+            f"Run eval queries against '{collection_name}' "
+            f"with '{strategy_spec}' retrieval strategy"
+        ),
         ins={"ready": dg.In(dagster_type=dg.Nothing)},
     )
     def _eval(context: dg.OpExecutionContext) -> dict:
@@ -102,26 +105,32 @@ def create_eval_op(collection_name: str) -> dg.OpDefinition:
 
         if collection_name not in existing:
             context.log.warning("Collection '%s' not found, skipping", collection_name)
-            return {"collection": collection_name, "status": "not_found", "metrics": {}}
+            return {
+                "collection": collection_name,
+                "strategy": strategy_spec,
+                "status": "not_found",
+                "metrics": {},
+            }
 
         collection = get_collection(client=client, collection_name=collection_name)
         if collection.count() == 0:
             context.log.warning("Collection '%s' is empty, skipping", collection_name)
-            return {"collection": collection_name, "status": "empty", "metrics": {}}
+            return {
+                "collection": collection_name,
+                "strategy": strategy_spec,
+                "status": "empty",
+                "metrics": {},
+            }
 
+        strategy = build_strategy(collection, strategy_spec)
         per_query: list[dict] = []
 
         for eq in EVAL_QUERIES:
             start = time.perf_counter()
-            results = collection.query(
-                query_texts=[eq.query],
-                n_results=min(K, collection.count()),
-                include=["metadatas"],
-            )
+            results = strategy.retrieve(eq.query, n_results=min(K, collection.count()))
             latency_ms = (time.perf_counter() - start) * 1000
 
-            metas = results["metadatas"][0] if results["metadatas"] else []
-            retrieved = _unique_content_ids(metas)
+            retrieved = _unique_content_ids(results)
 
             r = recall_at_k(retrieved, eq.expected_content_ids, K)
             p = precision_at_k(retrieved, eq.expected_content_ids, K)
@@ -140,9 +149,15 @@ def create_eval_op(collection_name: str) -> dg.OpDefinition:
                 }
             )
 
-        context.log.info("Evaluated %d queries against '%s'", len(per_query), collection_name)
+        context.log.info(
+            "Evaluated %d queries against '%s' with strategy '%s'",
+            len(per_query),
+            collection_name,
+            strategy_spec,
+        )
         return {
             "collection": collection_name,
+            "strategy": strategy_spec,
             "status": "ok",
             "chunk_count": collection.count(),
             "metrics": per_query,
@@ -151,8 +166,8 @@ def create_eval_op(collection_name: str) -> dg.OpDefinition:
     return _eval
 
 
-# Generate one eval op per collection
-eval_ops = [create_eval_op(name) for name in RAG_COLLECTIONS]
+# Generate one eval op per (collection, strategy) combo
+eval_ops = [create_eval_op(coll, strat) for coll, strat in (parse_combo(c) for c in EVAL_COMBOS)]
 
 
 # ---------------------------------------------------------------------------
@@ -160,20 +175,27 @@ eval_ops = [create_eval_op(name) for name in RAG_COLLECTIONS]
 # ---------------------------------------------------------------------------
 
 
-@dg.op(description="Aggregate per-collection eval results into a comparison report")
+@dg.op(description="Aggregate per-combo eval results into a comparison report")
 def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dict]) -> dict:
     """Compute overall and per-category metrics from raw query results."""
     report = {
         "query_set_version": QUERY_SET_VERSION,
         "timestamp": datetime.now(tz=UTC).isoformat(),
         "num_queries": len(EVAL_QUERIES),
-        "collections": {},
+        "combos": {},
     }
 
     for result in eval_run_results:
         coll_name = result["collection"]
+        strat_name = result["strategy"]
+        combo_key = f"{coll_name}__{strat_name}"
+
         if result["status"] != "ok":
-            report["collections"][coll_name] = {"status": result["status"]}
+            report["combos"][combo_key] = {
+                "collection": coll_name,
+                "strategy": strat_name,
+                "status": result["status"],
+            }
             continue
 
         queries = result["metrics"]
@@ -207,14 +229,16 @@ def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dic
             for cat, v in by_cat.items()
         }
 
-        report["collections"][coll_name] = {
+        report["combos"][combo_key] = {
+            "collection": coll_name,
+            "strategy": strat_name,
             "status": "ok",
             "chunk_count": result["chunk_count"],
             "overall": overall,
             "by_category": categories,
         }
 
-    context.log.info("Aggregated results for %d collections", len(report["collections"]))
+    context.log.info("Aggregated results for %d combos", len(report["combos"]))
     return report
 
 
@@ -245,15 +269,18 @@ def _build_markdown(report: dict) -> str:
 
     # Overall comparison
     lines.append("## Overall\n")
-    lines.append("| Collection | Recall@5 | Precision@5 | MRR | Avg Latency |")
-    lines.append("| --- | --- | --- | --- | --- |")
-    for name, data in report["collections"].items():
+    lines.append("| Collection | Strategy | Recall@5 | Precision@5 | MRR | Avg Latency |")
+    lines.append("| --- | --- | --- | --- | --- | --- |")
+    for combo_key, data in report["combos"].items():
+        coll = data["collection"]
+        strat = data["strategy"]
         if data.get("status") != "ok":
-            lines.append(f"| {name} | — | — | — | {data['status']} |")
+            lines.append(f"| {coll} | {strat} | — | — | — | {data['status']} |")
             continue
         o = data["overall"]
         lines.append(
-            f"| {name}"
+            f"| {coll}"
+            f" | {strat}"
             f" | {o['recall@5']:.3f}"
             f" | {o['precision@5']:.3f}"
             f" | {o['mrr']:.3f}"
@@ -262,10 +289,12 @@ def _build_markdown(report: dict) -> str:
 
     # Per-category
     cat_order = ["easy", "paraphrase", "buried", "cross", "negative"]
-    for name, data in report["collections"].items():
+    for combo_key, data in report["combos"].items():
         if data.get("status") != "ok":
             continue
-        lines.append(f"\n## {name} — By Category\n")
+        coll = data["collection"]
+        strat = data["strategy"]
+        lines.append(f"\n## {coll} / {strat} — By Category\n")
         lines.append("| Category | Queries | Recall@5 | Precision@5 | MRR | Latency |")
         lines.append("| --- | --- | --- | --- | --- | --- |")
         cats = data["by_category"]
@@ -291,7 +320,7 @@ def _build_markdown(report: dict) -> str:
 
 @dg.graph()
 def eval_graph():
-    """Graph: preflight → eval each collection → aggregate → write report."""
+    """Graph: preflight -> eval each (collection, strategy) combo -> aggregate -> write report."""
     ready = eval_preflight_check()
     results = [op(ready) for op in eval_ops]
     report = aggregate_results(eval_run_results=results)
@@ -303,12 +332,15 @@ def eval_graph():
 # ---------------------------------------------------------------------------
 
 
-def _unique_content_ids(metadatas: list[dict]) -> list[str]:
-    """Extract unique content_ids preserving first-occurrence order."""
+def _unique_content_ids(results: list) -> list[str]:
+    """Extract unique content_ids from RetrievalResult objects.
+
+    Preserves first-occurrence order.
+    """
     seen: set[str] = set()
     ids: list[str] = []
-    for m in metadatas:
-        cid = m.get("content_id", "")
+    for r in results:
+        cid = r.content_id
         if cid and cid not in seen:
             seen.add(cid)
             ids.append(cid)

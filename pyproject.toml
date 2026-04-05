@@ -46,7 +46,7 @@ cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_databases
 help = "Run backup job once from CLI"
 
 [tool.poe.tasks.eval]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_strategy"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
 ## Code QA ##
