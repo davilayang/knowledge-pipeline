@@ -7,6 +7,15 @@ index_contents_job = dg.define_asset_job(
     name="rag_0_baseline",
     selection=[raw_store_copy, chunked_contents, embedded_contents, indexed_contents],
     description="Baseline RAG: markdown chunking + default embedding + cosine retrieval",
+    config={
+        "execution": {
+            "config": {
+                "multiprocess": {
+                    "max_concurrent": 3,
+                },
+            },
+        },
+    },
 )
 
 daily_index_schedule = dg.ScheduleDefinition(

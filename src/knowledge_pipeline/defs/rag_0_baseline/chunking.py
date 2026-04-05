@@ -19,8 +19,14 @@ BATCH_SIZE = 3
 
 
 def _safe_filename(content_id: str) -> str:
-    """Sanitize content_id for use as a filename."""
-    return re.sub(r"[^a-zA-Z0-9_-]", "_", content_id)
+    """Sanitize content_id for use as a filename. Truncate + hash if too long."""
+    import hashlib
+
+    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", content_id)
+    if len(safe) > 200:
+        h = hashlib.sha256(content_id.encode()).hexdigest()[:12]
+        safe = safe[:180] + f"__{h}"
+    return safe
 
 
 class FetchConfig(dg.Config):
