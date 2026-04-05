@@ -19,6 +19,7 @@ LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
 CHROMA_PATH = DATA_DIR / "chroma"
 CHUNKS_DIR = DATA_DIR / "chunks"
 EMBEDDINGS_DIR = DATA_DIR / "embeddings"
+EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
 
 # Backup settings
 BACKUP_SOURCE_DIR = Path.home() / "GitHub" / "newsletter-assistant" / "data"
