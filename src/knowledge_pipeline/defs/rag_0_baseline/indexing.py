@@ -6,11 +6,10 @@ import dagster as dg
 
 from knowledge_pipeline.lib.store import set_vector_status
 
+from .chunking import BATCH_SIZE
 from .resources import RawStoreResource, VectorStoreResource
 
 logger = logging.getLogger(__name__)
-
-BATCH_SIZE = 10
 
 
 # ---------------------------------------------------------------------------
