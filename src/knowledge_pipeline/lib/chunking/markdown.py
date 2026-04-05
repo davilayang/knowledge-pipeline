@@ -6,20 +6,35 @@
 from __future__ import annotations
 
 import re
-from dataclasses import dataclass
+
+from .types import Chunk
 
 _CHARS_PER_TOKEN = 4
 DEFAULT_CHUNK_TOKENS = 800
 DEFAULT_OVERLAP_TOKENS = 100
 
 
-@dataclass
-class Chunk:
-    """A single chunk of content with its heading context."""
+class MarkdownChunking:
+    """Markdown-aware chunking strategy.
 
-    text: str
-    heading: str  # nearest heading ancestor (empty if none)
-    index: int  # position in the chunk sequence
+    Respects heading boundaries, groups paragraphs, and provides overlap.
+    Implements the ChunkingStrategy protocol.
+    """
+
+    def __init__(
+        self,
+        chunk_tokens: int = DEFAULT_CHUNK_TOKENS,
+        overlap_tokens: int = DEFAULT_OVERLAP_TOKENS,
+    ) -> None:
+        self._chunk_tokens = chunk_tokens
+        self._overlap_tokens = overlap_tokens
+
+    @property
+    def name(self) -> str:
+        return "markdown"
+
+    def chunk(self, text: str) -> list[Chunk]:
+        return chunk_markdown(text, self._chunk_tokens, self._overlap_tokens)
 
 
 # TODO: Using langchain functions for simpler implementations

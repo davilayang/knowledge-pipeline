@@ -38,7 +38,7 @@ cmd = "dagster dev --port 3000"
 help = "Launch Dagster UI at localhost:3000"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j rag_0_baseline_job"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j rag_0_baseline"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
@@ -46,7 +46,7 @@ cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_databases
 help = "Run backup job once from CLI"
 
 [tool.poe.tasks.eval]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrievals"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_strategy"
 help = "Run evaluation across RAG strategies"
 
 ## Code QA ##

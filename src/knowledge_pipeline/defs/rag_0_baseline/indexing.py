@@ -7,10 +7,10 @@ import logging
 import dagster as dg
 from dagster import AssetExecutionContext
 
-from knowledge_pipeline.config import EMBEDDINGS_DIR
+from knowledge_pipeline.defs.shared.resources import RawStoreResource, StrategyPathsResource
 from knowledge_pipeline.lib.store import set_vector_status
 
-from .resources import RawStoreResource, VectorStoreResource
+from .resources import VectorStoreResource
 
 logger = logging.getLogger(__name__)
 
@@ -25,21 +25,23 @@ def indexed_contents(
     context: AssetExecutionContext,
     raw_store: RawStoreResource,
     vector_store: VectorStoreResource,
+    strategy_paths: StrategyPathsResource,
 ) -> dg.MaterializeResult:
     """Read embedding JSONs, upsert to ChromaDB, finalize status."""
-    if not EMBEDDINGS_DIR.exists():
-        context.log.warning("Embeddings directory not found: %s", EMBEDDINGS_DIR)
+    embeddings_dir = strategy_paths.embeddings_dir
+    if not embeddings_dir.exists():
+        context.log.warning("Embeddings directory not found: %s", embeddings_dir)
         return dg.MaterializeResult(metadata={"indexed": dg.MetadataValue.int(0)})
 
     collection = vector_store.get_collection()
-    db_path = raw_store.get_path()
+    source_db_path = raw_store.get_source_path()
 
     indexed_count = 0
     error_count = 0
     total_chunks = 0
     details: list[dict] = []
 
-    for path in sorted(EMBEDDINGS_DIR.glob("*.json")):
+    for path in sorted(embeddings_dir.glob("*.json")):
         record = json.loads(path.read_text(encoding="utf-8"))
         content_id = record["content_id"]
 
@@ -62,7 +64,7 @@ def indexed_contents(
                 embeddings=embeddings,  # type: ignore[arg-type]
                 metadatas=metadatas,  # type: ignore[arg-type]
             )
-            set_vector_status(content_id, "indexed", db_path=db_path)
+            set_vector_status(content_id, "indexed", db_path=source_db_path)
             indexed_count += 1
             total_chunks += len(chunks)
             details.append(
@@ -75,7 +77,7 @@ def indexed_contents(
             )
         except Exception as exc:
             logger.error("Failed to index %s: %s", content_id, exc)
-            set_vector_status(content_id, "error", db_path=db_path)
+            set_vector_status(content_id, "error", db_path=source_db_path)
             error_count += 1
 
     summary_lines = [

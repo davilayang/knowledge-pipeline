@@ -1,18 +1,15 @@
 # Graph asset: chunked_contents — fetch pending items, chunk in batches,
-# write results to JSON files in data/chunks/.
+# write results to JSON files in the strategy's chunks directory.
 
 import json
 import logging
 import re
-import shutil
 
 import dagster as dg
 
-from knowledge_pipeline.config import CHUNKS_DIR
+from knowledge_pipeline.defs.shared.resources import RawStoreResource, StrategyPathsResource
 from knowledge_pipeline.lib.chunking import chunk_markdown
 from knowledge_pipeline.lib.store import get_contents, set_vector_status
-
-from .resources import RawStoreResource
 
 logger = logging.getLogger(__name__)
 
@@ -44,11 +41,6 @@ class FetchConfig(dg.Config):
 @dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
 def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
     """Query pending/ready items from raw_store, return as serializable dicts."""
-    # Clear stale chunks from previous runs
-    if CHUNKS_DIR.exists():
-        shutil.rmtree(CHUNKS_DIR)
-    CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
-
     db_path = raw_store.get_path()
     items = []
     for status in ["pending", "ready"]:
@@ -58,7 +50,7 @@ def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict
     for item in items:
         if not item.content_md or len(item.content_md.strip()) < 50:
             logger.warning("Skipping %s — content too short", item.content_id)
-            set_vector_status(item.content_id, "skip", db_path=raw_store.get_path())
+            set_vector_status(item.content_id, "skip", db_path=raw_store.get_source_path())
             continue
         result.append(
             {
@@ -90,9 +82,14 @@ def fan_out_chunk_batches(context: dg.OpExecutionContext, items: list[dict]):
 
 
 @dg.op
-def chunk_batch(context: dg.OpExecutionContext, batch: list[dict]) -> list[str]:
+def chunk_batch(
+    context: dg.OpExecutionContext,
+    batch: list[dict],
+    strategy_paths: StrategyPathsResource,
+) -> list[str]:
     """Chunk each item and write to JSON files. Returns list of content_ids processed."""
-    CHUNKS_DIR.mkdir(parents=True, exist_ok=True)
+    chunks_dir = strategy_paths.chunks_dir
+    chunks_dir.mkdir(parents=True, exist_ok=True)
     content_ids = []
     for item in batch:
         # Chunking errors are per-item — skip bad content, don't crash the batch.
@@ -115,11 +112,11 @@ def chunk_batch(context: dg.OpExecutionContext, batch: list[dict]) -> list[str]:
             "chunks": [{"text": c.text, "heading": c.heading, "index": c.index} for c in chunks],
         }
         # File writes must succeed — propagate errors.
-        path = CHUNKS_DIR / f"{_safe_filename(item['content_id'])}.json"
+        path = chunks_dir / f"{_safe_filename(item['content_id'])}.json"
         path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
         content_ids.append(item["content_id"])
 
-    context.log.info("Chunked %d items in batch, wrote to %s", len(content_ids), CHUNKS_DIR)
+    context.log.info("Chunked %d items in batch, wrote to %s", len(content_ids), chunks_dir)
     return content_ids
 
 
@@ -136,7 +133,7 @@ def gather_chunk_ids(results: list[list[str]]) -> list[str]:
 
 @dg.graph_asset(
     group_name="rag_0_baseline",
-    description="Chunk pending content and write to JSON files in data/chunks/",
+    description="Chunk pending content and write to JSON files in strategy chunks directory",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
 def chunked_contents(raw_store_snapshot) -> list[str]:
