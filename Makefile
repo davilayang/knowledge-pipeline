@@ -1,6 +1,6 @@
 # --- Dagster dev ---
 
-.PHONY: dev index backup eval build up down logs
+.PHONY: dev
 
 dev:  ## Launch Dagster UI at localhost:3000
 	pkill -f dagster && uv run poe dev
