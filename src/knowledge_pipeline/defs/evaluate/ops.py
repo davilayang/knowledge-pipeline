@@ -161,7 +161,7 @@ eval_ops = [create_eval_op(name) for name in RAG_COLLECTIONS]
 
 
 @dg.op(description="Aggregate per-collection eval results into a comparison report")
-def aggregate_results(context: dg.OpExecutionContext, eval_results: list[dict]) -> dict:
+def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dict]) -> dict:
     """Compute overall and per-category metrics from raw query results."""
     report = {
         "query_set_version": QUERY_SET_VERSION,
@@ -170,7 +170,7 @@ def aggregate_results(context: dg.OpExecutionContext, eval_results: list[dict]) 
         "collections": {},
     }
 
-    for result in eval_results:
+    for result in eval_run_results:
         coll_name = result["collection"]
         if result["status"] != "ok":
             report["collections"][coll_name] = {"status": result["status"]}
@@ -294,7 +294,7 @@ def eval_graph():
     """Graph: preflight → eval each collection → aggregate → write report."""
     ready = eval_preflight_check()
     results = [op(ready) for op in eval_ops]
-    report = aggregate_results(eval_results=results)
+    report = aggregate_results(eval_run_results=results)
     write_report(report)
 
 
