@@ -4,7 +4,7 @@ Snapshot-based retrieval evaluation for comparing RAG strategies.
 
 ## How It Works
 
-1. `snapshot_eval` asset queries each RAG collection with the curated query set
+1. `retrieval_quality_eval` asset queries each RAG collection with the curated query set
 2. For each query, retrieves top-5 results and compares against ground-truth `content_id`s
 3. Computes metrics per collection, outputs a comparison markdown table in Dagster UI
 
@@ -66,7 +66,7 @@ Ground truth is at the **content_id level** (not chunk_id) so it survives re-chu
 
 ```bash
 uv run poe eval
-# or materialize snapshot_eval in Dagster UI
+# or materialize retrieval_quality_eval in Dagster UI
 ```
 
 ## Adding a New Collection to Evaluate

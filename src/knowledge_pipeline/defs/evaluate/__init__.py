@@ -1,14 +1,14 @@
 import dagster as dg
 
-from .assets import snapshot_eval
+from .assets import retrieval_quality_eval
 
 eval_job = dg.define_asset_job(
     name="evaluate_retrievals",
-    selection=[snapshot_eval],
+    selection=[retrieval_quality_eval],
     description="Evaluate retrieval quality across RAG strategies",
 )
 
 defs = dg.Definitions(
-    assets=[snapshot_eval],
+    assets=[retrieval_quality_eval],
     jobs=[eval_job],
 )

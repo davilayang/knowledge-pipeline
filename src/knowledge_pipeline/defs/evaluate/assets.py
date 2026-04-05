@@ -24,7 +24,7 @@ RAG_COLLECTIONS = ["baseline"]
     compute_kind="evaluation",
     description="Run curated queries against all RAG collections and compare retrieval metrics",
 )
-def snapshot_eval(context: AssetExecutionContext) -> dg.MaterializeResult:
+def retrieval_quality_eval(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Evaluate each RAG collection on the curated query set."""
     if not EVAL_QUERIES:
         context.log.warning("No eval queries defined — populate defs/evaluate/queries.py")
