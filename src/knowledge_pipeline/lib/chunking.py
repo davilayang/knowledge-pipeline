@@ -22,6 +22,7 @@ class Chunk:
     index: int  # position in the chunk sequence
 
 
+# TODO: Using langchain functions for simpler implementations
 def chunk_markdown(
     text: str,
     chunk_tokens: int = DEFAULT_CHUNK_TOKENS,

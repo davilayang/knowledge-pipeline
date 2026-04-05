@@ -4,13 +4,13 @@ from pathlib import Path
 
 import dagster as dg
 
-from knowledge_pipeline.config import BACKUP_DIR, DB_FILES, MAX_BACKUPS, SOURCE_DATA_DIR
+from knowledge_pipeline.config import BACKUP_DIR, BACKUP_SOURCE_DIR, DB_FILES, MAX_BACKUPS
 
 
 class BackupResource(dg.ConfigurableResource):
     """Configuration for database backup operations."""
 
-    source_data_dir: str = str(SOURCE_DATA_DIR)
+    source_data_dir: str = str(BACKUP_SOURCE_DIR)
     backup_dir: str = str(BACKUP_DIR)
     db_files: list[str] = DB_FILES
     max_backups: int = MAX_BACKUPS

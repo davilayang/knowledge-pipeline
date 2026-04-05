@@ -29,6 +29,7 @@ wheels/
 
 # Runtime data
 data/
+datasets/
 logs/
 NOTES/
 backups/
