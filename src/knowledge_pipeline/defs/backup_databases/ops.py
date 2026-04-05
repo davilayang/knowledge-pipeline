@@ -65,7 +65,7 @@ backup_ops = [create_backup_op(db_name) for db_name in DB_FILES]
     description="Log source directory contents before backup",
     out=dg.Out(dagster_type=dg.Nothing),
 )
-def preflight_check(context: dg.OpExecutionContext, backup: BackupResource) -> None:
+def backup_preflight_check(context: dg.OpExecutionContext, backup: BackupResource) -> None:
     """Log files in the source directory so we can debug path issues."""
     source_dir = backup.get_source_dir()
     context.log.info("Source directory: %s (exists=%s)", source_dir, source_dir.exists())
@@ -132,7 +132,7 @@ def log_summary(context: dg.OpExecutionContext, final_result: dict) -> None:
 def backup_graph():
     """Graph: one backup op per DB → collect → cleanup → log summary."""
 
-    ready = preflight_check()
+    ready = backup_preflight_check()
     results = [op(ready) for op in backup_ops]
 
     final = cleanup_old_backups(results=results)
