@@ -1,12 +1,12 @@
 # Graph asset: embedded_contents — read chunk JSONs, compute embeddings,
-# write results to data/embeddings/.
+# write results to strategy's embeddings directory.
 
 import json
 import logging
 
 import dagster as dg
 
-from knowledge_pipeline.config import CHUNKS_DIR, EMBEDDINGS_DIR
+from knowledge_pipeline.defs.shared.resources import StrategyPathsResource
 
 from .chunking import BATCH_SIZE, _safe_filename
 from .resources import VectorStoreResource
@@ -20,15 +20,19 @@ logger = logging.getLogger(__name__)
 
 
 @dg.op(ins={"chunks_ready": dg.In(dagster_type=dg.Nothing)})
-def load_chunked_items(context: dg.OpExecutionContext) -> list[dict]:
-    """Read all chunked item JSON files from data/chunks/."""
-    if not CHUNKS_DIR.exists():
-        context.log.warning("Chunks directory not found: %s", CHUNKS_DIR)
+def load_chunked_items(
+    context: dg.OpExecutionContext,
+    strategy_paths: StrategyPathsResource,
+) -> list[dict]:
+    """Read all chunked item JSON files from the strategy's chunks directory."""
+    chunks_dir = strategy_paths.chunks_dir
+    if not chunks_dir.exists():
+        context.log.warning("Chunks directory not found: %s", chunks_dir)
         return []
     items = []
-    for path in sorted(CHUNKS_DIR.glob("*.json")):
+    for path in sorted(chunks_dir.glob("*.json")):
         items.append(json.loads(path.read_text(encoding="utf-8")))
-    context.log.info("Loaded %d chunked items from %s", len(items), CHUNKS_DIR)
+    context.log.info("Loaded %d chunked items from %s", len(items), chunks_dir)
     return items
 
 
@@ -48,9 +52,11 @@ def embed_batch(
     context: dg.OpExecutionContext,
     batch: list[dict],
     vector_store: VectorStoreResource,
+    strategy_paths: StrategyPathsResource,
 ) -> list[str]:
     """Compute embeddings for a batch and write to JSON files. Returns content_ids."""
-    EMBEDDINGS_DIR.mkdir(parents=True, exist_ok=True)
+    embeddings_dir = strategy_paths.embeddings_dir
+    embeddings_dir.mkdir(parents=True, exist_ok=True)
     collection = vector_store.get_collection()
     ef = collection._embedding_function  # noqa: SLF001
     content_ids = []
@@ -93,7 +99,7 @@ def embed_batch(
             ],
         }
 
-        path = EMBEDDINGS_DIR / f"{_safe_filename(item['content_id'])}.json"
+        path = embeddings_dir / f"{_safe_filename(item['content_id'])}.json"
         path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
         content_ids.append(item["content_id"])
 
@@ -114,7 +120,7 @@ def gather_embed_ids(results: list[list[str]]) -> list[str]:
 
 @dg.graph_asset(
     group_name="rag_0_baseline",
-    description="Compute embeddings for chunked content and write to data/embeddings/",
+    description="Compute embeddings for chunked content and write to strategy embeddings directory",
     ins={"chunks_ready": dg.AssetIn(key="chunked_contents")},
 )
 def embedded_contents(chunks_ready) -> list[str]:

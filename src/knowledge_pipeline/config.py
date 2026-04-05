@@ -20,6 +20,15 @@ CHROMA_PATH = DATA_DIR / "chroma"
 CHUNKS_DIR = DATA_DIR / "chunks"
 EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
+# Eval results
+EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
+
+
+def strategy_dir(strategy: str, subdir: str) -> Path:
+    """Return a per-strategy data directory, e.g. data/chunks/rag_0_baseline/."""
+    return DATA_DIR / subdir / strategy
+
+
 # Backup settings
 BACKUP_SOURCE_DIR = Path.home() / "GitHub" / "newsletter-assistant" / "data"
 DB_FILES = ["raw_store.db", "sessions.db"]

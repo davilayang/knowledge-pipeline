@@ -1,4 +1,5 @@
 # Asset: copy raw_store.db from the static dataset to local data/.
+# Shared across all RAG strategies.
 
 import hashlib
 import sqlite3
@@ -23,7 +24,7 @@ def _hash_file(path) -> str:
 
 
 @dg.asset(
-    group_name="rag_0_baseline",
+    group_name="shared",
     compute_kind="filesystem",
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,
