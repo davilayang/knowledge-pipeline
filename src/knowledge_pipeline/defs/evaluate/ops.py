@@ -92,7 +92,7 @@ def create_eval_op(collection_name: str) -> dg.OpDefinition:
     """Factory: create an eval op for a single RAG collection."""
 
     @dg.op(
-        name=f"eval_{collection_name}",
+        name=f"evaluate_{collection_name}",
         description=f"Run eval queries against '{collection_name}' collection",
         ins={"ready": dg.In(dagster_type=dg.Nothing)},
     )
