@@ -1,4 +1,4 @@
-# Dagster resources for the baseline RAG strategy.
+# Dagster resources for the markdown + MiniLM index strategy.
 
 from pathlib import Path
 
@@ -20,7 +20,7 @@ class VectorStoreResource(dg.ConfigurableResource):
     """
 
     chroma_path: str = str(CHROMA_PATH)
-    collection_name: str = "baseline"
+    collection_name: str = "markdown_minilm"
     embedding_model: str | None = None
 
     _client: chromadb.ClientAPI | None = PrivateAttr(default=None)

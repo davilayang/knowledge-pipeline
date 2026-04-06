@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @dg.asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     compute_kind="chromadb",
     deps=["embedded_contents"],
     description="Upsert pre-computed embeddings to ChromaDB and update vector_status",

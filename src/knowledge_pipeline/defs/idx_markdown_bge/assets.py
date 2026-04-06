@@ -1,14 +1,14 @@
-# BGE strategy assets — same ops as baseline, different asset names and group.
+# BGE strategy assets — same ops as idx_markdown_minilm, different names and group.
 
 import dagster as dg
 
-from knowledge_pipeline.defs.rag_0_baseline.chunking import (
+from knowledge_pipeline.defs.idx_markdown_minilm.chunking import (
     chunk_batch,
     fan_out_chunk_batches,
     fetch_pending,
     gather_chunk_ids,
 )
-from knowledge_pipeline.defs.rag_0_baseline.embedding import (
+from knowledge_pipeline.defs.idx_markdown_minilm.embedding import (
     embed_batch,
     fan_out_embed_batches,
     gather_embed_ids,
@@ -23,7 +23,7 @@ __all__ = ["raw_store_copy", "bge_chunked", "bge_embedded", "bge_indexed"]
 
 
 @dg.graph_asset(
-    group_name="rag_1_bge",
+    group_name="idx_markdown_bge",
     description="Chunk pending content (BGE strategy)",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
@@ -35,7 +35,7 @@ def bge_chunked(raw_store_snapshot) -> list[str]:
 
 
 @dg.graph_asset(
-    group_name="rag_1_bge",
+    group_name="idx_markdown_bge",
     description="Compute BGE-small-en-v1.5 embeddings for chunked content",
     ins={"chunks_ready": dg.AssetIn(key="bge_chunked")},
 )

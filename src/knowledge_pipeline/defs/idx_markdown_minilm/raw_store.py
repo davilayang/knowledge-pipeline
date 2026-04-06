@@ -23,7 +23,7 @@ def _hash_file(path) -> str:
 
 
 @dg.asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     compute_kind="filesystem",
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,

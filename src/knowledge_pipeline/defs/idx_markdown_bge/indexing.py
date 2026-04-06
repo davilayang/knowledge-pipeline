@@ -16,7 +16,7 @@ logger = logging.getLogger(__name__)
 
 
 @dg.asset(
-    group_name="rag_1_bge",
+    group_name="idx_markdown_bge",
     compute_kind="chromadb",
     deps=["bge_embedded"],
     description="Upsert BGE embeddings to ChromaDB and update vector_status",

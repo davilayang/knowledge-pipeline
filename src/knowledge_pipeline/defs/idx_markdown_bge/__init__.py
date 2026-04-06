@@ -6,9 +6,9 @@ from .assets import bge_chunked, bge_embedded, bge_indexed, raw_store_copy
 from .resources import VectorStoreResource
 
 index_contents_job = dg.define_asset_job(
-    name="rag_1_bge",
+    name="idx_markdown_bge",
     selection=[raw_store_copy, bge_chunked, bge_embedded, bge_indexed],
-    description="BGE RAG: markdown chunking + BGE-small-en-v1.5 embedding + cosine retrieval",
+    description="Index: markdown chunking + BGE-small-en-v1.5 embedding",
 )
 
 defs = dg.Definitions(
@@ -16,6 +16,6 @@ defs = dg.Definitions(
     jobs=[index_contents_job],
     resources={
         "vector_store": VectorStoreResource(),
-        "strategy_paths": StrategyPathsResource(strategy_name="rag_1_bge"),
+        "strategy_paths": StrategyPathsResource(strategy_name="idx_markdown_bge"),
     },
 )

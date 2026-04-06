@@ -38,7 +38,7 @@ cmd = "dagster dev --port 3000"
 help = "Launch Dagster UI at localhost:3000"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j rag_0_baseline"
+cmd = "dagster job execute -m knowledge_pipeline.definitions -j idx_markdown_minilm"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]

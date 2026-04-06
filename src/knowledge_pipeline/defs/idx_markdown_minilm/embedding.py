@@ -119,7 +119,7 @@ def gather_embed_ids(results: list[list[str]]) -> list[str]:
 
 
 @dg.graph_asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     description="Compute embeddings for chunked content and write to strategy embeddings directory",
     ins={"chunks_ready": dg.AssetIn(key="chunked_contents")},
 )

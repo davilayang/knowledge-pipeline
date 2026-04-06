@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 BATCH_SIZE = 3
 
 
+# TODO: consider moving to a util module in lib?
 def _safe_filename(content_id: str) -> str:
     """Sanitize content_id for use as a filename. Truncate + hash if too long."""
     import hashlib
@@ -40,7 +41,7 @@ class FetchConfig(dg.Config):
 
 @dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
 def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
-    """Query pending/ready items from raw_store, return as serializable dicts."""
+    """Query pending/ready items from raw_store_snapshot, return as serializable dicts."""
     db_path = raw_store.get_path()
     items = []
     for status in ["pending", "ready"]:
@@ -132,7 +133,7 @@ def gather_chunk_ids(results: list[list[str]]) -> list[str]:
 
 
 @dg.graph_asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     description="Chunk pending content and write to JSON files in strategy chunks directory",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
