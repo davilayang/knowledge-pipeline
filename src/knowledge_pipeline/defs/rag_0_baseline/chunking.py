@@ -9,7 +9,7 @@ from knowledge_pipeline.defs.shared.op_factories import (
     gather_chunk_ids,
 )
 from knowledge_pipeline.defs.shared.resources import RawStoreResource
-from knowledge_pipeline.lib.store import get_contents, set_vector_status
+from knowledge_pipeline.lib.store import get_contents
 
 from .config import STRATEGY_NAME
 
@@ -25,16 +25,13 @@ class FetchConfig(dg.Config):
 
 @dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
 def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
-    """Query pending/ready items from raw_store, return as serializable dicts."""
+    """Fetch all content items with sufficient content for indexing."""
     db_path = raw_store.get_path()
-    items = []
-    for status in ["pending", "ready"]:
-        items.extend(get_contents(vector_status=status, db_path=db_path))
+    items = get_contents(db_path=db_path)
 
     result = []
     for item in items:
         if not item.content_md or len(item.content_md.strip()) < 50:
-            set_vector_status(item.content_id, "skip", db_path=raw_store.get_source_path())
             continue
         result.append(
             {
