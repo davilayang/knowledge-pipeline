@@ -24,7 +24,7 @@ EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
 
 
 def strategy_dir(strategy: str, subdir: str) -> Path:
-    """Return a per-strategy data directory, e.g. data/chunks/rag_0_baseline/."""
+    """Return a per-strategy data directory, e.g. data/chunks/idx_markdown_minilm/."""
     return DATA_DIR / subdir / strategy
 
 

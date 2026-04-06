@@ -3,7 +3,7 @@ import dagster as dg
 from .assets import baseline_chunked, baseline_embedded, baseline_indexed, raw_store_copy
 
 index_contents_job = dg.define_asset_job(
-    name="rag_0_baseline",
+    name="idx_markdown_minilm",
     selection=[raw_store_copy, baseline_chunked, baseline_embedded, baseline_indexed],
     description="Baseline index: markdown chunking + MiniLM embedding",
     config={

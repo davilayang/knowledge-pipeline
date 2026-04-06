@@ -7,7 +7,7 @@
 # ---------------------------------------------------------------------------
 
 index_strategies:
-  rag_0_baseline:
+  idx_markdown_minilm:
     description: >
       Baseline strategy. Markdown-aware chunking splits on heading boundaries
       with paragraph packing up to 800 tokens. Embeds with all-MiniLM-L6-v2
