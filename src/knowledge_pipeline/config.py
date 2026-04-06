@@ -60,6 +60,14 @@ def get_eval_combos() -> list[str]:
     return _load_strategies_yaml()["eval_combos"]
 
 
+def get_embedding_model_for_collection(collection_name: str) -> str:
+    """Look up the embedding model for a collection name."""
+    for cfg in _load_strategies_yaml()["index_strategies"].values():
+        if cfg["collection_name"] == collection_name:
+            return cfg["embedding_model"]
+    raise ValueError(f"No strategy found for collection: {collection_name!r}")
+
+
 # Backup settings
 BACKUP_SOURCE_DIR = Path.home() / "GitHub" / "newsletter-assistant" / "data"
 DB_FILES = ["raw_store.db", "sessions.db"]

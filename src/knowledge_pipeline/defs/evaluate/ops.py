@@ -9,7 +9,12 @@ from datetime import UTC, datetime
 
 import dagster as dg
 
-from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
+from knowledge_pipeline.config import (
+    EVAL_RESULTS_DIR,
+    LOCAL_RAW_STORE,
+    SOURCE_RAW_STORE,
+    get_embedding_model_for_collection,
+)
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
 from knowledge_pipeline.lib.retrieval import build_strategy
 from knowledge_pipeline.lib.store import count_contents
@@ -73,8 +78,12 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
     collection_names = {coll for coll, _ in (parse_combo(c) for c in EVAL_COMBOS)}
     for name in sorted(collection_names):
         if name in existing:
-            coll = get_collection(client=client, collection_name=name)
-            context.log.info("Collection '%s': %d chunks", name, coll.count())
+            em = get_embedding_model_for_collection(name)
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+            ef = SentenceTransformerEmbeddingFunction(model_name=em)
+            coll = get_collection(client=client, collection_name=name, embedding_function=ef)
+            context.log.info("Collection '%s': %d chunks (model: %s)", name, coll.count(), em)
         else:
             context.log.warning("Collection '%s': NOT FOUND", name)
 
@@ -112,7 +121,14 @@ def create_eval_op(collection_name: str, strategy_spec: str) -> dg.OpDefinition:
                 "metrics": {},
             }
 
-        collection = get_collection(client=client, collection_name=collection_name)
+        # Look up embedding model from strategies.yaml so queries use the correct embedder
+        embedding_model = get_embedding_model_for_collection(collection_name)
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+        ef = SentenceTransformerEmbeddingFunction(model_name=embedding_model)
+        collection = get_collection(
+            client=client, collection_name=collection_name, embedding_function=ef
+        )
         if collection.count() == 0:
             context.log.warning("Collection '%s' is empty, skipping", collection_name)
             return {
