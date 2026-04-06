@@ -3,16 +3,29 @@
 #
 # Format: idx_{chunking}_{embedding}
 # Keys:
-#   collection_name  — ChromaDB collection name
+#   description     — what this strategy tests and why
+#   collection_name — ChromaDB collection name
 #   chunking        — chunking strategy (markdown, recursive, semantic, etc.)
 #   embedding_model — SentenceTransformer model name (always specify explicitly)
 
 rag_0_baseline:
+  description: >
+    Baseline strategy. Markdown-aware chunking splits on heading boundaries
+    with paragraph packing up to 800 tokens. Embeds with all-MiniLM-L6-v2
+    (MTEB ~49, 256 token context). Title and author are prepended before
+    embedding for disambiguation. This is the control experiment — all
+    other strategies are compared against it.
   collection_name: baseline
   chunking: markdown
   embedding_model: all-MiniLM-L6-v2
 
 idx_markdown_bge:
+  description: >
+    Same markdown chunking as baseline but with an upgraded embedding model.
+    BGE-small-en-v1.5 scores MTEB ~62 (vs MiniLM's ~49) with 512 token
+    context (vs 256). Tests whether a better embedding model improves
+    retrieval quality without changing the chunking strategy. Lowest-effort
+    index-level improvement.
   collection_name: bge
   chunking: markdown
   embedding_model: BAAI/bge-small-en-v1.5
