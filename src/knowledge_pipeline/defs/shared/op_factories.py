@@ -290,7 +290,7 @@ def fan_out_chunk_batches(context: dg.OpExecutionContext, items: list[dict]):
         return
     for i in range(0, len(items), BATCH_SIZE):
         batch = items[i : i + BATCH_SIZE]
-        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i}")
+        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i // BATCH_SIZE}")
 
 
 @dg.op(out=dg.DynamicOut())
@@ -301,7 +301,7 @@ def fan_out_embed_batches(context: dg.OpExecutionContext, chunked_items: list[di
         return
     for i in range(0, len(chunked_items), BATCH_SIZE):
         batch = chunked_items[i : i + BATCH_SIZE]
-        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i}")
+        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i // BATCH_SIZE}")
 
 
 @dg.op
