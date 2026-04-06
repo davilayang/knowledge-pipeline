@@ -1,22 +1,35 @@
-# BGE index assets — same ops as baseline, different asset names and group.
+# BGE index assets — uses shared op factories with BGE-specific config.
 
 import dagster as dg
 
-from knowledge_pipeline.defs.rag_0_baseline.chunking import (
-    chunk_batch,
+from knowledge_pipeline.defs.rag_0_baseline.chunking import fetch_pending
+from knowledge_pipeline.defs.shared.op_factories import (
+    create_chunk_batch_op,
+    create_embed_batch_op,
+    create_indexing_asset,
+    create_load_chunked_items_op,
     fan_out_chunk_batches,
-    fetch_pending,
-    gather_chunk_ids,
-)
-from knowledge_pipeline.defs.rag_0_baseline.embedding import (
-    embed_batch,
     fan_out_embed_batches,
+    gather_chunk_ids,
     gather_embed_ids,
-    load_chunked_items,
 )
 from knowledge_pipeline.defs.shared.raw_store import raw_store_copy
 
-from .indexing import bge_indexed
+from .config import COLLECTION_NAME, EMBEDDING_MODEL, STRATEGY_NAME
+
+# Strategy-specific op instances
+chunk_batch = create_chunk_batch_op(STRATEGY_NAME)
+load_chunked_items = create_load_chunked_items_op(STRATEGY_NAME)
+embed_batch = create_embed_batch_op(STRATEGY_NAME, COLLECTION_NAME, EMBEDDING_MODEL)
+
+# Indexing asset
+bge_indexed = create_indexing_asset(
+    strategy_name=STRATEGY_NAME,
+    collection_name=COLLECTION_NAME,
+    embedding_model=EMBEDDING_MODEL,
+    group_name="idx_markdown_bge",
+    deps=["bge_embedded"],
+)
 
 __all__ = ["raw_store_copy", "bge_chunked", "bge_embedded", "bge_indexed"]
 
