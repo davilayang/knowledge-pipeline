@@ -1,7 +1,7 @@
-# Asset: copy raw_store.db from the static dataset to local data/.
-# Shared across all RAG strategies.
+# src/knowledge_pipeline/defs/shared/raw_store.py
+# Shared asset that creates a copy pinned raw_store database for
+# various chunking strategies
 
-import hashlib
 import sqlite3
 
 import dagster as dg
@@ -9,18 +9,10 @@ from dagster import AssetExecutionContext
 
 from knowledge_pipeline.config import DATA_DIR, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.store import count_contents
+from knowledge_pipeline.lib.utils import hash_file
 
 ASSET_OWNERS = ["team:data-eng"]
 ASSET_TAGS = {"domain": "knowledge"}
-
-
-def _hash_file(path) -> str:
-    """SHA-256 hash of a file (first 16 hex chars)."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()[:16]
 
 
 @dg.asset(
@@ -33,7 +25,8 @@ def _hash_file(path) -> str:
 )
 def raw_store_copy(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Copy the static dataset using SQLite backup API for a consistent snapshot."""
-    source = SOURCE_RAW_STORE
+
+    source = SOURCE_RAW_STORE  # Define the pinned version of raw_store
     if not source.exists():
         raise FileNotFoundError(f"Source database not found: {source}")
 
@@ -49,7 +42,7 @@ def raw_store_copy(context: AssetExecutionContext) -> dg.MaterializeResult:
         src_conn.close()
 
     size = dest.stat().st_size
-    corpus_hash = _hash_file(dest)
+    corpus_hash = hash_file(dest)
     row_count = count_contents(db_path=dest)
 
     context.log.info(

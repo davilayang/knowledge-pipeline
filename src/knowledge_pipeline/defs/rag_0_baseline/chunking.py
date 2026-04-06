@@ -1,134 +1,19 @@
-# Graph asset: chunked_contents — fetch pending items, chunk in batches,
+# Graph asset: baseline_chunked — fetch pending items, chunk in batches,
 # write results to JSON files in the strategy's chunks directory.
-
-import json
-import logging
-import re
 
 import dagster as dg
 
-from knowledge_pipeline.defs.shared.resources import RawStoreResource, StrategyPathsResource
-from knowledge_pipeline.lib.chunking import chunk_markdown
-from knowledge_pipeline.lib.store import get_contents, set_vector_status
+from knowledge_pipeline.defs.shared.op_factories import (
+    create_chunk_batch_op,
+    fan_out_batches,
+    fetch_pending,
+    gather_ids,
+)
+from knowledge_pipeline.lib.utils import get_strategy
 
-logger = logging.getLogger(__name__)
+_CFG = get_strategy("rag_0_baseline")
 
-BATCH_SIZE = 3
-
-
-def _safe_filename(content_id: str) -> str:
-    """Sanitize content_id for use as a filename. Truncate + hash if too long."""
-    import hashlib
-
-    safe = re.sub(r"[^a-zA-Z0-9_-]", "_", content_id)
-    if len(safe) > 200:
-        h = hashlib.sha256(content_id.encode()).hexdigest()[:12]
-        safe = safe[:180] + f"__{h}"
-    return safe
-
-
-class FetchConfig(dg.Config):
-    """Runtime config for fetch_pending. Override max_items in the Launchpad for dev."""
-
-    max_items: int = 0  # 0 = no limit (prod default)
-
-
-# ---------------------------------------------------------------------------
-# Ops
-# ---------------------------------------------------------------------------
-
-
-@dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
-def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
-    """Query pending/ready items from raw_store, return as serializable dicts."""
-    db_path = raw_store.get_path()
-    items = []
-    for status in ["pending", "ready"]:
-        items.extend(get_contents(vector_status=status, db_path=db_path))
-
-    result = []
-    for item in items:
-        if not item.content_md or len(item.content_md.strip()) < 50:
-            logger.warning("Skipping %s — content too short", item.content_id)
-            set_vector_status(item.content_id, "skip", db_path=raw_store.get_source_path())
-            continue
-        result.append(
-            {
-                "content_id": item.content_id,
-                "title": item.title,
-                "author": item.author,
-                "url": item.url,
-                "source_key": item.source_key,
-                "content_date": item.content_date.isoformat() if item.content_date else "",
-                "content_md": item.content_md,
-            }
-        )
-
-    if config.max_items > 0:
-        result = result[: config.max_items]
-
-    return result
-
-
-@dg.op(out=dg.DynamicOut())
-def fan_out_chunk_batches(context: dg.OpExecutionContext, items: list[dict]):
-    """Split items into batches and yield as DynamicOutputs."""
-    if not items:
-        context.log.info("No items to chunk.")
-        return
-    for i in range(0, len(items), BATCH_SIZE):
-        batch = items[i : i + BATCH_SIZE]
-        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i}")
-
-
-@dg.op
-def chunk_batch(
-    context: dg.OpExecutionContext,
-    batch: list[dict],
-    strategy_paths: StrategyPathsResource,
-) -> list[str]:
-    """Chunk each item and write to JSON files. Returns list of content_ids processed."""
-    chunks_dir = strategy_paths.chunks_dir
-    chunks_dir.mkdir(parents=True, exist_ok=True)
-    content_ids = []
-    for item in batch:
-        # Chunking errors are per-item — skip bad content, don't crash the batch.
-        try:
-            chunks = chunk_markdown(item["content_md"])
-        except Exception as exc:
-            logger.error("Failed to chunk %s: %s", item["content_id"], exc)
-            continue
-
-        if not chunks:
-            continue
-
-        record = {
-            "content_id": item["content_id"],
-            "title": item["title"],
-            "author": item["author"],
-            "url": item["url"],
-            "source_key": item["source_key"],
-            "content_date": item["content_date"],
-            "chunks": [{"text": c.text, "heading": c.heading, "index": c.index} for c in chunks],
-        }
-        # File writes must succeed — propagate errors.
-        path = chunks_dir / f"{_safe_filename(item['content_id'])}.json"
-        path.write_text(json.dumps(record, ensure_ascii=False), encoding="utf-8")
-        content_ids.append(item["content_id"])
-
-    context.log.info("Chunked %d items in batch, wrote to %s", len(content_ids), chunks_dir)
-    return content_ids
-
-
-@dg.op
-def gather_chunk_ids(results: list[list[str]]) -> list[str]:
-    """Flatten batch results into a list of content_ids. Required wrapper for .collect()."""
-    return [cid for batch in results for cid in batch]
-
-
-# ---------------------------------------------------------------------------
-# Graph asset
-# ---------------------------------------------------------------------------
+chunk_batch = create_chunk_batch_op(_CFG["strategy_name"])
 
 
 @dg.graph_asset(
@@ -136,8 +21,8 @@ def gather_chunk_ids(results: list[list[str]]) -> list[str]:
     description="Chunk pending content and write to JSON files in strategy chunks directory",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
-def chunked_contents(raw_store_snapshot) -> list[str]:
+def baseline_chunked(raw_store_snapshot) -> list[str]:
     items = fetch_pending(raw_store_snapshot=raw_store_snapshot)
-    batches = fan_out_chunk_batches(items)
+    batches = fan_out_batches(items)
     per_batch = batches.map(chunk_batch)
-    return gather_chunk_ids(per_batch.collect())
+    return gather_ids(per_batch.collect())

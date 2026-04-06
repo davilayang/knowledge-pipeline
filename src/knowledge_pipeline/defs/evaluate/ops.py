@@ -1,7 +1,6 @@
 # Dagster ops for retrieval quality evaluation.
 # Uses op factory to generate one eval op per (collection, strategy) combo.
 
-import hashlib
 import json
 import logging
 import time
@@ -13,6 +12,7 @@ from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
 from knowledge_pipeline.lib.retrieval import build_strategy
 from knowledge_pipeline.lib.store import count_contents
+from knowledge_pipeline.lib.utils import get_embedding_model_for_collection, hash_file
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
@@ -26,15 +26,6 @@ K = 5
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
-
-
-def _hash_file(path) -> str:
-    """SHA-256 hash of a file (first 16 hex chars)."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()[:16]
 
 
 @dg.op(
@@ -53,14 +44,14 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
 
     # Dataset version
     if SOURCE_RAW_STORE.exists():
-        corpus_hash = _hash_file(SOURCE_RAW_STORE)
+        corpus_hash = hash_file(SOURCE_RAW_STORE)
         context.log.info("Source dataset: %s", SOURCE_RAW_STORE.name)
         context.log.info("Corpus hash: %s", corpus_hash)
     else:
         context.log.warning("Source dataset not found: %s", SOURCE_RAW_STORE)
 
     if LOCAL_RAW_STORE.exists():
-        local_hash = _hash_file(LOCAL_RAW_STORE)
+        local_hash = hash_file(LOCAL_RAW_STORE)
         row_count = count_contents(db_path=LOCAL_RAW_STORE)
         context.log.info("Local DB: %s (hash=%s, %d rows)", LOCAL_RAW_STORE, local_hash, row_count)
     else:
@@ -73,8 +64,12 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
     collection_names = {coll for coll, _ in (parse_combo(c) for c in EVAL_COMBOS)}
     for name in sorted(collection_names):
         if name in existing:
-            coll = get_collection(client=client, collection_name=name)
-            context.log.info("Collection '%s': %d chunks", name, coll.count())
+            em = get_embedding_model_for_collection(name)
+            from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+            ef = SentenceTransformerEmbeddingFunction(model_name=em)
+            coll = get_collection(client=client, collection_name=name, embedding_function=ef)
+            context.log.info("Collection '%s': %d chunks (model: %s)", name, coll.count(), em)
         else:
             context.log.warning("Collection '%s': NOT FOUND", name)
 
@@ -112,7 +107,14 @@ def create_eval_op(collection_name: str, strategy_spec: str) -> dg.OpDefinition:
                 "metrics": {},
             }
 
-        collection = get_collection(client=client, collection_name=collection_name)
+        # Look up embedding model from strategies.yaml so queries use the correct embedder
+        embedding_model = get_embedding_model_for_collection(collection_name)
+        from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
+
+        ef = SentenceTransformerEmbeddingFunction(model_name=embedding_model)
+        collection = get_collection(
+            client=client, collection_name=collection_name, embedding_function=ef
+        )
         if collection.count() == 0:
             context.log.warning("Collection '%s' is empty, skipping", collection_name)
             return {
@@ -287,8 +289,14 @@ def _build_markdown(report: dict) -> str:
             f" | {o['avg_latency_ms']:.0f}ms |"
         )
 
-    # Per-category
-    cat_order = ["easy", "paraphrase", "buried", "cross", "negative"]
+    # Per-category — collect all category names across all combos
+    all_cats: list[str] = []
+    for data in report["combos"].values():
+        if data.get("status") == "ok":
+            for cat in data["by_category"]:
+                if cat not in all_cats:
+                    all_cats.append(cat)
+
     for combo_key, data in report["combos"].items():
         if data.get("status") != "ok":
             continue
@@ -298,7 +306,7 @@ def _build_markdown(report: dict) -> str:
         lines.append("| Category | Queries | Recall@5 | Precision@5 | MRR | Latency |")
         lines.append("| --- | --- | --- | --- | --- | --- |")
         cats = data["by_category"]
-        for cat in cat_order:
+        for cat in all_cats:
             if cat in cats:
                 c = cats[cat]
                 lines.append(

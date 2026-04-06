@@ -9,6 +9,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 # Lives in the project repo, not copied from an external source at runtime.
 DATASETS_DIR = PROJECT_DIR / "datasets"
 SOURCE_RAW_STORE = DATASETS_DIR / "raw_store_2026-04-05.db"
+# NOTE: Change to raw store affects evaluation metrics, should always version-controlled
 
 # Working data directories (runtime artifacts, not checked in)
 DATA_DIR = PROJECT_DIR / "data"
@@ -17,8 +18,6 @@ BACKUP_DIR = PROJECT_DIR / "backups"
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
 CHROMA_PATH = DATA_DIR / "chroma"
-CHUNKS_DIR = DATA_DIR / "chunks"
-EMBEDDINGS_DIR = DATA_DIR / "embeddings"
 
 # Eval results
 EVAL_RESULTS_DIR = DATA_DIR / "eval_results"

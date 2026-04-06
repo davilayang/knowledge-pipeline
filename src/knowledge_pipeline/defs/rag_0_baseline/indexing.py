@@ -1,103 +1,15 @@
-# Asset: indexed_contents — read pre-computed embeddings, upsert to ChromaDB,
-# update vector_status in source DB.
+# Asset: baseline_indexed — upsert pre-computed embeddings to ChromaDB.
 
-import json
-import logging
+from knowledge_pipeline.defs.shared.op_factories import create_indexing_asset
+from knowledge_pipeline.lib.utils import get_strategy
 
-import dagster as dg
-from dagster import AssetExecutionContext
+_CFG = get_strategy("rag_0_baseline")
 
-from knowledge_pipeline.defs.shared.resources import RawStoreResource, StrategyPathsResource
-from knowledge_pipeline.lib.store import set_vector_status
-
-from .resources import VectorStoreResource
-
-logger = logging.getLogger(__name__)
-
-
-@dg.asset(
+baseline_indexed = create_indexing_asset(
+    strategy_name=_CFG["strategy_name"],
+    collection_name=_CFG["collection_name"],
+    embedding_model=_CFG["embedding_model"],
     group_name="rag_0_baseline",
-    compute_kind="chromadb",
-    deps=["embedded_contents"],
-    description="Upsert pre-computed embeddings to ChromaDB and update vector_status",
+    deps=["baseline_embedded"],
+    asset_name="baseline_indexed",
 )
-def indexed_contents(
-    context: AssetExecutionContext,
-    raw_store: RawStoreResource,
-    vector_store: VectorStoreResource,
-    strategy_paths: StrategyPathsResource,
-) -> dg.MaterializeResult:
-    """Read embedding JSONs, upsert to ChromaDB, finalize status."""
-    embeddings_dir = strategy_paths.embeddings_dir
-    if not embeddings_dir.exists():
-        context.log.warning("Embeddings directory not found: %s", embeddings_dir)
-        return dg.MaterializeResult(metadata={"indexed": dg.MetadataValue.int(0)})
-
-    collection = vector_store.get_collection()
-    source_db_path = raw_store.get_source_path()
-
-    indexed_count = 0
-    error_count = 0
-    total_chunks = 0
-    details: list[dict] = []
-
-    for path in sorted(embeddings_dir.glob("*.json")):
-        record = json.loads(path.read_text(encoding="utf-8"))
-        content_id = record["content_id"]
-
-        try:
-            chunks = record["chunks"]
-
-            # Delete pre-existing chunks for this content_id
-            existing = collection.get(where={"content_id": content_id})
-            if existing["ids"]:
-                collection.delete(ids=existing["ids"])
-
-            ids = [c["id"] for c in chunks]
-            documents = [c["document"] for c in chunks]
-            embeddings = [c["embedding"] for c in chunks]
-            metadatas = [c["metadata"] for c in chunks]
-
-            collection.upsert(
-                ids=ids,
-                documents=documents,
-                embeddings=embeddings,  # type: ignore[arg-type]
-                metadatas=metadatas,  # type: ignore[arg-type]
-            )
-            set_vector_status(content_id, "indexed", db_path=source_db_path)
-            indexed_count += 1
-            total_chunks += len(chunks)
-            details.append(
-                {
-                    "content_id": content_id,
-                    "title": record.get("metadata_base", {}).get("title", "")[:60],
-                    "source": record.get("source_key", ""),
-                    "chunks": len(chunks),
-                }
-            )
-        except Exception as exc:
-            logger.error("Failed to index %s: %s", content_id, exc)
-            set_vector_status(content_id, "error", db_path=source_db_path)
-            error_count += 1
-
-    summary_lines = [
-        f"**Indexed:** {indexed_count} items ({total_chunks} chunks)",
-        f"**Errors:** {error_count} items",
-    ]
-    if details:
-        summary_lines.append("\n| content_id | title | source | chunks |")
-        summary_lines.append("| --- | --- | --- | --- |")
-        for d in details:
-            summary_lines.append(
-                f"| `{d['content_id']}` | {d['title']} | {d['source']} | {d['chunks']} |"
-            )
-
-    context.log.info("Indexed %d items, %d errors", indexed_count, error_count)
-    return dg.MaterializeResult(
-        metadata={
-            "indexed": dg.MetadataValue.int(indexed_count),
-            "errors": dg.MetadataValue.int(error_count),
-            "total_chunks": dg.MetadataValue.int(total_chunks),
-            "summary": dg.MetadataValue.md("\n".join(summary_lines)),
-        }
-    )

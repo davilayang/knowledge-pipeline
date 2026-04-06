@@ -2,8 +2,8 @@
 
 from knowledge_pipeline.defs.shared.raw_store import raw_store_copy
 
-from .chunking import chunked_contents
-from .embedding import embedded_contents
-from .indexing import indexed_contents
+from .chunking import baseline_chunked
+from .embedding import baseline_embedded
+from .indexing import baseline_indexed
 
-__all__ = ["raw_store_copy", "chunked_contents", "embedded_contents", "indexed_contents"]
+__all__ = ["raw_store_copy", "baseline_chunked", "baseline_embedded", "baseline_indexed"]

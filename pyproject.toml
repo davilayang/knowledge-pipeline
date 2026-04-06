@@ -9,6 +9,7 @@ dependencies = [
     "chromadb>=1.5,<2.0",
     "poethepoet>=0.42,<1.0",
     "sentence-transformers>=3.0,<4.0",
+    "pyyaml>=6.0,<7.0",
 ]
 
 [dependency-groups]
@@ -48,6 +49,10 @@ help = "Run backup job once from CLI"
 [tool.poe.tasks.eval]
 cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
+
+[tool.poe.tasks.reset-indices]
+cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
+help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
 
 ## Code QA ##
 
