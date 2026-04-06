@@ -47,9 +47,7 @@ class VectorStoreResource(dg.ConfigurableResource):
             self._client = get_client(Path(self.chroma_path))
         return self._client
 
-    def _get_embedding_fn(self, embedding_model: str | None) -> chromadb.EmbeddingFunction | None:
-        if embedding_model is None:
-            return None  # ChromaDB default (all-MiniLM-L6-v2)
+    def _get_embedding_fn(self, embedding_model: str) -> chromadb.EmbeddingFunction:
         if embedding_model not in self._embedding_fns:
             from chromadb.utils.embedding_functions import SentenceTransformerEmbeddingFunction
 
@@ -62,7 +60,7 @@ class VectorStoreResource(dg.ConfigurableResource):
     def get_collection(
         self,
         collection_name: str,
-        embedding_model: str | None = None,
+        embedding_model: str,
     ) -> chromadb.Collection:
         """Get or create a ChromaDB collection with the specified embedding model."""
         return get_collection(

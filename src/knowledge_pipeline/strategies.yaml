@@ -4,11 +4,11 @@
 # Format: idx_{chunking}_{embedding}
 # Keys:
 #   collection_name  — ChromaDB collection name
-#   embedding_model  — SentenceTransformer model name (null = ChromaDB default MiniLM-L6-v2)
+#   embedding_model  — SentenceTransformer model name (always specify explicitly)
 
 rag_0_baseline:
   collection_name: baseline
-  embedding_model: null
+  embedding_model: all-MiniLM-L6-v2
 
 idx_markdown_bge:
   collection_name: bge
