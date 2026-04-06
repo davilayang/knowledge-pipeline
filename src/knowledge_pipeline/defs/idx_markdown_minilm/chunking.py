@@ -11,7 +11,7 @@ from knowledge_pipeline.defs.shared.op_factories import (
 )
 from knowledge_pipeline.lib.utils import get_strategy
 
-_CFG = get_strategy("rag_0_baseline")
+_CFG = get_strategy("idx_markdown_minilm")
 
 chunk_batch = create_chunk_batch_op(
     _CFG["strategy_name"], _CFG["chunking"], _CFG["chunk_size"], _CFG["chunk_overlap"]
@@ -19,7 +19,7 @@ chunk_batch = create_chunk_batch_op(
 
 
 @dg.graph_asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     description="Chunk pending content and write to JSON files in strategy chunks directory",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )

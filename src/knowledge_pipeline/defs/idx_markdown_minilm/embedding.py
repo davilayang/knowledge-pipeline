@@ -11,7 +11,7 @@ from knowledge_pipeline.defs.shared.op_factories import (
 )
 from knowledge_pipeline.lib.utils import get_strategy
 
-_CFG = get_strategy("rag_0_baseline")
+_CFG = get_strategy("idx_markdown_minilm")
 
 load_chunked_items = create_load_chunked_items_op(_CFG["strategy_name"])
 embed_batch = create_embed_batch_op(
@@ -20,7 +20,7 @@ embed_batch = create_embed_batch_op(
 
 
 @dg.graph_asset(
-    group_name="rag_0_baseline",
+    group_name="idx_markdown_minilm",
     description="Compute embeddings for chunked content and write to strategy embeddings directory",
     ins={"chunks_ready": dg.AssetIn(key="baseline_chunked")},
 )
