@@ -873,6 +873,7 @@ dependencies = [
     { name = "dagster" },
     { name = "dagster-webserver" },
     { name = "poethepoet" },
+    { name = "pyyaml" },
     { name = "sentence-transformers" },
 ]
 
@@ -889,6 +890,7 @@ requires-dist = [
     { name = "dagster", specifier = ">=1.12,<2.0" },
     { name = "dagster-webserver", specifier = ">=1.12,<2.0" },
     { name = "poethepoet", specifier = ">=0.42,<1.0" },
+    { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "sentence-transformers", specifier = ">=3.0,<4.0" },
 ]
 

@@ -1,3 +1,4 @@
+# src/knowledge_pipeline/defs/shared/resources.py
 # Shared Dagster resources used across all index strategies.
 
 from pathlib import Path
@@ -15,6 +16,7 @@ from knowledge_pipeline.config import (
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 
+# TODO: Check if this is redundant?
 class RawStoreResource(dg.ConfigurableResource):
     """Read-only access to raw_store.db (local copy + source for status writes)."""
 

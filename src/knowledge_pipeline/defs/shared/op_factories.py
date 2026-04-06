@@ -33,6 +33,7 @@ def _safe_filename(content_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
+# TODO: Chunking should handle different strategy, e.g. different text splitters in langchain
 def create_chunk_batch_op(strategy_name: str) -> dg.OpDefinition:
     """Create a chunk_batch op that writes to the given strategy's chunks dir."""
     from knowledge_pipeline.lib.chunking import chunk_markdown
@@ -48,7 +49,7 @@ def create_chunk_batch_op(strategy_name: str) -> dg.OpDefinition:
         content_ids = []
         for item in batch:
             try:
-                chunks = chunk_markdown(item["content_md"])
+                chunks = chunk_markdown(item["content_md"])  # TODO: This is too limited
             except Exception as exc:
                 logger.error("Failed to chunk %s: %s", item["content_id"], exc)
                 continue
@@ -106,6 +107,7 @@ def create_load_chunked_items_op(strategy_name: str) -> dg.OpDefinition:
     return _load
 
 
+# TODO: question, does embedding have other params we could consider for strategies
 def create_embed_batch_op(
     strategy_name: str,
     collection_name: str,

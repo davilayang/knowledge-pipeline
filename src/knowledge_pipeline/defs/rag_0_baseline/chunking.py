@@ -3,6 +3,7 @@
 
 import dagster as dg
 
+from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_chunk_batch_op,
     fan_out_chunk_batches,
@@ -11,10 +12,10 @@ from knowledge_pipeline.defs.shared.op_factories import (
 from knowledge_pipeline.defs.shared.resources import RawStoreResource
 from knowledge_pipeline.lib.store import get_contents
 
-from .config import STRATEGY_NAME
+_CFG = get_strategy("rag_0_baseline")
 
 # Strategy-specific op instance
-chunk_batch = create_chunk_batch_op(STRATEGY_NAME)
+chunk_batch = create_chunk_batch_op(_CFG["strategy_name"])
 
 
 class FetchConfig(dg.Config):

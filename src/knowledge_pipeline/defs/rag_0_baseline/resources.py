@@ -1,4 +1,5 @@
 # Dagster resources for the baseline RAG strategy.
+# Q: is this no longer needed?
 
 from pathlib import Path
 

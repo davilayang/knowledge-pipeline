@@ -2,6 +2,7 @@
 
 import dagster as dg
 
+from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.rag_0_baseline.chunking import fetch_pending
 from knowledge_pipeline.defs.shared.op_factories import (
     create_chunk_batch_op,
@@ -15,18 +16,20 @@ from knowledge_pipeline.defs.shared.op_factories import (
 )
 from knowledge_pipeline.defs.shared.raw_store import raw_store_copy
 
-from .config import COLLECTION_NAME, EMBEDDING_MODEL, STRATEGY_NAME
+_CFG = get_strategy("idx_markdown_bge")
 
 # Strategy-specific op instances
-chunk_batch = create_chunk_batch_op(STRATEGY_NAME)
-load_chunked_items = create_load_chunked_items_op(STRATEGY_NAME)
-embed_batch = create_embed_batch_op(STRATEGY_NAME, COLLECTION_NAME, EMBEDDING_MODEL)
+chunk_batch = create_chunk_batch_op(_CFG["strategy_name"])
+load_chunked_items = create_load_chunked_items_op(_CFG["strategy_name"])
+embed_batch = create_embed_batch_op(
+    _CFG["strategy_name"], _CFG["collection_name"], _CFG["embedding_model"]
+)
 
 # Indexing asset
 bge_indexed = create_indexing_asset(
-    strategy_name=STRATEGY_NAME,
-    collection_name=COLLECTION_NAME,
-    embedding_model=EMBEDDING_MODEL,
+    strategy_name=_CFG["strategy_name"],
+    collection_name=_CFG["collection_name"],
+    embedding_model=_CFG["embedding_model"],
     group_name="idx_markdown_bge",
     deps=["bge_embedded"],
 )

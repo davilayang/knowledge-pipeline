@@ -3,6 +3,7 @@
 
 import dagster as dg
 
+from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_embed_batch_op,
     create_load_chunked_items_op,
@@ -10,11 +11,13 @@ from knowledge_pipeline.defs.shared.op_factories import (
     gather_embed_ids,
 )
 
-from .config import COLLECTION_NAME, EMBEDDING_MODEL, STRATEGY_NAME
+_CFG = get_strategy("rag_0_baseline")
 
 # Strategy-specific op instances
-load_chunked_items = create_load_chunked_items_op(STRATEGY_NAME)
-embed_batch = create_embed_batch_op(STRATEGY_NAME, COLLECTION_NAME, EMBEDDING_MODEL)
+load_chunked_items = create_load_chunked_items_op(_CFG["strategy_name"])
+embed_batch = create_embed_batch_op(
+    _CFG["strategy_name"], _CFG["collection_name"], _CFG["embedding_model"]
+)
 
 
 @dg.graph_asset(

@@ -1,5 +1,6 @@
-# Asset: copy raw_store.db from the static dataset to local data/.
-# Shared across all RAG strategies.
+# src/knowledge_pipeline/defs/shared/raw_store.py
+# Shared asset that creates a copy pinned raw_store database for
+# various chunking strategies
 
 import hashlib
 import sqlite3
@@ -33,7 +34,8 @@ def _hash_file(path) -> str:
 )
 def raw_store_copy(context: AssetExecutionContext) -> dg.MaterializeResult:
     """Copy the static dataset using SQLite backup API for a consistent snapshot."""
-    source = SOURCE_RAW_STORE
+
+    source = SOURCE_RAW_STORE  # Define the pinned version of raw_store
     if not source.exists():
         raise FileNotFoundError(f"Source database not found: {source}")
 

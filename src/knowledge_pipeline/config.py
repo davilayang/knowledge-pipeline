@@ -9,6 +9,7 @@ PROJECT_DIR = Path(__file__).resolve().parent.parent.parent
 # Lives in the project repo, not copied from an external source at runtime.
 DATASETS_DIR = PROJECT_DIR / "datasets"
 SOURCE_RAW_STORE = DATASETS_DIR / "raw_store_2026-04-05.db"
+# NOTE: Change to raw store affects evaluation metrics, should always version-controlled
 
 # Working data directories (runtime artifacts, not checked in)
 DATA_DIR = PROJECT_DIR / "data"
@@ -27,6 +28,25 @@ EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
 def strategy_dir(strategy: str, subdir: str) -> Path:
     """Return a per-strategy data directory, e.g. data/chunks/rag_0_baseline/."""
     return DATA_DIR / subdir / strategy
+
+
+# Strategy configurations (loaded from strategies.yaml)
+_STRATEGIES: dict | None = None
+
+
+def get_strategy(name: str) -> dict:
+    """Load a strategy config by name from strategies.yaml."""
+    global _STRATEGIES  # noqa: PLW0603
+    if _STRATEGIES is None:
+        import yaml
+
+        yaml_path = Path(__file__).parent / "strategies.yaml"
+        with open(yaml_path) as f:
+            _STRATEGIES = yaml.safe_load(f)
+    if name not in _STRATEGIES:
+        available = ", ".join(sorted(_STRATEGIES))
+        raise ValueError(f"Unknown strategy: {name!r}. Available: {available}")
+    return {"strategy_name": name, **_STRATEGIES[name]}
 
 
 # Backup settings
