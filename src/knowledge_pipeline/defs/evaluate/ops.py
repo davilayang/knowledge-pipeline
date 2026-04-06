@@ -8,16 +8,11 @@ from datetime import UTC, datetime
 
 import dagster as dg
 
-from knowledge_pipeline.config import (
-    EVAL_RESULTS_DIR,
-    LOCAL_RAW_STORE,
-    SOURCE_RAW_STORE,
-    get_embedding_model_for_collection,
-)
+from knowledge_pipeline.config import EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
 from knowledge_pipeline.lib.retrieval import build_strategy
 from knowledge_pipeline.lib.store import count_contents
-from knowledge_pipeline.lib.utils import hash_file
+from knowledge_pipeline.lib.utils import get_embedding_model_for_collection, hash_file
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION

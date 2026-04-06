@@ -3,13 +3,13 @@
 
 import dagster as dg
 
-from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_embed_batch_op,
     create_load_chunked_items_op,
     fan_out_batches,
     gather_ids,
 )
+from knowledge_pipeline.lib.utils import get_strategy
 
 _CFG = get_strategy("rag_0_baseline")
 

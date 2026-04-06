@@ -3,7 +3,7 @@
 
 from __future__ import annotations
 
-from knowledge_pipeline.config import get_eval_combos
+from knowledge_pipeline.lib.utils import get_eval_combos
 
 EVAL_COMBOS: list[str] = get_eval_combos()
 

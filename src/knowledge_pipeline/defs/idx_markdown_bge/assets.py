@@ -2,7 +2,6 @@
 
 import dagster as dg
 
-from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_chunk_batch_op,
     create_embed_batch_op,
@@ -13,6 +12,7 @@ from knowledge_pipeline.defs.shared.op_factories import (
     gather_ids,
 )
 from knowledge_pipeline.defs.shared.raw_store import raw_store_copy
+from knowledge_pipeline.lib.utils import get_strategy
 
 _CFG = get_strategy("idx_markdown_bge")
 
