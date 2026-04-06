@@ -1,31 +1,69 @@
-# Index strategy configurations.
-# Each strategy defines how content is chunked, embedded, and stored.
-#
+# Strategy configurations for the knowledge pipeline.
+# Single source of truth for index strategies, retrieval strategies, and eval combos.
+
+# ---------------------------------------------------------------------------
+# Index strategies — how content is chunked, embedded, and stored.
 # Format: idx_{chunking}_{embedding}
-# Keys:
-#   description     — what this strategy tests and why
-#   collection_name — ChromaDB collection name
-#   chunking        — chunking strategy (markdown, recursive, semantic, etc.)
-#   embedding_model — SentenceTransformer model name (always specify explicitly)
+# ---------------------------------------------------------------------------
 
-rag_0_baseline:
-  description: >
-    Baseline strategy. Markdown-aware chunking splits on heading boundaries
-    with paragraph packing up to 800 tokens. Embeds with all-MiniLM-L6-v2
-    (MTEB ~49, 256 token context). Title and author are prepended before
-    embedding for disambiguation. This is the control experiment — all
-    other strategies are compared against it.
-  collection_name: baseline
-  chunking: markdown
-  embedding_model: all-MiniLM-L6-v2
+index_strategies:
+  rag_0_baseline:
+    description: >
+      Baseline strategy. Markdown-aware chunking splits on heading boundaries
+      with paragraph packing up to 800 tokens. Embeds with all-MiniLM-L6-v2
+      (MTEB ~49, 256 token context). Title and author are prepended before
+      embedding for disambiguation. This is the control experiment — all
+      other strategies are compared against it.
+    collection_name: baseline
+    chunking: markdown
+    embedding_model: all-MiniLM-L6-v2
 
-idx_markdown_bge:
-  description: >
-    Same markdown chunking as baseline but with an upgraded embedding model.
-    BGE-small-en-v1.5 scores MTEB ~62 (vs MiniLM's ~49) with 512 token
-    context (vs 256). Tests whether a better embedding model improves
-    retrieval quality without changing the chunking strategy. Lowest-effort
-    index-level improvement.
-  collection_name: bge
-  chunking: markdown
-  embedding_model: BAAI/bge-small-en-v1.5
+  idx_markdown_bge:
+    description: >
+      Same markdown chunking as baseline but with an upgraded embedding model.
+      BGE-small-en-v1.5 scores MTEB ~62 (vs MiniLM's ~49) with 512 token
+      context (vs 256). Tests whether a better embedding model improves
+      retrieval quality without changing the chunking strategy. Lowest-effort
+      index-level improvement.
+    collection_name: bge
+    chunking: markdown
+    embedding_model: BAAI/bge-small-en-v1.5
+
+# ---------------------------------------------------------------------------
+# Retrieval strategies — how queries are run against a collection.
+# These live in lib/retrieval/ and are registered in registry.py.
+# ---------------------------------------------------------------------------
+
+retrieval_strategies:
+  cosine:
+    description: >
+      Basic cosine similarity via ChromaDB's built-in query. Embeds the query
+      with the same model as the collection, returns top-K by distance.
+      Fast (~130ms) but no semantic reranking. The retrieval baseline.
+
+  rerank:
+    description: >
+      Two-stage retrieval. First retrieves 4x candidates via cosine similarity,
+      then re-scores each (query, document) pair with a cross-encoder
+      (cross-encoder/ms-marco-MiniLM-L-6-v2, 22M params). Improves ranking
+      quality (MRR) at the cost of latency (~700ms). The cross-encoder uses
+      joint attention to "read" query and document together.
+    model: cross-encoder/ms-marco-MiniLM-L-6-v2
+    candidate_factor: 4
+
+  # Future:
+  # hybrid:
+  #   description: BM25 + vector + Reciprocal Rank Fusion. Catches exact keyword matches that vector search misses.
+  # hyde:
+  #   description: Generate hypothetical answer with LLM, embed that instead of the query.
+
+# ---------------------------------------------------------------------------
+# Eval combos — which (collection x retrieval) pairs to evaluate.
+# Format: "collection_name__retrieval_strategy"
+# ---------------------------------------------------------------------------
+
+eval_combos:
+  - baseline__cosine
+  - baseline__rerank
+  - bge__cosine
+  - bge__rerank

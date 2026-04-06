@@ -31,22 +31,33 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
 
 
 # Strategy configurations (loaded from strategies.yaml)
-_STRATEGIES: dict | None = None
+_STRATEGIES_YAML: dict | None = None
 
 
-def get_strategy(name: str) -> dict:
-    """Load a strategy config by name from strategies.yaml."""
-    global _STRATEGIES  # noqa: PLW0603
-    if _STRATEGIES is None:
+def _load_strategies_yaml() -> dict:
+    """Load and cache strategies.yaml."""
+    global _STRATEGIES_YAML  # noqa: PLW0603
+    if _STRATEGIES_YAML is None:
         import yaml
 
         yaml_path = Path(__file__).parent / "strategies.yaml"
         with open(yaml_path) as f:
-            _STRATEGIES = yaml.safe_load(f)
-    if name not in _STRATEGIES:
-        available = ", ".join(sorted(_STRATEGIES))
-        raise ValueError(f"Unknown strategy: {name!r}. Available: {available}")
-    return {"strategy_name": name, **_STRATEGIES[name]}
+            _STRATEGIES_YAML = yaml.safe_load(f)
+    return _STRATEGIES_YAML
+
+
+def get_strategy(name: str) -> dict:
+    """Load an index strategy config by name."""
+    strategies = _load_strategies_yaml()["index_strategies"]
+    if name not in strategies:
+        available = ", ".join(sorted(strategies))
+        raise ValueError(f"Unknown index strategy: {name!r}. Available: {available}")
+    return {"strategy_name": name, **strategies[name]}
+
+
+def get_eval_combos() -> list[str]:
+    """Load eval combos from strategies.yaml."""
+    return _load_strategies_yaml()["eval_combos"]
 
 
 # Backup settings

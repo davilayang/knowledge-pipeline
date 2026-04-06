@@ -1,16 +1,11 @@
 # Centralized registry of (collection x retrieval_strategy) combos to evaluate.
-#
-# Each combo is a string in the format "collection__strategy" (double underscore).
-# Add new entries as strategies are created.
+# Combos are defined in strategies.yaml and loaded via config.get_eval_combos().
 
 from __future__ import annotations
 
-EVAL_COMBOS: list[str] = [
-    "baseline__cosine",
-    "baseline__rerank",
-    "bge__cosine",
-    "bge__rerank",
-]
+from knowledge_pipeline.config import get_eval_combos
+
+EVAL_COMBOS: list[str] = get_eval_combos()
 
 
 def parse_combo(combo: str) -> tuple[str, str]:
