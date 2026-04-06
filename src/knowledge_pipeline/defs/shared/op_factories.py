@@ -13,7 +13,7 @@ from .resources import RawStoreResource, StrategyPathsResource, VectorStoreResou
 
 logger = logging.getLogger(__name__)
 
-BATCH_SIZE = 3
+BATCH_SIZE = 10
 
 
 def _safe_filename(content_id: str) -> str:
