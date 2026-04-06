@@ -289,8 +289,14 @@ def _build_markdown(report: dict) -> str:
             f" | {o['avg_latency_ms']:.0f}ms |"
         )
 
-    # Per-category
-    cat_order = ["easy", "paraphrase", "buried", "cross", "negative"]
+    # Per-category — collect all category names across all combos
+    all_cats: list[str] = []
+    for data in report["combos"].values():
+        if data.get("status") == "ok":
+            for cat in data["by_category"]:
+                if cat not in all_cats:
+                    all_cats.append(cat)
+
     for combo_key, data in report["combos"].items():
         if data.get("status") != "ok":
             continue
@@ -300,7 +306,7 @@ def _build_markdown(report: dict) -> str:
         lines.append("| Category | Queries | Recall@5 | Precision@5 | MRR | Latency |")
         lines.append("| --- | --- | --- | --- | --- | --- |")
         cats = data["by_category"]
-        for cat in cat_order:
+        for cat in all_cats:
             if cat in cats:
                 c = cats[cat]
                 lines.append(
