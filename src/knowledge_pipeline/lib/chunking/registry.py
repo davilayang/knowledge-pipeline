@@ -19,10 +19,8 @@ from .types import Chunk
 # Each chunking function takes text and returns list[Chunk].
 ChunkingFn = Callable[[str], list[Chunk]]
 
-# Token/char estimation
+# Rough char-per-token ratio for character-based splitters.
 _CHARS_PER_TOKEN = 4
-_DEFAULT_CHUNK_SIZE = 800 * _CHARS_PER_TOKEN  # 3200 chars
-_DEFAULT_OVERLAP = 100 * _CHARS_PER_TOKEN  # 400 chars
 
 
 def _to_chunks(docs: list, heading_keys: tuple[str, ...] = ()) -> list[Chunk]:
@@ -40,121 +38,126 @@ def _to_chunks(docs: list, heading_keys: tuple[str, ...] = ()) -> list[Chunk]:
 
 # ---------------------------------------------------------------------------
 # Chunking strategies
+#
+# Each factory takes (chunk_size, chunk_overlap) in tokens and returns a
+# ChunkingFn. Splitter instances are created once per factory call and
+# reused across all chunks in that strategy — but not cached across
+# separate factory calls. This is acceptable because each strategy calls
+# the factory once at module load time.
 # ---------------------------------------------------------------------------
 
 
-def _markdown_chunking(text: str) -> list[Chunk]:
-    """Split by markdown headers, then recursively split large sections.
-
-    Two-stage: MarkdownHeaderTextSplitter preserves heading metadata,
-    then RecursiveCharacterTextSplitter enforces size limits. Headings
-    are kept in the chunk text and tracked as metadata.
-    """
+def _make_markdown(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Split by markdown headers, then recursively split large sections."""
     header_splitter = MarkdownHeaderTextSplitter(
         headers_to_split_on=[("#", "h1"), ("##", "h2"), ("###", "h3")],
         strip_headers=False,
     )
     size_splitter = RecursiveCharacterTextSplitter(
-        chunk_size=_DEFAULT_CHUNK_SIZE,
-        chunk_overlap=_DEFAULT_OVERLAP,
+        chunk_size=chunk_size * _CHARS_PER_TOKEN,
+        chunk_overlap=chunk_overlap * _CHARS_PER_TOKEN,
     )
-    header_docs = header_splitter.split_text(text)
-    split_docs = size_splitter.split_documents(header_docs)
-    return _to_chunks(split_docs, heading_keys=("h1", "h2", "h3"))
+
+    def _chunk(text: str) -> list[Chunk]:
+        header_docs = header_splitter.split_text(text)
+        split_docs = size_splitter.split_documents(header_docs)
+        return _to_chunks(split_docs, heading_keys=("h1", "h2", "h3"))
+
+    return _chunk
 
 
-def _markdown_syntax_chunking(text: str) -> list[Chunk]:
-    """Markdown-aware recursive splitting that respects code blocks, lists, and headers.
-
-    Uses MarkdownTextSplitter which extends RecursiveCharacterTextSplitter
-    with markdown-specific separators (```, ##, ---, etc.) so code blocks
-    and list items are not broken mid-element.
-    """
+def _make_markdown_syntax(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Markdown-aware recursive splitting that respects code blocks, lists, and headers."""
     splitter = MarkdownTextSplitter(
-        chunk_size=_DEFAULT_CHUNK_SIZE,
-        chunk_overlap=_DEFAULT_OVERLAP,
+        chunk_size=chunk_size * _CHARS_PER_TOKEN,
+        chunk_overlap=chunk_overlap * _CHARS_PER_TOKEN,
     )
-    docs = splitter.create_documents([text])
-    return _to_chunks(docs)
+
+    def _chunk(text: str) -> list[Chunk]:
+        return _to_chunks(splitter.create_documents([text]))
+
+    return _chunk
 
 
-def _recursive_chunking(text: str) -> list[Chunk]:
-    """Recursive character splitting — tries large separators first, then smaller.
-
-    Attempts to split on paragraphs (\\n\\n), then newlines (\\n),
-    then spaces, then characters. Keeps semantically coherent units
-    as large as possible within the size limit.
-    """
+def _make_recursive(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Recursive character splitting — tries large separators first, then smaller."""
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=_DEFAULT_CHUNK_SIZE,
-        chunk_overlap=_DEFAULT_OVERLAP,
+        chunk_size=chunk_size * _CHARS_PER_TOKEN,
+        chunk_overlap=chunk_overlap * _CHARS_PER_TOKEN,
     )
-    docs = splitter.create_documents([text])
-    return _to_chunks(docs)
+
+    def _chunk(text: str) -> list[Chunk]:
+        return _to_chunks(splitter.create_documents([text]))
+
+    return _chunk
 
 
-def _fixed_chunking(text: str) -> list[Chunk]:
-    """Fixed-size character windows with overlap.
-
-    Splits at exact character boundaries regardless of content structure.
-    Control experiment — tests the floor performance of naive chunking.
-    """
+def _make_fixed(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Fixed-size character windows with overlap. Control experiment."""
     splitter = CharacterTextSplitter(
         separator="",
-        chunk_size=512 * _CHARS_PER_TOKEN,
-        chunk_overlap=50 * _CHARS_PER_TOKEN,
+        chunk_size=chunk_size * _CHARS_PER_TOKEN,
+        chunk_overlap=chunk_overlap * _CHARS_PER_TOKEN,
     )
-    docs = splitter.create_documents([text])
-    return _to_chunks(docs)
+
+    def _chunk(text: str) -> list[Chunk]:
+        return _to_chunks(splitter.create_documents([text]))
+
+    return _chunk
 
 
-def _token_chunking(text: str) -> list[Chunk]:
-    """Token-count-based splitting using tiktoken.
-
-    Splits by actual token count rather than character estimation.
-    More accurate chunk sizes for LLM context windows.
-    """
+def _make_token(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Token-count-based splitting using tiktoken."""
     splitter = TokenTextSplitter(
-        chunk_size=800,
-        chunk_overlap=100,
+        chunk_size=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
-    docs = splitter.create_documents([text])
-    return _to_chunks(docs)
+
+    def _chunk(text: str) -> list[Chunk]:
+        return _to_chunks(splitter.create_documents([text]))
+
+    return _chunk
 
 
-def _sentence_transformer_token_chunking(text: str) -> list[Chunk]:
-    """Token splitting aligned to the embedding model's tokenizer.
-
-    Uses sentence-transformers tokenizer so chunk boundaries match
-    exactly what the embedding model sees. Avoids mid-token splits
-    that degrade embedding quality.
-    """
+def _make_sentence_transformer_token(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Token splitting aligned to the embedding model's tokenizer."""
     splitter = SentenceTransformersTokenTextSplitter(
-        chunk_overlap=50,
-        tokens_per_chunk=256,  # MiniLM-L6-v2 max context
+        tokens_per_chunk=chunk_size,
+        chunk_overlap=chunk_overlap,
     )
-    docs = splitter.create_documents([text])
-    return _to_chunks(docs)
+
+    def _chunk(text: str) -> list[Chunk]:
+        return _to_chunks(splitter.create_documents([text]))
+
+    return _chunk
 
 
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
 
-_CHUNKING_REGISTRY: dict[str, ChunkingFn] = {
-    "markdown": _markdown_chunking,
-    "markdown_syntax": _markdown_syntax_chunking,
-    "recursive": _recursive_chunking,
-    "fixed": _fixed_chunking,
-    "token": _token_chunking,
-    "sentence_transformer_token": _sentence_transformer_token_chunking,
+# Maps strategy name to a factory: (chunk_size, chunk_overlap) -> ChunkingFn
+_CHUNKING_FACTORIES: dict[str, Callable[[int, int], ChunkingFn]] = {
+    "markdown": _make_markdown,
+    "markdown_syntax": _make_markdown_syntax,
+    "recursive": _make_recursive,
+    "fixed": _make_fixed,
+    "token": _make_token,
+    "sentence_transformer_token": _make_sentence_transformer_token,
 }
 
+_DEFAULT_CHUNK_SIZE = 800
+_DEFAULT_OVERLAP = 100
 
-def get_chunking_fn(name: str) -> ChunkingFn:
-    """Look up a chunking function by name from strategies.yaml."""
-    fn = _CHUNKING_REGISTRY.get(name)
-    if fn is None:
-        available = ", ".join(sorted(_CHUNKING_REGISTRY))
+
+def get_chunking_fn(
+    name: str,
+    chunk_size: int = _DEFAULT_CHUNK_SIZE,
+    chunk_overlap: int = _DEFAULT_OVERLAP,
+) -> ChunkingFn:
+    """Build a chunking function by name with the given size parameters."""
+    factory = _CHUNKING_FACTORIES.get(name)
+    if factory is None:
+        available = ", ".join(sorted(_CHUNKING_FACTORIES))
         raise ValueError(f"Unknown chunking strategy: {name!r}. Available: {available}")
-    return fn
+    return factory(chunk_size, chunk_overlap)

@@ -16,7 +16,9 @@ from knowledge_pipeline.lib.utils import get_strategy
 
 _CFG = get_strategy("idx_markdown_bge")
 
-chunk_batch = create_chunk_batch_op(_CFG["strategy_name"], _CFG["chunking"])
+chunk_batch = create_chunk_batch_op(
+    _CFG["strategy_name"], _CFG["chunking"], _CFG["chunk_size"], _CFG["chunk_overlap"]
+)
 load_chunked_items = create_load_chunked_items_op(_CFG["strategy_name"])
 embed_batch = create_embed_batch_op(
     _CFG["strategy_name"], _CFG["collection_name"], _CFG["embedding_model"]

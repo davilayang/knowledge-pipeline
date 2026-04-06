@@ -33,11 +33,16 @@ def _safe_filename(content_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-def create_chunk_batch_op(strategy_name: str, chunking: str = "markdown") -> dg.OpDefinition:
+def create_chunk_batch_op(
+    strategy_name: str,
+    chunking: str = "markdown",
+    chunk_size: int = 800,
+    chunk_overlap: int = 100,
+) -> dg.OpDefinition:
     """Create a chunk_batch op that writes to the given strategy's chunks dir."""
     from knowledge_pipeline.lib.chunking import get_chunking_fn
 
-    chunking_fn = get_chunking_fn(chunking)
+    chunking_fn = get_chunking_fn(chunking, chunk_size, chunk_overlap)
 
     @dg.op(name=f"chunk_batch_{strategy_name}")
     def _chunk_batch(

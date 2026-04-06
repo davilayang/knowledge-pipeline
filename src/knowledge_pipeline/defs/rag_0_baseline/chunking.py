@@ -13,7 +13,9 @@ from knowledge_pipeline.lib.utils import get_strategy
 
 _CFG = get_strategy("rag_0_baseline")
 
-chunk_batch = create_chunk_batch_op(_CFG["strategy_name"], _CFG["chunking"])
+chunk_batch = create_chunk_batch_op(
+    _CFG["strategy_name"], _CFG["chunking"], _CFG["chunk_size"], _CFG["chunk_overlap"]
+)
 
 
 @dg.graph_asset(

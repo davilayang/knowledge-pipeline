@@ -16,6 +16,8 @@ index_strategies:
       other strategies are compared against it.
     collection_name: baseline
     chunking: markdown
+    chunk_size: 800
+    chunk_overlap: 100
     embedding_model: all-MiniLM-L6-v2
 
   idx_markdown_bge:
@@ -27,6 +29,8 @@ index_strategies:
       index-level improvement.
     collection_name: bge
     chunking: markdown
+    chunk_size: 800
+    chunk_overlap: 100
     embedding_model: BAAI/bge-small-en-v1.5
 
 # ---------------------------------------------------------------------------
