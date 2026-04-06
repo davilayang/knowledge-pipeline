@@ -7,13 +7,12 @@ from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_embed_batch_op,
     create_load_chunked_items_op,
-    fan_out_embed_batches,
-    gather_embed_ids,
+    fan_out_batches,
+    gather_ids,
 )
 
 _CFG = get_strategy("rag_0_baseline")
 
-# Strategy-specific op instances
 load_chunked_items = create_load_chunked_items_op(_CFG["strategy_name"])
 embed_batch = create_embed_batch_op(
     _CFG["strategy_name"], _CFG["collection_name"], _CFG["embedding_model"]
@@ -27,6 +26,6 @@ embed_batch = create_embed_batch_op(
 )
 def baseline_embedded(chunks_ready) -> list[str]:
     items = load_chunked_items(chunks_ready=chunks_ready)
-    batches = fan_out_embed_batches(items)
+    batches = fan_out_batches(items)
     per_batch = batches.map(embed_batch)
-    return gather_embed_ids(per_batch.collect())
+    return gather_ids(per_batch.collect())

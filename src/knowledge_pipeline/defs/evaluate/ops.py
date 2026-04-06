@@ -1,7 +1,6 @@
 # Dagster ops for retrieval quality evaluation.
 # Uses op factory to generate one eval op per (collection, strategy) combo.
 
-import hashlib
 import json
 import logging
 import time
@@ -18,6 +17,7 @@ from knowledge_pipeline.config import (
 from knowledge_pipeline.lib.eval import mrr, precision_at_k, recall_at_k
 from knowledge_pipeline.lib.retrieval import build_strategy
 from knowledge_pipeline.lib.store import count_contents
+from knowledge_pipeline.lib.utils import hash_file
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
@@ -31,15 +31,6 @@ K = 5
 # ---------------------------------------------------------------------------
 # Preflight
 # ---------------------------------------------------------------------------
-
-
-def _hash_file(path) -> str:
-    """SHA-256 hash of a file (first 16 hex chars)."""
-    h = hashlib.sha256()
-    with open(path, "rb") as f:
-        for chunk in iter(lambda: f.read(65536), b""):
-            h.update(chunk)
-    return h.hexdigest()[:16]
 
 
 @dg.op(
@@ -58,14 +49,14 @@ def eval_preflight_check(context: dg.OpExecutionContext) -> None:
 
     # Dataset version
     if SOURCE_RAW_STORE.exists():
-        corpus_hash = _hash_file(SOURCE_RAW_STORE)
+        corpus_hash = hash_file(SOURCE_RAW_STORE)
         context.log.info("Source dataset: %s", SOURCE_RAW_STORE.name)
         context.log.info("Corpus hash: %s", corpus_hash)
     else:
         context.log.warning("Source dataset not found: %s", SOURCE_RAW_STORE)
 
     if LOCAL_RAW_STORE.exists():
-        local_hash = _hash_file(LOCAL_RAW_STORE)
+        local_hash = hash_file(LOCAL_RAW_STORE)
         row_count = count_contents(db_path=LOCAL_RAW_STORE)
         context.log.info("Local DB: %s (hash=%s, %d rows)", LOCAL_RAW_STORE, local_hash, row_count)
     else:

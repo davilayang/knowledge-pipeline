@@ -6,50 +6,14 @@ import dagster as dg
 from knowledge_pipeline.config import get_strategy
 from knowledge_pipeline.defs.shared.op_factories import (
     create_chunk_batch_op,
-    fan_out_chunk_batches,
-    gather_chunk_ids,
+    fan_out_batches,
+    fetch_pending,
+    gather_ids,
 )
-from knowledge_pipeline.defs.shared.resources import RawStoreResource
-from knowledge_pipeline.lib.store import get_contents
 
 _CFG = get_strategy("rag_0_baseline")
 
-# Strategy-specific op instance
 chunk_batch = create_chunk_batch_op(_CFG["strategy_name"])
-
-
-class FetchConfig(dg.Config):
-    """Runtime config for fetch_pending. Override max_items in the Launchpad for dev."""
-
-    max_items: int = 0  # 0 = no limit (prod default)
-
-
-@dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
-def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
-    """Fetch all content items with sufficient content for indexing."""
-    db_path = raw_store.get_path()
-    items = get_contents(db_path=db_path)
-
-    result = []
-    for item in items:
-        if not item.content_md or len(item.content_md.strip()) < 50:
-            continue
-        result.append(
-            {
-                "content_id": item.content_id,
-                "title": item.title,
-                "author": item.author,
-                "url": item.url,
-                "source_key": item.source_key,
-                "content_date": item.content_date.isoformat() if item.content_date else "",
-                "content_md": item.content_md,
-            }
-        )
-
-    if config.max_items > 0:
-        result = result[: config.max_items]
-
-    return result
 
 
 @dg.graph_asset(
@@ -59,6 +23,6 @@ def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict
 )
 def baseline_chunked(raw_store_snapshot) -> list[str]:
     items = fetch_pending(raw_store_snapshot=raw_store_snapshot)
-    batches = fan_out_chunk_batches(items)
+    batches = fan_out_batches(items)
     per_batch = batches.map(chunk_batch)
-    return gather_chunk_ids(per_batch.collect())
+    return gather_ids(per_batch.collect())

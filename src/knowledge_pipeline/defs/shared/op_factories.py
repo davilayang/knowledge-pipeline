@@ -7,7 +7,7 @@ import logging
 
 import dagster as dg
 
-from knowledge_pipeline.lib.store import set_vector_status
+from knowledge_pipeline.lib.store import get_contents
 
 from .resources import RawStoreResource, StrategyPathsResource, VectorStoreResource
 
@@ -33,7 +33,6 @@ def _safe_filename(content_id: str) -> str:
 # ---------------------------------------------------------------------------
 
 
-# TODO: Chunking should handle different strategy, e.g. different text splitters in langchain
 def create_chunk_batch_op(strategy_name: str) -> dg.OpDefinition:
     """Create a chunk_batch op that writes to the given strategy's chunks dir."""
     from knowledge_pipeline.lib.chunking import chunk_markdown
@@ -49,7 +48,7 @@ def create_chunk_batch_op(strategy_name: str) -> dg.OpDefinition:
         content_ids = []
         for item in batch:
             try:
-                chunks = chunk_markdown(item["content_md"])  # TODO: This is too limited
+                chunks = chunk_markdown(item["content_md"])
             except Exception as exc:
                 logger.error("Failed to chunk %s: %s", item["content_id"], exc)
                 continue
@@ -107,11 +106,10 @@ def create_load_chunked_items_op(strategy_name: str) -> dg.OpDefinition:
     return _load
 
 
-# TODO: question, does embedding have other params we could consider for strategies
 def create_embed_batch_op(
     strategy_name: str,
     collection_name: str,
-    embedding_model: str | None,
+    embedding_model: str,
 ) -> dg.OpDefinition:
     """Create an embed op bound to a specific collection and embedding model."""
 
@@ -181,7 +179,7 @@ def create_embed_batch_op(
 def create_indexing_asset(
     strategy_name: str,
     collection_name: str,
-    embedding_model: str | None,
+    embedding_model: str,
     group_name: str,
     deps: list[str],
     asset_name: str | None = None,
@@ -197,7 +195,6 @@ def create_indexing_asset(
     )
     def _indexed(
         context: dg.AssetExecutionContext,
-        raw_store: RawStoreResource,
         vector_store: VectorStoreResource,
         strategy_paths: StrategyPathsResource,
     ) -> dg.MaterializeResult:
@@ -207,7 +204,6 @@ def create_indexing_asset(
             return dg.MaterializeResult(metadata={"indexed": dg.MetadataValue.int(0)})
 
         collection = vector_store.get_collection(collection_name, embedding_model)
-        source_db_path = raw_store.get_source_path()
 
         indexed_count = 0
         error_count = 0
@@ -236,7 +232,6 @@ def create_indexing_asset(
                     embeddings=embeddings_data,  # type: ignore[arg-type]
                     metadatas=metadatas,  # type: ignore[arg-type]
                 )
-                set_vector_status(content_id, "indexed", db_path=source_db_path)
                 indexed_count += 1
                 total_chunks += len(chunks)
                 details.append(
@@ -249,7 +244,6 @@ def create_indexing_asset(
                 )
             except Exception as exc:
                 logger.error("Failed to index %s: %s", content_id, exc)
-                set_vector_status(content_id, "error", db_path=source_db_path)
                 error_count += 1
 
         summary_lines = [
@@ -282,35 +276,52 @@ def create_indexing_asset(
 # ---------------------------------------------------------------------------
 
 
+class FetchConfig(dg.Config):
+    """Runtime config for fetch_pending. Override max_items in the Launchpad for dev."""
+
+    max_items: int = 0  # 0 = no limit (prod default)
+
+
+@dg.op(ins={"raw_store_snapshot": dg.In(dagster_type=dg.Nothing)})
+def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict]:
+    """Fetch all content items with sufficient content for indexing."""
+    db_path = raw_store.get_path()
+    items = get_contents(db_path=db_path)
+
+    result = []
+    for item in items:
+        if not item.content_md or len(item.content_md.strip()) < 50:
+            continue
+        result.append(
+            {
+                "content_id": item.content_id,
+                "title": item.title,
+                "author": item.author,
+                "url": item.url,
+                "source_key": item.source_key,
+                "content_date": item.content_date.isoformat() if item.content_date else "",
+                "content_md": item.content_md,
+            }
+        )
+
+    if config.max_items > 0:
+        result = result[: config.max_items]
+
+    return result
+
+
 @dg.op(out=dg.DynamicOut())
-def fan_out_chunk_batches(context: dg.OpExecutionContext, items: list[dict]):
+def fan_out_batches(context: dg.OpExecutionContext, items: list[dict]):
     """Split items into batches and yield as DynamicOutputs."""
     if not items:
-        context.log.info("No items to chunk.")
+        context.log.info("No items to process.")
         return
     for i in range(0, len(items), BATCH_SIZE):
         batch = items[i : i + BATCH_SIZE]
         yield dg.DynamicOutput(batch, mapping_key=f"batch_{i // BATCH_SIZE}")
 
 
-@dg.op(out=dg.DynamicOut())
-def fan_out_embed_batches(context: dg.OpExecutionContext, chunked_items: list[dict]):
-    """Split chunked items into batches for embedding."""
-    if not chunked_items:
-        context.log.info("No items to embed.")
-        return
-    for i in range(0, len(chunked_items), BATCH_SIZE):
-        batch = chunked_items[i : i + BATCH_SIZE]
-        yield dg.DynamicOutput(batch, mapping_key=f"batch_{i // BATCH_SIZE}")
-
-
 @dg.op
-def gather_chunk_ids(results: list[list[str]]) -> list[str]:
+def gather_ids(results: list[list[str]]) -> list[str]:
     """Flatten batch results into a list of content_ids."""
-    return [cid for batch in results for cid in batch]
-
-
-@dg.op
-def gather_embed_ids(results: list[list[str]]) -> list[str]:
-    """Flatten batch results."""
     return [cid for batch in results for cid in batch]
