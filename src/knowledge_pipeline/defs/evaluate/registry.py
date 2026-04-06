@@ -8,6 +8,8 @@ from __future__ import annotations
 EVAL_COMBOS: list[str] = [
     "baseline__cosine",
     "baseline__rerank",
+    "bge__cosine",
+    "bge__rerank",
 ]
 
 
