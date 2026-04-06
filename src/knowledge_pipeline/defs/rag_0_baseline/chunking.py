@@ -1,4 +1,4 @@
-# Graph asset: chunked_contents — fetch pending items, chunk in batches,
+# Graph asset: baseline_chunked — fetch pending items, chunk in batches,
 # write results to JSON files in the strategy's chunks directory.
 
 import dagster as dg
@@ -57,7 +57,7 @@ def fetch_pending(config: FetchConfig, raw_store: RawStoreResource) -> list[dict
     description="Chunk pending content and write to JSON files in strategy chunks directory",
     ins={"raw_store_snapshot": dg.AssetIn(key="raw_store_copy")},
 )
-def chunked_contents(raw_store_snapshot) -> list[str]:
+def baseline_chunked(raw_store_snapshot) -> list[str]:
     items = fetch_pending(raw_store_snapshot=raw_store_snapshot)
     batches = fan_out_chunk_batches(items)
     per_batch = batches.map(chunk_batch)

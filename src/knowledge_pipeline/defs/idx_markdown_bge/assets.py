@@ -32,6 +32,7 @@ bge_indexed = create_indexing_asset(
     embedding_model=_CFG["embedding_model"],
     group_name="idx_markdown_bge",
     deps=["bge_embedded"],
+    asset_name="bge_indexed",
 )
 
 __all__ = ["raw_store_copy", "bge_chunked", "bge_embedded", "bge_indexed"]

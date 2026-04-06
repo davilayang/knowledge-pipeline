@@ -1,10 +1,10 @@
 import dagster as dg
 
-from .assets import chunked_contents, embedded_contents, indexed_contents, raw_store_copy
+from .assets import baseline_chunked, baseline_embedded, baseline_indexed, raw_store_copy
 
 index_contents_job = dg.define_asset_job(
     name="rag_0_baseline",
-    selection=[raw_store_copy, chunked_contents, embedded_contents, indexed_contents],
+    selection=[raw_store_copy, baseline_chunked, baseline_embedded, baseline_indexed],
     description="Baseline index: markdown chunking + MiniLM embedding",
     config={
         "execution": {
@@ -24,7 +24,7 @@ daily_index_schedule = dg.ScheduleDefinition(
 )
 
 defs = dg.Definitions(
-    assets=[raw_store_copy, chunked_contents, embedded_contents, indexed_contents],
+    assets=[raw_store_copy, baseline_chunked, baseline_embedded, baseline_indexed],
     jobs=[index_contents_job],
     schedules=[daily_index_schedule],
 )
