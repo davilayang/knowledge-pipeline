@@ -50,6 +50,10 @@ help = "Run backup job once from CLI"
 cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
+[tool.poe.tasks.reset-indices]
+cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
+help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
+
 ## Code QA ##
 
 [tool.poe.tasks.test]
