@@ -20,6 +20,19 @@ index_strategies:
     chunk_overlap: 100
     embedding_model: all-MiniLM-L6-v2
 
+  idx_recursive_minilm:
+    description: >
+      Recursive character splitting with MiniLM embeddings. Uses
+      RecursiveCharacterTextSplitter which tries larger separators first
+      (\n\n, \n, space) before falling back to smaller ones. Tests whether
+      simple recursive splitting performs comparably to markdown-aware
+      splitting — fewer assumptions about document structure.
+    collection_name: recursive_minilm
+    chunking: recursive
+    chunk_size: 800
+    chunk_overlap: 100
+    embedding_model: all-MiniLM-L6-v2
+
   idx_markdown_bge:
     description: >
       Same markdown chunking as baseline but with an upgraded embedding model.
@@ -69,5 +82,7 @@ retrieval_strategies:
 eval_combos:
   - baseline__cosine
   - baseline__rerank
+  - recursive_minilm__cosine
+  - recursive_minilm__rerank
   - bge__cosine
   - bge__rerank
