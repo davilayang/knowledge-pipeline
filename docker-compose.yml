@@ -1,18 +1,15 @@
 # Dagster server infrastructure for knowledge-pipeline.
 #
 # Usage:
-#   docker compose up
+#   docker compose up --build
 #   docker compose down --volumes
 #
 # UI:  http://localhost:3000
 #
-# NOTE: Code is loaded at container startup. Local code changes require a restart:
-#   docker compose restart dagster-code
+# After code changes, rebuild and restart the code server:
+#   docker compose up --build dagster-code
 #
-# Unlike Prefect workers, Dagster does not hot-reload code in a running process.
-# Options to improve this later:
-#   1. Use Dagster+ (cloud) which supports code location redeployment via CI.
-#   2. For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
+# For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
 
 services:
   postgres:
@@ -28,26 +25,29 @@ services:
       interval: 5s
       timeout: 5s
       retries: 5
+    networks:
+      - dagster_network
     restart: unless-stopped
 
   dagster-code:
-    image: python:3.13-slim
-    volumes:
-      - .:/app
-      - code_venv:/app/.docker-venv
-    working_dir: /app
+    build:
+      context: .
+      dockerfile: docker/code/Dockerfile
+    image: knowledge_pipeline_code
     environment:
-      UV_PROJECT_ENVIRONMENT: /app/.docker-venv
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        pip install uv --quiet &&
-        uv sync --frozen --quiet &&
-        uv run dagster code-server start -h 0.0.0.0 -p 4000 -m knowledge_pipeline.definitions
+      DAGSTER_POSTGRES_USER: ${DAGSTER_PG_USERNAME}
+      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      DAGSTER_POSTGRES_DB: ${DAGSTER_PG_DB}
+      DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
+    volumes:
+      - ./data:/app/data
+      - ./datasets:/app/datasets
     ports:
       - "4000:4000"
+    networks:
+      - dagster_network
     healthcheck:
-      test: ["CMD-SHELL", "/app/.docker-venv/bin/dagster api grpc-health-check -p 4000"]
+      test: ["CMD", "dagster", "api", "grpc-health-check", "-p", "4000"]
       timeout: 1s
       interval: 5s
       retries: 20
@@ -55,55 +55,62 @@ services:
     restart: on-failure
 
   dagster-webserver:
-    image: python:3.13-slim
+    build:
+      context: .
+      dockerfile: docker/dagster/Dockerfile
+    entrypoint:
+      - dagster-webserver
+      - -h
+      - "0.0.0.0"
+      - -p
+      - "3000"
+      - -w
+      - /opt/dagster/home/workspace.yaml
     depends_on:
       postgres:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
     environment:
-      DAGSTER_HOME: /opt/dagster/home
-      DAGSTER_PG_HOST: ${DAGSTER_PG_HOST}
+      DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
       DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
       DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
-    volumes:
-      - ./configs/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
-      - ./configs/workspace.yaml:/opt/dagster/home/workspace.yaml:ro
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        pip install dagster dagster-webserver dagster-postgres --quiet &&
-        dagster-webserver -h 0.0.0.0 -p 3000 -w /opt/dagster/home/workspace.yaml
     ports:
       - "${APP_HOST:-127.0.0.1}:3000:3000"
+    networks:
+      - dagster_network
     restart: unless-stopped
 
   dagster-daemon:
-    image: python:3.13-slim
+    build:
+      context: .
+      dockerfile: docker/dagster/Dockerfile
+    entrypoint:
+      - dagster-daemon
+      - run
+      - -w
+      - /opt/dagster/home/workspace.yaml
     depends_on:
       postgres:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
     environment:
-      DAGSTER_HOME: /opt/dagster/home
-      DAGSTER_PG_HOST: ${DAGSTER_PG_HOST}
+      DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
       DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
       DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
-    volumes:
-      - ./configs/dagster.yaml:/opt/dagster/home/dagster.yaml:ro
-      - ./configs/workspace.yaml:/opt/dagster/home/workspace.yaml:ro
-    entrypoint: ["/bin/bash", "-c"]
-    command:
-      - |
-        pip install dagster dagster-postgres --quiet &&
-        dagster-daemon run -w /opt/dagster/home/workspace.yaml
+    networks:
+      - dagster_network
     restart: on-failure
+
+networks:
+  dagster_network:
+    driver: bridge
+    name: dagster_network
 
 volumes:
   dagster_postgres:
-  code_venv:
