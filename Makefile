@@ -5,6 +5,20 @@
 dev:  ## Launch Dagster UI at localhost:3000
 	pkill -f dagster && uv run poe dev
 
+# --- Docker Compose ---
+
+build:  ## Build Docker images
+	docker compose build
+
+up:  ## Start Dagster cluster (Postgres, code server, webserver, daemon)
+	docker compose up -d --build
+
+down:  ## Stop and remove containers
+	docker compose down
+
+logs:  ## Tail logs from all services
+	docker compose logs -f
+
 # --- Helpers ---
 
 .PHONY: help

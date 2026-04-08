@@ -12,6 +12,10 @@ storage:
       db_name:
         env: DAGSTER_PG_DB
 
+concurrency:
+  runs:
+    max_concurrent_runs: 5
+
 run_launcher:
   module: dagster.core.launcher
   class: DefaultRunLauncher

@@ -56,6 +56,12 @@ help = "Run evaluation across RAG strategies"
 cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
 help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
 
+## Deploy ##
+
+[tool.poe.tasks.deploy]
+cmd = "./scripts/deploy-hcloud.sh deploy"
+help = "Deploy to Hetzner: pull latest, rebuild & restart"
+
 ## Code QA ##
 
 [tool.poe.tasks.test]
