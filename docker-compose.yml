@@ -47,7 +47,7 @@ services:
     networks:
       - dagster_network
     healthcheck:
-      test: ["CMD", "dagster", "api", "grpc-health-check", "-p", "4000"]
+      test: ["CMD", "/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
       timeout: 1s
       interval: 5s
       retries: 20
