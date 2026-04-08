@@ -2,11 +2,11 @@
 
 import dagster as dg
 
-from knowledge_pipeline.defs import shared
+from knowledge_pipeline.defs.shared import shared_resources
 
 from . import backup_databases
 
 defs = dg.Definitions.merge(
-    shared.defs,
+    dg.Definitions(resources=shared_resources),
     backup_databases.defs,
 )
