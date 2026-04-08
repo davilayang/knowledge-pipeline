@@ -62,6 +62,26 @@ help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to r
 cmd = "./scripts/deploy-hcloud.sh deploy"
 help = "Deploy to Hetzner: pull latest, rebuild & restart"
 
+## Tunnel ##
+
+[tool.poe.tasks.tunnel]
+shell = """
+  if [ "${target}" = "dagster" ] || [ "${target}" = "all" ]; then
+    echo "Dagster UI: http://localhost:3000"
+    ssh -L 3000:127.0.0.1:3000 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
+
+  else
+    echo "Usage: uv run poe tunnel <dagster|all>"
+    exit 1
+  fi
+"""
+envfile = ".env.deploy"
+help = "SSH tunnel to remote services (dagster or all)"
+
+[tool.poe.tasks.tunnel.args.target]
+positional = true
+default = "all"
+
 ## Code QA ##
 
 [tool.poe.tasks.test]

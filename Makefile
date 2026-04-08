@@ -1,6 +1,6 @@
 # --- Dagster dev ---
 
-.PHONY: dev build up down logs
+.PHONY: dev build up down logs tunnel
 
 dev:  ## Launch Dagster UI at localhost:3000
 	-pkill -f dagster; uv run poe dev
@@ -18,6 +18,9 @@ down:  ## Stop and remove containers
 
 logs:  ## Tail logs from all services
 	docker compose logs -f
+
+tunnel:  ## SSH tunnel to remote services (dagster or all)
+	uv run poe tunnel $(or $(target),all)
 
 # --- Helpers ---
 
