@@ -37,19 +37,19 @@ code_location_name = "knowledge_pipeline"
 ## Dagster ##
 
 [tool.poe.tasks.dev]
-cmd = "dagster dev --port 3000"
+cmd = "dagster dev --port 3000 -m knowledge_pipeline.defs.workbench.definitions -m knowledge_pipeline.defs.pipelines.definitions"
 help = "Launch Dagster UI at localhost:3000"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j idx_markdown_minilm"
+cmd = "dagster job execute -m knowledge_pipeline.defs.workbench.definitions -j idx_markdown_minilm"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j backup_databases_job"
+cmd = "dagster job execute -m knowledge_pipeline.defs.pipelines.definitions -j backup_databases_job"
 help = "Run backup job once from CLI"
 
 [tool.poe.tasks.eval]
-cmd = "dagster job execute -m knowledge_pipeline.definitions -j evaluate_retrieval_strategies"
+cmd = "dagster job execute -m knowledge_pipeline.defs.workbench.definitions -j evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
 [tool.poe.tasks.reset-indices]

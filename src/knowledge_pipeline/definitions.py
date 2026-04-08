@@ -4,20 +4,22 @@
 
 import dagster as dg
 
-from knowledge_pipeline.defs import (
-    backup_databases,
+from knowledge_pipeline.defs import shared
+from knowledge_pipeline.defs.pipelines import backup_databases
+from knowledge_pipeline.defs.workbench import (
     evaluate,
     idx_markdown_bge,
     idx_markdown_minilm,
     idx_recursive_minilm,
-    shared,
 )
 
 defs = dg.Definitions.merge(
     shared.defs,
+    # workbench (manually triggered)
     idx_markdown_minilm.defs,
     idx_markdown_bge.defs,
     idx_recursive_minilm.defs,
-    backup_databases.defs,
     evaluate.defs,
+    # pipelines (scheduled)
+    backup_databases.defs,
 )
