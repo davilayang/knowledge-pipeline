@@ -19,6 +19,10 @@ eval_combos:
   - bge__rerank
   - bge__hybrid
   - bge__rerank_hybrid
+  - semantic_minilm__cosine
+  - semantic_minilm__rerank
+  - semantic_minilm__hybrid
+  - semantic_minilm__rerank_hybrid
 
 # ---------------------------------------------------------------------------
 # Index strategies — how content is chunked, embedded, and stored.
@@ -50,6 +54,20 @@ index_strategies:
     chunking: recursive
     chunk_size: 800
     chunk_overlap: 100
+    embedding_model: all-MiniLM-L6-v2
+
+  idx_semantic_minilm:
+    description: >
+      Semantic chunking with MiniLM embeddings. Embeds each sentence, then
+      splits where cosine similarity between consecutive sentences drops
+      (percentile threshold at 80%). Chunks align with natural topic
+      boundaries rather than heading or character boundaries. Oversized
+      semantic chunks are split with a recursive character fallback.
+      Tests whether meaning-aware split points improve retrieval quality.
+    collection_name: semantic_minilm
+    chunking: semantic
+    chunk_size: 800
+    chunk_overlap: 0
     embedding_model: all-MiniLM-L6-v2
 
   idx_markdown_bge:
