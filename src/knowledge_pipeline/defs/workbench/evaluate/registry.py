@@ -8,6 +8,19 @@ from knowledge_pipeline.lib.utils import get_eval_combos
 EVAL_COMBOS: list[str] = get_eval_combos()
 
 
+def get_combos_by_collection() -> dict[str, list[tuple[str, str]]]:
+    """Group eval combos by collection name.
+
+    Returns:
+        {"baseline": [("baseline", "cosine"), ("baseline", "rerank"), ...], ...}
+    """
+    grouped: dict[str, list[tuple[str, str]]] = {}
+    for combo in EVAL_COMBOS:
+        coll, strat = parse_combo(combo)
+        grouped.setdefault(coll, []).append((coll, strat))
+    return grouped
+
+
 def parse_combo(combo: str) -> tuple[str, str]:
     """Parse a combo string into (collection_name, strategy_spec).
 
