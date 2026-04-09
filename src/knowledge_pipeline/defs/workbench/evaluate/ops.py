@@ -16,7 +16,7 @@ from knowledge_pipeline.lib.utils import get_embedding_model_for_collection, has
 from knowledge_pipeline.lib.vector_store import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
-from .registry import EVAL_COMBOS, parse_combo
+from .registry import EVAL_COMBOS, get_combos_by_collection, parse_combo
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +87,7 @@ def create_eval_op(collection_name: str, strategy_spec: str) -> dg.OpDefinition:
     """Factory: create an eval op for a single (collection, strategy) combo."""
 
     @dg.op(
-        name=f"evaluate_{collection_name}__{strategy_spec}",
+        name=f"retrieval__{strategy_spec}_of_{collection_name}",
         description=(
             f"Run eval queries against '{collection_name}' "
             f"with '{strategy_spec}' retrieval strategy"
@@ -168,8 +168,37 @@ def create_eval_op(collection_name: str, strategy_spec: str) -> dg.OpDefinition:
     return _eval
 
 
-# Generate one eval op per (collection, strategy) combo
-eval_ops = [create_eval_op(coll, strat) for coll, strat in (parse_combo(c) for c in EVAL_COMBOS)]
+# ---------------------------------------------------------------------------
+# Per-collection sub-graphs
+# ---------------------------------------------------------------------------
+
+
+def create_collection_eval_graph(
+    collection_name: str,
+    combos: list[tuple[str, str]],
+) -> dg.GraphDefinition:
+    """Create a sub-graph that runs all eval ops for one collection."""
+    ops_for_collection = [create_eval_op(coll, strat) for coll, strat in combos]
+
+    @dg.op(
+        name=f"gather__{collection_name}",
+        description=f"Collect eval results for {collection_name}",
+    )
+    def gather(results: list[dict]) -> list[dict]:
+        return results
+
+    @dg.graph(name=f"indexing__{collection_name}")
+    def _collection_graph(ready: dg.Nothing) -> list[dict]:
+        results = [op(ready) for op in ops_for_collection]
+        return gather(results)
+
+    return _collection_graph
+
+
+collection_graphs = {
+    coll: create_collection_eval_graph(coll, combos)
+    for coll, combos in get_combos_by_collection().items()
+}
 
 
 # ---------------------------------------------------------------------------
@@ -178,8 +207,16 @@ eval_ops = [create_eval_op(coll, strat) for coll, strat in (parse_combo(c) for c
 
 
 @dg.op(description="Aggregate per-combo eval results into a comparison report")
-def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dict]) -> dict:
+def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list) -> dict:
     """Compute overall and per-category metrics from raw query results."""
+    # Flatten: sub-graphs return list[dict], so input may be list[list[dict]]
+    flat: list[dict] = []
+    for item in eval_run_results:
+        if isinstance(item, list):
+            flat.extend(item)
+        else:
+            flat.append(item)
+
     report = {
         "query_set_version": QUERY_SET_VERSION,
         "timestamp": datetime.now(tz=UTC).isoformat(),
@@ -187,7 +224,7 @@ def aggregate_results(context: dg.OpExecutionContext, eval_run_results: list[dic
         "combos": {},
     }
 
-    for result in eval_run_results:
+    for result in flat:
         coll_name = result["collection"]
         strat_name = result["strategy"]
         combo_key = f"{coll_name}__{strat_name}"
@@ -328,10 +365,12 @@ def _build_markdown(report: dict) -> str:
 
 @dg.graph()
 def eval_graph():
-    """Graph: preflight -> eval each (collection, strategy) combo -> aggregate -> write report."""
+    """Graph: preflight -> per-collection sub-graphs -> aggregate -> write report."""
     ready = eval_preflight_check()
-    results = [op(ready) for op in eval_ops]
-    report = aggregate_results(eval_run_results=results)
+    all_results = []
+    for graph in collection_graphs.values():
+        all_results.append(graph(ready))
+    report = aggregate_results(eval_run_results=all_results)
     write_report(report)
 
 
