@@ -17,6 +17,7 @@ _STRATEGY_BUILDERS: dict[str, Callable[[chromadb.Collection], RetrievalStrategy]
     "cosine": lambda col: CosineRetrieval(col),
     "rerank": lambda col: RerankRetrieval(CosineRetrieval(col)),
     "hybrid": lambda col: HybridRetrieval(col),
+    "rerank_hybrid": lambda col: RerankRetrieval(HybridRetrieval(col)),
 }
 
 

@@ -2,6 +2,25 @@
 # Single source of truth for index strategies, retrieval strategies, and eval combos.
 
 # ---------------------------------------------------------------------------
+# Eval combos — which (collection x retrieval) pairs to evaluate.
+# Format: "collection_name__retrieval_strategy"
+# ---------------------------------------------------------------------------
+
+eval_combos:
+  - baseline__cosine
+  - baseline__rerank
+  - baseline__hybrid
+  - baseline__rerank_hybrid
+  - recursive_minilm__cosine
+  - recursive_minilm__rerank
+  - recursive_minilm__hybrid
+  - recursive_minilm__rerank_hybrid
+  - bge__cosine
+  - bge__rerank
+  - bge__hybrid
+  - bge__rerank_hybrid
+
+# ---------------------------------------------------------------------------
 # Index strategies — how content is chunked, embedded, and stored.
 # Format: idx_{chunking}_{embedding}
 # ---------------------------------------------------------------------------
@@ -77,22 +96,17 @@ retrieval_strategies:
     candidate_factor: 4
     rrf_k: 60
 
+  rerank_hybrid:
+    description: >
+      Three-stage retrieval. First runs hybrid (BM25 + vector + RRF) to produce
+      candidates with both keyword and semantic signal, then reranks with a
+      cross-encoder. Combines hybrid's keyword precision with rerank's semantic
+      reordering. Expected to fix hybrid's cross-topic regression while keeping
+      its strength on exact-term and buried-fact queries.
+    model: cross-encoder/ms-marco-MiniLM-L-6-v2
+    candidate_factor: 4
+    rrf_k: 60
+
   # Future:
   # hyde:
   #   description: Generate hypothetical answer with LLM, embed that instead of the query.
-
-# ---------------------------------------------------------------------------
-# Eval combos — which (collection x retrieval) pairs to evaluate.
-# Format: "collection_name__retrieval_strategy"
-# ---------------------------------------------------------------------------
-
-eval_combos:
-  - baseline__cosine
-  - baseline__rerank
-  - recursive_minilm__cosine
-  - recursive_minilm__rerank
-  - bge__cosine
-  - bge__rerank
-  - baseline__hybrid
-  - recursive_minilm__hybrid
-  - bge__hybrid
