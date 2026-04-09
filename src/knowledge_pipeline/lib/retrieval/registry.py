@@ -7,6 +7,7 @@ from collections.abc import Callable
 import chromadb
 
 from .cosine import CosineRetrieval
+from .hybrid import HybridRetrieval
 from .protocol import RetrievalStrategy
 from .rerank import RerankRetrieval
 
@@ -15,6 +16,7 @@ from .rerank import RerankRetrieval
 _STRATEGY_BUILDERS: dict[str, Callable[[chromadb.Collection], RetrievalStrategy]] = {
     "cosine": lambda col: CosineRetrieval(col),
     "rerank": lambda col: RerankRetrieval(CosineRetrieval(col)),
+    "hybrid": lambda col: HybridRetrieval(col),
 }
 
 

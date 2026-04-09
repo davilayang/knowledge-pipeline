@@ -68,9 +68,16 @@ retrieval_strategies:
     model: cross-encoder/ms-marco-MiniLM-L-6-v2
     candidate_factor: 4
 
+  hybrid:
+    description: >
+      Two-source retrieval. Runs BM25 sparse search and dense vector search in
+      parallel, then merges via Reciprocal Rank Fusion (RRF). BM25 catches
+      exact keyword matches that embedding-only search misses. The BM25 corpus
+      is built lazily from the ChromaDB collection's stored documents.
+    candidate_factor: 4
+    rrf_k: 60
+
   # Future:
-  # hybrid:
-  #   description: BM25 + vector + Reciprocal Rank Fusion. Catches exact keyword matches that vector search misses.
   # hyde:
   #   description: Generate hypothetical answer with LLM, embed that instead of the query.
 
@@ -86,3 +93,6 @@ eval_combos:
   - recursive_minilm__rerank
   - bge__cosine
   - bge__rerank
+  - baseline__hybrid
+  - recursive_minilm__hybrid
+  - bge__hybrid
