@@ -3,6 +3,8 @@
 
 from __future__ import annotations
 
+import re
+
 import chromadb
 from rank_bm25 import BM25Okapi
 
@@ -46,7 +48,7 @@ class HybridRetrieval:
         self._corpus_docs = result["documents"] or []
         self._corpus_metas = result["metadatas"] or []
 
-        tokenized = [doc.lower().split() for doc in self._corpus_docs]
+        tokenized = [re.findall(r"\w+", doc.lower()) for doc in self._corpus_docs]
         self._bm25 = BM25Okapi(tokenized)
 
     def _get_bm25(self) -> BM25Okapi:
@@ -76,7 +78,7 @@ class HybridRetrieval:
 
         # --- Sparse retrieval (BM25) ---
         bm25 = self._get_bm25()
-        tokenized_query = query.lower().split()
+        tokenized_query = re.findall(r"\w+", query.lower())
         bm25_scores = bm25.get_scores(tokenized_query)
 
         # Rank all docs by BM25 score, take top n_candidates
