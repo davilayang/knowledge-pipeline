@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.2.0] — 2026-04-20
+
+### Added
+
+- **LLM client** — `lib/llm.py` with LangChain wrapper (`generate`, `generate_structured`) for provider-agnostic LLM calls with Pydantic-validated structured output
+- **Wiki config** — `wiki` section in `strategies.yaml` (synthesis model, page types, collection name, embedding model)
+- **`langchain-openai`** dependency (replaces direct `openai` SDK)
+- **CHANGELOG.md** — initial changelog covering project history
+
+---
+
 ## [0.1.0] — 2026-04-20
 
 Initial baseline. Dagster-based RAG strategy workbench with evaluation harness.
