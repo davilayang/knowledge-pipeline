@@ -4,6 +4,7 @@ ai-findings/
 ai-plannings/
 
 .claude/
+.wolf/
 creds
 *.pem
 .zed
