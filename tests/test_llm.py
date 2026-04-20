@@ -1,67 +1,88 @@
 from unittest.mock import MagicMock, patch
 
-import pytest
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
+from pydantic import BaseModel
 
-from knowledge_pipeline.lib.llm import generate, generate_json
-
-
-@pytest.fixture
-def mock_openai():
-    """Mock OpenAI client with a canned response."""
-    mock_choice = MagicMock()
-    mock_choice.message.content = "Hello from the mock LLM"
-
-    mock_response = MagicMock()
-    mock_response.choices = [mock_choice]
-
-    mock_client = MagicMock()
-    mock_client.chat.completions.create.return_value = mock_response
-
-    with patch("knowledge_pipeline.lib.llm._get_client", return_value=mock_client):
-        yield mock_client
+from knowledge_pipeline.lib.llm import generate, generate_structured
 
 
-def test_generate_basic(mock_openai):
+@patch("knowledge_pipeline.lib.llm.get_llm")
+def test_generate_basic(mock_get_llm):
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="Hello from the mock LLM")
+    mock_get_llm.return_value = mock_llm
+
     result = generate("What is RAG?")
 
     assert result == "Hello from the mock LLM"
-    mock_openai.chat.completions.create.assert_called_once()
-    call_kwargs = mock_openai.chat.completions.create.call_args
-    messages = call_kwargs.kwargs["messages"]
+    mock_llm.invoke.assert_called_once()
+    messages = mock_llm.invoke.call_args[0][0]
     assert len(messages) == 1
-    assert messages[0]["role"] == "user"
-    assert messages[0]["content"] == "What is RAG?"
+    assert isinstance(messages[0], HumanMessage)
+    assert messages[0].content == "What is RAG?"
 
 
-def test_generate_with_system(mock_openai):
-    result = generate("What is RAG?", system="You are a helpful assistant.")
+@patch("knowledge_pipeline.lib.llm.get_llm")
+def test_generate_with_system(mock_get_llm):
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="Hello")
+    mock_get_llm.return_value = mock_llm
 
-    assert result == "Hello from the mock LLM"
-    call_kwargs = mock_openai.chat.completions.create.call_args
-    messages = call_kwargs.kwargs["messages"]
+    generate("What is RAG?", system="You are a helpful assistant.")
+
+    messages = mock_llm.invoke.call_args[0][0]
     assert len(messages) == 2
-    assert messages[0]["role"] == "system"
-    assert messages[1]["role"] == "user"
+    assert isinstance(messages[0], SystemMessage)
+    assert isinstance(messages[1], HumanMessage)
 
 
-def test_generate_custom_model(mock_openai):
+@patch("knowledge_pipeline.lib.llm.get_llm")
+def test_generate_custom_model(mock_get_llm):
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = AIMessage(content="Hello")
+    mock_get_llm.return_value = mock_llm
+
     generate("Hello", model="gpt-4.1-nano")
 
-    call_kwargs = mock_openai.chat.completions.create.call_args
-    assert call_kwargs.kwargs["model"] == "gpt-4.1-nano"
+    mock_get_llm.assert_called_once_with("gpt-4.1-nano")
 
 
-def test_generate_json_sets_response_format(mock_openai):
-    mock_openai.chat.completions.create.return_value.choices[0].message.content = '{"key": "value"}'
+@patch("knowledge_pipeline.lib.llm.get_llm")
+def test_generate_structured_returns_pydantic_model(mock_get_llm):
+    class Entity(BaseModel):
+        name: str
+        category: str
 
-    result = generate_json("Return JSON", system="Respond in JSON.")
+    expected = Entity(name="RAG", category="concept")
 
-    assert result == '{"key": "value"}'
-    call_kwargs = mock_openai.chat.completions.create.call_args
-    assert call_kwargs.kwargs["response_format"] == {"type": "json_object"}
+    mock_llm = MagicMock()
+    mock_structured_llm = MagicMock()
+    mock_structured_llm.invoke.return_value = expected
+    mock_llm.with_structured_output.return_value = mock_structured_llm
+    mock_get_llm.return_value = mock_llm
+
+    result = generate_structured("Extract entity", schema=Entity)
+
+    assert isinstance(result, Entity)
+    assert result.name == "RAG"
+    assert result.category == "concept"
+    mock_llm.with_structured_output.assert_called_once_with(Entity)
 
 
-def test_generate_missing_api_key():
-    with patch.dict("os.environ", {}, clear=True):
-        with pytest.raises(RuntimeError, match="OPENAI_API_KEY"):
-            generate("test")
+@patch("knowledge_pipeline.lib.llm.get_llm")
+def test_generate_structured_with_system(mock_get_llm):
+    class Info(BaseModel):
+        value: str
+
+    mock_llm = MagicMock()
+    mock_structured_llm = MagicMock()
+    mock_structured_llm.invoke.return_value = Info(value="test")
+    mock_llm.with_structured_output.return_value = mock_structured_llm
+    mock_get_llm.return_value = mock_llm
+
+    generate_structured("Extract", schema=Info, system="Be precise.")
+
+    messages = mock_structured_llm.invoke.call_args[0][0]
+    assert len(messages) == 2
+    assert isinstance(messages[0], SystemMessage)
+    assert isinstance(messages[1], HumanMessage)

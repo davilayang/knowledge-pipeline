@@ -1,18 +1,20 @@
-# Thin wrapper around OpenAI chat completions.
+# Thin wrapper around LangChain chat models.
 
-import os
-
-from openai import OpenAI
+from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_openai import ChatOpenAI
+from pydantic import BaseModel
 
 _DEFAULT_MODEL = "gpt-4.1-mini"
 
 
-def _get_client() -> OpenAI:
-    """Create an OpenAI client from environment."""
-    api_key = os.environ.get("OPENAI_API_KEY")
-    if not api_key:
-        raise RuntimeError("OPENAI_API_KEY environment variable is not set")
-    return OpenAI(api_key=api_key)
+def get_llm(model: str = _DEFAULT_MODEL) -> BaseChatModel:
+    """Create a LangChain chat model instance.
+
+    Reads OPENAI_API_KEY from environment automatically.
+    To switch providers later, swap ChatOpenAI for ChatAnthropic etc.
+    """
+    return ChatOpenAI(model=model)
 
 
 def generate(
@@ -21,55 +23,40 @@ def generate(
     system: str = "",
     model: str = _DEFAULT_MODEL,
 ) -> str:
-    """Generate a chat completion and return the assistant's text response.
+    """Generate a chat completion and return the assistant's text response."""
+    llm = get_llm(model)
+    messages = []
+    if system:
+        messages.append(SystemMessage(content=system))
+    messages.append(HumanMessage(content=prompt))
+
+    response = llm.invoke(messages)
+    return response.content
+
+
+def generate_structured[
+    T: BaseModel
+](prompt: str, *, schema: type[T], system: str = "", model: str = _DEFAULT_MODEL,) -> T:
+    """Generate a structured response validated against a Pydantic model.
+
+    Uses LangChain's with_structured_output() for provider-native structured
+    output when available, with tool-calling fallback.
 
     Args:
         prompt: The user message.
+        schema: A Pydantic BaseModel class defining the expected output shape.
         system: Optional system message.
         model: Model identifier (default: gpt-4.1-mini).
 
     Returns:
-        The assistant's response text.
+        An instance of the schema class, validated by Pydantic.
     """
-    client = _get_client()
+    llm = get_llm(model)
+    structured_llm = llm.with_structured_output(schema)
 
     messages = []
     if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
+        messages.append(SystemMessage(content=system))
+    messages.append(HumanMessage(content=prompt))
 
-    response = client.chat.completions.create(model=model, messages=messages)
-    return response.choices[0].message.content
-
-
-def generate_json(
-    prompt: str,
-    *,
-    system: str = "",
-    model: str = _DEFAULT_MODEL,
-) -> str:
-    """Generate a chat completion with JSON response format.
-
-    Returns the raw JSON string — caller is responsible for parsing.
-
-    Args:
-        prompt: The user message (should instruct the model to produce JSON).
-        system: Optional system message.
-        model: Model identifier (default: gpt-4.1-mini).
-
-    Returns:
-        The assistant's JSON response as a string.
-    """
-    client = _get_client()
-
-    messages = []
-    if system:
-        messages.append({"role": "system", "content": system})
-    messages.append({"role": "user", "content": prompt})
-
-    response = client.chat.completions.create(
-        model=model,
-        messages=messages,
-        response_format={"type": "json_object"},
-    )
-    return response.choices[0].message.content
+    return structured_llm.invoke(messages)

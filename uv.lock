@@ -1141,8 +1141,8 @@ dependencies = [
     { name = "dagster" },
     { name = "dagster-webserver" },
     { name = "langchain-experimental" },
+    { name = "langchain-openai" },
     { name = "langchain-text-splitters" },
-    { name = "openai" },
     { name = "poethepoet" },
     { name = "pyyaml" },
     { name = "rank-bm25" },
@@ -1163,8 +1163,8 @@ requires-dist = [
     { name = "dagster", specifier = ">=1.12,<2.0" },
     { name = "dagster-webserver", specifier = ">=1.12,<2.0" },
     { name = "langchain-experimental", specifier = ">=0.3,<1.0" },
+    { name = "langchain-openai", specifier = ">=0.3,<1.0" },
     { name = "langchain-text-splitters", specifier = ">=1.1,<2.0" },
-    { name = "openai", specifier = ">=1.0,<2.0" },
     { name = "poethepoet", specifier = ">=0.42,<1.0" },
     { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "rank-bm25", specifier = ">=0.2,<1.0" },
@@ -1270,6 +1270,20 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/a2/ec/6fe7b2e3c105b4f4fc6b943d8fc1b5b10f883429edc36c58a09fc2e28419/langchain_experimental-0.4.1.tar.gz", hash = "sha256:ab6b19a0b98fbc15225fbfcf096176fec339b7e3e930bcf328bb717985fc1da5", size = 170449, upload-time = "2025-12-11T05:30:48.455Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/24/fa/fb2c8b6418e1c9ef50c82b3b6e0184bce321582577240bb4b8ed3274a4aa/langchain_experimental-0.4.1-py3-none-any.whl", hash = "sha256:b6ee2f42b50aaadb45e581439ecf5ee50f3a6a0986d52e74d1e64721309e387d", size = 210096, upload-time = "2025-12-11T05:30:47.234Z" },
+]
+
+[[package]]
+name = "langchain-openai"
+version = "0.3.34"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "langchain-core" },
+    { name = "openai" },
+    { name = "tiktoken" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/75/23/91461c6c2b1c8ceeadd6fefe453a03b1537afeff4ace3c118d7e7659f5a7/langchain_openai-0.3.34.tar.gz", hash = "sha256:57916d462be5b8fd19e5cb2f00d4e5cf0465266a292d583de2fc693a55ba190e", size = 785924, upload-time = "2025-10-01T15:18:40.635Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/66/94/132aff5a1ed4ebfe7b4d3e4dbf30b9f70ce2bd2ac3470d0c0e742845afb1/langchain_openai-0.3.34-py3-none-any.whl", hash = "sha256:08d61d68a6d869c70d542171e149b9065668dedfc4fafcd4de8aeb5b933030a9", size = 75605, upload-time = "2025-10-01T15:18:39.415Z" },
 ]
 
 [[package]]
