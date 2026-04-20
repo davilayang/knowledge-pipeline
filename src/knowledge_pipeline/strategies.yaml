@@ -128,3 +128,14 @@ retrieval_strategies:
   # Future:
   # hyde:
   #   description: Generate hypothetical answer with LLM, embed that instead of the query.
+
+# ---------------------------------------------------------------------------
+# Wiki — synthesized knowledge layer configuration.
+# ---------------------------------------------------------------------------
+
+wiki:
+  synthesis_model: gpt-4.1-mini
+  page_types: [concept, tool, trend, overview]
+  wiki_dir: data/wiki
+  collection_name: wiki
+  embedding_model: all-MiniLM-L6-v2
