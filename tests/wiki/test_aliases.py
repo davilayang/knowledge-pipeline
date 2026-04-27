@@ -78,3 +78,13 @@ def test_add_updates_existing():
 
     assert store.lookup("FM") == "concept__llm"
     assert store.entries["concept__llm"].canonical == "LLM"
+
+
+def test_save_atomic_no_tmp_left(tmp_path: Path):
+    """save_aliases should not leave .tmp files behind."""
+    store = _make_store()
+    path = tmp_path / "aliases.yaml"
+    save_aliases(path, store)
+
+    assert path.exists()
+    assert not path.with_suffix(".tmp").exists()

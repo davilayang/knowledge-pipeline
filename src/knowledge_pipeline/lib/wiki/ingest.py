@@ -55,7 +55,7 @@ def ingest_article(
     staged_aliases = _stage_alias_updates(alias_store, extraction)
 
     # --- Call 2: Page synthesis (1 call per page) ---
-    pages_touched = []
+    synthesized_pages: list[tuple[WikiPage, Path]] = []
     for entity in extraction.entities:
         page_path = wiki_dir / entity.page_type / f"{_slug_from_id(entity.entity_id)}.md"
         is_update = page_path.exists()
@@ -84,20 +84,28 @@ def ingest_article(
 
         # Atomic write
         write_page(page_path, new_page)
+        synthesized_pages.append((new_page, page_path))
 
-        # Update state DB catalog
-        state_db.upsert_page(
-            entity_id=new_page.entity_id,
-            page_type=new_page.page_type,
-            file_path=str(page_path.relative_to(wiki_dir)),
-            updated_at=new_page.updated_at.isoformat(),
-            related=new_page.related,
+    # Atomically update state DB: mark_processed + upsert all pages in one transaction
+    pages_touched = [p.entity_id for p, _ in synthesized_pages]
+    if synthesized_pages:
+        page_tuples = [
+            (
+                page.entity_id,
+                page.page_type,
+                str(path.relative_to(wiki_dir)),
+                page.updated_at.isoformat(),
+                page.related,
+            )
+            for page, path in synthesized_pages
+        ]
+        state_db.mark_processed_with_pages(
+            item_id=item.item_id,
+            source_type=item.source_type,
+            status="done",
+            pages=page_tuples,
         )
 
-        pages_touched.append(entity.entity_id)
-
-    # Only persist aliases after all page writes succeed
-    if pages_touched:
         _apply_staged_aliases(alias_store, staged_aliases)
         save_aliases(aliases_path, alias_store)
 
@@ -183,10 +191,18 @@ def _parse_llm_page_output(
             try:
                 meta = yaml.safe_load(yaml_str)
                 if isinstance(meta, dict):
+                    # Validate: enforce expected entity_id (LLM may hallucinate)
+                    llm_entity_id = meta.get("entity_id", entity_id)
+                    if llm_entity_id != entity_id:
+                        logger.warning(
+                            "LLM returned entity_id '%s' but expected '%s', using expected",
+                            llm_entity_id,
+                            entity_id,
+                        )
                     return WikiPage(
-                        entity_id=meta.get("entity_id", entity_id),
+                        entity_id=entity_id,
                         title=meta.get("title", title),
-                        page_type=meta.get("page_type", page_type),
+                        page_type=page_type,
                         related=meta.get("related", related),
                         sources=meta.get("sources", [source_id]),
                         updated_at=date.today(),

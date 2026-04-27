@@ -84,7 +84,9 @@ def load_aliases(path: Path) -> AliasStore:
 
 
 def save_aliases(path: Path, store: AliasStore) -> None:
-    """Save aliases to a YAML file."""
+    """Save aliases to a YAML file. Uses atomic write (tmp + os.replace)."""
+    import os
+
     data = {}
     for entity_id, entry in store.entries.items():
         data[entity_id] = {
@@ -93,7 +95,9 @@ def save_aliases(path: Path, store: AliasStore) -> None:
         }
 
     path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(
+    tmp_path = path.with_suffix(".tmp")
+    tmp_path.write_text(
         yaml.dump(data, default_flow_style=False, sort_keys=True, allow_unicode=True),
         encoding="utf-8",
     )
+    os.replace(tmp_path, path)

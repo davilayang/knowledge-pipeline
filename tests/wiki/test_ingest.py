@@ -65,6 +65,33 @@ class TestParseLlmPageOutput:
         assert page.related == ["concept__llm"]
         assert page.sources == ["c1"]
 
+    def test_enforces_expected_entity_id(self):
+        """LLM may hallucinate a different entity_id; we enforce the expected one."""
+        raw = (
+            "---\n"
+            "entity_id: concept__wrong_id\n"
+            "title: RAG\n"
+            "page_type: concept\n"
+            "---\n"
+            "# RAG\n\nBody."
+        )
+        page = _parse_llm_page_output(raw, "concept__rag", "RAG", "concept", [], "c1")
+        assert page.entity_id == "concept__rag"
+        assert page.page_type == "concept"
+
+    def test_enforces_expected_page_type(self):
+        """LLM may return wrong page_type; we enforce the expected one."""
+        raw = (
+            "---\n"
+            "entity_id: concept__rag\n"
+            "title: RAG\n"
+            "page_type: tool\n"
+            "---\n"
+            "# RAG\n\nBody."
+        )
+        page = _parse_llm_page_output(raw, "concept__rag", "RAG", "concept", [], "c1")
+        assert page.page_type == "concept"
+
 
 class TestStageAliasUpdates:
     def test_stages_new_entities(self):
@@ -280,4 +307,47 @@ class TestIngestArticle:
         assert pages == ["tool__chromadb"]
         assert (wiki_dir / "tool" / "chromadb.md").exists()
         assert not (wiki_dir / "concept" / "rag.md").exists()
+
+        # Aliases should still be persisted (ChromaDB succeeded)
+        assert aliases_path.exists()
+        state_db.close()
+
+    def test_all_synthesis_fails_no_aliases_persisted(self, tmp_path: Path):
+        """If all page syntheses fail, aliases should NOT be persisted."""
+        wiki_dir = tmp_path / "wiki"
+        wiki_dir.mkdir()
+        aliases_path = tmp_path / "aliases.yaml"
+        state_db = WikiStateDB(tmp_path / "state.db")
+
+        mock_extraction = ExtractionResult(
+            entities=[
+                ExtractedEntity(
+                    entity_id="concept__rag",
+                    title="RAG",
+                    page_type="concept",
+                    is_new=True,
+                    aliases=["Retrieval-Augmented Generation"],
+                )
+            ]
+        )
+
+        with (
+            patch(
+                "knowledge_pipeline.lib.wiki.ingest.generate_structured",
+                return_value=mock_extraction,
+            ),
+            patch(
+                "knowledge_pipeline.lib.wiki.ingest.generate",
+                side_effect=RuntimeError("LLM timeout"),
+            ),
+        ):
+            pages = ingest_article(
+                _make_item(),
+                wiki_dir=wiki_dir,
+                aliases_path=aliases_path,
+                state_db=state_db,
+            )
+
+        assert pages == []
+        assert not aliases_path.exists()
         state_db.close()

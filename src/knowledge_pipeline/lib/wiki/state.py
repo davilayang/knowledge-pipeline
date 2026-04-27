@@ -142,6 +142,46 @@ class WikiStateDB:
         rows = conn.execute("SELECT * FROM wiki_pages ORDER BY entity_id").fetchall()
         return [self._row_to_page(r) for r in rows]
 
+    def mark_processed_with_pages(
+        self,
+        item_id: str,
+        source_type: str,
+        status: str,
+        pages: list[tuple[str, str, str, str, list[str] | None]],
+        error: str | None = None,
+    ) -> None:
+        """Atomically mark an item as processed and upsert its page catalog entries.
+
+        pages: list of (entity_id, page_type, file_path, updated_at, related) tuples.
+        """
+        conn = self._connect()
+        pages_touched = [p[0] for p in pages]
+        try:
+            conn.execute(
+                """INSERT OR REPLACE INTO wiki_processed
+                   (item_id, source_type, status, pages_touched, processed_at, error)
+                   VALUES (?, ?, ?, ?, ?, ?)""",
+                (
+                    item_id,
+                    source_type,
+                    status,
+                    json.dumps(pages_touched),
+                    datetime.now().isoformat(),
+                    error,
+                ),
+            )
+            for entity_id, page_type, file_path, updated_at, related in pages:
+                conn.execute(
+                    """INSERT OR REPLACE INTO wiki_pages
+                       (entity_id, page_type, file_path, updated_at, related)
+                       VALUES (?, ?, ?, ?, ?)""",
+                    (entity_id, page_type, file_path, updated_at, json.dumps(related or [])),
+                )
+            conn.commit()
+        except Exception:
+            conn.rollback()
+            raise
+
     # --- internal ---
 
     @staticmethod
