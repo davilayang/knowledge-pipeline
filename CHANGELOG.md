@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.3.0] — 2026-04-28
+
 ### Added
 
 - **Wiki synthesis pipeline** — LLM-powered knowledge distillation that reads raw articles and produces wiki pages
