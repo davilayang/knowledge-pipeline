@@ -8,6 +8,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.3.0] — 2026-04-28
+
+### Added
+
+- **Wiki synthesis pipeline** — LLM-powered knowledge distillation that reads raw articles and produces wiki pages
+  - Entity extraction (gpt-4.1-nano) identifies concepts, tools, and trends
+  - Page synthesis (gpt-4.1-mini) creates or updates wiki pages per entity
+  - Asset-based Dagster architecture (`wiki_synthesized`, `wiki_pending`, `wiki_index_updated`)
+- **`lib/wiki/`** — core library with no Dagster dependencies:
+  - `types.py` — Pydantic models (WikiPage, ExtractedEntity, ExtractionResult)
+  - `io.py` — markdown + YAML frontmatter read/write with atomic writes
+  - `aliases.py` — entity alias resolution with fuzzy matching (difflib, 0.85 threshold)
+  - `state.py` — SQLite state tracking (WAL mode, transactional updates)
+  - `sources.py` — source adapters (RawStoreSource, LocalFileSource)
+  - `ingest.py` — orchestration: extract → synthesize → write → update state
+  - `prompts.py` — LLM system/user prompts
+- **Robustness** — atomic file writes (`os.replace`), transactional state DB, LLM output validation, staged alias persistence
+
+---
+
 ## [0.2.0] — 2026-04-20
 
 ### Added
