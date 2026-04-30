@@ -35,11 +35,11 @@ packages = ["src/knowledge_pipeline"]
 members = ["packages/*"]
 
 [tool.uv.sources]
-domains = { workspace = true }
-workflows = { workspace = true }
-retrievers = { workspace = true }
-evals = { workspace = true }
-orchestrators = { workspace = true }
+knowledge-domains = { workspace = true }
+knowledge-workflows = { workspace = true }
+knowledge-retrievers = { workspace = true }
+knowledge-evals = { workspace = true }
+knowledge-orchestrators = { workspace = true }
 
 [tool.dagster]
 module_name = "knowledge_pipeline.definitions"

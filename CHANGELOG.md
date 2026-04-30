@@ -18,6 +18,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Postgres `knowledge_pipeline` database** — idempotent `docker/postgres/init/01-create-knowledge-db.sh` mounted into the existing postgres service via `/docker-entrypoint-initdb.d`; reuses the Dagster Postgres instance rather than running a second one
 - **`packages/domains/src/domains/wiki/schema/wiki.sql`** — Postgres schema for wiki state: `wiki.processed` (PK `item_id, source_type`), `wiki.pages` (PK `entity_id`, jsonb columns for `related`/`sources`/`source_types`), `wiki.aliases` (UNIQUE `alias`, indexed by `entity_id`)
 
+### Changed
+
+- **Workspace package pip-names prefixed with `knowledge-`** — `domains` → `knowledge-domains`, `workflows` → `knowledge-workflows`, `retrievers` → `knowledge-retrievers`, `evals` → `knowledge-evals`, `orchestrators` → `knowledge-orchestrators`. Matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import ...`). Pre-empts cross-project name collisions if any other knowledge-* package gets co-installed (e.g. when `newsletter-assistant` consumes `knowledge-workflows`).
+
 ### Notes
 
 - Existing `src/knowledge_pipeline/` layout untouched; all 90 tests continue to pass. Code moves into the new packages happen in PR 2.

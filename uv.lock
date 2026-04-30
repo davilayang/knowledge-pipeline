@@ -12,12 +12,12 @@ resolution-markers = [
 
 [manifest]
 members = [
-    "domains",
-    "evals",
+    "knowledge-domains",
+    "knowledge-evals",
+    "knowledge-orchestrators",
     "knowledge-pipeline",
-    "orchestrators",
-    "retrievers",
-    "workflows",
+    "knowledge-retrievers",
+    "knowledge-workflows",
 ]
 
 [[package]]
@@ -685,50 +685,12 @@ wheels = [
 ]
 
 [[package]]
-name = "domains"
-version = "0.1.0"
-source = { editable = "packages/domains" }
-dependencies = [
-    { name = "psycopg", extra = ["binary"] },
-    { name = "pydantic" },
-    { name = "python-frontmatter" },
-    { name = "pyyaml" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "python-frontmatter" },
-    { name = "pyyaml" },
-]
-
-[[package]]
 name = "durationpy"
 version = "0.10"
 source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/9d/a4/e44218c2b394e31a6dd0d6b095c4e1f32d0be54c2a4b250032d717647bab/durationpy-0.10.tar.gz", hash = "sha256:1fa6893409a6e739c9c72334fc65cca1f355dbdd93405d30f726deb5bde42fba", size = 3335, upload-time = "2025-05-17T13:52:37.26Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b0/0d/9feae160378a3553fa9a339b0e9c1a048e147a4127210e286ef18b730f03/durationpy-0.10-py3-none-any.whl", hash = "sha256:3b41e1b601234296b4fb368338fdcd3e13e0b4fb5b67345948f4f2bf9868b286", size = 3922, upload-time = "2025-05-17T13:52:36.463Z" },
-]
-
-[[package]]
-name = "evals"
-version = "0.1.0"
-source = { editable = "packages/evals" }
-dependencies = [
-    { name = "domains" },
-    { name = "ragas" },
-    { name = "retrievers" },
-    { name = "workflows" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "domains", editable = "packages/domains" },
-    { name = "ragas", specifier = ">=0.2,<1.0" },
-    { name = "retrievers", editable = "packages/retrievers" },
-    { name = "workflows", editable = "packages/workflows" },
 ]
 
 [[package]]
@@ -1292,6 +1254,71 @@ wheels = [
 ]
 
 [[package]]
+name = "knowledge-domains"
+version = "0.1.0"
+source = { editable = "packages/domains" }
+dependencies = [
+    { name = "psycopg", extra = ["binary"] },
+    { name = "pydantic" },
+    { name = "python-frontmatter" },
+    { name = "pyyaml" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "psycopg", extras = ["binary"], specifier = ">=3.2" },
+    { name = "pydantic", specifier = ">=2.0" },
+    { name = "python-frontmatter" },
+    { name = "pyyaml" },
+]
+
+[[package]]
+name = "knowledge-evals"
+version = "0.1.0"
+source = { editable = "packages/evals" }
+dependencies = [
+    { name = "knowledge-domains" },
+    { name = "knowledge-retrievers" },
+    { name = "knowledge-workflows" },
+    { name = "ragas" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "knowledge-domains", editable = "packages/domains" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "knowledge-workflows", editable = "packages/workflows" },
+    { name = "ragas", specifier = ">=0.2,<1.0" },
+]
+
+[[package]]
+name = "knowledge-orchestrators"
+version = "0.1.0"
+source = { editable = "packages/orchestrators" }
+dependencies = [
+    { name = "dagster" },
+    { name = "dagster-postgres" },
+    { name = "dagster-webserver" },
+    { name = "knowledge-domains" },
+    { name = "knowledge-evals" },
+    { name = "knowledge-retrievers" },
+    { name = "knowledge-workflows" },
+    { name = "poethepoet" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "dagster" },
+    { name = "dagster-postgres" },
+    { name = "dagster-webserver" },
+    { name = "knowledge-domains", editable = "packages/domains" },
+    { name = "knowledge-evals", editable = "packages/evals" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "knowledge-workflows", editable = "packages/workflows" },
+    { name = "poethepoet" },
+]
+
+[[package]]
 name = "knowledge-pipeline"
 version = "0.3.0"
 source = { editable = "." }
@@ -1336,6 +1363,50 @@ dev = [
     { name = "black", specifier = ">=24.0,<25.0" },
     { name = "pytest", specifier = ">=8.0,<9.0" },
     { name = "ruff", specifier = ">=0.8,<1.0" },
+]
+
+[[package]]
+name = "knowledge-retrievers"
+version = "0.1.0"
+source = { editable = "packages/retrievers" }
+dependencies = [
+    { name = "chromadb" },
+    { name = "knowledge-domains" },
+    { name = "rank-bm25" },
+    { name = "sentence-transformers" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "chromadb", specifier = ">=0.5" },
+    { name = "knowledge-domains", editable = "packages/domains" },
+    { name = "rank-bm25" },
+    { name = "sentence-transformers" },
+]
+
+[[package]]
+name = "knowledge-workflows"
+version = "0.1.0"
+source = { editable = "packages/workflows" }
+dependencies = [
+    { name = "knowledge-domains" },
+    { name = "knowledge-retrievers" },
+    { name = "langchain-anthropic" },
+    { name = "langchain-openai" },
+    { name = "langfuse" },
+    { name = "langgraph" },
+    { name = "langgraph-checkpoint-postgres" },
+]
+
+[package.metadata]
+requires-dist = [
+    { name = "knowledge-domains", editable = "packages/domains" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "langchain-anthropic", specifier = ">=0.3,<1.0" },
+    { name = "langchain-openai", specifier = ">=0.3,<1.0" },
+    { name = "langfuse", specifier = ">=3.0,<4.0" },
+    { name = "langgraph", specifier = ">=1.0,<2.0" },
+    { name = "langgraph-checkpoint-postgres", specifier = ">=2.0,<3.0" },
 ]
 
 [[package]]
@@ -2259,33 +2330,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/6d/c0/4ae7973f3c2cfd2b6e321f1675626f0dab0a97027cc7a297474c9c8f3d04/opentelemetry_semantic_conventions-0.61b0.tar.gz", hash = "sha256:072f65473c5d7c6dc0355b27d6c9d1a679d63b6d4b4b16a9773062cb7e31192a", size = 145755, upload-time = "2026-03-04T14:17:32.664Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/b2/37/cc6a55e448deaa9b27377d087da8615a3416d8ad523d5960b78dbeadd02a/opentelemetry_semantic_conventions-0.61b0-py3-none-any.whl", hash = "sha256:fa530a96be229795f8cef353739b618148b0fe2b4b3f005e60e262926c4d38e2", size = 231621, upload-time = "2026-03-04T14:17:19.33Z" },
-]
-
-[[package]]
-name = "orchestrators"
-version = "0.1.0"
-source = { editable = "packages/orchestrators" }
-dependencies = [
-    { name = "dagster" },
-    { name = "dagster-postgres" },
-    { name = "dagster-webserver" },
-    { name = "domains" },
-    { name = "evals" },
-    { name = "poethepoet" },
-    { name = "retrievers" },
-    { name = "workflows" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "dagster" },
-    { name = "dagster-postgres" },
-    { name = "dagster-webserver" },
-    { name = "domains", editable = "packages/domains" },
-    { name = "evals", editable = "packages/evals" },
-    { name = "poethepoet" },
-    { name = "retrievers", editable = "packages/retrievers" },
-    { name = "workflows", editable = "packages/workflows" },
 ]
 
 [[package]]
@@ -3243,25 +3287,6 @@ wheels = [
 ]
 
 [[package]]
-name = "retrievers"
-version = "0.1.0"
-source = { editable = "packages/retrievers" }
-dependencies = [
-    { name = "chromadb" },
-    { name = "domains" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "chromadb", specifier = ">=0.5" },
-    { name = "domains", editable = "packages/domains" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
-]
-
-[[package]]
 name = "rich"
 version = "14.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -4126,31 +4151,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/c2/b6/b9afed2afadddaf5ebb2afa801abf4b0868f42f8539bfe4b071b5266c9fe/websockets-16.0-cp314-cp314t-win32.whl", hash = "sha256:5a4b4cc550cb665dd8a47f868c8d04c8230f857363ad3c9caf7a0c3bf8c61ca6", size = 178085, upload-time = "2026-01-10T09:23:33.816Z" },
     { url = "https://files.pythonhosted.org/packages/9f/3e/28135a24e384493fa804216b79a6a6759a38cc4ff59118787b9fb693df93/websockets-16.0-cp314-cp314t-win_amd64.whl", hash = "sha256:b14dc141ed6d2dde437cddb216004bcac6a1df0935d79656387bd41632ba0bbd", size = 178531, upload-time = "2026-01-10T09:23:35.016Z" },
     { url = "https://files.pythonhosted.org/packages/6f/28/258ebab549c2bf3e64d2b0217b973467394a9cea8c42f70418ca2c5d0d2e/websockets-16.0-py3-none-any.whl", hash = "sha256:1637db62fad1dc833276dded54215f2c7fa46912301a24bd94d45d46a011ceec", size = 171598, upload-time = "2026-01-10T09:23:45.395Z" },
-]
-
-[[package]]
-name = "workflows"
-version = "0.1.0"
-source = { editable = "packages/workflows" }
-dependencies = [
-    { name = "domains" },
-    { name = "langchain-anthropic" },
-    { name = "langchain-openai" },
-    { name = "langfuse" },
-    { name = "langgraph" },
-    { name = "langgraph-checkpoint-postgres" },
-    { name = "retrievers" },
-]
-
-[package.metadata]
-requires-dist = [
-    { name = "domains", editable = "packages/domains" },
-    { name = "langchain-anthropic", specifier = ">=0.3,<1.0" },
-    { name = "langchain-openai", specifier = ">=0.3,<1.0" },
-    { name = "langfuse", specifier = ">=3.0,<4.0" },
-    { name = "langgraph", specifier = ">=1.0,<2.0" },
-    { name = "langgraph-checkpoint-postgres", specifier = ">=2.0,<3.0" },
-    { name = "retrievers", editable = "packages/retrievers" },
 ]
 
 [[package]]
