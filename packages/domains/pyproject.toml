@@ -1,5 +1,5 @@
 [project]
-name = "domains"
+name = "knowledge-domains"
 version = "0.1.0"
 description = "Pure data layer — types, schema, sources (no LLM/ML/Dagster deps)"
 requires-python = ">=3.13"

@@ -1,12 +1,12 @@
 [project]
-name = "evals"
+name = "knowledge-evals"
 version = "0.1.0"
 description = "Eval harnesses — RAG metrics, wiki quality dimensions, baselines"
 requires-python = ">=3.13"
 dependencies = [
-    "domains",
-    "workflows",
-    "retrievers",
+    "knowledge-domains",
+    "knowledge-workflows",
+    "knowledge-retrievers",
     "ragas>=0.2,<1.0",
 ]
 

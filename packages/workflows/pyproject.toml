@@ -1,11 +1,11 @@
 [project]
-name = "workflows"
+name = "knowledge-workflows"
 version = "0.1.0"
 description = "LangGraph agentic workflows and agent primitives"
 requires-python = ">=3.13"
 dependencies = [
-    "domains",
-    "retrievers",
+    "knowledge-domains",
+    "knowledge-retrievers",
     "langgraph>=1.0,<2.0",
     "langgraph-checkpoint-postgres>=2.0,<3.0",
     "langchain-openai>=0.3,<1.0",
