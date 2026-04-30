@@ -1,8 +1,8 @@
 from datetime import date
 from pathlib import Path
 
-from knowledge_pipeline.lib.wiki.io import read_page, write_page
-from knowledge_pipeline.lib.wiki.types import WikiPage
+from domains.wiki.io import read_page, write_page
+from domains.wiki.types import WikiPage
 
 
 def _make_page(**overrides) -> WikiPage:

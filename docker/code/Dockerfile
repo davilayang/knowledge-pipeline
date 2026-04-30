@@ -25,4 +25,4 @@ EXPOSE 4000
 HEALTHCHECK --timeout=1s --start-period=30s --interval=5s --retries=20 \
     CMD ["/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
 
-CMD ["uv", "run", "dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "knowledge_pipeline.definitions"]
+CMD ["uv", "run", "dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "orchestrators.definitions"]

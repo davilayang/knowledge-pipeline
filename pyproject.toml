@@ -4,17 +4,11 @@ version = "0.3.0"
 description = "Dagster-based orchestrator for newsletter knowledge indexing and backup"
 requires-python = ">=3.13"
 dependencies = [
-    "dagster>=1.12,<2.0",
-    "dagster-webserver>=1.12,<2.0",
-    "chromadb>=1.5,<2.0",
-    "poethepoet>=0.42,<1.0",
-    "sentence-transformers>=3.0,<4.0",
-    "pyyaml>=6.0,<7.0",
-    "langchain-text-splitters>=1.1,<2.0",
-    "tiktoken>=0.9,<1.0",
-    "rank-bm25>=0.2,<1.0",
-    "langchain-experimental>=0.3,<1.0",
-    "langchain-openai>=0.3,<1.0",
+    "knowledge-domains",
+    "knowledge-workflows",
+    "knowledge-retrievers",
+    "knowledge-evals",
+    "knowledge-orchestrators",
 ]
 
 [dependency-groups]
@@ -24,12 +18,8 @@ dev = [
     "pytest>=8.0,<9.0",
 ]
 
-[build-system]
-requires = ["hatchling"]
-build-backend = "hatchling.build"
-
-[tool.hatch.build.targets.wheel]
-packages = ["src/knowledge_pipeline"]
+# No [build-system] — root is a virtual project (uv handles this implicitly when
+# absent). All buildable code lives in workspace members under packages/.
 
 [tool.uv.workspace]
 members = ["packages/*"]
@@ -42,27 +32,27 @@ knowledge-evals = { workspace = true }
 knowledge-orchestrators = { workspace = true }
 
 [tool.dagster]
-module_name = "knowledge_pipeline.definitions"
-code_location_name = "knowledge_pipeline"
+module_name = "orchestrators.definitions"
+code_location_name = "orchestrators"
 
 # Poe the Poet (Scripting) #
 
 ## Dagster ##
 
 [tool.poe.tasks.dev]
-cmd = "dagster dev --port 3000 -m knowledge_pipeline.defs.workbench.definitions -m knowledge_pipeline.defs.pipelines.definitions"
+cmd = "dagster dev --port 3000 -m orchestrators.definitions"
 help = "Launch Dagster UI at localhost:3000"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m knowledge_pipeline.defs.workbench.definitions -j idx_markdown_minilm"
+cmd = "dagster job execute -m orchestrators.definitions -j idx_markdown_minilm"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
-cmd = "dagster job execute -m knowledge_pipeline.defs.pipelines.definitions -j backup_databases_job"
+cmd = "dagster job execute -m orchestrators.definitions -j backup_databases_job"
 help = "Run backup job once from CLI"
 
 [tool.poe.tasks.eval]
-cmd = "dagster job execute -m knowledge_pipeline.defs.workbench.definitions -j evaluate_retrieval_strategies"
+cmd = "dagster job execute -m orchestrators.definitions -j evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
 [tool.poe.tasks.reset-indices]
@@ -106,19 +96,19 @@ sequence = ["fmt", "lint", "test"]
 help = "Run all checks: formatting, linting, and tests"
 
 [tool.poe.tasks.fmt]
-cmd = "black --check src/"
+cmd = "black --check packages/ tests/"
 help = "Check code formatting with black (does not modify)"
 
 [tool.poe.tasks.fmt-fix]
-cmd = "black src/"
+cmd = "black packages/ tests/"
 help = "Fix code formatting issues automatically with black"
 
 [tool.poe.tasks.lint]
-cmd = "ruff check src/"
+cmd = "ruff check packages/ tests/"
 help = "Check code linting with ruff (does not modify)"
 
 [tool.poe.tasks.lint-fix]
-cmd = "ruff check --fix src/"
+cmd = "ruff check --fix packages/ tests/"
 help = "Fix code linting issues automatically with ruff"
 
 [tool.poe.tasks.fix]

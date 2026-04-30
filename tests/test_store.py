@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from knowledge_pipeline.lib.store import ContentRow, count_contents, get_contents, set_vector_status
+from domains.store import ContentRow, count_contents, get_contents, set_vector_status
 
 
 @pytest.fixture

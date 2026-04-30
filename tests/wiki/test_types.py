@@ -3,7 +3,7 @@ from datetime import date
 import pytest
 from pydantic import ValidationError
 
-from knowledge_pipeline.lib.wiki.types import (
+from domains.wiki.types import (
     ExtractionResult,
     ExtractedEntity,
     WikiPage,

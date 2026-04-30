@@ -2,7 +2,7 @@ import sqlite3
 from datetime import date
 from pathlib import Path
 
-from knowledge_pipeline.lib.wiki.sources import LocalFileSource, RawStoreSource
+from domains.wiki.sources import LocalFileSource, RawStoreSource
 
 
 def _create_test_db(tmp_path: Path) -> Path:

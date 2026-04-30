@@ -1321,19 +1321,13 @@ requires-dist = [
 [[package]]
 name = "knowledge-pipeline"
 version = "0.3.0"
-source = { editable = "." }
+source = { virtual = "." }
 dependencies = [
-    { name = "chromadb" },
-    { name = "dagster" },
-    { name = "dagster-webserver" },
-    { name = "langchain-experimental" },
-    { name = "langchain-openai" },
-    { name = "langchain-text-splitters" },
-    { name = "poethepoet" },
-    { name = "pyyaml" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
-    { name = "tiktoken" },
+    { name = "knowledge-domains" },
+    { name = "knowledge-evals" },
+    { name = "knowledge-orchestrators" },
+    { name = "knowledge-retrievers" },
+    { name = "knowledge-workflows" },
 ]
 
 [package.dev-dependencies]
@@ -1345,17 +1339,11 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "chromadb", specifier = ">=1.5,<2.0" },
-    { name = "dagster", specifier = ">=1.12,<2.0" },
-    { name = "dagster-webserver", specifier = ">=1.12,<2.0" },
-    { name = "langchain-experimental", specifier = ">=0.3,<1.0" },
-    { name = "langchain-openai", specifier = ">=0.3,<1.0" },
-    { name = "langchain-text-splitters", specifier = ">=1.1,<2.0" },
-    { name = "poethepoet", specifier = ">=0.42,<1.0" },
-    { name = "pyyaml", specifier = ">=6.0,<7.0" },
-    { name = "rank-bm25", specifier = ">=0.2,<1.0" },
-    { name = "sentence-transformers", specifier = ">=3.0,<4.0" },
-    { name = "tiktoken", specifier = ">=0.9,<1.0" },
+    { name = "knowledge-domains", editable = "packages/domains" },
+    { name = "knowledge-evals", editable = "packages/evals" },
+    { name = "knowledge-orchestrators", editable = "packages/orchestrators" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "knowledge-workflows", editable = "packages/workflows" },
 ]
 
 [package.metadata.requires-dev]
@@ -1372,16 +1360,24 @@ source = { editable = "packages/retrievers" }
 dependencies = [
     { name = "chromadb" },
     { name = "knowledge-domains" },
+    { name = "langchain-community" },
+    { name = "langchain-experimental" },
+    { name = "langchain-text-splitters" },
     { name = "rank-bm25" },
     { name = "sentence-transformers" },
+    { name = "tiktoken" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "chromadb", specifier = ">=0.5" },
+    { name = "chromadb", specifier = ">=1.5,<2.0" },
     { name = "knowledge-domains", editable = "packages/domains" },
-    { name = "rank-bm25" },
-    { name = "sentence-transformers" },
+    { name = "langchain-community", specifier = ">=0.3,<1.0" },
+    { name = "langchain-experimental", specifier = ">=0.3,<1.0" },
+    { name = "langchain-text-splitters", specifier = ">=1.1,<2.0" },
+    { name = "rank-bm25", specifier = ">=0.2,<1.0" },
+    { name = "sentence-transformers", specifier = ">=3.0,<4.0" },
+    { name = "tiktoken", specifier = ">=0.9,<1.0" },
 ]
 
 [[package]]

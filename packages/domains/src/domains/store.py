@@ -55,6 +55,7 @@ def _row_to_content(r: sqlite3.Row) -> ContentRow:
 
 
 def get_contents(
+    *,
     db_path: Path,
     source_key: str | None = None,
     since: date | None = None,
@@ -81,7 +82,7 @@ def get_contents(
     return [_row_to_content(r) for r in rows]
 
 
-def set_vector_status(db_path: Path, content_id: str, status: str) -> None:
+def set_vector_status(content_id: str, status: str, *, db_path: Path) -> None:
     with _connect(db_path) as conn:
         conn.execute(
             "UPDATE contents SET vector_status = ? WHERE content_id = ?",
@@ -89,7 +90,7 @@ def set_vector_status(db_path: Path, content_id: str, status: str) -> None:
         )
 
 
-def count_contents(db_path: Path) -> int:
+def count_contents(*, db_path: Path) -> int:
     with _connect(db_path) as conn:
         row = conn.execute("SELECT COUNT(*) FROM contents").fetchone()
     return row[0]
