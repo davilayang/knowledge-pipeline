@@ -8,12 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **uv workspace scaffolding** (Phase A, PR 1) — five empty package skeletons under `packages/{domains,workflows,retrievers,evals,apps}/`, each with its own `pyproject.toml`. Cross-package import discipline encoded in deps:
+- **uv workspace scaffolding** (Phase A, PR 1) — five empty package skeletons under `packages/{domains,workflows,retrievers,evals,orchestrators}/`, each with its own `pyproject.toml`. Cross-package import discipline encoded in deps:
   - `domains` — pure data layer (pydantic, psycopg, pyyaml, python-frontmatter); no LLM/ML/Dagster deps
   - `workflows` — depends on domains + retrievers; adds langgraph, langgraph-checkpoint-postgres, langchain-openai, langchain-anthropic, langfuse
   - `retrievers` — depends on domains; adds chromadb, sentence-transformers, rank_bm25
   - `evals` — depends on domains + workflows + retrievers; adds ragas
-  - `apps` — depends on all four others; the only package allowed to depend on Dagster
+  - `orchestrators` — depends on all four others; the only package allowed to depend on Dagster
 - **Workspace root** — `[tool.uv.workspace]` + `[tool.uv.sources]` declaring the 5 members; new poe tasks for `wiki-ingest`, `wiki-lint`, `research`, `wiki-eval`, `rag-eval`, `reset-wiki`, `reset-checkpoints`, `reset-everything`
 - **Postgres `knowledge_pipeline` database** — idempotent `docker/postgres/init/01-create-knowledge-db.sh` mounted into the existing postgres service via `/docker-entrypoint-initdb.d`; reuses the Dagster Postgres instance rather than running a second one
 - **`packages/domains/src/domains/wiki/schema/wiki.sql`** — Postgres schema for wiki state: `wiki.processed` (PK `item_id, source_type`), `wiki.pages` (PK `entity_id`, jsonb columns for `related`/`sources`/`source_types`), `wiki.aliases` (UNIQUE `alias`, indexed by `entity_id`)

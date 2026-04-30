@@ -39,7 +39,7 @@ domains = { workspace = true }
 workflows = { workspace = true }
 retrievers = { workspace = true }
 evals = { workspace = true }
-apps = { workspace = true }
+orchestrators = { workspace = true }
 
 [tool.dagster]
 module_name = "knowledge_pipeline.definitions"
@@ -152,15 +152,15 @@ help = "Run the RAG evaluation harness with Ragas metrics"
 ## Reset ##
 
 [tool.poe.tasks.reset-wiki]
-cmd = "python -m apps.scripts.reset_wiki"
+cmd = "python -m orchestrators.scripts.reset_wiki"
 help = "Drop the wiki Postgres schema, data/wiki/ files, and workflow checkpoints"
 
 [tool.poe.tasks.reset-checkpoints]
-cmd = "python -m apps.scripts.reset_checkpoints"
+cmd = "python -m orchestrators.scripts.reset_checkpoints"
 help = "Drop the langgraph_checkpoints Postgres schema only"
 
 [tool.poe.tasks.reset-everything]
-cmd = "python -m apps.scripts.reset_everything"
+cmd = "python -m orchestrators.scripts.reset_everything"
 help = "Drop all wiki data, raw store, ChromaDB collections, and checkpoints"
 
 [tool.pytest.ini_options]
