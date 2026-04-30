@@ -1,0 +1,22 @@
+[project]
+name = "orchestrators"
+version = "0.1.0"
+description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
+requires-python = ">=3.13"
+dependencies = [
+    "domains",
+    "workflows",
+    "retrievers",
+    "evals",
+    "dagster",
+    "dagster-postgres",
+    "dagster-webserver",
+    "poethepoet",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/orchestrators"]

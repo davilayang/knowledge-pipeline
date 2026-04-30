@@ -31,6 +31,16 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/knowledge_pipeline"]
 
+[tool.uv.workspace]
+members = ["packages/*"]
+
+[tool.uv.sources]
+domains = { workspace = true }
+workflows = { workspace = true }
+retrievers = { workspace = true }
+evals = { workspace = true }
+orchestrators = { workspace = true }
+
 [tool.dagster]
 module_name = "knowledge_pipeline.definitions"
 code_location_name = "knowledge_pipeline"
@@ -114,6 +124,44 @@ help = "Fix code linting issues automatically with ruff"
 [tool.poe.tasks.fix]
 sequence = ["fmt-fix", "lint-fix"]
 help = "Fix all issues: formatting with black and linting with ruff"
+
+## Workflows ##
+
+[tool.poe.tasks.wiki-ingest]
+cmd = "python -m workflows.cli.wiki_ingest"
+help = "Run the LangGraph wiki synthesis workflow from the CLI"
+
+[tool.poe.tasks.wiki-lint]
+cmd = "python -m workflows.cli.wiki_lint"
+help = "Lint wiki pages for structural and quality issues"
+
+[tool.poe.tasks.research]
+cmd = "python -m workflows.cli.research"
+help = "Run the research agent workflow from the CLI"
+
+## Evals ##
+
+[tool.poe.tasks.wiki-eval]
+cmd = "python -m evals.cli.wiki_eval"
+help = "Run the wiki evaluation harness across all six quality dimensions"
+
+[tool.poe.tasks.rag-eval]
+cmd = "python -m evals.cli.rag_eval"
+help = "Run the RAG evaluation harness with Ragas metrics"
+
+## Reset ##
+
+[tool.poe.tasks.reset-wiki]
+cmd = "python -m orchestrators.scripts.reset_wiki"
+help = "Drop the wiki Postgres schema, data/wiki/ files, and workflow checkpoints"
+
+[tool.poe.tasks.reset-checkpoints]
+cmd = "python -m orchestrators.scripts.reset_checkpoints"
+help = "Drop the langgraph_checkpoints Postgres schema only"
+
+[tool.poe.tasks.reset-everything]
+cmd = "python -m orchestrators.scripts.reset_everything"
+help = "Drop all wiki data, raw store, ChromaDB collections, and checkpoints"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
