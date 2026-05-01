@@ -18,7 +18,12 @@ def get_checkpointer(db_url: str | None = None) -> Iterator[PostgresSaver]:
             graph = builder.compile(checkpointer=checkpointer)
             graph.invoke(state, config={"configurable": {"thread_id": ...}})
     """
-    url = db_url or os.environ["DATABASE_URL"]
+    url = db_url or os.environ.get("DATABASE_URL")
+    if not url:
+        raise RuntimeError(
+            "get_checkpointer() needs a Postgres URL — pass db_url= or set "
+            "DATABASE_URL in the environment."
+        )
     with PostgresSaver.from_conn_string(url) as saver:
         saver.setup()
         yield saver
