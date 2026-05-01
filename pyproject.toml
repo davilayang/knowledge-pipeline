@@ -44,15 +44,15 @@ cmd = "dagster dev --port 3030 -m orchestrators.defs.workbench.definitions -m or
 help = "Launch Dagster UI at localhost:3030 with workbench + pipelines as separate code locations"
 
 [tool.poe.tasks.index]
-cmd = "dagster job execute -m orchestrators.defs.workbench.definitions -j idx_markdown_minilm"
+cmd = "dg launch -m orchestrators.defs.workbench.definitions --job idx_markdown_minilm"
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
-cmd = "dagster job execute -m orchestrators.defs.pipelines.definitions -j backup_databases_job"
+cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_databases_job"
 help = "Run backup job once from CLI"
 
 [tool.poe.tasks.eval]
-cmd = "dagster job execute -m orchestrators.defs.workbench.definitions -j evaluate_retrieval_strategies"
+cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
 [tool.poe.tasks.reset-indices]
