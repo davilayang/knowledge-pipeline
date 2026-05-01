@@ -22,10 +22,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **Workspace package pip-names prefixed with `knowledge-`** — `domains` → `knowledge-domains`, `workflows` → `knowledge-workflows`, `retrievers` → `knowledge-retrievers`, `evals` → `knowledge-evals`, `orchestrators` → `knowledge-orchestrators`. Matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import ...`). Pre-empts cross-project name collisions if any other knowledge-* package gets co-installed (e.g. when `newsletter-assistant` consumes `knowledge-workflows`).
 
-### Notes
+- **Code migrated into the 5 packages** (Phase A, PR 2) — the old `src/knowledge_pipeline/` tree has been split across the new packages and deleted. New layout:
+  - `domains/`: `store.py`, `wiki/{types,io,aliases,sources}.py`, `wiki/schema/wiki.sql`
+  - `retrievers/`: `chunking/`, `postprocess/`, `retrieval/` (cosine, hybrid, rerank, fusion, registry — HyDE moved to workflows), `vector_store/chroma.py`
+  - `workflows/`: `llm.py`, `wiki/{prompts,state,ingest}.py`, `agents/nodes/query_rewrite.py` (was `lib/retrieval/hyde.py`)
+  - `evals/`: `rag.py` (was `lib/eval.py`)
+  - `orchestrators/`: `definitions.py`, `config.py`, `strategies.{py,yaml}` (the `.py` was `lib/utils.py`), and the entire `defs/` tree (`shared/`, `workbench/`, `pipelines/`)
+- **Boundary fixes** — `domains.store` and `retrievers.vector_store.chroma` no longer import `orchestrators.config`. Path arguments (`db_path`, `chroma_path`) are now passed in by the caller. `db_path` is keyword-only across all `domains.store` functions for clarity. `HyDE` retrieval has an LLM dep so it lives in `workflows.agents.nodes.query_rewrite`, not in `retrievers`.
 
-- Existing `src/knowledge_pipeline/` layout untouched; all 90 tests continue to pass. Code moves into the new packages happen in PR 2.
-- `uv sync --all-packages` (not bare `uv sync`) is required to install the new workspace members in editable mode until PR 2.
+### Changed
+
+- **Workspace package pip-names prefixed with `knowledge-`** — `domains` → `knowledge-domains`, `workflows` → `knowledge-workflows`, `retrievers` → `knowledge-retrievers`, `evals` → `knowledge-evals`, `orchestrators` → `knowledge-orchestrators`. Matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import ...`). Pre-empts cross-project name collisions if any other knowledge-* package gets co-installed (e.g. when `newsletter-assistant` consumes `knowledge-workflows`).
+- **Root project shape** — `pyproject.toml` is now a virtual project: `[project].dependencies = [knowledge-domains, knowledge-workflows, knowledge-retrievers, knowledge-evals, knowledge-orchestrators]`, no `[build-system]`, no `[tool.hatch.*]`. Bare `uv sync` (without `--all-packages`) installs the full workspace because all 5 members are listed as deps explicitly.
+- **Dagster module** — `[tool.dagster].module_name` is now `orchestrators.definitions` (single merged Definitions module, replacing the two-code-location split). `poe dev/index/backup/eval` poe tasks updated. `configs/workspace.yaml` location_name and `docker/code/Dockerfile` `-m` flag also point at `orchestrators.definitions`.
+
+### Removed
+
+- **`src/knowledge_pipeline/`** — the entire old source tree, replaced by `packages/{domains,workflows,retrievers,evals,orchestrators}/`. All tests pass against the new layout.
 
 ---
 

@@ -3,10 +3,10 @@ from unittest.mock import MagicMock, patch
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
 
-from knowledge_pipeline.lib.llm import generate, generate_structured
+from workflows.llm import generate, generate_structured
 
 
-@patch("knowledge_pipeline.lib.llm.get_llm")
+@patch("workflows.llm.get_llm")
 def test_generate_basic(mock_get_llm):
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = AIMessage(content="Hello from the mock LLM")
@@ -22,7 +22,7 @@ def test_generate_basic(mock_get_llm):
     assert messages[0].content == "What is RAG?"
 
 
-@patch("knowledge_pipeline.lib.llm.get_llm")
+@patch("workflows.llm.get_llm")
 def test_generate_with_system(mock_get_llm):
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = AIMessage(content="Hello")
@@ -36,7 +36,7 @@ def test_generate_with_system(mock_get_llm):
     assert isinstance(messages[1], HumanMessage)
 
 
-@patch("knowledge_pipeline.lib.llm.get_llm")
+@patch("workflows.llm.get_llm")
 def test_generate_custom_model(mock_get_llm):
     mock_llm = MagicMock()
     mock_llm.invoke.return_value = AIMessage(content="Hello")
@@ -47,7 +47,7 @@ def test_generate_custom_model(mock_get_llm):
     mock_get_llm.assert_called_once_with("gpt-4.1-nano")
 
 
-@patch("knowledge_pipeline.lib.llm.get_llm")
+@patch("workflows.llm.get_llm")
 def test_generate_structured_returns_pydantic_model(mock_get_llm):
     class Entity(BaseModel):
         name: str
@@ -69,7 +69,7 @@ def test_generate_structured_returns_pydantic_model(mock_get_llm):
     mock_llm.with_structured_output.assert_called_once_with(Entity)
 
 
-@patch("knowledge_pipeline.lib.llm.get_llm")
+@patch("workflows.llm.get_llm")
 def test_generate_structured_with_system(mock_get_llm):
     class Info(BaseModel):
         value: str

@@ -1,6 +1,6 @@
 import pytest
 
-from knowledge_pipeline.lib.chunking import Chunk, get_chunking_fn
+from retrievers.chunking import Chunk, get_chunking_fn
 
 # Sample text for testing — enough content to produce multiple chunks at small sizes.
 SAMPLE_MD = """# Introduction

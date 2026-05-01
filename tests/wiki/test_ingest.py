@@ -2,18 +2,18 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-from knowledge_pipeline.lib.wiki.aliases import save_aliases, AliasStore
-from knowledge_pipeline.lib.wiki.ingest import (
+from domains.wiki.aliases import save_aliases, AliasStore
+from workflows.wiki.ingest import (
     _check_h2_preservation,
     _parse_llm_page_output,
     _slug_from_id,
     _stage_alias_updates,
     ingest_article,
 )
-from knowledge_pipeline.lib.wiki.io import write_page
-from knowledge_pipeline.lib.wiki.sources import IngestItem
-from knowledge_pipeline.lib.wiki.state import WikiStateDB
-from knowledge_pipeline.lib.wiki.types import (
+from domains.wiki.io import write_page
+from domains.wiki.sources import IngestItem
+from workflows.wiki.state import WikiStateDB
+from domains.wiki.types import (
     ExtractionResult,
     ExtractedEntity,
     WikiPage,
@@ -195,11 +195,11 @@ class TestIngestArticle:
 
         with (
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate_structured",
+                "workflows.wiki.ingest.generate_structured",
                 return_value=mock_extraction,
             ),
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate",
+                "workflows.wiki.ingest.generate",
                 return_value=mock_llm_output,
             ),
         ):
@@ -231,7 +231,7 @@ class TestIngestArticle:
         mock_extraction = ExtractionResult(entities=[])
 
         with patch(
-            "knowledge_pipeline.lib.wiki.ingest.generate_structured",
+            "workflows.wiki.ingest.generate_structured",
             return_value=mock_extraction,
         ):
             pages = ingest_article(
@@ -288,11 +288,11 @@ class TestIngestArticle:
 
         with (
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate_structured",
+                "workflows.wiki.ingest.generate_structured",
                 return_value=mock_extraction,
             ),
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate",
+                "workflows.wiki.ingest.generate",
                 side_effect=mock_generate,
             ),
         ):
@@ -333,11 +333,11 @@ class TestIngestArticle:
 
         with (
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate_structured",
+                "workflows.wiki.ingest.generate_structured",
                 return_value=mock_extraction,
             ),
             patch(
-                "knowledge_pipeline.lib.wiki.ingest.generate",
+                "workflows.wiki.ingest.generate",
                 side_effect=RuntimeError("LLM timeout"),
             ),
         ):

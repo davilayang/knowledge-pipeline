@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from knowledge_pipeline.lib.wiki.state import WikiStateDB
+from workflows.wiki.state import WikiStateDB
 
 
 def test_mark_and_get_processed_ids(tmp_path: Path):

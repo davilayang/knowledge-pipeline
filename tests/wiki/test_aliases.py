@@ -1,6 +1,6 @@
 from pathlib import Path
 
-from knowledge_pipeline.lib.wiki.aliases import AliasStore, load_aliases, save_aliases
+from domains.wiki.aliases import AliasStore, load_aliases, save_aliases
 
 
 def _make_store() -> AliasStore:

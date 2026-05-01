@@ -9,6 +9,7 @@ dependencies = [
     "knowledge-retrievers",
     "knowledge-evals",
     "dagster",
+    "dagster-dg-cli",
     "dagster-postgres",
     "dagster-webserver",
     "poethepoet",
