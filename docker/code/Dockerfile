@@ -2,23 +2,31 @@
 # Runs a gRPC code server that the webserver and daemon connect to.
 FROM python:3.13-slim
 
-# Install uv for fast dependency resolution
-RUN pip install --no-cache-dir uv
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# Copy dependency files first for layer caching
+# Install dependencies — this layer is cached until pyproject.toml / uv.lock change.
+# Copy workspace manifests needed to resolve knowledge-orchestrators.
 COPY pyproject.toml uv.lock ./
+COPY packages/domains/pyproject.toml packages/domains/pyproject.toml
+COPY packages/workflows/pyproject.toml packages/workflows/pyproject.toml
+COPY packages/retrievers/pyproject.toml packages/retrievers/pyproject.toml
+COPY packages/evals/pyproject.toml packages/evals/pyproject.toml
+COPY packages/orchestrators/pyproject.toml packages/orchestrators/pyproject.toml
 
-# Install dependencies (without dev group)
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
-RUN uv sync --frozen --no-dev --no-install-project
+RUN uv sync --frozen --no-dev --no-install-workspace --package knowledge-orchestrators
 
-# Copy project source
-COPY src/ src/
+# Copy source for each workspace member that knowledge-orchestrators depends on.
+COPY packages/domains/src/ packages/domains/src/
+COPY packages/workflows/src/ packages/workflows/src/
+COPY packages/retrievers/src/ packages/retrievers/src/
+COPY packages/evals/src/ packages/evals/src/
+COPY packages/orchestrators/src/ packages/orchestrators/src/
 
-# Install the project itself
-RUN uv sync --frozen --no-dev
+# Install workspace packages (editable) after source is copied.
+RUN uv sync --frozen --no-dev --package knowledge-orchestrators
 
 EXPOSE 4000
 
