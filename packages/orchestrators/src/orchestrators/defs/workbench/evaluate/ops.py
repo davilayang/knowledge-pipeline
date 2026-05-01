@@ -7,13 +7,13 @@ import time
 from datetime import UTC, datetime
 
 import dagster as dg
+from domains.store import count_contents
+from evals.rag import mrr, precision_at_k, recall_at_k
+from retrievers.retrieval import build_strategy
+from retrievers.vector_store.chroma import get_client, get_collection
 
 from orchestrators.config import CHROMA_PATH, EVAL_RESULTS_DIR, LOCAL_RAW_STORE, SOURCE_RAW_STORE
 from orchestrators.strategies import get_embedding_model_for_collection, hash_file
-from evals.rag import mrr, precision_at_k, recall_at_k
-from retrievers.retrieval import build_strategy
-from domains.store import count_contents
-from retrievers.vector_store.chroma import get_client, get_collection
 
 from .queries import EVAL_QUERIES, QUERY_SET_VERSION
 from .registry import EVAL_COMBOS, parse_combo

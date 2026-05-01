@@ -5,10 +5,10 @@ import sqlite3
 
 import dagster as dg
 from dagster import AssetExecutionContext
+from domains.store import count_contents
 
 from orchestrators.config import DATA_DIR, SOURCE_RAW_STORE
 from orchestrators.strategies import hash_file
-from domains.store import count_contents
 
 ASSET_OWNERS = ["team:data-eng"]
 ASSET_TAGS = {"domain": "knowledge"}

@@ -1,13 +1,12 @@
 from datetime import date
 
 import pytest
-from pydantic import ValidationError
-
 from domains.wiki.types import (
-    ExtractionResult,
     ExtractedEntity,
+    ExtractionResult,
     WikiPage,
 )
+from pydantic import ValidationError
 
 
 def test_wiki_page_basic():
