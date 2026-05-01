@@ -5,6 +5,8 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
 
+from workflows.shared.observability import get_langfuse_callback
+
 _DEFAULT_MODEL = "gpt-4.1-mini"
 
 
@@ -15,6 +17,11 @@ def get_llm(model: str = _DEFAULT_MODEL) -> BaseChatModel:
     To switch providers later, swap ChatOpenAI for ChatAnthropic etc.
     """
     return ChatOpenAI(model=model)
+
+
+def _invoke_config() -> dict:
+    cb = get_langfuse_callback()
+    return {"callbacks": [cb]} if cb else {}
 
 
 def generate(
@@ -30,7 +37,7 @@ def generate(
         messages.append(SystemMessage(content=system))
     messages.append(HumanMessage(content=prompt))
 
-    response = llm.invoke(messages)
+    response = llm.invoke(messages, config=_invoke_config())
     return response.content
 
 
@@ -59,4 +66,4 @@ def generate_structured[
         messages.append(SystemMessage(content=system))
     messages.append(HumanMessage(content=prompt))
 
-    return structured_llm.invoke(messages)
+    return structured_llm.invoke(messages, config=_invoke_config())
