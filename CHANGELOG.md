@@ -6,41 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Added
+---
 
-- **uv workspace scaffolding** (Phase A, PR 1) — five empty package skeletons under `packages/{domains,workflows,retrievers,evals,orchestrators}/`, each with its own `pyproject.toml`. Cross-package import discipline encoded in deps:
-  - `domains` — pure data layer (pydantic, psycopg, pyyaml, python-frontmatter); no LLM/ML/Dagster deps
-  - `workflows` — depends on domains + retrievers; adds langgraph, langgraph-checkpoint-postgres, langchain-openai, langchain-anthropic, langfuse
-  - `retrievers` — depends on domains; adds chromadb, sentence-transformers, rank_bm25
-  - `evals` — depends on domains + workflows + retrievers; adds ragas
-  - `orchestrators` — depends on all four others; the only package allowed to depend on Dagster
-- **Workspace root** — `[tool.uv.workspace]` + `[tool.uv.sources]` declaring the 5 members; new poe tasks for `wiki-ingest`, `wiki-lint`, `research`, `wiki-eval`, `rag-eval`, `reset-wiki`, `reset-checkpoints`, `reset-everything`
-- **Postgres `knowledge_pipeline` database** — idempotent `docker/postgres/init/01-create-knowledge-db.sh` mounted into the existing postgres service via `/docker-entrypoint-initdb.d`; reuses the Dagster Postgres instance rather than running a second one
-- **`packages/domains/src/domains/wiki/schema/wiki.sql`** — Postgres schema for wiki state: `wiki.processed` (PK `item_id, source_type`), `wiki.pages` (PK `entity_id`, jsonb columns for `related`/`sources`/`source_types`), `wiki.aliases` (UNIQUE `alias`, indexed by `entity_id`)
+## [0.4.0] — 2026-05-01
 
-### Changed
+Phase A foundation release — restructure into a uv workspace with Postgres infrastructure ready for the LangGraph wiki workflow (Phase B). No behavior change; 90/90 tests pass.
 
-- **Workspace package pip-names prefixed with `knowledge-`** — `domains` → `knowledge-domains`, `workflows` → `knowledge-workflows`, `retrievers` → `knowledge-retrievers`, `evals` → `knowledge-evals`, `orchestrators` → `knowledge-orchestrators`. Matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import ...`). Pre-empts cross-project name collisions if any other knowledge-* package gets co-installed (e.g. when `newsletter-assistant` consumes `knowledge-workflows`).
-
-- **Code migrated into the 5 packages** (Phase A, PR 2) — the old `src/knowledge_pipeline/` tree has been split across the new packages and deleted. New layout:
+- **uv workspace with 5 packages** under `packages/{domains,workflows,retrievers,evals,orchestrators}/`. Cross-package import discipline enforced via `pyproject.toml` deps:
+  - `knowledge-domains` — pure data layer (pydantic, psycopg, pyyaml, python-frontmatter); no LLM/ML/Dagster deps.
+  - `knowledge-workflows` — depends on domains + retrievers; adds langgraph, langgraph-checkpoint-postgres, langchain-openai, langchain-anthropic, langfuse.
+  - `knowledge-retrievers` — depends on domains; adds chromadb, sentence-transformers, rank-bm25, langchain-text-splitters, langchain-experimental, langchain-community, tiktoken.
+  - `knowledge-evals` — depends on domains + workflows + retrievers; adds ragas.
+  - `knowledge-orchestrators` — depends on all four others; the only package allowed to depend on Dagster, dagster-postgres, dagster-webserver, dagster-dg-cli, poethepoet.
+- **Code migrated into the 5 packages** — the old `src/knowledge_pipeline/` tree split across the new packages and deleted:
   - `domains/`: `store.py`, `wiki/{types,io,aliases,sources}.py`, `wiki/schema/wiki.sql`
-  - `retrievers/`: `chunking/`, `postprocess/`, `retrieval/` (cosine, hybrid, rerank, fusion, registry — HyDE moved to workflows), `vector_store/chroma.py`
+  - `retrievers/`: `chunking/`, `postprocess/`, `retrieval/` (cosine, hybrid, rerank, fusion, registry), `vector_store/chroma.py`
   - `workflows/`: `llm.py`, `wiki/{prompts,state,ingest}.py`, `agents/nodes/query_rewrite.py` (was `lib/retrieval/hyde.py`)
   - `evals/`: `rag.py` (was `lib/eval.py`)
-  - `orchestrators/`: `definitions.py`, `config.py`, `strategies.{py,yaml}` (the `.py` was `lib/utils.py`), and the entire `defs/` tree (`shared/`, `workbench/`, `pipelines/`)
-- **Boundary fixes** — `domains.store` and `retrievers.vector_store.chroma` no longer import `orchestrators.config`. Path arguments (`db_path`, `chroma_path`) are now passed in by the caller. `db_path` is keyword-only across all `domains.store` functions for clarity. `HyDE` retrieval has an LLM dep so it lives in `workflows.agents.nodes.query_rewrite`, not in `retrievers`.
-
-### Changed
-
-- **Workspace package pip-names prefixed with `knowledge-`** — `domains` → `knowledge-domains`, `workflows` → `knowledge-workflows`, `retrievers` → `knowledge-retrievers`, `evals` → `knowledge-evals`, `orchestrators` → `knowledge-orchestrators`. Matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import ...`). Pre-empts cross-project name collisions if any other knowledge-* package gets co-installed (e.g. when `newsletter-assistant` consumes `knowledge-workflows`).
-- **Root project shape** — `pyproject.toml` is now a virtual project: `[project].dependencies = [knowledge-domains, knowledge-workflows, knowledge-retrievers, knowledge-evals, knowledge-orchestrators]`, no `[build-system]`, no `[tool.hatch.*]`. Bare `uv sync` (without `--all-packages`) installs the full workspace because all 5 members are listed as deps explicitly.
-- **Dagster module** — `[tool.dagster].module_name` is now `orchestrators.definitions` (single merged Definitions module, replacing the two-code-location split). `poe dev/index/backup/eval` poe tasks updated. `configs/workspace.yaml` location_name and `docker/code/Dockerfile` `-m` flag also point at `orchestrators.definitions`.
-
-### Removed
-
-- **`src/knowledge_pipeline/`** — the entire old source tree, replaced by `packages/{domains,workflows,retrievers,evals,orchestrators}/`. All tests pass against the new layout.
-
----
+  - `orchestrators/`: `definitions.py`, `config.py`, `strategies.{py,yaml}` (the `.py` was `lib/utils.py`), and the entire `defs/` tree (`shared/`, `workbench/`, `pipelines/`).
+- **Boundary fixes** — `domains.store` and `retrievers.vector_store.chroma` no longer import `orchestrators.config`. Path arguments (`db_path`, `chroma_path`) are now passed in by the caller. `db_path` is keyword-only across all `domains.store` functions. `HyDE` retrieval has an LLM dep so it lives in `workflows.agents.nodes.query_rewrite`, not in `retrievers`.
+- **Workspace package pip-names prefixed with `knowledge-`** — matches the `newsletter-assistant` workspace pattern: prefix lives only in `pyproject.toml` `dependencies` and `[tool.uv.sources]` keys; import paths stay plain (`from domains import …`). Pre-empts cross-project name collisions when `newsletter-assistant` consumes `knowledge-workflows`.
+- **Root project shape** — `pyproject.toml` is now a virtual project: `[project].dependencies` lists all 5 prefixed members, no `[build-system]`, no `[tool.hatch.*]`. Bare `uv sync` (without `--all-packages`) installs the full workspace.
+- **Postgres `knowledge_pipeline` database** — idempotent `docker/postgres/init/01-create-knowledge-db.sh` mounted into the existing Dagster postgres service via `/docker-entrypoint-initdb.d` (single instance, no second container).
+- **`packages/domains/src/domains/wiki/schema/wiki.sql`** — Postgres schema for wiki state: `wiki.processed` (PK `(item_id, source_type)`), `wiki.pages` (PK `entity_id`, jsonb columns for `related`/`sources`/`source_types`), `wiki.aliases` (UNIQUE `alias`, indexed by `entity_id`). Ready for Phase B.
+- **Dagster code locations preserved as workbench / pipelines** — `poe dev` loads both `orchestrators.defs.workbench.definitions` and `orchestrators.defs.pipelines.definitions` as separate code locations (matches the original split). `orchestrators.definitions` is the merger used by Docker/prod (single `-m` flag in `configs/workspace.yaml` + `docker/code/Dockerfile`). `[tool.dagster].module_name` points at the merger; `code_location_name` is `orchestrators`.
+- **CLI migrated from `dagster job execute` to `dg launch`** — Dagster 1.13 deprecated the former. `poe index/backup/eval` now use `dg launch -m … --job …`. Added `dagster-dg-cli` to the orchestrators deps.
+- **Dev port moved from 3000 to 3030** — `poe dev`, `poe tunnel` (host side), `docker-compose` host port mapping, README references. Container internal port and remote production port stay at 3000.
+- **Docker code-server image** rebuilt for the workspace layout — copy each member's `pyproject.toml` first for layer-cached deps resolution, then per-member `src/` for editable installs. Switched from `pip install uv` to a binary copy from `ghcr.io/astral-sh/uv:latest` (~150s faster). Use `--no-install-workspace --package knowledge-orchestrators` so only the deployable's dep tree is resolved.
+- **New poe tasks** (stubs for Phase B) — `wiki-ingest`, `wiki-lint`, `research`, `wiki-eval`, `rag-eval`, `reset-wiki`, `reset-checkpoints`, `reset-everything`.
+- **Removed** `src/knowledge_pipeline/` — the entire old source tree.
 
 ## [0.3.0] — 2026-04-28
 
