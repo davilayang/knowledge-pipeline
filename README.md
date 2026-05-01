@@ -24,7 +24,7 @@ Start the Dagster dev server (includes webserver + daemon):
 uv run poe dev
 ```
 
-- Dagster UI: http://localhost:3000
+- Dagster UI: http://localhost:3030
 - Stop with `Ctrl-C`
 
 ### Dagster Cluster (Docker)
@@ -46,11 +46,11 @@ docker compose restart dagster-code
 docker compose down --volumes
 ```
 
-- Dagster UI: http://localhost:3000
+- Dagster UI: http://localhost:3030
 
 ## Running Jobs
 
-**Via Dagster UI** (recommended): http://localhost:3000 → Assets → Materialize or Jobs → Launch Run
+**Via Dagster UI** (recommended): http://localhost:3030 → Assets → Materialize or Jobs → Launch Run
 
 **Via CLI** (one-shot execution):
 

@@ -4,7 +4,7 @@
 #   docker compose up --build
 #   docker compose down --volumes
 #
-# UI:  http://localhost:3000
+# UI:  http://localhost:3030
 #
 # After code changes, rebuild and restart the code server:
 #   docker compose up --build dagster-code
@@ -79,7 +79,7 @@ services:
       DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     ports:
-      - "${APP_HOST:-127.0.0.1}:3000:3000"
+      - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
       - dagster_network
     restart: unless-stopped
