@@ -21,18 +21,18 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-
 from domains.wiki.state import (
     get_page,
     get_processed_ids,
     snapshot_aliases,
 )
+from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
+
 from tests.wiki_synthesis._helpers import (
     build_synthesis_output,
     make_extraction,
     make_item,
 )
-from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
 
 def _setup(tmp_path: Path) -> Path:
@@ -41,9 +41,7 @@ def _setup(tmp_path: Path) -> Path:
     return wiki_dir
 
 
-def test_commit_txn_rolls_back_when_insert_processed_fails(
-    tmp_path: Path, wiki_pg, wiki_pg_url
-):
+def test_commit_txn_rolls_back_when_insert_processed_fails(tmp_path: Path, wiki_pg, wiki_pg_url):
     """upsert_page and insert_aliases run successfully inside the txn;
     insert_processed raises; the whole txn rolls back. None of pages,
     aliases, or processed rows should be visible after."""
@@ -95,9 +93,7 @@ def test_commit_txn_rolls_back_when_insert_processed_fails(
     assert (wiki_dir / "concept" / "rollback_b.md").exists()
 
 
-def test_commit_txn_rolls_back_when_upsert_page_fails(
-    tmp_path: Path, wiki_pg, wiki_pg_url
-):
+def test_commit_txn_rolls_back_when_upsert_page_fails(tmp_path: Path, wiki_pg, wiki_pg_url):
     """upsert_page is the FIRST DB write inside the txn. If it raises,
     the txn aborts before insert_aliases or insert_processed runs."""
     wiki_dir = _setup(tmp_path)

@@ -35,6 +35,7 @@ from unittest.mock import patch
 
 import pytest
 from langgraph.checkpoint.memory import MemorySaver
+from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
 from tests.wiki_synthesis._helpers import (
     build_synthesis_output,
@@ -42,7 +43,6 @@ from tests.wiki_synthesis._helpers import (
     make_extraction,
     make_item,
 )
-from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
 
 @pytest.mark.timeout(15)
@@ -109,9 +109,9 @@ def test_commit_failure_then_resume_skips_fan_out(tmp_path: Path, wiki_pg, wiki_
 
     # The thread is paused waiting on the failed step
     snapshot = graph.get_state(config)
-    assert "commit" in snapshot.next, (
-        f"expected thread to be paused at 'commit', but next is {snapshot.next}"
-    )
+    assert (
+        "commit" in snapshot.next
+    ), f"expected thread to be paused at 'commit', but next is {snapshot.next}"
     # The post-fan-out state was checkpointed: 4 entity_results landed
     cs = snapshot.values
     assert len(cs.get("entity_results", [])) == 4

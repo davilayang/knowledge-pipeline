@@ -15,6 +15,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 import pytest
+from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
 from tests.wiki_synthesis._helpers import (
     build_synthesis_output,
@@ -22,13 +23,10 @@ from tests.wiki_synthesis._helpers import (
     make_extraction,
     make_item,
 )
-from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
 
 @pytest.mark.timeout(15)
-def test_send_fan_out_runs_sub_graphs_in_parallel(
-    tmp_path: Path, wiki_pg, wiki_pg_url
-):
+def test_send_fan_out_runs_sub_graphs_in_parallel(tmp_path: Path, wiki_pg, wiki_pg_url):
     """All N entity sub-graphs must enter their synthesis call window
     concurrently. The Barrier passes only when all N threads arrive within
     the timeout — if Send runs sequentially, only one thread reaches the
