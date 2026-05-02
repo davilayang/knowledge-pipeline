@@ -8,25 +8,23 @@ level (not just per-LLM-call).
 """
 
 import os
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
 import pytest
-from domains.wiki.sources import IngestItem
 from domains.wiki.state import get_page, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
+from tests.wiki_synthesis._helpers import make_item
 from workflows.shared.observability import get_langfuse_callback
 from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 
-def _make_item() -> IngestItem:
-    return IngestItem(
+def _runner_item():
+    """Stable-id item for runner tests; tests assert against this item_id."""
+    return make_item(
         item_id="content_runner",
         title="Runner Test Article",
-        date=date(2026, 5, 1),
         text="# Test\n\nA test article.",
-        source_type="raw_store",
         source_ref="raw_store:content_runner",
     )
 
@@ -73,7 +71,7 @@ def test_runner_invokes_workflow_end_to_end(tmp_path: Path, wiki_pg, wiki_pg_url
             return_value=llm_output,
         ),
     ):
-        invoke_wiki_synthesis(_make_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir)
+        invoke_wiki_synthesis(_runner_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir)
 
     assert (wiki_dir / "concept" / "test.md").exists()
     assert get_processed_ids(wiki_pg, status="ok") == {"content_runner"}
@@ -115,7 +113,7 @@ def test_runner_passes_langfuse_metadata_when_callback_configured(tmp_path: Path
         # but the env patch happens after that. Clear again now so the next
         # callback resolution sees the patched env.
         get_langfuse_callback.cache_clear()
-        invoke_wiki_synthesis(_make_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir, replay=True)
+        invoke_wiki_synthesis(_runner_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir, replay=True)
 
     assert len(captured_configs) == 1
     cfg = captured_configs[0]
@@ -153,7 +151,7 @@ def test_runner_omits_callback_when_unconfigured(tmp_path: Path, wiki_pg_url):
             patch("langgraph.pregel.Pregel.invoke", new=fake_invoke),
         ):
             get_langfuse_callback.cache_clear()
-            invoke_wiki_synthesis(_make_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir)
+            invoke_wiki_synthesis(_runner_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir)
     finally:
         if saved is not None:
             os.environ["LANGFUSE_PUBLIC_KEY"] = saved
