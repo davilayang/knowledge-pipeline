@@ -64,4 +64,14 @@ def invoke_wiki_synthesis(
 
     with get_checkpointer(db_url) as checkpointer:
         graph = build_wiki_synthesis_graph().compile(checkpointer=checkpointer)
+
+        # Auto-detect resume: if the thread is paused mid-execution (the prior
+        # invocation raised before reaching END), invoke(None) resumes from
+        # the last checkpoint. Otherwise pass the full input state to start
+        # a fresh run. Crucial because invoke(state) on an existing thread
+        # restarts from START and re-runs every entity LLM call — defeating
+        # the whole point of checkpointing. See tests/wiki_synthesis/test_replay.py.
+        snapshot = graph.get_state(config)
+        if snapshot.next:
+            return graph.invoke(None, config=config)
         return graph.invoke(state, config=config)
