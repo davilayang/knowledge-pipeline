@@ -30,15 +30,15 @@ from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 
 from workflows.llm import generate
-from workflows.wiki.prompts import (
-    PAGE_SYNTHESIS_SYSTEM,
-    PAGE_SYNTHESIS_USER_CREATE,
-    PAGE_SYNTHESIS_USER_UPDATE,
-)
 from workflows.wiki_synthesis.parsing import (
     check_h2_preservation,
     parse_llm_page_output,
     slug_from_id,
+)
+from workflows.wiki_synthesis.prompts import (
+    PAGE_SYNTHESIS_SYSTEM,
+    PAGE_SYNTHESIS_USER_CREATE,
+    PAGE_SYNTHESIS_USER_UPDATE,
 )
 
 logger = logging.getLogger(__name__)
