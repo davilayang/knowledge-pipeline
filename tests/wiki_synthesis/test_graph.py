@@ -21,8 +21,9 @@ from domains.wiki.state import (
     snapshot_aliases,
 )
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from tests.wiki_synthesis._helpers import make_item
 from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
+
+from tests.wiki_synthesis._helpers import make_item
 
 
 def _invoke(item, *, wiki_dir, db_url):
