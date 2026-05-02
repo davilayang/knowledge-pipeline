@@ -66,26 +66,43 @@ def test_concurrent_writers_first_alias_claim_wins(wiki_pg, wiki_pg_url):
 
 
 @pytest.mark.timeout(15)
-def test_many_concurrent_writers_no_deadlock(wiki_pg, wiki_pg_url):
-    """Ten threads, ten different aliases, all writing to the same table at
-    once. No deadlock, no exception, all 10 rows land. Exercises that
-    psycopg's default isolation + INSERT ... ON CONFLICT scales without
-    serializing the whole table."""
-    n = 10
+def test_high_contention_concurrent_writers_no_deadlock(wiki_pg, wiki_pg_url):
+    """Ten threads divided into TWO groups racing on the same two aliases.
+    The first writer in each group wins; the other 8 hit ON CONFLICT DO
+    NOTHING. Test asserts no deadlock, no exception, exactly 2 rows land.
+
+    Earlier version of this test wrote 10 disjoint aliases — that exercised
+    no contention at all and would have passed even with ON CONFLICT removed.
+    The current shape genuinely tests what the docstring claims: high-
+    contention concurrent inserts don't serialize or deadlock.
+    """
+    n_per_group = 5
+    n = n_per_group * 2
     barrier = threading.Barrier(n, timeout=5.0)
 
-    def write_unique(idx: int):
+    def write_contended(idx: int):
+        # Half the threads claim "shared_a", half claim "shared_b".
+        # Each writer has a unique entity_id so the loser of each race is
+        # silently dropped by ON CONFLICT (alias) DO NOTHING.
+        target_alias = "shared_a" if idx < n_per_group else "shared_b"
         with psycopg.connect(wiki_pg_url) as conn:
             barrier.wait()
             with conn.transaction():
                 insert_aliases_idempotent(
                     conn,
-                    [(f"concept__e{idx}", f"Entity{idx}", [f"alias_{idx}"])],
+                    [(f"concept__e{idx}", f"Entity{idx}", [target_alias])],
                 )
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=n) as ex:
-        list(ex.map(write_unique, range(n), timeout=10.0))
+        list(ex.map(write_contended, range(n), timeout=10.0))
 
-    # All 20 rows landed — n canonical_name rows + n alias_idx rows.
-    count = wiki_pg.execute("SELECT count(*) FROM wiki.aliases").fetchone()[0]
-    assert count == n * 2  # canonical and one alias per entity
+    # Each unique alias string lands once. shared_a + shared_b = 2 distinct
+    # alias rows. Plus the canonical names — Entity0..Entity9 are all unique
+    # so all 10 land. 12 rows total.
+    rows = wiki_pg.execute("SELECT alias FROM wiki.aliases ORDER BY alias").fetchall()
+    aliases = [r[0] for r in rows]
+    assert aliases.count("shared_a") == 1
+    assert aliases.count("shared_b") == 1
+    # Canonical names landed too (Entity0..Entity9, 10 rows)
+    assert sum(1 for a in aliases if a.startswith("Entity")) == 10
+    assert len(rows) == 12

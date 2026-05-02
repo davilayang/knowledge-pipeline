@@ -14,9 +14,10 @@ from unittest.mock import patch
 import pytest
 from domains.wiki.state import get_page, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from tests.wiki_synthesis._helpers import make_item
 from workflows.shared.observability import get_langfuse_callback
 from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
+
+from tests.wiki_synthesis._helpers import make_item
 
 
 def _runner_item():
@@ -158,3 +159,64 @@ def test_runner_omits_callback_when_unconfigured(tmp_path: Path, wiki_pg_url):
 
     assert captured_configs[0]["callbacks"] == []
     assert captured_configs[0]["metadata"]["langfuse_session_id"] == "content_runner"
+
+
+def test_runner_re_runs_on_completed_thread(tmp_path: Path, wiki_pg, wiki_pg_url):
+    """Calling invoke_wiki_synthesis twice with the same item runs the workflow
+    twice — second call is NOT a no-op. Documented behavior in runner.py:
+    re-materializing a successful item_id (e.g., upstream content changed,
+    manual Dagster re-run) re-runs from scratch with current inputs.
+
+    The pause-and-resume case is covered in test_replay.py; this test pins
+    the inverse — completed threads do not silently turn into resumes.
+    """
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+
+    extraction = ExtractionResult(
+        entities=[
+            ExtractedEntity(
+                entity_id="concept__rerun",
+                title="Rerun",
+                page_type="concept",
+                is_new=True,
+            )
+        ]
+    )
+    llm_output = (
+        "---\n"
+        "entity_id: concept__rerun\n"
+        "title: Rerun\n"
+        "page_type: concept\n"
+        "---\n"
+        "# Rerun\n\nBody."
+    )
+
+    item = make_item(item_id="content_rerun", source_ref="raw_store:content_rerun")
+    synthesis_calls = 0
+
+    def counting_generate(prompt, *, system="", model=""):
+        nonlocal synthesis_calls
+        synthesis_calls += 1
+        return llm_output
+
+    with (
+        patch(
+            "workflows.wiki_synthesis.nodes.generate_structured",
+            return_value=extraction,
+        ),
+        patch(
+            "workflows.wiki_synthesis.entity_graph.generate",
+            side_effect=counting_generate,
+        ),
+    ):
+        invoke_wiki_synthesis(item, db_url=wiki_pg_url, wiki_dir=wiki_dir)
+        assert synthesis_calls == 1
+        invoke_wiki_synthesis(item, db_url=wiki_pg_url, wiki_dir=wiki_dir)
+
+    # Second call ran the synthesis LLM again — fresh re-run, not a resume.
+    assert synthesis_calls == 2
+
+    # Both runs landed; the wiki.processed row is upserted (not duplicated)
+    # because the table PK is (item_id, source_type).
+    assert get_processed_ids(wiki_pg, status="ok") == {"content_rerun"}
