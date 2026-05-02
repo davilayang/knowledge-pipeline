@@ -11,11 +11,9 @@ for the I1 fix (extract failure writes a status='error' processed row
 instead of leaving no DB footprint).
 """
 
-from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-from domains.wiki.sources import IngestItem
 from domains.wiki.state import (
     get_failed,
     get_page,
@@ -25,18 +23,7 @@ from domains.wiki.state import (
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
-
-def _make_item(**overrides) -> IngestItem:
-    defaults = {
-        "item_id": "content_abc",
-        "title": "RAG is All You Need",
-        "date": date(2026, 4, 1),
-        "text": "# RAG\n\nRAG is a technique for augmenting LLM generation.",
-        "source_type": "raw_store",
-        "source_ref": "raw_store:content_abc",
-    }
-    defaults.update(overrides)
-    return IngestItem(**defaults)
+from tests.wiki_synthesis._helpers import make_item
 
 
 def _invoke(item, *, wiki_dir, db_url):
@@ -83,7 +70,7 @@ def test_creates_new_page(tmp_path: Path, wiki_pg, wiki_pg_url):
             return_value=llm_output,
         ),
     ):
-        _invoke(_make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
+        _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     assert (wiki_dir / "concept" / "rag.md").exists()
     assert get_processed_ids(wiki_pg, status="ok") == {"content_abc"}
@@ -107,7 +94,7 @@ def test_no_entities_returns_skipped(tmp_path: Path, wiki_pg, wiki_pg_url):
     extraction = ExtractionResult(entities=[])
 
     with patch("workflows.wiki_synthesis.nodes.generate_structured", return_value=extraction):
-        _invoke(_make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
+        _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     # No pages, no aliases
     assert list(wiki_dir.glob("**/*.md")) == []
@@ -173,7 +160,7 @@ def test_failed_synthesis_continues(tmp_path: Path, wiki_pg, wiki_pg_url):
             side_effect=mock_generate,
         ),
     ):
-        _invoke(_make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
+        _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     # Only ChromaDB succeeded
     assert (wiki_dir / "tool" / "chromadb.md").exists()
@@ -223,7 +210,7 @@ def test_all_synthesis_fails_no_aliases_persisted(tmp_path: Path, wiki_pg, wiki_
             side_effect=RuntimeError("LLM timeout"),
         ),
     ):
-        _invoke(_make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
+        _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     # No pages
     assert list(wiki_dir.glob("**/*.md")) == []
@@ -253,7 +240,7 @@ def test_extract_failure_writes_error_row(tmp_path: Path, wiki_pg, wiki_pg_url):
         "workflows.wiki_synthesis.nodes.generate_structured",
         side_effect=RuntimeError("OpenAI 503"),
     ):
-        _invoke(_make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
+        _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     assert get_processed_ids(wiki_pg, status="error") == {"content_abc"}
     failed = get_failed(wiki_pg)

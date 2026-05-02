@@ -64,4 +64,24 @@ def invoke_wiki_synthesis(
 
     with get_checkpointer(db_url) as checkpointer:
         graph = build_wiki_synthesis_graph().compile(checkpointer=checkpointer)
+
+        # Three thread states matter, distinguished by graph.get_state(config).next:
+        #   - non-existent thread     → next = ()         → invoke(state): fresh run
+        #   - paused mid-execution    → next = (...,)     → invoke(None) : resume
+        #   - successfully ended      → next = ()         → invoke(state): fresh re-run
+        #
+        # The "ended" case looks identical to "non-existent" — both have empty
+        # next. That's intentional. invoke(state) on an ended thread restarts
+        # from START on the same thread_id; the checkpointer accumulates
+        # multiple successful runs in its history. This matches how Dagster
+        # uses this asset: re-materializing a successful item_id (because
+        # upstream raw_store content changed, or a manual re-run) SHOULD
+        # re-run from scratch with current inputs, not be a no-op.
+        #
+        # The only state we explicitly handle is "paused", because that's the
+        # one where the wrong call (invoke(state)) silently re-fires every
+        # LLM call we already paid for. See tests/wiki_synthesis/test_replay.py.
+        snapshot = graph.get_state(config)
+        if snapshot.next:
+            return graph.invoke(None, config=config)
         return graph.invoke(state, config=config)

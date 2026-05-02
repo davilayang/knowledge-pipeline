@@ -17,6 +17,7 @@ dev = [
     "ruff>=0.8,<1.0",
     "pytest>=8.0,<9.0",
     "pytest-postgresql>=6.0,<8.0",
+    "pytest-timeout>=2.3,<3.0",
 ]
 
 # No [build-system] — root is a virtual project (uv handles this implicitly when
