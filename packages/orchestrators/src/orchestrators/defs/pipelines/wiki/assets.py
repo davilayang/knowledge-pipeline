@@ -100,9 +100,15 @@ def wiki_synthesized(
     invoke_wiki_synthesis(item, db_url=db_url, wiki_dir=wiki.get_wiki_dir())
 
     # Re-read processed status to surface the result in Dagster metadata.
+    # The asset itself returns MaterializeResult on a status='error' row
+    # (the workflow handled the failure and committed an error marker —
+    # that's a successful asset run, not a Dagster-level failure).
     with psycopg.connect(db_url) as conn:
         row = conn.execute(
-            "SELECT status, error FROM wiki.processed " "WHERE item_id = %s AND source_type = %s",
+            """
+            SELECT status, error FROM wiki.processed
+            WHERE item_id = %s AND source_type = %s
+            """,
             (item.item_id, item.source_type),
         ).fetchone()
 
@@ -121,7 +127,6 @@ def wiki_synthesized(
 @dg.asset(
     group_name="wiki",
     compute_kind="python",
-    deps=[wiki_synthesized],
     description="Regenerate wiki index.md from current pages in Postgres",
 )
 def wiki_index_updated(
@@ -129,8 +134,16 @@ def wiki_index_updated(
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
     """Read every wiki.pages row from Postgres and write a flat index.md
-    grouped by page_type. Replaces the SQLite-backed version that read
-    from WikiStateDB."""
+    grouped by page_type.
+
+    NOT declared as deps=[wiki_synthesized] on purpose: with dynamic
+    partitions that grow over time, AllPartitionMapping (the default for
+    unpartitioned-depending-on-partitioned) would block this asset until
+    every partition has materialized — which never happens, since every
+    wiki_pending run registers fresh partitions. Phase E will add a
+    sensor that re-materializes this asset after each partition lands;
+    for now, materialize manually after a synthesis batch.
+    """
     db_url = wiki.get_database_url()
     with psycopg.connect(db_url) as conn:
         pages = get_all_pages(conn)
