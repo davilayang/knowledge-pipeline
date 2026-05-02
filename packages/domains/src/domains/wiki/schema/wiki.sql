@@ -19,8 +19,8 @@ CREATE SCHEMA IF NOT EXISTS wiki;
 CREATE TABLE IF NOT EXISTS wiki.processed (
     item_id        text        NOT NULL,
     source_type    text        NOT NULL,
-    status         text        NOT NULL,   -- 'success' | 'error' | 'skipped'
-    error          text,                   -- NULL on success
+    status         text        NOT NULL CHECK (status IN ('ok', 'error', 'skipped')),
+    error          text,                   -- NULL on ok
     processed_at   timestamptz NOT NULL DEFAULT now(),
     PRIMARY KEY (item_id, source_type)
 );
@@ -46,8 +46,12 @@ CREATE TABLE IF NOT EXISTS wiki.pages (
 -- wiki.aliases
 --
 -- One row per (entity_id, alias) pair. alias is globally unique — each alias
--- maps to exactly one canonical entity. entity_id is not unique because an
--- entity can have many aliases.
+-- maps to exactly one canonical entity (first-writer-wins under ON CONFLICT).
+-- canonical_name is denormalised onto every row for read-side convenience;
+-- in the rare case where two writers disagree on canonical_name for the same
+-- entity_id, snapshot_aliases() picks the lexicographically-first row's
+-- canonical (deterministic). Promote canonical to its own entities table if
+-- divergence becomes load-bearing.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS wiki.aliases (
     entity_id      text NOT NULL,

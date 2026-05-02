@@ -3,9 +3,8 @@
 import logging
 
 import dagster as dg
-
-from workflows.wiki.ingest import ingest_article
 from domains.wiki.sources import RawStoreSource
+from workflows.wiki.ingest import ingest_article
 from workflows.wiki.state import WikiStateDB
 
 from .resources import WikiResource

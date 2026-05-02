@@ -1,5 +1,4 @@
 import pytest
-
 from retrievers.chunking import Chunk, get_chunking_fn
 
 # Sample text for testing — enough content to produce multiple chunks at small sizes.

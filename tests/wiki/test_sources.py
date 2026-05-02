@@ -8,7 +8,8 @@ from domains.wiki.sources import LocalFileSource, RawStoreSource
 def _create_test_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "test.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE contents (
             content_id TEXT PRIMARY KEY,
             newsletter_id INTEGER,
@@ -24,19 +25,24 @@ def _create_test_db(tmp_path: Path) -> Path:
             vector_status TEXT DEFAULT 'pending',
             stored_at TEXT
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
                               content_date, stored_at)
         VALUES ('abc123', 1, 'the_batch', 'RAG is All You Need', 'Author',
                 '# RAG\n\nRAG is a technique...', '2026-04-01', '2026-04-01T00:00:00')
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
                               stored_at)
         VALUES ('def456', 1, 'boring_cash_cow', 'Building RAG Products', 'Author',
                 '# Building\n\nHow to build...', '2026-04-02T00:00:00')
-    """)
+    """
+    )
     conn.commit()
     conn.close()
     return db_path

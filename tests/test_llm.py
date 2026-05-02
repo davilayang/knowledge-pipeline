@@ -2,7 +2,6 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
-
 from workflows.llm import generate, generate_structured
 
 

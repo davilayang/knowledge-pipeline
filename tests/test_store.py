@@ -2,7 +2,6 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-
 from domains.store import ContentRow, count_contents, get_contents, set_vector_status
 
 
@@ -11,7 +10,8 @@ def tmp_db(tmp_path: Path) -> Path:
     """Create a temporary SQLite database with the contents table."""
     db_path = tmp_path / "test.db"
     conn = sqlite3.connect(db_path)
-    conn.execute("""
+    conn.execute(
+        """
         CREATE TABLE contents (
             content_id TEXT PRIMARY KEY,
             newsletter_id INTEGER,
@@ -27,19 +27,24 @@ def tmp_db(tmp_path: Path) -> Path:
             vector_status TEXT DEFAULT 'pending',
             stored_at TEXT
         )
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
                               vector_status, stored_at)
         VALUES ('item-1', 1, 'medium', 'Test Article', 'Author', 'Some markdown content here.',
                 'pending', '2026-03-01T00:00:00')
-    """)
-    conn.execute("""
+    """
+    )
+    conn.execute(
+        """
         INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
                               vector_status, stored_at)
         VALUES ('item-2', 1, 'medium', 'Another Article', 'Author', 'More content.',
                 'indexed', '2026-03-02T00:00:00')
-    """)
+    """
+    )
     conn.commit()
     conn.close()
     return db_path

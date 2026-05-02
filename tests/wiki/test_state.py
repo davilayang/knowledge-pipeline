@@ -44,7 +44,10 @@ def test_mark_processed_upserts(tmp_path: Path):
 def test_upsert_and_get_page(tmp_path: Path):
     db = WikiStateDB(tmp_path / "state.db")
     db.upsert_page(
-        "concept__rag", "concept", "concept/rag.md", "2026-04-21",
+        "concept__rag",
+        "concept",
+        "concept/rag.md",
+        "2026-04-21",
         related=["concept__vector_db"],
     )
 

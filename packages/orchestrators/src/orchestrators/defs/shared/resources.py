@@ -5,6 +5,7 @@ from pathlib import Path
 import chromadb
 import dagster as dg
 from pydantic import PrivateAttr
+from retrievers.vector_store.chroma import get_client, get_collection
 
 from orchestrators.config import (
     CHROMA_PATH,
@@ -12,7 +13,6 @@ from orchestrators.config import (
     SOURCE_RAW_STORE,
     strategy_dir,
 )
-from retrievers.vector_store.chroma import get_client, get_collection
 
 
 class RawStoreResource(dg.ConfigurableResource):

@@ -2,7 +2,12 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import patch
 
-from domains.wiki.aliases import save_aliases, AliasStore
+from domains.wiki.aliases import AliasStore
+from domains.wiki.sources import IngestItem
+from domains.wiki.types import (
+    ExtractedEntity,
+    ExtractionResult,
+)
 from workflows.wiki.ingest import (
     _check_h2_preservation,
     _parse_llm_page_output,
@@ -10,14 +15,7 @@ from workflows.wiki.ingest import (
     _stage_alias_updates,
     ingest_article,
 )
-from domains.wiki.io import write_page
-from domains.wiki.sources import IngestItem
 from workflows.wiki.state import WikiStateDB
-from domains.wiki.types import (
-    ExtractionResult,
-    ExtractedEntity,
-    WikiPage,
-)
 
 
 def _make_item(**overrides) -> IngestItem:

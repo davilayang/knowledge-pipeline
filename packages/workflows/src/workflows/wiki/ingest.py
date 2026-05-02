@@ -6,11 +6,11 @@ from datetime import date
 from pathlib import Path
 
 import yaml
-
 from domains.wiki.aliases import AliasStore, load_aliases, save_aliases
 from domains.wiki.io import write_page
 from domains.wiki.sources import IngestItem
 from domains.wiki.types import ExtractionResult, WikiPage
+
 from workflows.llm import generate, generate_structured
 from workflows.wiki.prompts import (
     ENTITY_EXTRACTION_SYSTEM,
