@@ -21,6 +21,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`wiki.processed.status` CHECK constraint** added to `wiki.sql` — values must be `'ok'`, `'error'`, or `'skipped'`. Prevents silent drift if a future caller writes a different string.
 - **Extraction failures now write a status='error' processed row** (new behavior — legacy raised and left no DB footprint, causing infinite Dagster retries on a permanent extraction failure).
 - **Parity tests** ported from `tests/wiki/test_ingest.py` to `tests/wiki_synthesis/{test_parsing,test_stage_aliases,test_graph}.py`. 16 new tests; LLM calls mocked at import locations, Postgres assertions run against the real `wiki_pg` fixture so the transactional commit path is genuinely exercised.
+- **`workflows/wiki_synthesis/runner.py::invoke_wiki_synthesis`** — the canonical invocation pattern. Bundles PostgresSaver checkpointer, `thread_id="wiki_synthesis__{item_id}"`, the Langfuse callback at `graph.invoke` level (not just per-LLM-call), and `langfuse_session_id` + tags metadata so retries/replays of the same item group into one Langfuse session view. Callers (Dagster asset in PR 3, future CLI, ad-hoc scripts) should prefer this over compiling the graph manually. Three new tests cover end-to-end invocation, callback propagation when `LANGFUSE_PUBLIC_KEY` is set, and silent omission when unset.
 
 ---
 
