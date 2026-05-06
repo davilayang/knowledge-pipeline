@@ -1,8 +1,8 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.5.0"
+version = "0.6.0"
 description = """
-  Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, and evaluation
+  Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
 requires-python = ">=3.13"
 dependencies = [
@@ -56,19 +56,17 @@ cmd = """
 """
 help = "Launch Dagster UI at localhost:3030 with workbench + pipelines as separate code locations"
 
-# Workbench / pipelines CLI entry points — commented out for now while we
-# decide which jobs survive Phase B. Restore by uncommenting.
-# [tool.poe.tasks.index]
-# cmd = "dg launch -m orchestrators.defs.workbench.definitions --job idx_markdown_minilm"
-# help = "Run index job once from CLI"
-#
-# [tool.poe.tasks.backup]
-# cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_databases_job"
-# help = "Run backup job once from CLI"
-#
-# [tool.poe.tasks.eval]
-# cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
-# help = "Run evaluation across RAG strategies"
+[tool.poe.tasks.index]
+cmd = "dg launch -m orchestrators.defs.workbench.definitions --job idx_markdown_minilm"
+help = "Run index job once from CLI"
+
+[tool.poe.tasks.backup]
+cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings"
+help = "Run readings backup job once from CLI"
+
+[tool.poe.tasks.eval]
+cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
+help = "Run evaluation across RAG strategies"
 
 ## Deploy ##
 
@@ -158,10 +156,9 @@ help = "Run the RAG evaluation harness with Ragas metrics"
 
 ## Reset ##
 
-# Commented out for now — see workbench `index` task above.
-# [tool.poe.tasks.reset-indices]
-# cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
-# help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
+[tool.poe.tasks.reset-indices]
+cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
+help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
 
 [tool.poe.tasks.reset-wiki]
 cmd = "python -m orchestrators.scripts.reset_wiki"

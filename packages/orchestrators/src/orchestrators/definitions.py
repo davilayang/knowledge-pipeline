@@ -6,7 +6,7 @@
 import dagster as dg
 
 from orchestrators.defs import shared
-from orchestrators.defs.pipelines import backup_databases, wiki
+from orchestrators.defs.pipelines import backup_readings, wiki
 from orchestrators.defs.workbench import (
     evaluate,
     idx_markdown_bge,
@@ -24,6 +24,6 @@ defs = dg.Definitions.merge(
     idx_semantic_minilm.defs,
     evaluate.defs,
     # pipelines (scheduled)
-    backup_databases.defs,
+    backup_readings.defs,
     wiki.defs,
 )

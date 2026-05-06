@@ -5,6 +5,7 @@
 #   ./scripts/deploy-hcloud.sh setup                # One-time project setup
 #   ./scripts/deploy-hcloud.sh deploy               # Pull latest, rebuild & restart
 #   ./scripts/deploy-hcloud.sh deploy --no-build    # Restart only (skip image build)
+#   ./scripts/deploy-hcloud.sh push-creds           # Sync rclone.conf to server
 #
 # Config is loaded from .env.deploy (create from .env.deploy.example).
 # Env vars can also be set inline: DEPLOY_TARGET=... ./scripts/deploy-hcloud.sh deploy
@@ -164,11 +165,43 @@ do_deploy() {
 }
 
 # ==============================================================================
+# PUSH-CREDS — sync local secrets to the server
+# ==============================================================================
+#
+# Currently handles the rclone Drive credential. Run this once after editing
+# `~/.config/rclone/rclone.conf` locally; the file lands at `<project>/.rclone/`
+# on the server and is mounted read-only into the dagster-code container at
+# /root/.config/rclone (rclone's default search path).
+
+do_push_creds() {
+    local target
+    target="$(deploy_target)"
+
+    info "Pushing rclone.conf to ${target}..."
+    run_deploy true 2>/dev/null \
+        || error "Cannot SSH to ${target}"
+
+    local local_rclone="${HOME}/.config/rclone/rclone.conf"
+    [ -f "${local_rclone}" ] \
+        || error "rclone.conf not found at ${local_rclone} — run 'rclone config' first"
+
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
+    rsync -az --chmod=600 -e "ssh $(ssh_opts)" \
+        "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
+
+    echo ""
+    info "rclone.conf pushed."
+    echo "    Restart the code container to pick up changes:"
+    echo "      ./scripts/deploy-hcloud.sh deploy --no-build"
+}
+
+# ==============================================================================
 # Main
 # ==============================================================================
 
 case "${1:-}" in
-    setup)  do_setup ;;
-    deploy) do_deploy "${2:-}" ;;
-    *)      usage ;;
+    setup)      do_setup ;;
+    deploy)     do_deploy "${2:-}" ;;
+    push-creds) do_push_creds ;;
+    *)          usage ;;
 esac

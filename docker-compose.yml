@@ -52,9 +52,23 @@ services:
       LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
       LANGFUSE_HOST: ${LANGFUSE_HOST}
       DATABASE_URL: ${DATABASE_URL}
+      # Backup pipeline — all optional. Unset values disable the relevant assets
+      # without breaking the run (laptop/dev mode).
+      BACKUP_SOURCE_DIR: ${BACKUP_SOURCE_DIR:-}
+      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
+      DRIVE_REMOTE: ${DRIVE_REMOTE:-}
+      HEALTHCHECK_PING_URL: ${HEALTHCHECK_PING_URL:-}
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
+      - ./backups:/app/backups
+      # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
+      # Mounted read-only into the container's root home (rclone's default search path).
+      # NOTE: dagster-code now runs as non-root (uid 1001). rclone reads its config
+      # from $HOME/.config/rclone/ — for non-root invocations the mount path here
+      # won't be discovered. Either set RCLONE_CONFIG to point here, or revert
+      # the non-root user. See PR #31 / PR #30 integration notes.
+      - ./.rclone:/root/.config/rclone:ro
     # No host port mapping for the gRPC code-server — webserver/daemon reach it
     # via dagster_network. Server-side access is fronted by Tailscale,
     # so internal-only is correct.
