@@ -23,6 +23,7 @@ import sqlite3
 import subprocess
 import urllib.request
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 
 import dagster as dg
@@ -35,6 +36,10 @@ from .constants import (
 )
 from .partitions import daily_partition_def
 from .resources import BackupResource, HealthcheckResource, RcloneResource
+
+# Tie asset code_version to the package version so a release bump signals
+# "logic may have changed" — Dagster shows downstream as stale until re-materialized.
+CODE_VERSION = version("knowledge-orchestrators")
 
 
 # ---------- helpers ----------
@@ -99,6 +104,7 @@ def _snapshot_one_db(
     key=["snapshots", "raw_store"],
     group_name="backup",
     compute_kind="sqlite",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": "newsletter-backup"},
     description="Consistent SQLite snapshot of raw_store.db for the partition's date.",
@@ -113,6 +119,7 @@ def snapshot_raw_store(
     key=["snapshots", "sessions"],
     group_name="backup",
     compute_kind="sqlite",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": "newsletter-backup"},
     description="Consistent SQLite snapshot of sessions.db for the partition's date.",
@@ -130,6 +137,7 @@ def snapshot_sessions(
     key=["drive", "capacity"],
     group_name="backup",
     compute_kind="rclone",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     deps=[
         dg.AssetDep(["snapshots", "raw_store"]),
@@ -184,6 +192,7 @@ def check_drive_capacity(
     key=["drive", "uploaded"],
     group_name="backup",
     compute_kind="rclone",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "capacity"])],
     description="Copy the partition's snapshot dir to the Drive remote.",
@@ -234,6 +243,7 @@ def upload_snapshots_to_drive(
     key=["drive", "pruned"],
     group_name="backup",
     compute_kind="rclone",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description=f"Delete Drive partition dirs beyond the newest {MAX_DRIVE_BACKUPS}.",
@@ -259,9 +269,16 @@ def prune_drive_backups(
         subprocess.run(["rclone", "purge", rclone.remote_path(DRIVE_ROOT, name)], check=True)
         context.log.info("Drive: purged %s", name)
 
+    summary = (
+        f"**Drive retention** — kept {len(dir_names) - len(to_delete)} / "
+        f"deleted {len(to_delete)} (target ≤ {MAX_DRIVE_BACKUPS})\n\n"
+        + ("\n".join(f"- `{n}`" for n in to_delete) if to_delete else "_nothing to prune_")
+    )
+
     return dg.MaterializeResult(
         metadata={
             "status": dg.MetadataValue.text("ok"),
+            "summary": dg.MetadataValue.md(summary),
             "deleted": dg.MetadataValue.json(to_delete),
             "deleted_count": dg.MetadataValue.int(len(to_delete)),
             "kept_count": dg.MetadataValue.int(len(dir_names) - len(to_delete)),
@@ -274,6 +291,7 @@ def prune_drive_backups(
     key=["local", "pruned"],
     group_name="backup",
     compute_kind="filesystem",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description=f"Delete local partition dirs beyond the newest {MAX_LOCAL_BACKUPS}.",
@@ -291,10 +309,18 @@ def prune_local_backups(
         shutil.rmtree(d)
         context.log.info("Local: removed %s", d.name)
 
+    deleted_names = [d.name for d in to_delete]
+    summary = (
+        f"**Local retention** — kept {len(dirs) - len(to_delete)} / "
+        f"deleted {len(to_delete)} (target ≤ {MAX_LOCAL_BACKUPS})\n\n"
+        + ("\n".join(f"- `{n}`" for n in deleted_names) if deleted_names else "_nothing to prune_")
+    )
+
     return dg.MaterializeResult(
         metadata={
             "status": dg.MetadataValue.text("ok"),
-            "deleted": dg.MetadataValue.json([d.name for d in to_delete]),
+            "summary": dg.MetadataValue.md(summary),
+            "deleted": dg.MetadataValue.json(deleted_names),
             "deleted_count": dg.MetadataValue.int(len(to_delete)),
             "kept_count": dg.MetadataValue.int(len(dirs) - len(to_delete)),
             "retention_n": dg.MetadataValue.int(MAX_LOCAL_BACKUPS),
@@ -309,6 +335,7 @@ def prune_local_backups(
     key=["healthcheck", "pinged"],
     group_name="backup",
     compute_kind="http",
+    code_version=CODE_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description="POST to healthchecks.io — absence of this ping is the failure alert.",

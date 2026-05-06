@@ -34,6 +34,7 @@ datasets/
 logs/
 NOTES/
 backups/
+.rclone/
 
 # Dagster
 .tmp_dagster_home*

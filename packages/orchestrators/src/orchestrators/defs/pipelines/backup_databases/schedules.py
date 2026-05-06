@@ -13,6 +13,11 @@ from .partitions import daily_partition_def
 
 backup_databases_job = dg.define_asset_job(
     name="backup_databases",
+    description=(
+        "Daily backup: snapshot newsletter-assistant SQLite DBs, verify integrity, "
+        "offload to Google Drive (rclone), prune both sides, ping healthchecks.io. "
+        "Drive + healthcheck steps short-circuit when their env vars are unset."
+    ),
     selection=dg.AssetSelection.assets(*all_assets),
     partitions_def=daily_partition_def,
     tags={
