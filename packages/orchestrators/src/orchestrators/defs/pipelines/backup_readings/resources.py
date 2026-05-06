@@ -52,8 +52,11 @@ class HealthcheckResource(dg.ConfigurableResource):
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
+    # .strip() so a whitespace-only env value reads as unset (matches `is_configured`).
     return {
         "backup": BackupResource(),
-        "rclone": RcloneResource(remote_name=os.getenv("DRIVE_REMOTE", "")),
-        "healthcheck": HealthcheckResource(ping_url=os.getenv("HEALTHCHECK_PING_URL", "")),
+        "rclone": RcloneResource(remote_name=os.getenv("DRIVE_REMOTE", "").strip()),
+        "healthcheck": HealthcheckResource(
+            ping_url=os.getenv("HEALTHCHECK_PING_URL", "").strip()
+        ),
     }

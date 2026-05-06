@@ -265,6 +265,10 @@ def prune_drive_backups(
     )
 
 
+# Dep on `google_drive/uploaded_snapshots` is intentional: we gate on "upload
+# attempted" (which materializes status=skipped when DRIVE_REMOTE is unset),
+# not "upload succeeded." Laptop dev still prunes; server with broken Drive
+# blocks here so the latest local copy isn't pruned away with no remote backup.
 @dg.asset(
     key=["local_disk", "pruned_old_backups"],
     group_name="backup",
