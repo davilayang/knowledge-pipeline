@@ -14,11 +14,8 @@
 #   IDENTITY_FILE     Path to SSH private key (required)
 #   HETZNER_SERVER or DEPLOY_TARGET    SSH target (required)
 #   DEPLOY_USER       Non-root user (default: deploy)
-#
-# Prerequisite: DEPLOY_USER needs passwordless sudo for `chown`. One-time setup:
-#   echo "deploy ALL=(ALL) NOPASSWD: /bin/chown, /usr/bin/chown" \
-#     | sudo tee /etc/sudoers.d/deploy-chown
-#   sudo chmod 0440 /etc/sudoers.d/deploy-chown
+#   DEPLOY_PASSWORD   Sudo password for DEPLOY_USER (required for setup/push-creds
+#                     since both chown bind-mount dirs over a non-TTY SSH session)
 
 set -euo pipefail
 
@@ -71,6 +68,15 @@ run_deploy() {
     ssh $(ssh_opts) "$(deploy_target)" "$@"
 }
 
+# Run a remote command that needs sudo. Pipes DEPLOY_PASSWORD into `sudo -S`
+# so we don't depend on a TTY. Single-quoting the password means values
+# containing single quotes will break — keep DEPLOY_PASSWORD out of those.
+run_deploy_sudo() {
+    [ -n "${DEPLOY_PASSWORD:-}" ] \
+        || error "DEPLOY_PASSWORD must be set in .env.deploy for sudo commands"
+    run_deploy "echo '${DEPLOY_PASSWORD}' | sudo -S -p '' $*"
+}
+
 compose_cmd() {
     echo "docker compose"
 }
@@ -105,10 +111,10 @@ do_setup() {
     rsync -azv -e "ssh $(ssh_opts)" .env "${target}:~/${REMOTE_DIR}/"
     rsync -azv -e "ssh $(ssh_opts)" configs/ "${target}:~/${REMOTE_DIR}/configs/"
 
-    # Create runtime directories. ./logs needs uid 1001 ownership so the
-    # non-root dagster user inside dagster-code can write compute logs.
+    # Create runtime directories. ./logs/data/backups need uid 1001 ownership so
+    # the non-root dagster user inside dagster-code can write compute logs etc.
     run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
-    run_deploy "sudo chown 1001:1001 ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/backups"
+    run_deploy_sudo "chown 1001:1001 ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/backups"
 
     echo ""
     echo "========================================="
@@ -192,9 +198,11 @@ do_push_creds() {
     [ -f "${local_rclone}" ] \
         || error "rclone.conf not found at ${local_rclone} — run 'rclone config' first"
 
-    # `sudo chown` covers the case where Docker auto-created .rclone/ as root
+    # sudo chown covers the case where Docker auto-created .rclone/ as root
     # before push-creds ran (compose creates missing bind-mount sources as root).
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && sudo chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone"
+    run_deploy_sudo "chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone"
+    run_deploy "chmod 700 ~/${REMOTE_DIR}/.rclone"
     rsync -az --chmod=600 -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
