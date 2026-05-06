@@ -56,7 +56,5 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "backup": BackupResource(),
         "rclone": RcloneResource(remote_name=os.getenv("DRIVE_REMOTE", "").strip()),
-        "healthcheck": HealthcheckResource(
-            ping_url=os.getenv("HEALTHCHECK_PING_URL", "").strip()
-        ),
+        "healthcheck": HealthcheckResource(ping_url=os.getenv("HEALTHCHECK_PING_URL", "").strip()),
     }

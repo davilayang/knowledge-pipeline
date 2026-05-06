@@ -14,10 +14,7 @@ from orchestrators.defs.pipelines.backup_readings.resources import (
 def test_definitions_load_with_expected_shape():
     """Asset count, check count, sensor count, schedule names — all stable
     contract that the rest of the pipeline relies on."""
-    asset_keys = {
-        "/".join(k.path)
-        for k in defs.resolve_asset_graph().get_all_asset_keys()
-    }
+    asset_keys = {"/".join(k.path) for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
         "snapshots/raw_store",
         "snapshots/sessions",

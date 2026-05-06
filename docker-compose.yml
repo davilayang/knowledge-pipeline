@@ -10,16 +10,21 @@
 #   docker compose up --build dagster-code
 #
 # For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
+#
+# Single Postgres, two databases: `dagster` (run history) and
+# `knowledge_pipeline` (wiki tables + langgraph_checkpoints). Each can be
+# backed up and restored independently via per-DB pg_dump.
 
 services:
   postgres:
     image: postgres:14
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
       POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
       POSTGRES_DB: ${DAGSTER_PG_DB}
     volumes:
-      - dagster_postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -35,26 +40,25 @@ services:
       context: .
       dockerfile: docker/code/Dockerfile
     image: knowledge_pipeline_code
+    # Pulls everything from .env automatically. New env vars added there are
+    # forwarded into the container without editing this file. The two entries
+    # below are explicit because they're either composed at compose-substitution
+    # time (DATABASE_URL) or static / not in .env (DAGSTER_CURRENT_IMAGE).
+    env_file: .env
     environment:
-      DAGSTER_POSTGRES_USER: ${DAGSTER_PG_USERNAME}
-      DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
-      DAGSTER_POSTGRES_DB: ${DAGSTER_PG_DB}
       DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
-      # Backup pipeline — all optional. Unset values disable the relevant assets
-      # without breaking the run (laptop/dev mode).
-      BACKUP_SOURCE_DIR: ${BACKUP_SOURCE_DIR:-}
-      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
-      DRIVE_REMOTE: ${DRIVE_REMOTE:-}
-      HEALTHCHECK_PING_URL: ${HEALTHCHECK_PING_URL:-}
+      DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
       - ./backups:/app/backups
       # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
       # Mounted read-only into the container's root home (rclone's default search path).
+      # NOTE: dagster-code now runs as non-root (uid 1001). rclone reads its config
+      # from $HOME/.config/rclone/ — for non-root invocations the mount path here
+      # won't be discovered. Either set RCLONE_CONFIG to point here, or revert
+      # the non-root user. See PR #31 / PR #30 integration notes.
       - ./.rclone:/root/.config/rclone:ro
-    ports:
-      - "4000:4000"
     networks:
       - dagster_network
     healthcheck:
@@ -82,6 +86,8 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
+    # Only the Postgres run-store creds. No env_file — webserver doesn't need
+    # LLM keys or backup config and we'd rather not leak them.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
@@ -108,6 +114,7 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
+    # Only the Postgres run-store creds — daemon scope is the same as webserver.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
@@ -124,4 +131,4 @@ networks:
     name: dagster_network
 
 volumes:
-  dagster_postgres:
+  postgres_data:

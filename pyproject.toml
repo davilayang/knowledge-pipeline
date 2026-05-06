@@ -1,14 +1,16 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.6.0"
-description = "Dagster-based orchestrator for newsletter knowledge indexing and backup"
+version = "0.6.1"
+description = """
+  Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
+"""
 requires-python = ">=3.13"
 dependencies = [
     "knowledge-domains",
-    "knowledge-workflows",
-    "knowledge-retrievers",
     "knowledge-evals",
     "knowledge-orchestrators",
+    "knowledge-retrievers",
+    "knowledge-workflows",
 ]
 
 [dependency-groups]
@@ -20,18 +22,23 @@ dev = [
     "pytest-timeout>=2.3,<3.0",
 ]
 
-# No [build-system] — root is a virtual project (uv handles this implicitly when
-# absent). All buildable code lives in workspace members under packages/.
+# No [build-system] — root is a virtual project (uv handles this implicitly)
+# All buildable code lives in workspace members under packages/.
 
 [tool.uv.workspace]
 members = ["packages/*"]
 
 [tool.uv.sources]
+# For data models, schemas ...etc
 knowledge-domains = { workspace = true }
-knowledge-workflows = { workspace = true }
-knowledge-retrievers = { workspace = true }
+# For Eval suites
 knowledge-evals = { workspace = true }
+# For Pipeline orchestrator (Dagster)
 knowledge-orchestrators = { workspace = true }
+# For Retrieval algorithms (RAG)
+knowledge-retrievers = { workspace = true }
+# For LangGraph-based workflows for complex processing
+knowledge-workflows = { workspace = true }
 
 [tool.dagster]
 module_name = "orchestrators.definitions"
@@ -41,8 +48,12 @@ code_location_name = "orchestrators"
 
 ## Dagster ##
 
-[tool.poe.tasks.dev]
-cmd = "dagster dev --port 3030 -m orchestrators.defs.workbench.definitions -m orchestrators.defs.pipelines.definitions"
+[tool.poe.tasks.dagster-dev]
+cmd = """
+  dagster dev --port 3030
+    -m orchestrators.defs.workbench.definitions
+    -m orchestrators.defs.pipelines.definitions
+"""
 help = "Launch Dagster UI at localhost:3030 with workbench + pipelines as separate code locations"
 
 [tool.poe.tasks.index]
@@ -57,35 +68,25 @@ help = "Run readings backup job once from CLI"
 cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
 help = "Run evaluation across RAG strategies"
 
-[tool.poe.tasks.reset-indices]
-cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
-help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
-
 ## Deploy ##
 
 [tool.poe.tasks.deploy]
-cmd = "./scripts/deploy-hcloud.sh deploy"
-help = "Deploy to Hetzner: pull latest, rebuild & restart"
+cmd = "./scripts/deploy-hcloud.sh ${target}"
+help = "Run a deploy-hcloud.sh subcommand on Hetzner (default: deploy)"
+
+[tool.poe.tasks.deploy.args.target]
+positional = true
+default = "deploy"
 
 ## Tunnel ##
 
 [tool.poe.tasks.tunnel]
 shell = """
-  if [ "${target}" = "dagster" ] || [ "${target}" = "all" ]; then
-    echo "Dagster UI: http://localhost:3030"
-    ssh -L 3030:127.0.0.1:3000 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
-
-  else
-    echo "Usage: uv run poe tunnel <dagster|all>"
-    exit 1
-  fi
+echo "Dagster UI: http://localhost:3030 (forwarded to remote host:3030)"
+ssh -L 3030:127.0.0.1:3030 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
 """
 envfile = ".env.deploy"
-help = "SSH tunnel to remote services (dagster or all)"
-
-[tool.poe.tasks.tunnel.args.target]
-positional = true
-default = "all"
+help = "SSH tunnel to remote Dagster UI"
 
 ## Code QA ##
 
@@ -142,6 +143,10 @@ cmd = "python -m evals.cli.rag_eval"
 help = "Run the RAG evaluation harness with Ragas metrics"
 
 ## Reset ##
+
+[tool.poe.tasks.reset-indices]
+cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
+help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
 
 [tool.poe.tasks.reset-wiki]
 cmd = "python -m orchestrators.scripts.reset_wiki"
