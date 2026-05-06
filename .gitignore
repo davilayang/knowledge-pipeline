@@ -1,4 +1,3 @@
-CLAUDE.md
 TODO*
 ai-findings/
 ai-plannings/
@@ -34,6 +33,7 @@ datasets/
 logs/
 NOTES/
 backups/
+.rclone/
 
 # Dagster
 .tmp_dagster_home*

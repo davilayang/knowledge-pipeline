@@ -8,6 +8,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.0] — 2026-05-06
+
+Revamp DAG "backup_databases" to "backup_readings". The tasks are configured following best practices from "dagster-open-plaform" project. DAG will backup sqlite databases in local and on cloud at Google Drive.
+
+
 ## [0.5.0] — 2026-05-06
 
 Phase B — LangGraph wiki synthesis migration. The wiki synthesis pipeline is now a checkpointed LangGraph workflow with Send-API per-entity fan-out, transactional Postgres commits, and dynamic-partitioned Dagster materialization. Manual real-data validation deferred to a follow-up PR.

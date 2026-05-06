@@ -40,9 +40,19 @@ services:
       DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_POSTGRES_DB: ${DAGSTER_PG_DB}
       DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
+      # Backup pipeline — all optional. Unset values disable the relevant assets
+      # without breaking the run (laptop/dev mode).
+      BACKUP_SOURCE_DIR: ${BACKUP_SOURCE_DIR:-}
+      BACKUP_DIR: ${BACKUP_DIR:-/app/backups}
+      DRIVE_REMOTE: ${DRIVE_REMOTE:-}
+      HEALTHCHECK_PING_URL: ${HEALTHCHECK_PING_URL:-}
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
+      - ./backups:/app/backups
+      # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
+      # Mounted read-only into the container's root home (rclone's default search path).
+      - ./.rclone:/root/.config/rclone:ro
     ports:
       - "4000:4000"
     networks:

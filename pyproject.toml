@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.5.0"
+version = "0.6.0"
 description = "Dagster-based orchestrator for newsletter knowledge indexing and backup"
 requires-python = ">=3.13"
 dependencies = [
@@ -50,8 +50,8 @@ cmd = "dg launch -m orchestrators.defs.workbench.definitions --job idx_markdown_
 help = "Run index job once from CLI"
 
 [tool.poe.tasks.backup]
-cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_databases_job"
-help = "Run backup job once from CLI"
+cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings"
+help = "Run readings backup job once from CLI"
 
 [tool.poe.tasks.eval]
 cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
