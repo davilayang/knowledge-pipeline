@@ -10,7 +10,9 @@
 services:
   # Configured with 2 databases: dagster & knowledge-pipeline
   postgres:
-    image: postgres:16
+    # Patch-pinned. To bump: PG14/15 → PG16 needs pg_dumpall + volume recreate;
+    # 16.x → 16.y is safe in place.
+    image: postgres:16.13
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}

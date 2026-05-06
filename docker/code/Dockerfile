@@ -1,6 +1,9 @@
-FROM python:3.13-slim
+# Keep in lockstep with docker/dagster/Dockerfile so both images share the same
+# CPython patch release. Refresh ~quarterly; check Python release notes before bumping.
+FROM python:3.13.13-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Refresh alongside Python image; check https://github.com/astral-sh/uv/releases.
+COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
@@ -59,7 +62,7 @@ USER dagster
 
 EXPOSE 4000
 
-HEALTHCHECK --timeout=5s --start-period=30s --interval=5s --retries=20 \
+HEALTHCHECK --timeout=5s --start-period=30s --interval=5s --retries=5 \
     CMD ["/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
 
 # Load pipelines-only code location (backup + wiki). The full orchestrators.definitions
