@@ -187,7 +187,9 @@ do_push_creds() {
     [ -f "${local_rclone}" ] \
         || error "rclone.conf not found at ${local_rclone} — run 'rclone config' first"
 
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
+    # `sudo chown` covers the case where Docker auto-created .rclone/ as root
+    # before push-creds ran (compose creates missing bind-mount sources as root).
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && sudo chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
     rsync -az --chmod=600 -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
