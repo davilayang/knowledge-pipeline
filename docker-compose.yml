@@ -10,16 +10,21 @@
 #   docker compose up --build dagster-code
 #
 # For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
+#
+# Single Postgres, two databases: `dagster` (run history) and
+# `knowledge_pipeline` (wiki tables + langgraph_checkpoints). Each can be
+# backed up and restored independently — see docker/postgres/BACKUP.md.
 
 services:
   postgres:
     image: postgres:14
+    command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
       POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
       POSTGRES_DB: ${DAGSTER_PG_DB}
     volumes:
-      - dagster_postgres:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql/data
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
@@ -40,11 +45,19 @@ services:
       DAGSTER_POSTGRES_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_POSTGRES_DB: ${DAGSTER_PG_DB}
       DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
+      # Phase B application vars
+      OPENAI_API_KEY: ${OPENAI_API_KEY}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      LANGFUSE_PUBLIC_KEY: ${LANGFUSE_PUBLIC_KEY}
+      LANGFUSE_SECRET_KEY: ${LANGFUSE_SECRET_KEY}
+      LANGFUSE_HOST: ${LANGFUSE_HOST}
+      DATABASE_URL: ${DATABASE_URL}
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
-    ports:
-      - "4000:4000"
+    # No host port mapping for the gRPC code-server — webserver/daemon reach it
+    # via dagster_network. Server-side access is fronted by Tailscale,
+    # so internal-only is correct.
     networks:
       - dagster_network
     healthcheck:
@@ -114,4 +127,4 @@ networks:
     name: dagster_network
 
 volumes:
-  dagster_postgres:
+  postgres_data:

@@ -1,14 +1,18 @@
 # Code location image — contains project code and all dependencies.
 # Runs a gRPC code server that the webserver and daemon connect to.
-FROM python:3.13-slim
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Refresh ~quarterly; check Python release notes before bumping.
+FROM python:3.13.13-slim
+
+# Refresh alongside Python image; check https://github.com/astral-sh/uv/releases.
+COPY --from=ghcr.io/astral-sh/uv:0.11.10 /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
 # Install dependencies — this layer is cached until pyproject.toml / uv.lock change.
 # Copy workspace manifests needed to resolve knowledge-orchestrators.
 COPY pyproject.toml uv.lock ./
+
 COPY packages/domains/pyproject.toml packages/domains/pyproject.toml
 COPY packages/workflows/pyproject.toml packages/workflows/pyproject.toml
 COPY packages/retrievers/pyproject.toml packages/retrievers/pyproject.toml
@@ -27,6 +31,13 @@ COPY packages/orchestrators/src/ packages/orchestrators/src/
 
 # Install workspace packages (editable) after source is copied.
 RUN uv sync --frozen --no-dev --package knowledge-orchestrators
+
+# Drop root before runtime.
+# Bind-mounted host directories (./data, ./datasets) must be writable by uid 1001
+# — see docker-compose.yml. Adjust host permissions if you see permission denied at runtime.
+RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin dagster
+RUN chown -R dagster:dagster /app
+USER dagster
 
 EXPOSE 4000
 
