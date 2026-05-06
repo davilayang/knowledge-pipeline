@@ -13,7 +13,7 @@
 #
 # Single Postgres, two databases: `dagster` (run history) and
 # `knowledge_pipeline` (wiki tables + langgraph_checkpoints). Each can be
-# backed up and restored independently — see ai-findings/2026-05-06_postgres-backup.md.
+# backed up and restored independently via per-DB pg_dump.
 
 services:
   postgres:
