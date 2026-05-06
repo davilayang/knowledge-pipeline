@@ -68,13 +68,13 @@ run_deploy() {
     ssh $(ssh_opts) "$(deploy_target)" "$@"
 }
 
-# Run a remote command that needs sudo. Pipes DEPLOY_PASSWORD into `sudo -S`
-# so we don't depend on a TTY. Single-quoting the password means values
-# containing single quotes will break — keep DEPLOY_PASSWORD out of those.
+# Run a remote command that needs sudo. Sends DEPLOY_PASSWORD via SSH stdin
+# (not via the command string) so it doesn't appear in `ps` output and
+# special chars don't need escaping.
 run_deploy_sudo() {
     [ -n "${DEPLOY_PASSWORD:-}" ] \
         || error "DEPLOY_PASSWORD must be set in .env.deploy for sudo commands"
-    run_deploy "echo '${DEPLOY_PASSWORD}' | sudo -S -p '' $*"
+    ssh $(ssh_opts) "$(deploy_target)" "sudo -S -p '' $*" <<<"${DEPLOY_PASSWORD}"
 }
 
 compose_cmd() {
@@ -203,7 +203,8 @@ do_push_creds() {
     run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone"
     run_deploy_sudo "chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone"
     run_deploy "chmod 700 ~/${REMOTE_DIR}/.rclone"
-    rsync -az --chmod=u=rw,go= -e "ssh $(ssh_opts)" \
+    # rclone.conf is 600 locally (rclone enforces it); -a preserves perms.
+    rsync -az -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
     echo ""
