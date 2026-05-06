@@ -1508,10 +1508,14 @@ dependencies = [
     { name = "dagster-postgres" },
     { name = "dagster-webserver" },
     { name = "knowledge-domains" },
-    { name = "knowledge-evals" },
-    { name = "knowledge-retrievers" },
     { name = "knowledge-workflows" },
     { name = "poethepoet" },
+]
+
+[package.optional-dependencies]
+workbench = [
+    { name = "knowledge-evals" },
+    { name = "knowledge-retrievers" },
 ]
 
 [package.metadata]
@@ -1521,11 +1525,12 @@ requires-dist = [
     { name = "dagster-postgres" },
     { name = "dagster-webserver" },
     { name = "knowledge-domains", editable = "packages/domains" },
-    { name = "knowledge-evals", editable = "packages/evals" },
-    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "knowledge-evals", marker = "extra == 'workbench'", editable = "packages/evals" },
+    { name = "knowledge-retrievers", marker = "extra == 'workbench'", editable = "packages/retrievers" },
     { name = "knowledge-workflows", editable = "packages/workflows" },
     { name = "poethepoet" },
 ]
+provides-extras = ["workbench"]
 
 [[package]]
 name = "knowledge-pipeline"
