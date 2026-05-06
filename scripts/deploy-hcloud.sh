@@ -14,6 +14,11 @@
 #   IDENTITY_FILE     Path to SSH private key (required)
 #   HETZNER_SERVER or DEPLOY_TARGET    SSH target (required)
 #   DEPLOY_USER       Non-root user (default: deploy)
+#
+# Prerequisite: DEPLOY_USER needs passwordless sudo for `chown`. One-time setup:
+#   echo "deploy ALL=(ALL) NOPASSWD: /bin/chown, /usr/bin/chown" \
+#     | sudo tee /etc/sudoers.d/deploy-chown
+#   sudo chmod 0440 /etc/sudoers.d/deploy-chown
 
 set -euo pipefail
 
