@@ -83,7 +83,7 @@ Three Dagster containers + Postgres:
 - `dagster-webserver` and `dagster-daemon` share a slim image with pinned `dagster*` packages.
 - All connect to one Postgres for run history + LangGraph checkpoints + wiki state.
 
-`push-creds` rsyncs `~/.config/rclone/rclone.conf` from laptop to server; compose bind-mounts it read-only at `/app/.rclone` and points `RCLONE_CONFIG` there (uid 1001 has no `$HOME/.config`).
+`push-creds` rsyncs `~/.config/rclone/rclone.conf` from laptop to server; compose bind-mounts it read-only into the container at `/home/dagster/.config/rclone/` — rclone's default lookup path under `$HOME=/home/dagster`.
 
 ## Backup Pipeline (`backup_readings`)
 

@@ -112,8 +112,8 @@ rclone about gdrive: --json
 That `rsync`s `~/.config/rclone/rclone.conf` from your laptop to
 `~/knowledge-pipeline/.rclone/rclone.conf` on the server (mode `0600`,
 parent dir `0700`). `docker-compose.yml` mounts `./.rclone` read-only into
-`dagster-code` at `/app/.rclone` and sets `RCLONE_CONFIG=/app/.rclone/rclone.conf`
-so rclone finds it under uid 1001 (which has no `$HOME/.config/rclone`).
+`dagster-code` at `/home/dagster/.config/rclone/` — rclone's default lookup
+path under `$HOME=/home/dagster`.
 
 The token self-refreshes on every invocation, so you only re-run `push-creds`
 if you re-auth (Google password change, scope change, or running `rclone

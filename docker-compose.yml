@@ -37,10 +37,6 @@ services:
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
-      # rclone's default lookup is $HOME/.config/rclone/rclone.conf; we mount
-      # the config at /app/.rclone instead (alongside the rest of the app data)
-      # and point rclone there explicitly.
-      RCLONE_CONFIG: /app/.rclone/rclone.conf
       # The backup pipeline reads BACKUP_SOURCE_DIR from env. The host path on
       # disk (e.g. /home/deploy/newsletter-assistant/data) doesn't exist inside
       # the container; we bind-mount it at /app/source and override the env so
@@ -51,7 +47,8 @@ services:
       - ./datasets:/app/datasets
       - ./backups:/app/backups
       # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
-      - ./.rclone:/app/.rclone:ro
+      # Mounted at rclone's default lookup path so no RCLONE_CONFIG override is needed.
+      - ./.rclone:/home/dagster/.config/rclone:ro
       # Source DB dir for backup_readings. BACKUP_SOURCE_DIR in .env points at
       # the host path (e.g. /home/deploy/newsletter-assistant/data); compose
       # bind-mounts that to /app/source read-only, and the container env above
