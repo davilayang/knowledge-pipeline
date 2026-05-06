@@ -14,6 +14,8 @@
 #   IDENTITY_FILE     Path to SSH private key (required)
 #   HETZNER_SERVER or DEPLOY_TARGET    SSH target (required)
 #   DEPLOY_USER       Non-root user (default: deploy)
+#   DEPLOY_PASSWORD   Sudo password for DEPLOY_USER (required for setup/push-creds
+#                     since both chown bind-mount dirs over a non-TTY SSH session)
 
 set -euo pipefail
 
@@ -66,6 +68,15 @@ run_deploy() {
     ssh $(ssh_opts) "$(deploy_target)" "$@"
 }
 
+# Run a remote command that needs sudo. Sends DEPLOY_PASSWORD via SSH stdin
+# (not via the command string) so it doesn't appear in `ps` output and
+# special chars don't need escaping.
+run_deploy_sudo() {
+    [ -n "${DEPLOY_PASSWORD:-}" ] \
+        || error "DEPLOY_PASSWORD must be set in .env.deploy for sudo commands"
+    ssh $(ssh_opts) "$(deploy_target)" "sudo -S -p '' $*" <<<"${DEPLOY_PASSWORD}"
+}
+
 compose_cmd() {
     echo "docker compose"
 }
@@ -100,8 +111,10 @@ do_setup() {
     rsync -azv -e "ssh $(ssh_opts)" .env "${target}:~/${REMOTE_DIR}/"
     rsync -azv -e "ssh $(ssh_opts)" configs/ "${target}:~/${REMOTE_DIR}/configs/"
 
-    # Create data directories
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets"
+    # Create runtime directories. They're owned by the deploy user — and since
+    # APP_UID/APP_GID in .env make the container's dagster user match the host
+    # deploy user, the bind-mounted dirs are writable by both without chown.
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
 
     echo ""
     echo "========================================="
@@ -185,8 +198,14 @@ do_push_creds() {
     [ -f "${local_rclone}" ] \
         || error "rclone.conf not found at ${local_rclone} — run 'rclone config' first"
 
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
-    rsync -az --chmod=600 -e "ssh $(ssh_opts)" \
+    # sudo chown covers the case where Docker auto-created .rclone/ as root
+    # before push-creds ran (compose creates missing bind-mount sources as root).
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone"
+    run_deploy_sudo "chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone"
+    # rclone.conf is 600 locally (rclone enforces it); -a preserves perms. The
+    # container's dagster user has the same uid as the deploy user (via APP_UID
+    # in .env), so the file is readable without any extra chown.
+    rsync -az -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
     echo ""

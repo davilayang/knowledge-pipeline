@@ -5,19 +5,12 @@
 #   docker compose down --volumes
 #
 # UI:  http://localhost:3030
-#
-# After code changes, rebuild and restart the code server:
-#   docker compose up --build dagster-code
-#
-# For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
-#
-# Single Postgres, two databases: `dagster` (run history) and
-# `knowledge_pipeline` (wiki tables + langgraph_checkpoints). Each can be
-# backed up and restored independently via per-DB pg_dump.
+# For local dev, skip Docker and use `uv run poe dagster-dev` which auto-reloads.
 
 services:
+  # Configured with 2 databases: dagster & knowledge-pipeline
   postgres:
-    image: postgres:14
+    image: postgres:16
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
@@ -36,40 +29,33 @@ services:
     restart: unless-stopped
 
   dagster-code:
+    image: ${DOCKER_USER:-local}/kp-dagster-code
     build:
       context: .
       dockerfile: docker/code/Dockerfile
-    image: knowledge_pipeline_code
-    # Pulls everything from .env automatically. New env vars added there are
-    # forwarded into the container without editing this file. The two entries
-    # below are explicit because they're either composed at compose-substitution
-    # time (DATABASE_URL) or static / not in .env (DAGSTER_CURRENT_IMAGE).
+      args:
+        # Match the host user's uid/gid so bind-mounted files are readable
+        # without any chown. Defaults to 1001 if not set in .env.
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
     env_file: .env
     environment:
-      DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
+      DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
+      BACKUP_SOURCE_DIR: /app/source # Used by app in container
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
       - ./backups:/app/backups
-      # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
-      # Mounted read-only into the container's root home (rclone's default search path).
-      # NOTE: dagster-code now runs as non-root (uid 1001). rclone reads its config
-      # from $HOME/.config/rclone/ — for non-root invocations the mount path here
-      # won't be discovered. Either set RCLONE_CONFIG to point here, or revert
-      # the non-root user. See PR #31 / PR #30 integration notes.
-      - ./.rclone:/root/.config/rclone:ro
+      - ./logs:/app/logs # Per-step compute logs (uid 1001 must own ./logs on host)
+      - ./.rclone:/home/dagster/.config/rclone:ro # Mount rclone config
+      - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro # Mount source data folder at container
     networks:
       - dagster_network
-    healthcheck:
-      test: ["CMD", "/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
-      timeout: 1s
-      interval: 5s
-      retries: 20
-      start_period: 30s
     restart: on-failure
 
   dagster-webserver:
+    image: ${DOCKER_USER:-local}/kp-dagster-webserver
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile
@@ -86,8 +72,6 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    # Only the Postgres run-store creds. No env_file — webserver doesn't need
-    # LLM keys or backup config and we'd rather not leak them.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
@@ -98,9 +82,20 @@ services:
       - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
       - dagster_network
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:3000/server_info', timeout=2).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   dagster-daemon:
+    image: ${DOCKER_USER:-local}/kp-dagster-daemon
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile
@@ -114,7 +109,6 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    # Only the Postgres run-store creds — daemon scope is the same as webserver.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
@@ -123,6 +117,12 @@ services:
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     networks:
       - dagster_network
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: on-failure
 
 networks:

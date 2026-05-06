@@ -4,6 +4,8 @@
 __pycache__/
 *.pyc
 data/
+datasets/
+documents/
 backups/
 ai-findings/
 ai-plannings/

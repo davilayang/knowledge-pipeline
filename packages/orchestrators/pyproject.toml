@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-orchestrators"
-version = "0.6.2"
+version = "0.6.3"
 description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
 requires-python = ">=3.13"
 dependencies = [
@@ -17,7 +17,11 @@ dependencies = [
 # Install with `uv sync --extra workbench` (or via the root workspace) for local
 # RAG workbench use. Excluded from the production Docker image — these pull in
 # sentence-transformers/PyTorch/chromadb/ragas (~8GB) not needed for wiki or backup.
-workbench = ["knowledge-retrievers", "knowledge-evals"]
+workbench = [
+    "knowledge-workflows[agents]",  # activates retrievers via the agents extra
+    "knowledge-retrievers",
+    "knowledge-evals",
+]
 
 [build-system]
 requires = ["hatchling"]
