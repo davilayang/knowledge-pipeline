@@ -1,10 +1,16 @@
 # Definition-time config for the readings backup pipeline. Path-level config
 # (where to read DBs from, where to land snapshots) lives in orchestrators.config.
 
+import dagster as dg
+
 # ---------- partitioning ----------
 
 # Daily partition start date — anything before this would have nothing to back up.
+# The partition_key is an ISO date string (e.g. "2026-05-06") and becomes the
+# subdirectory name under BACKUP_DIR and on the Drive remote — single source of
+# truth for "which day's snapshot."
 PARTITION_START_DATE = "2026-05-01"
+daily_partition_def = dg.DailyPartitionsDefinition(start_date=PARTITION_START_DATE)
 
 
 # ---------- retention ----------

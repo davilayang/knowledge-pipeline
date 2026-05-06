@@ -9,8 +9,12 @@ import dagster as dg
 
 from .assets import all_assets
 from .checks import all_checks
-from .def_config import JOB_MAX_RETRIES, PIPELINE_TAG, SCHEDULE_CRON
-from .partitions import daily_partition_def
+from .def_config import (
+    JOB_MAX_RETRIES,
+    PIPELINE_TAG,
+    SCHEDULE_CRON,
+    daily_partition_def,
+)
 
 backup_readings_job = dg.define_asset_job(
     name="backup_readings",

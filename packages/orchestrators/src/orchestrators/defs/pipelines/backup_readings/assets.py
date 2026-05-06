@@ -18,8 +18,8 @@ from .def_config import (
     MAX_DRIVE_BACKUPS,
     MAX_LOCAL_BACKUPS,
     PIPELINE_TAG,
+    daily_partition_def,
 )
-from .partitions import daily_partition_def
 from .resources import BackupResource, RcloneResource
 
 
