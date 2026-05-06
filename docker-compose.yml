@@ -37,26 +37,15 @@ services:
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
-      # The backup pipeline reads BACKUP_SOURCE_DIR from env. The host path on
-      # disk (e.g. /home/deploy/newsletter-assistant/data) doesn't exist inside
-      # the container; we bind-mount it at /app/source and override the env so
-      # the code always sees a stable in-container path.
-      BACKUP_SOURCE_DIR: /app/source
+      BACKUP_SOURCE_DIR: /app/source # Used by app in container
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
       - ./backups:/app/backups
-      # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
-      # Mounted at rclone's default lookup path so no RCLONE_CONFIG override is needed.
-      - ./.rclone:/home/dagster/.config/rclone:ro
-      # Source DB dir for backup_readings. BACKUP_SOURCE_DIR in .env points at
-      # the host path (e.g. /home/deploy/newsletter-assistant/data); compose
-      # bind-mounts that to /app/source read-only, and the container env above
-      # overrides BACKUP_SOURCE_DIR to /app/source for the code.
-      - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro
+      - ./.rclone:/home/dagster/.config/rclone:ro # Mount rclond config
+      - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro # Mount source data folder at container
     networks:
       - dagster_network
-    # Healthcheck inherited from docker/code/Dockerfile (single source of truth).
     restart: on-failure
 
   dagster-webserver:
@@ -77,8 +66,6 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    # Only the Postgres run-store creds. No env_file — webserver doesn't need
-    # LLM keys or backup config and we'd rather not leak them.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
@@ -90,8 +77,6 @@ services:
     networks:
       - dagster_network
     healthcheck:
-      # /server_info is what the upstream Helm chart's readiness probe hits.
-      # Slim base has no curl; use stdlib urllib instead.
       test:
         - CMD
         - python
@@ -118,7 +103,6 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    # Only the Postgres run-store creds — daemon scope is the same as webserver.
     environment:
       DAGSTER_PG_HOST: postgres
       DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
