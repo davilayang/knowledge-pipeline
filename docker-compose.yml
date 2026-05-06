@@ -33,6 +33,11 @@ services:
     build:
       context: .
       dockerfile: docker/code/Dockerfile
+      args:
+        # Match the host user's uid/gid so bind-mounted files are readable
+        # without any chown. Defaults to 1001 if not set in .env.
+        APP_UID: ${APP_UID:-1001}
+        APP_GID: ${APP_GID:-1001}
     env_file: .env
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code

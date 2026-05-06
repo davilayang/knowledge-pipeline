@@ -46,12 +46,16 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --package knowledge-orchestrators
 
 # Drop root before runtime.
-# Bind-mounted host directories (./data, ./datasets) must be writable by uid 1001
-# — see docker-compose.yml. Adjust host permissions if you see permission denied at runtime.
-# /home/dagster is created explicitly (not via useradd --create-home, which would
-# pull in skel dotfiles) so libs that cache to $HOME (langfuse, hf, etc.) have a
-# writable target without falling back to "/" or failing outright.
-RUN useradd --system --uid 1001 --no-create-home --home-dir /home/dagster --shell /usr/sbin/nologin dagster \
+# APP_UID/APP_GID are passed from compose so the in-container user matches
+# the host deploy user that owns bind-mounted dirs (./data, ./logs, etc.).
+# With matching uid/gid no host-side chown gymnastics are needed.
+# /home/dagster is created explicitly (not via useradd --create-home, which
+# would pull in skel dotfiles) so libs that cache to $HOME (langfuse, hf,
+# etc.) have a writable target without falling back to "/".
+ARG APP_UID=1001
+ARG APP_GID=1001
+RUN groupadd --gid ${APP_GID} dagster \
+    && useradd --uid ${APP_UID} --gid ${APP_GID} --no-create-home --home-dir /home/dagster --shell /usr/sbin/nologin dagster \
     && mkdir -p /home/dagster \
     && chown -R dagster:dagster /app /home/dagster
 ENV HOME=/home/dagster

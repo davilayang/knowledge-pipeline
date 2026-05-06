@@ -111,10 +111,10 @@ do_setup() {
     rsync -azv -e "ssh $(ssh_opts)" .env "${target}:~/${REMOTE_DIR}/"
     rsync -azv -e "ssh $(ssh_opts)" configs/ "${target}:~/${REMOTE_DIR}/configs/"
 
-    # Create runtime directories. ./logs/data/backups need uid 1001 ownership so
-    # the non-root dagster user inside dagster-code can write compute logs etc.
+    # Create runtime directories. They're owned by the deploy user — and since
+    # APP_UID/APP_GID in .env make the container's dagster user match the host
+    # deploy user, the bind-mounted dirs are writable by both without chown.
     run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
-    run_deploy_sudo "chown 1001:1001 ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/backups"
 
     echo ""
     echo "========================================="
@@ -202,8 +202,9 @@ do_push_creds() {
     # before push-creds ran (compose creates missing bind-mount sources as root).
     run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone"
     run_deploy_sudo "chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone"
-    run_deploy "chmod 700 ~/${REMOTE_DIR}/.rclone"
-    # rclone.conf is 600 locally (rclone enforces it); -a preserves perms.
+    # rclone.conf is 600 locally (rclone enforces it); -a preserves perms. The
+    # container's dagster user has the same uid as the deploy user (via APP_UID
+    # in .env), so the file is readable without any extra chown.
     rsync -az -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
