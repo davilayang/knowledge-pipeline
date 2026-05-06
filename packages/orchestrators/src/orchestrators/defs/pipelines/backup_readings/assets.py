@@ -69,7 +69,6 @@ def _snapshot_one_db(
     return dg.MaterializeResult(
         metadata={
             "status": dg.MetadataValue.text("ok"),
-            "size_bytes": dg.MetadataValue.int(size),
             "size_mb": dg.MetadataValue.float(size / (1024 * 1024)),
             "sha256": dg.MetadataValue.text(digest),
             "source_path": dg.MetadataValue.path(str(source)),
