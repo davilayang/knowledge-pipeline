@@ -8,7 +8,7 @@ from typing import Protocol
 
 import yaml
 
-from domains.store import ContentRow, get_contents
+from domains.store import ContentRow, get_content_by_id, get_contents
 
 
 @dataclass
@@ -38,6 +38,11 @@ class RawStoreSource:
     def get_items(self) -> list[IngestItem]:
         rows: list[ContentRow] = get_contents(db_path=self._db_path)
         return [self._to_item(r) for r in rows]
+
+    def get_item(self, item_id: str) -> IngestItem | None:
+        """Single-row lookup by item_id (= content_id). None if absent."""
+        row = get_content_by_id(item_id, db_path=self._db_path)
+        return self._to_item(row) if row else None
 
     @staticmethod
     def _to_item(row: ContentRow) -> IngestItem:

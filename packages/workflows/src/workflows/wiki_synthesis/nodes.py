@@ -28,7 +28,7 @@ from domains.wiki.state import (
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 
 from workflows.llm import generate_structured
-from workflows.wiki.prompts import ENTITY_EXTRACTION_SYSTEM, ENTITY_EXTRACTION_USER
+from workflows.wiki_synthesis.prompts import ENTITY_EXTRACTION_SYSTEM, ENTITY_EXTRACTION_USER
 
 logger = logging.getLogger(__name__)
 

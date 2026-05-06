@@ -82,6 +82,21 @@ def get_contents(
     return [_row_to_content(r) for r in rows]
 
 
+def get_content_by_id(content_id: str, *, db_path: Path) -> ContentRow | None:
+    """Return one ContentRow by content_id, or None if absent.
+
+    Used by the dynamic-partitioned wiki_synthesized asset to load just the
+    one article for a given partition_key. Bulk get_contents() would also
+    work but reads every row; this is the focused single-item lookup.
+    """
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT * FROM contents WHERE content_id = ?",
+            (content_id,),
+        ).fetchone()
+    return _row_to_content(row) if row else None
+
+
 def set_vector_status(content_id: str, status: str, *, db_path: Path) -> None:
     with _connect(db_path) as conn:
         conn.execute(

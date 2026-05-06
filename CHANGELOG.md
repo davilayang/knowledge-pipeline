@@ -6,13 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Phase B — LangGraph wiki synthesis migration (in progress)
+---
+
+## [0.5.0] — 2026-05-06
+
+Phase B — LangGraph wiki synthesis migration. The wiki synthesis pipeline is now a checkpointed LangGraph workflow with Send-API per-entity fan-out, transactional Postgres commits, and dynamic-partitioned Dagster materialization. Manual real-data validation deferred to a follow-up PR.
 
 - **`workflows/shared/`** — new home for cross-workflow plumbing. `checkpointer.get_checkpointer(db_url=None)` is a context manager that yields a `langgraph.checkpoint.postgres.PostgresSaver` bound to a fresh psycopg connection; falls back to `DATABASE_URL` env var; calls `setup()` on entry. `observability.get_langfuse_callback()` returns a process-cached `langfuse.langchain.CallbackHandler` when `LANGFUSE_PUBLIC_KEY` is set, otherwise `None` (no warning).
 - **`workflows/llm.py`** — both `generate` and `generate_structured` now pass `config={"callbacks": [...]}` to LangChain when the Langfuse callback is configured. No-op when env unset; existing behavior unchanged.
 - **`domains/wiki/state.py`** — Postgres helpers backing the new workflow's terminal commit. Pure functions taking a `psycopg.Connection`; callers manage transactions. `insert_processed`, `get_processed_ids`, `get_failed`, `upsert_page`, `get_page`, `get_all_pages`, `insert_aliases_idempotent` (uses `ON CONFLICT (alias) DO NOTHING` for concurrent-partition safety), `snapshot_aliases` (reads aliases into the existing in-memory `AliasStore`).
 - **`pytest-postgresql>=6.0,<8.0`** added to root dev deps. `tests/conftest.py` exposes a `wiki_pg` fixture that yields a fresh psycopg connection to a temp Postgres with `wiki.sql` loaded — used by `tests/wiki/test_state_pg.py` (11 new tests covering all helpers plus PK/upsert/concurrency edges).
-- **`workflows/wiki_synthesis/`** — the new LangGraph workflow that replaces `workflows/wiki/ingest.py` (kept temporarily for parity comparison; deleted in a follow-up step). Files:
+- **`workflows/wiki_synthesis/`** — the new LangGraph workflow that replaces `workflows/wiki/ingest.py` (the legacy folder is now removed; see "PR 3 — rewire and cleanup" below). Files:
   - `graph.py` — parent `StateGraph` (one document per invocation). `extract_entities` → conditional fan-out via `langgraph.types.Send` → per-entity sub-graph → `commit`. The `WikiSynthesisState` TypedDict declares an `Annotated[list[dict], operator.add]` reducer on `entity_results` so concurrent sub-graphs concatenate their results into the parent state without collision.
   - `entity_graph.py` — per-entity sub-graph with one node (`process_entity`) and a restricted `EntityWorkflowOutput` schema so only `entity_results` flows back to the parent (avoids the `InvalidUpdateError` that LangGraph 1.x raises when multiple Sends try to write the parent's input keys).
   - `nodes.py` — `extract_entities` snapshots aliases from Postgres, calls the extraction LLM, stages new aliases for commit. `commit` opens one Postgres transaction and writes `wiki.pages` rows for each successful entity, `wiki.aliases` for staged tuples (`ON CONFLICT DO NOTHING`), and the single `wiki.processed` row — atomic per the plan's "same transaction" rule. Status mapping covers ok / error / skipped / partial-success.
@@ -30,6 +34,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`runner.py` auto-resume** — `invoke_wiki_synthesis` now checks `graph.get_state(config).next`. If the thread is paused mid-execution (prior invocation raised before END), it invokes with `None` to resume. Otherwise (non-existent thread or successfully ended thread) it invokes with the input state for a fresh run. Critical because `invoke(state, config)` on an existing thread restarts from START — silently re-firing every entity LLM call. The completed-thread re-run case is intentional (Dagster re-materializing should re-run with current inputs) and pinned by `test_runner_re_runs_on_completed_thread`.
 - **`pytest-timeout>=2.3,<3.0`** added to dev deps so threading-based tests use `@pytest.mark.timeout(N)` and never hang the suite.
 - **Shared test helpers** at `tests/wiki_synthesis/_helpers.py` (`make_item`, `make_extraction`, `build_synthesis_output`, `extract_entity_id_from_prompt`) — extracted from the parity tests so the new-capability tests don't duplicate factories.
+
+#### PR 3 — rewire and cleanup
+
+- **`wiki_synthesized` Dagster asset** is now dynamic-partitioned (`DynamicPartitionsDefinition(name="wiki_items")`) and invokes `invoke_wiki_synthesis(item, db_url, wiki_dir)` per partition. Per-partition retries auto-resume from the LangGraph checkpoint via the runner's auto-resume heuristic — no LLM re-calls if the prior failure was in commit.
+- **`wiki_pending`** becomes a discovery asset: it scans raw_store for items not in `wiki.processed` (status=ok or skipped) and registers them as new `wiki_items` partitions on the Dagster instance. Idempotent re-runs only add what isn't already a partition.
+- **`wiki_index_updated`** reads from `wiki.pages` (Postgres) via `domains.wiki.state.get_all_pages`. Intentionally NOT declared as `deps=[wiki_synthesized]` because the default `AllPartitionMapping` would block the index on every partition completing — never true with dynamic partitions. Phase E will add a sensor; for now, materialize manually.
+- **`WikiResource`** gains a `database_url` field that resolves at call time via `get_database_url()` (Dagster idiom — pass `dg.EnvVar("DATABASE_URL")` at construction or rely on env-var fallback). Removed `state_db_path` and `aliases_path` (legacy SQLite/YAML).
+- **`domains.store.get_content_by_id(content_id, *, db_path)`** — focused single-row lookup the partitioned asset needs (vs. loading every row via `get_contents`).
+- **`domains.wiki.sources.RawStoreSource.get_item(item_id)`** — convenience wrapper on top of `get_content_by_id`.
+- **Deleted**:
+  - `packages/workflows/src/workflows/wiki/{__init__,ingest,state}.py` and the now-empty `wiki/` folder.
+  - `tests/wiki/test_ingest.py`, `tests/wiki/test_state.py` — the parity tests for the deleted code, now redundant with `tests/wiki_synthesis/`.
+- **Moved**: `workflows/wiki/prompts.py` → `workflows/wiki_synthesis/prompts.py` (still in use by `entity_graph.py` and `nodes.py`; imports rewired).
 
 ---
 
