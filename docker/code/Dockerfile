@@ -4,9 +4,7 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
-# rclone — needed for the backup pipeline's Drive offload assets.
-# install.sh has no version flag, so we use the precompiled binary to pin.
-# Bump deliberately — check https://rclone.org/changelog/.
+# rclone — for DAG "backup-readings" to sync with Google Drive.
 ARG TARGETARCH
 ARG RCLONE_VERSION=1.74.0
 RUN apt-get update \
@@ -30,10 +28,11 @@ COPY packages/evals/pyproject.toml packages/evals/pyproject.toml
 COPY packages/orchestrators/pyproject.toml packages/orchestrators/pyproject.toml
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
-# Disable uv's on-disk cache at runtime — the venv is fully built during image
-# build, there's nothing to cache.
-ENV UV_NO_CACHE=1
-RUN uv sync --frozen --no-dev --no-install-workspace --package knowledge-orchestrators
+# UV_LINK_MODE=copy: copy wheels from the BuildKit cache mount into the venv
+# instead of hardlinking (hardlinks across mount boundaries fail).
+ENV UV_LINK_MODE=copy
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --no-install-workspace --package knowledge-orchestrators
 
 # Copy source for production workspace members only (domains + workflows + orchestrators).
 # retrievers and evals are workbench-only optional extras — excluded from this image
@@ -43,7 +42,8 @@ COPY packages/workflows/src/ packages/workflows/src/
 COPY packages/orchestrators/src/ packages/orchestrators/src/
 
 # Install workspace packages (editable) after source is copied.
-RUN uv sync --frozen --no-dev --package knowledge-orchestrators
+RUN --mount=type=cache,target=/root/.cache/uv \
+    uv sync --frozen --no-dev --package knowledge-orchestrators
 
 # Drop root before runtime.
 # Bind-mounted host directories (./data, ./datasets) must be writable by uid 1001
