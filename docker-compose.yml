@@ -10,9 +10,7 @@
 services:
   # Configured with 2 databases: dagster & knowledge-pipeline
   postgres:
-    # Patch-pinned. To bump: PG14/15 → PG16 needs pg_dumpall + volume recreate;
-    # 16.x → 16.y is safe in place.
-    image: postgres:16.13
+    image: postgres:16
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
@@ -39,9 +37,9 @@ services:
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
-      # rclone normally resolves config via $HOME/.config/rclone/rclone.conf, but
-      # the dagster user (uid 1001) has no home dir. Point rclone directly at the
-      # mounted file so the lookup doesn't depend on $HOME.
+      # rclone's default lookup is $HOME/.config/rclone/rclone.conf; we mount
+      # the config at /app/.rclone instead (alongside the rest of the app data)
+      # and point rclone there explicitly.
       RCLONE_CONFIG: /app/.rclone/rclone.conf
       # The backup pipeline reads BACKUP_SOURCE_DIR from env. The host path on
       # disk (e.g. /home/deploy/newsletter-assistant/data) doesn't exist inside
