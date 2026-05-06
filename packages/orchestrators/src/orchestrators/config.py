@@ -1,5 +1,6 @@
 # Paths and settings for the knowledge pipeline.
 
+import os
 from pathlib import Path
 
 # Project root
@@ -13,7 +14,7 @@ SOURCE_RAW_STORE = DATASETS_DIR / "raw_store_2026-04-05.db"
 
 # Working data directories (runtime artifacts, not checked in)
 DATA_DIR = PROJECT_DIR / "data"
-BACKUP_DIR = PROJECT_DIR / "backups"
+BACKUP_DIR = Path(os.getenv("BACKUP_DIR", str(PROJECT_DIR / "backups")))
 
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
@@ -29,6 +30,9 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
 
 
 # Backup settings
-BACKUP_SOURCE_DIR = Path.home() / "GitHub" / "newsletter-assistant" / "data"
+# Default to the server layout (~/newsletter-assistant/data); laptops set
+# BACKUP_SOURCE_DIR=~/GitHub/newsletter-assistant/data in their shell.
+BACKUP_SOURCE_DIR = Path(
+    os.getenv("BACKUP_SOURCE_DIR", str(Path.home() / "newsletter-assistant" / "data"))
+).expanduser()
 DB_FILES = ["raw_store.db", "sessions.db"]
-MAX_BACKUPS = 7
