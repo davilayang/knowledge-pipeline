@@ -43,7 +43,7 @@ services:
       - ./datasets:/app/datasets
       - ./backups:/app/backups
       - ./logs:/app/logs # Per-step compute logs (uid 1001 must own ./logs on host)
-      - ./.rclone:/home/dagster/.config/rclone:ro # Mount rclond config
+      - ./.rclone:/home/dagster/.config/rclone:ro # Mount rclone config
       - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro # Mount source data folder at container
     networks:
       - dagster_network

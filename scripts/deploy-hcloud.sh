@@ -100,8 +100,10 @@ do_setup() {
     rsync -azv -e "ssh $(ssh_opts)" .env "${target}:~/${REMOTE_DIR}/"
     rsync -azv -e "ssh $(ssh_opts)" configs/ "${target}:~/${REMOTE_DIR}/configs/"
 
-    # Create data directories
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets"
+    # Create runtime directories. ./logs needs uid 1001 ownership so the
+    # non-root dagster user inside dagster-code can write compute logs.
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
+    run_deploy "sudo chown 1001:1001 ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/backups"
 
     echo ""
     echo "========================================="

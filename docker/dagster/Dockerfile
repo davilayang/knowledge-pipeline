@@ -1,9 +1,6 @@
 # Shared image for dagster-webserver and dagster-daemon.
 # Contains only Dagster infrastructure packages — no user code.
-
-# Keep in lockstep with docker/code/Dockerfile so both images share the same
-# CPython patch release.
-FROM python:3.13.13-slim
+FROM python:3.13-slim
 
 # Pin to the same versions resolved by uv.lock for the code-server image.
 # Mismatched gRPC versions between webserver/daemon and the code server will
