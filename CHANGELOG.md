@@ -8,6 +8,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.3] — 2026-05-07
+
+### Added
+
+- **`APP_UID` / `APP_GID` in `.env`** — set them to the host deploy user's `id -u`/`id -g` so the container's `dagster` user shares the bind-mount owner's uid. No more chown ceremony for `./data`, `./logs`, `./backups`, `./.rclone`. Default 1001 keeps backward compatibility.
+- **Per-step compute logs at `./logs`.** `LocalComputeLogManager` now writes to a bind-mounted `/app/logs` instead of the image default `/opt/dagster/storage`, which the non-root container user couldn't write.
+- **Healthchecks for `dagster-webserver` (`/server_info` via stdlib urllib) and `dagster-daemon` (`liveness-check`).** Compose's `depends_on: service_healthy` now meaningfully waits on all three Dagster services.
+
+### Changed
+
+- **Production Docker image: ~17 GB → ~3 GB.** `knowledge-retrievers` was an unconditional dep of `workflows` even though only `workflows.agents` uses it; this transitively pulled in PyTorch + CUDA + chromadb. Moved to a `workflows[agents]` extra (activated via `orchestrators[workbench]`), so the prod image now installs only what wiki + backup pipelines need.
+- **Container runs non-root with a real `$HOME=/home/dagster`.** Deliberate uid/gid (default 1001), no skel pollution. `langchain` added as an explicit `workflows` dep — `langfuse.langchain.CallbackHandler` needs the umbrella package and was previously pulled in only via workbench tooling.
+- **`BACKUP_SOURCE_DIR` is now a host-path env consumed by compose.** Compose bind-mounts it to `/app/source` and overrides the in-container env var to that fixed path. Set in `.env` using `${HOME}/...` — compose doesn't tilde-expand.
+- **Reproducible rebuilds.** Dagster framework image pins `dagster*` via build ARGs to match `uv.lock`; rclone pinned to v1.74.0 via precompiled binary (replaces `curl | bash`); both `uv sync` layers use BuildKit cache mounts so a one-package bump no longer re-downloads every wheel.
+- **Faster startup.** `dagster-code` invokes `/app/.venv/bin/dagster` directly; the previous `uv run` form was re-syncing the workspace on every container start, pulling 5 workbench packages in ~13 s.
+- **rclone config moves to `/home/dagster/.config/rclone` (rclone's default `$HOME` lookup).** No `RCLONE_CONFIG` env override needed.
+- **Postgres image bumped 14 → 16.** Existing deploys: `pg_dumpall` against PG14 → recreate the volume → restore on PG16 before rebuilding.
+- **`scripts/deploy-hcloud.sh` reads `DEPLOY_PASSWORD` from `.env.deploy`** and pipes it into remote `sudo -S`, so non-TTY SSH sudo works without a NOPASSWD sudoers entry.
+
+### Removed
+
+- **`RCLONE_CONFIG` env override** — redundant now that the config is mounted at the standard `$HOME/.config/rclone/` path.
+
+---
+
 ## [0.6.2] — 2026-05-06
 
 ### Changed
