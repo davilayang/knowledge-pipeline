@@ -39,8 +39,10 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
 # downstream assets as stale until re-materialized. Decoupled from package
 # versions on purpose (the version-bump skill rolls package versions on every
 # release, which would otherwise mark every asset stale on every release).
-BACKUP_DAG_VERSION = "1"
-# WIKI_DAG_VERSION = "1"   # add when the wiki pipeline adopts the pattern
+BACKUP_READINGS_DAG_VERSION = "1"
+# BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
+# BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
+# WIKI_DAG_VERSION = "1"               # wiki synthesis pipeline adopts the pattern
 
 
 # Backup settings

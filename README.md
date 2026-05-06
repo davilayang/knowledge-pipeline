@@ -82,9 +82,9 @@ src/knowledge_pipeline/
       __init__.py         # Job, schedule, and resource registration
       assets.py           # raw_store_copy → pending_contents → indexed_contents
       resources.py        # RawStoreResource, VectorStoreResource
-    backup_databases/
+    backup_readings/
       __init__.py         # Job and resource registration
-      ops.py              # backup_databases → cleanup_old_backups → log_summary
+      ops.py              # backup_readings → cleanup_old_backups → log_summary
       resources.py        # BackupResource
   lib/                    # Plain Python, no Dagster
     config.py             # Paths, settings (source project, local data, backup retention)

@@ -1,4 +1,4 @@
-# `backup_databases` pipeline
+# `backup_readings` pipeline
 
 Daily-partitioned snapshot of the newsletter-assistant SQLite databases, with
 optional Google Drive offload via rclone and a healthchecks.io ping that turns
@@ -45,7 +45,7 @@ Plus one **sensor** (not an asset):
 
 | Sensor | What it does |
 |---|---|
-| `ping_healthcheck_on_success` | On successful `backup_databases` run, POSTs to `HEALTHCHECK_PING_URL`. |
+| `ping_healthcheck_on_success` | On successful `backup_readings` run, POSTs to `HEALTHCHECK_PING_URL`. |
 
 **Schedule:** `run_daily_backup` fires `0 3 * * *` UTC for the previous day's
 partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
@@ -129,7 +129,7 @@ short-circuiting.
 
 1. Sign up at https://healthchecks.io (free tier covers ~20 checks).
 2. Create a new check:
-   - **Name:** `backup_databases`
+   - **Name:** `backup_readings`
    - **Schedule:** Simple, period **1 day**, grace **2 hours**.
    - (Or "cron" mode with `0 3 * * *` UTC if you want exact-time enforcement.)
 3. Copy the ping URL (`https://hc-ping.com/<uuid>`) into `HEALTHCHECK_PING_URL`.
@@ -147,13 +147,13 @@ broken cron, dead daemon, and code-location import errors uniformly.
 ### Run once from CLI
 
 ```bash
-uv run poe backup    # → dg launch -m orchestrators.defs.pipelines.definitions --job backup_databases
+uv run poe backup    # → dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings
 ```
 
 ### Backfill missing partitions
 
 In the Dagster UI: Assets → group `backup` → select range → **Materialize**.
-Or via CLI: `dg launch --job backup_databases --partition <date>`.
+Or via CLI: `dg launch --job backup_readings --partition <date>`.
 
 ### Drive over the threshold
 

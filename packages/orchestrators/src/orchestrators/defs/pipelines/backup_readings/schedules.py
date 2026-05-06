@@ -11,8 +11,8 @@ from .assets import all_assets
 from .checks import all_checks
 from .partitions import daily_partition_def
 
-backup_databases_job = dg.define_asset_job(
-    name="backup_databases",
+backup_readings_job = dg.define_asset_job(
+    name="backup_readings",
     description=(
         "Daily backup: snapshot newsletter-assistant SQLite DBs, verify integrity, "
         "offload to Google Drive (rclone), prune both sides, ping healthchecks.io. "
@@ -27,10 +27,10 @@ backup_databases_job = dg.define_asset_job(
 )
 
 
-@dg.schedule(cron_schedule="0 3 * * *", job=backup_databases_job)
+@dg.schedule(cron_schedule="0 3 * * *", job=backup_readings_job)
 def run_daily_backup(context: dg.ScheduleEvaluationContext) -> dg.RunRequest:
     yesterday = (context.scheduled_execution_time.date() - timedelta(days=1)).isoformat()
     return dg.RunRequest(run_key=yesterday, partition_key=yesterday)
 
 
-__all__ = ["backup_databases_job", "run_daily_backup", "all_checks"]
+__all__ = ["backup_readings_job", "run_daily_backup", "all_checks"]
