@@ -7,10 +7,23 @@ silence (cron didn't fire, daemon died) into a loud alert.
 ## DAG (per partition)
 
 ```
-snapshot_raw_store ─┐                                      ┌─→ prune_drive_backups
-                    ├─→ verify_* (blocking) ─→ check_drive_capacity ─→ upload ─┼─→ ping_healthcheck
-snapshot_sessions  ─┘                                      └─→ prune_local_backups
+snapshot_raw_store ─┐
+                    ├─→ verify_* (blocking) ─→ check_drive_capacity ─→ upload_snapshots_to_drive ─┐
+snapshot_sessions  ─┘                                                                              │
+                                                                                                   │
+                                              ┌────────────────────────────────────────────────────┤
+                                              │                                                    │
+                                              ├─→ prune_drive_backups                              │
+                                              │                                                    │
+                                              ├─→ prune_local_backups   (parallel siblings of upload)
+                                              │                                                    │
+                                              └─→ ping_healthcheck      ◄── terminal success signal
 ```
+
+`ping_healthcheck` is a parallel sibling of both prune assets — it depends only
+on `upload`, not on the prunes. Pruning is housekeeping; the healthchecks ping
+fires as soon as the snapshot is safely offloaded. Prune failures show as red
+in the Dagster UI but don't gate the success signal.
 
 Each daily partition produces:
 

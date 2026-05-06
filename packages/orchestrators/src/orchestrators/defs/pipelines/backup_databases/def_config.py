@@ -1,5 +1,8 @@
-# Tunables for the backup pipeline. Path-level config lives in orchestrators.config;
-# anything here is specific to retention, capacity guards, and remote naming.
+# Definition-time config for the backup pipeline. Path-level config (where to
+# read DBs from, where to land snapshots) lives in orchestrators.config.
+
+# Daily partition start date — anything before this would have nothing to back up.
+PARTITION_START_DATE = "2026-05-01"
 
 # Local snapshot retention — newest N partition dirs kept under BACKUP_DIR.
 # Local is the recent-restore cache; Drive is the long-term archive.

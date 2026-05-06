@@ -4,6 +4,6 @@
 
 import dagster as dg
 
-# Start date is when this redesigned pipeline first goes live; backfill before
-# this would have nothing to back up against.
-daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
+from .def_config import PARTITION_START_DATE
+
+daily_partition_def = dg.DailyPartitionsDefinition(start_date=PARTITION_START_DATE)

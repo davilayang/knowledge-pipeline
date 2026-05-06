@@ -1,20 +1,4 @@
-# Daily-partitioned backup pipeline.
-#
-# Graph (per partition):
-#
-#   snapshot_raw_store ─┐
-#   snapshot_sessions  ─┴─→ verify_* (blocking checks) ─→ check_drive_capacity
-#                                                              │
-#                                                              ▼
-#                                                  upload_snapshots_to_drive
-#                                                              │
-#                              ┌──────────────────────────────┼──────────────────────┐
-#                              ▼                              ▼                      ▼
-#                     prune_drive_backups            ping_healthcheck       prune_local_backups
-#                     (independent)                  (independent)           (independent)
-#
-# Snapshot is split across two single-asset functions (not one multi_asset) so a
-# partial failure can't mark one DB succeeded while the other silently skipped.
+# Daily-partitioned backup pipeline. See README.md for the DAG diagram.
 
 import hashlib
 import json
@@ -28,7 +12,7 @@ from pathlib import Path
 
 import dagster as dg
 
-from .constants import (
+from .def_config import (
     DRIVE_ROOT,
     DRIVE_USAGE_THRESHOLD,
     MAX_DRIVE_BACKUPS,

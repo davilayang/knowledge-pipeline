@@ -5,8 +5,7 @@
 #   ./scripts/deploy-hcloud.sh setup                # One-time project setup
 #   ./scripts/deploy-hcloud.sh deploy               # Pull latest, rebuild & restart
 #   ./scripts/deploy-hcloud.sh deploy --no-build    # Restart only (skip image build)
-#   ./scripts/deploy-hcloud.sh push-creds           # Sync local secrets to server
-#                                                   #   (rclone.conf, .env.deploy, etc.)
+#   ./scripts/deploy-hcloud.sh push-creds           # Sync rclone.conf to server
 #
 # Config is loaded from .env.deploy (create from .env.deploy.example).
 # Env vars can also be set inline: DEPLOY_TARGET=... ./scripts/deploy-hcloud.sh deploy
@@ -178,7 +177,7 @@ do_push_creds() {
     local target
     target="$(deploy_target)"
 
-    info "Pushing credentials to ${target}..."
+    info "Pushing rclone.conf to ${target}..."
     run_deploy true 2>/dev/null \
         || error "Cannot SSH to ${target}"
 
@@ -186,13 +185,12 @@ do_push_creds() {
     [ -f "${local_rclone}" ] \
         || error "rclone.conf not found at ${local_rclone} — run 'rclone config' first"
 
-    info "  rclone.conf"
     run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone && chmod 700 ~/${REMOTE_DIR}/.rclone"
     rsync -az --chmod=600 -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
     echo ""
-    info "Credentials pushed."
+    info "rclone.conf pushed."
     echo "    Restart the code container to pick up changes:"
     echo "      ./scripts/deploy-hcloud.sh deploy --no-build"
 }

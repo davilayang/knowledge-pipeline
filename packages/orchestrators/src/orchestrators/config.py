@@ -1,4 +1,8 @@
 # Paths and settings for the knowledge pipeline.
+#
+# TODO: migrate path/env config to pydantic-settings (BaseSettings) — gets us
+# typed config, validation, .env file support, and a single Settings() singleton
+# instead of the os.getenv-and-Path-coerce pattern below.
 
 import os
 from pathlib import Path
