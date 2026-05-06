@@ -145,8 +145,6 @@ def check_drive_capacity(
 
     metadata = {
         "remote": dg.MetadataValue.text(rclone.remote_name),
-        "used_bytes": dg.MetadataValue.int(used),
-        "total_bytes": dg.MetadataValue.int(total),
         "used_gb": dg.MetadataValue.float(used / 1e9),
         "total_gb": dg.MetadataValue.float(total / 1e9),
         "used_pct": dg.MetadataValue.float(used_pct),
@@ -203,14 +201,14 @@ def upload_snapshots_to_drive(
     duration = (datetime.now(tz=UTC) - started).total_seconds()
 
     files = sorted(p for p in src.iterdir() if p.is_file())
-    total_bytes = sum(p.stat().st_size for p in files)
+    total_mb = sum(p.stat().st_size for p in files) / (1024 * 1024)
 
     return dg.MaterializeResult(
         metadata={
             "status": dg.MetadataValue.text("ok"),
             "remote_path": dg.MetadataValue.text(dst),
             "files_uploaded": dg.MetadataValue.int(len(files)),
-            "bytes_uploaded": dg.MetadataValue.int(total_bytes),
+            "mb_uploaded": dg.MetadataValue.float(total_mb),
             "duration_s": dg.MetadataValue.float(duration),
         }
     )

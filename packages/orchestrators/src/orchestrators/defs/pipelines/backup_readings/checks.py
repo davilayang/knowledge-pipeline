@@ -26,12 +26,13 @@ def _verify_one(
         )
 
     size = path.stat().st_size
+    size_kb = size / 1024
     if size < MIN_SNAPSHOT_BYTES:
         return dg.AssetCheckResult(
             passed=False,
             severity=dg.AssetCheckSeverity.ERROR,
-            description=f"Snapshot suspiciously small: {size} bytes",
-            metadata={"size_bytes": dg.MetadataValue.int(size)},
+            description=f"Snapshot suspiciously small: {size_kb:.2f} KB",
+            metadata={"size_kb": dg.MetadataValue.float(size_kb)},
         )
 
     conn = sqlite3.connect(path)
@@ -44,7 +45,7 @@ def _verify_one(
         conn.close()
 
     metadata = {
-        "size_bytes": dg.MetadataValue.int(size),
+        "size_kb": dg.MetadataValue.float(size_kb),
         "integrity": dg.MetadataValue.text(integrity),
         "table_count": dg.MetadataValue.int(table_count),
     }
