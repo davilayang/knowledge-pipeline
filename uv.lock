@@ -1516,6 +1516,7 @@ dependencies = [
 workbench = [
     { name = "knowledge-evals" },
     { name = "knowledge-retrievers" },
+    { name = "knowledge-workflows", extra = ["agents"] },
 ]
 
 [package.metadata]
@@ -1528,6 +1529,7 @@ requires-dist = [
     { name = "knowledge-evals", marker = "extra == 'workbench'", editable = "packages/evals" },
     { name = "knowledge-retrievers", marker = "extra == 'workbench'", editable = "packages/retrievers" },
     { name = "knowledge-workflows", editable = "packages/workflows" },
+    { name = "knowledge-workflows", extras = ["agents"], marker = "extra == 'workbench'", editable = "packages/workflows" },
     { name = "poethepoet" },
 ]
 provides-extras = ["workbench"]
@@ -1604,7 +1606,6 @@ version = "0.6.2"
 source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },
-    { name = "knowledge-retrievers" },
     { name = "langchain" },
     { name = "langchain-anthropic" },
     { name = "langchain-openai" },
@@ -1613,10 +1614,15 @@ dependencies = [
     { name = "langgraph-checkpoint-postgres" },
 ]
 
+[package.optional-dependencies]
+agents = [
+    { name = "knowledge-retrievers" },
+]
+
 [package.metadata]
 requires-dist = [
     { name = "knowledge-domains", editable = "packages/domains" },
-    { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "knowledge-retrievers", marker = "extra == 'agents'", editable = "packages/retrievers" },
     { name = "langchain", specifier = ">=1.0,<2.0" },
     { name = "langchain-anthropic", specifier = ">=0.3,<1.0" },
     { name = "langchain-openai", specifier = ">=0.3,<1.0" },
@@ -1624,6 +1630,7 @@ requires-dist = [
     { name = "langgraph", specifier = ">=1.0,<2.0" },
     { name = "langgraph-checkpoint-postgres", specifier = ">=2.0,<3.0" },
 ]
+provides-extras = ["agents"]
 
 [[package]]
 name = "kubernetes"

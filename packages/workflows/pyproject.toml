@@ -5,13 +5,20 @@ description = "LangGraph agentic workflows and agent primitives"
 requires-python = ">=3.13"
 dependencies = [
     "knowledge-domains",
-    "knowledge-retrievers",
     "langgraph>=1.0,<2.0",
     "langgraph-checkpoint-postgres>=2.0,<3.0",
     "langchain>=1.0,<2.0",  # langfuse.langchain.CallbackHandler runtime dep
     "langchain-openai>=0.3,<1.0",
     "langchain-anthropic>=0.3,<1.0",
     "langfuse>=3.0,<4.0",
+]
+
+[project.optional-dependencies]
+# Only the agents/ subpackage uses retrievers (which transitively pulls in
+# sentence-transformers + PyTorch + CUDA, ~4 GB). Wiki synthesis and backup
+# pipelines don't need it. Activate via knowledge-orchestrators[workbench].
+agents = [
+    "knowledge-retrievers",
 ]
 
 [build-system]
