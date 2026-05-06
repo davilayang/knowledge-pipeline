@@ -114,7 +114,7 @@ def snapshot_sessions(
 
 
 @dg.asset(
-    key=["drive", "capacity"],
+    key=["google_drive", "storage_capacity"],
     group_name="backup",
     compute_kind="rclone",
     code_version=BACKUP_READINGS_DAG_VERSION,
@@ -167,12 +167,12 @@ def check_drive_capacity(
 
 
 @dg.asset(
-    key=["drive", "uploaded"],
+    key=["google_drive", "uploaded_snapshots"],
     group_name="backup",
     compute_kind="rclone",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    deps=[dg.AssetDep(["drive", "capacity"])],
+    deps=[dg.AssetDep(["google_drive", "storage_capacity"])],
     description="Copy the partition's snapshot dir to the Drive remote.",
 )
 def upload_snapshots_to_drive(
@@ -218,12 +218,12 @@ def upload_snapshots_to_drive(
 
 
 @dg.asset(
-    key=["drive", "pruned"],
+    key=["google_drive", "pruned_old_backups"],
     group_name="backup",
     compute_kind="rclone",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    deps=[dg.AssetDep(["drive", "uploaded"])],
+    deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],
     description=f"Delete Drive partition dirs beyond the newest {MAX_DRIVE_BACKUPS}.",
 )
 def prune_drive_backups(
@@ -266,12 +266,12 @@ def prune_drive_backups(
 
 
 @dg.asset(
-    key=["local", "pruned"],
+    key=["local_disk", "pruned_old_backups"],
     group_name="backup",
     compute_kind="filesystem",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    deps=[dg.AssetDep(["drive", "uploaded"])],
+    deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],
     description=f"Delete local partition dirs beyond the newest {MAX_LOCAL_BACKUPS}.",
 )
 def prune_local_backups(

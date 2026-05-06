@@ -36,10 +36,10 @@ Each daily partition produces:
 | `snapshots/raw_store` | SQLite `.backup()` of `raw_store.db` → `BACKUP_DIR/<date>/raw_store.db` |
 | `snapshots/sessions` | Same, for `sessions.db` |
 | `verify_snapshot_*` | **Blocking** asset checks: file size, `PRAGMA integrity_check`, table count |
-| `drive/capacity` | `rclone about` preflight; raises Failure at `>90%` Drive usage |
-| `drive/uploaded` | `rclone copy` of the partition dir to `<remote>:knowledge-pipeline-backups/<date>/` |
-| `drive/pruned` | Keep newest `MAX_DRIVE_BACKUPS=70` partition dirs on Drive |
-| `local/pruned` | Keep newest `MAX_LOCAL_BACKUPS=14` partition dirs on disk |
+| `google_drive/storage_capacity` | `rclone about` preflight; raises Failure at `>90%` Drive usage |
+| `google_drive/uploaded_snapshots` | `rclone copy` of the partition dir to `<remote>:knowledge-pipeline-backups/<date>/` |
+| `google_drive/pruned_old_backups` | Keep newest `MAX_DRIVE_BACKUPS=70` partition dirs on Drive |
+| `local_disk/pruned_old_backups` | Keep newest `MAX_LOCAL_BACKUPS=14` partition dirs on disk |
 
 Plus one **sensor** (not an asset):
 
@@ -56,7 +56,7 @@ partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
 |---|---|---|
 | `BACKUP_SOURCE_DIR` | `~/newsletter-assistant/data` | Uses default — set on laptops to `~/GitHub/newsletter-assistant/data` |
 | `BACKUP_DIR` | `<repo>/backups` | Uses default |
-| `DRIVE_REMOTE` | _(empty)_ | `drive/*` assets short-circuit; run still succeeds |
+| `DRIVE_REMOTE` | _(empty)_ | `google_drive/*` assets short-circuit; run still succeeds |
 | `HEALTHCHECK_PING_URL` | _(empty)_ | `ping_healthcheck_on_success` sensor short-circuits |
 
 Tunables in [`def_config.py`](./def_config.py): retention (`MAX_LOCAL_BACKUPS`,
@@ -139,7 +139,7 @@ short-circuiting.
    Slack, Discord, ntfy, Telegram, Pushover, etc. healthchecks fans out the
    notification — **no per-channel code in this repo**.
 
-When a run succeeds, the terminal `ping_healthcheck` asset POSTs to that URL.
+When a run succeeds, the `ping_healthcheck_on_success` sensor POSTs to that URL.
 If no ping arrives within `period + grace` (~26h by default), healthchecks
 sends "DOWN" alerts via your configured channels. This catches asset failures,
 broken cron, dead daemon, and code-location import errors uniformly.
