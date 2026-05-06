@@ -11,19 +11,23 @@ snapshot_raw_store ─┐
                     ├─→ verify_* (blocking) ─→ check_drive_capacity ─→ upload_snapshots_to_drive ─┐
 snapshot_sessions  ─┘                                                                              │
                                                                                                    │
-                                              ┌────────────────────────────────────────────────────┤
-                                              │                                                    │
-                                              ├─→ prune_drive_backups                              │
-                                              │                                                    │
-                                              ├─→ prune_local_backups   (parallel siblings of upload)
-                                              │                                                    │
-                                              └─→ ping_healthcheck      ◄── terminal success signal
+                                                            ┌──────────────────────────────────────┤
+                                                            ▼                                      ▼
+                                                  prune_drive_backups                  prune_local_backups
+                                                                            (parallel siblings of upload)
+
+
+  on job SUCCESS  ──→  ping_healthcheck_on_success (run-status sensor; not part of the asset graph)
+                       POST to healthchecks.io. Absence of ping (within period + grace) is the alert.
 ```
 
-`ping_healthcheck` is a parallel sibling of both prune assets — it depends only
-on `upload`, not on the prunes. Pruning is housekeeping; the healthchecks ping
-fires as soon as the snapshot is safely offloaded. Prune failures show as red
-in the Dagster UI but don't gate the success signal.
+The healthcheck ping is **not an asset** — it's a run-status sensor that fires
+once on successful job completion. The ping itself has no per-partition history
+worth keeping (healthchecks.io maintains its own ping log), so modeling it as a
+sensor avoids stretching "asset" to mean "any side effect."
+
+Prune failures fail the run → no success ping → healthchecks alerts. Prune
+failures show as red in the Dagster UI in either case.
 
 Each daily partition produces:
 
@@ -36,7 +40,12 @@ Each daily partition produces:
 | `drive/uploaded` | `rclone copy` of the partition dir to `<remote>:knowledge-pipeline-backups/<date>/` |
 | `drive/pruned` | Keep newest `MAX_DRIVE_BACKUPS=90` partition dirs on Drive |
 | `local/pruned` | Keep newest `MAX_LOCAL_BACKUPS=14` partition dirs on disk |
-| `healthcheck/pinged` | POST to `HEALTHCHECK_PING_URL` — terminal success signal |
+
+Plus one **sensor** (not an asset):
+
+| Sensor | What it does |
+|---|---|
+| `ping_healthcheck_on_success` | On successful `backup_databases` run, POSTs to `HEALTHCHECK_PING_URL`. |
 
 **Schedule:** `run_daily_backup` fires `0 3 * * *` UTC for the previous day's
 partition, `run_key=<date>` (Dagster dedupes accidental double-fires).

@@ -5,7 +5,6 @@ import json
 import shutil
 import sqlite3
 import subprocess
-import urllib.request
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -20,7 +19,7 @@ from .def_config import (
     MAX_LOCAL_BACKUPS,
 )
 from .partitions import daily_partition_def
-from .resources import BackupResource, HealthcheckResource, RcloneResource
+from .resources import BackupResource, RcloneResource
 
 
 # ---------- helpers ----------
@@ -309,40 +308,10 @@ def prune_local_backups(
     )
 
 
-# ---------- terminal success signal ----------
-
-
-@dg.asset(
-    key=["healthcheck", "pinged"],
-    group_name="backup",
-    compute_kind="http",
-    code_version=BACKUP_DAG_VERSION,
-    partitions_def=daily_partition_def,
-    deps=[dg.AssetDep(["drive", "uploaded"])],
-    description="POST to healthchecks.io — absence of this ping is the failure alert.",
-)
-def ping_healthcheck(
-    context: dg.AssetExecutionContext, healthcheck: HealthcheckResource
-) -> dg.MaterializeResult:
-    if not healthcheck.is_configured:
-        context.log.info("HEALTHCHECK_PING_URL unset; skipping ping.")
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("skipped")})
-
-    body = f"backup_databases ok for partition={context.partition_key}".encode()
-    req = urllib.request.Request(healthcheck.ping_url, data=body, method="POST")
-    with urllib.request.urlopen(req, timeout=10) as resp:
-        resp.read()
-
-    return dg.MaterializeResult(
-        metadata={
-            "status": dg.MetadataValue.text("ok"),
-            "partition": dg.MetadataValue.text(context.partition_key),
-            "pinged_at": dg.MetadataValue.text(datetime.now(tz=UTC).isoformat()),
-        }
-    )
-
-
 # Ordered list for explicit selection by jobs/tests.
+# `ping_healthcheck` is NOT here — it's a run-status sensor (see sensors.py),
+# fired after the job succeeds rather than as a per-partition asset, since the
+# ping itself is ephemeral (no per-day metadata worth scrolling back to).
 all_assets = [
     snapshot_raw_store,
     snapshot_sessions,
@@ -350,5 +319,4 @@ all_assets = [
     upload_snapshots_to_drive,
     prune_drive_backups,
     prune_local_backups,
-    ping_healthcheck,
 ]

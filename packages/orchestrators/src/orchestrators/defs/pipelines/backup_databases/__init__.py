@@ -20,6 +20,7 @@ from .assets import all_assets
 from .checks import all_checks
 from .resources import build_resources
 from .schedules import backup_databases_job, run_daily_backup
+from .sensors import all_sensors
 
 # Click-through from any asset in the Dagster UI to the source line on GitHub.
 _REPO_URL = "https://github.com/davilayang/knowledge-pipeline"
@@ -38,5 +39,6 @@ defs = dg.Definitions(
     asset_checks=all_checks,
     jobs=[backup_databases_job],
     schedules=[run_daily_backup],
+    sensors=all_sensors,
     resources=build_resources(),
 )
