@@ -59,12 +59,15 @@ USER dagster
 
 EXPOSE 4000
 
-HEALTHCHECK --timeout=1s --start-period=30s --interval=5s --retries=20 \
+HEALTHCHECK --timeout=5s --start-period=30s --interval=5s --retries=20 \
     CMD ["/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
 
 # Load pipelines-only code location (backup + wiki). The full orchestrators.definitions
 # merger also includes the RAG workbench, which imports from retrievers/evals — packages
 # not installed in this image. Run workbench jobs locally via `poe dagster-dev`.
-CMD ["uv", "run", "dagster", "code-server", "start", \
+# Invoke the binary from the prebuilt venv directly. `uv run` would re-sync the
+# workspace at startup (defaults to all packages, dev deps included), pulling in
+# the exact extras we excluded at build time and adding ~13 s to startup.
+CMD ["/app/.venv/bin/dagster", "code-server", "start", \
      "-h", "0.0.0.0", "-p", "4000", \
      "-m", "orchestrators.defs.pipelines.definitions"]

@@ -33,10 +33,6 @@ services:
       context: .
       dockerfile: docker/code/Dockerfile
     image: knowledge_pipeline_code
-    # Pulls everything from .env automatically. New env vars added there are
-    # forwarded into the container without editing this file. The two entries
-    # below are explicit because they're either composed at compose-substitution
-    # time (DATABASE_URL) or static / not in .env (DAGSTER_CURRENT_IMAGE).
     env_file: .env
     environment:
       DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
@@ -53,12 +49,7 @@ services:
       - ./.rclone:/app/.rclone:ro
     networks:
       - dagster_network
-    healthcheck:
-      test: ["CMD", "/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
-      timeout: 1s
-      interval: 5s
-      retries: 20
-      start_period: 30s
+    # Healthcheck inherited from docker/code/Dockerfile (single source of truth).
     restart: on-failure
 
   dagster-webserver:
