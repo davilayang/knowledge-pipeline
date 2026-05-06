@@ -1,45 +1,59 @@
 # Knowledge Pipeline
 
-Content indexing and backup pipeline for the newsletter-assistant knowledge system, 
-using Dagster, SQLite, and ChromaDB.
+Dagster-orchestrated pipelines for the [newsletter-assistant](https://github.com/davilayang/newsletter-assistant) knowledge system: indexing article content into ChromaDB, synthesising entity wiki pages from raw articles, evaluating RAG strategies, and backing up the source SQLite databases.
 
-## Prerequisites
+## Project Structure
 
-- Python >= 3.13
-- Docker & Docker Compose
-- [uv](https://docs.astral.sh/uv/)
+```
+packages/
+  domains/         # Pure data layer — types, schema, sources (no LLM/Dagster deps)
+  workflows/       # LangGraph workflows + agent primitives (wiki synthesis, ingest)
+  retrievers/      # RAG infrastructure — chunking, embedding, vector store
+  evals/           # Eval harnesses — RAG metrics, wiki quality dimensions
+  orchestrators/   # Dagster definitions (the only package allowed to import Dagster)
+data/              # Runtime — gitignored (raw_store.db, chroma/, wiki/)
+backups/           # Local snapshot landing — gitignored
+datasets/          # Pinned eval datasets — checked in
+docker/            # Per-service Dockerfiles (postgres init, dagster-code, dagster)
+scripts/           # Deployment scripts (deploy-hcloud.sh)
+```
 
-## Setup
+## Development Instructions
+
+**Prerequisites**
+
+1. **Python 3.13** and [`uv`](https://docs.astral.sh/uv/)
+2. **Docker & Docker Compose** (for the Postgres + Dagster cluster)
+3. **API keys** — copy `.env.example` to `.env` and fill in
+   - `OPENAI_API_KEY` — wiki synthesis LLM
+   - `DAGSTER_PG_*` — Postgres credentials for Dagster metadata DB
 
 ```bash
-# Install dependencies
 uv sync
+
+uv run poe check       # fmt, lint, tests
+uv run poe test
+uv run poe fix         # auto-fix formatting (black) + linting (ruff)
+uv run pytest tests/path/to/test_file.py -v   # single test file
 ```
 
 ### Local Development
-
-Start the Dagster dev server (includes webserver + daemon):
 
 ```bash
 uv run poe dev
 ```
 
 - Dagster UI: http://localhost:3030
-- Stop with `Ctrl-C`
+- Stop with `Ctrl-C`. Dev mode runs the webserver and daemon in one process; sensors and schedules tick automatically.
 
 ### Dagster Cluster (Docker)
 
 For a persistent deployment with PostgreSQL-backed storage:
 
 ```bash
-# Set up environment
-cp .env.example .env
-# Edit .env if needed
-
-# Start cluster (Postgres, code server, webserver, daemon)
 docker compose up
 
-# After code changes, restart the code server (webserver/daemon stay up)
+# After code changes, rebuild + restart the code server (webserver/daemon stay up)
 docker compose restart dagster-code
 
 # Tear down
@@ -50,52 +64,57 @@ docker compose down --volumes
 
 ## Running Jobs
 
-**Via Dagster UI** (recommended): http://localhost:3030 → Assets → Materialize or Jobs → Launch Run
+**Via Dagster UI** (recommended): http://localhost:3030 → Assets → Materialize, or Jobs → Launch Run
 
-**Via CLI** (one-shot execution):
+**Via CLI** (one-shot):
 
 ```bash
-# Index pending content into ChromaDB (copies raw_store.db first)
-uv run poe index
-
-# Backup databases from newsletter-assistant
-uv run poe backup
+uv run poe index            # Index pending content into ChromaDB
+uv run poe backup           # Snapshot newsletter-assistant SQLite DBs
+uv run poe eval             # Evaluate RAG strategies
+uv run poe wiki-ingest      # Run wiki synthesis (LangGraph workflow)
+uv run poe wiki-eval        # Score wiki pages across quality dimensions
+uv run poe rag-eval         # Run RAG evaluation harness with Ragas metrics
 ```
 
-### Index Contents Job
+### Pipelines
 
-Copies `raw_store.db` from the newsletter-assistant project, chunks pending content using markdown-aware splitting, embeds into ChromaDB, and updates vector status.
+- **`backup_readings`** — daily-partitioned snapshot of newsletter-assistant SQLite DBs, with optional Drive offload via `rclone` and a healthchecks.io ping. See [`packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md`](packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md) for env vars, rclone setup, and runbook.
 
-Asset chain: `raw_store_copy` → `pending_contents` → `indexed_contents`
+- **`idx_*`** — four index strategies (markdown × MiniLM/BGE, recursive × MiniLM, semantic × MiniLM). Run them to compare chunking/embedding combinations against the eval dataset.
 
-### Backup Job
+- **`wiki_synthesized`** — LangGraph-checkpointed wiki synthesis from raw articles to entity wiki pages, with per-entity Send-API fan-out and transactional Postgres commits.
 
-Copies SQLite databases from newsletter-assistant to timestamped backup directories under `backups/`, with automatic retention cleanup (default: 7 backups).
+## Deployment (Hetzner Cloud)
 
-## Architecture
-
-```
-src/knowledge_pipeline/
-  definitions.py          # Merges all defs/ into a single Definitions object
-  defs/                   # Dagster pipeline code (each subfolder exports its own Definitions)
-    index_contents/
-      __init__.py         # Job, schedule, and resource registration
-      assets.py           # raw_store_copy → pending_contents → indexed_contents
-      resources.py        # RawStoreResource, VectorStoreResource
-    backup_readings/
-      __init__.py         # Job and resource registration
-      ops.py              # backup_readings → cleanup_old_backups → log_summary
-      resources.py        # BackupResource
-  lib/                    # Plain Python, no Dagster
-    config.py             # Paths, settings (source project, local data, backup retention)
-    store.py              # Read-only SQLite access to raw_store.db
-    chunking.py           # Markdown-aware chunking (heading boundaries, paragraph packing)
-    vector_store.py       # ChromaDB operations (embed, search)
+```bash
+./scripts/deploy-hcloud.sh setup           # one-time provisioning
+./scripts/deploy-hcloud.sh deploy          # pull latest, rebuild, restart
+./scripts/deploy-hcloud.sh push-creds      # sync ~/.config/rclone/rclone.conf to server
 ```
 
-**Data flow:** `~/GitHub/newsletter-assistant/data/raw_store.db` → copy → `data/raw_store.db` → chunk → `data/chroma/`
+Run from the repo root. Configure target via `.env.deploy` (copy from `.env.deploy.example`). See `scripts/deploy-hcloud.sh` header for the full flag list.
+
+## Others
+
+### SSH Tunnel
+
+```bash
+uv run poe tunnel dagster   # forwards localhost:3030 → server's Dagster UI
+```
+
+### Resets
+
+```bash
+uv run poe reset-indices       # drop chunks/, embeddings/, chroma/
+uv run poe reset-wiki          # drop wiki schema + data/wiki/ + checkpoints
+uv run poe reset-checkpoints   # drop langgraph_checkpoints schema only
+uv run poe reset-everything    # full nuke
+```
 
 ## References
 
-- [Dagster documentation](https://docs.dagster.io/)
+- [Dagster docs](https://docs.dagster.io/)
 - [Dagster project structure guide](https://docs.dagster.io/guides/build/projects/project-structure/organizing-dagster-projects)
+- [LangGraph docs](https://langchain-ai.github.io/langgraph/)
+- Companion repo: [newsletter-assistant](https://github.com/davilayang/newsletter-assistant)
