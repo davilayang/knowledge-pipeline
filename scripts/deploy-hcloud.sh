@@ -203,7 +203,7 @@ do_push_creds() {
     run_deploy "mkdir -p ~/${REMOTE_DIR}/.rclone"
     run_deploy_sudo "chown ${DEPLOY_USER}:${DEPLOY_USER} ~/${REMOTE_DIR}/.rclone"
     run_deploy "chmod 700 ~/${REMOTE_DIR}/.rclone"
-    rsync -az --chmod=F600 -e "ssh $(ssh_opts)" \
+    rsync -az --chmod=u=rw,go= -e "ssh $(ssh_opts)" \
         "${local_rclone}" "${target}:~/${REMOTE_DIR}/.rclone/rclone.conf"
 
     echo ""
