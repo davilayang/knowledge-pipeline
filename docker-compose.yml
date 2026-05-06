@@ -86,11 +86,14 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    env_file: .env
+    # Only the Postgres run-store creds. No env_file — webserver doesn't need
+    # LLM keys or backup config and we'd rather not leak them.
     environment:
-      # Always Docker service DNS inside the network — overrides any
-      # DAGSTER_PG_HOST=localhost the user may have for poe-dev.
       DAGSTER_PG_HOST: postgres
+      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
+      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
+      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     ports:
       - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
@@ -111,9 +114,13 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
-    env_file: .env
+    # Only the Postgres run-store creds — daemon scope is the same as webserver.
     environment:
-      DAGSTER_PG_HOST: postgres   # always service DNS inside the bridge network
+      DAGSTER_PG_HOST: postgres
+      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
+      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
+      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
+      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     networks:
       - dagster_network
     restart: on-failure
