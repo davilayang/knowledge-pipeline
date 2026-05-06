@@ -1605,6 +1605,7 @@ source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },
     { name = "knowledge-retrievers" },
+    { name = "langchain" },
     { name = "langchain-anthropic" },
     { name = "langchain-openai" },
     { name = "langfuse" },
@@ -1616,6 +1617,7 @@ dependencies = [
 requires-dist = [
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
+    { name = "langchain", specifier = ">=1.0,<2.0" },
     { name = "langchain-anthropic", specifier = ">=0.3,<1.0" },
     { name = "langchain-openai", specifier = ">=0.3,<1.0" },
     { name = "langfuse", specifier = ">=3.0,<4.0" },

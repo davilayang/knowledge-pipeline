@@ -8,6 +8,7 @@ dependencies = [
     "knowledge-retrievers",
     "langgraph>=1.0,<2.0",
     "langgraph-checkpoint-postgres>=2.0,<3.0",
+    "langchain>=1.0,<2.0",  # langfuse.langchain.CallbackHandler runtime dep
     "langchain-openai>=0.3,<1.0",
     "langchain-anthropic>=0.3,<1.0",
     "langfuse>=3.0,<4.0",
