@@ -20,7 +20,7 @@ logs:  ## Tail logs from all services
 	docker compose logs -f
 
 tunnel:  ## SSH tunnel to remote services (dagster or all)
-	uv run poe tunnel $(or $(target),all)
+	uv run poe tunnel
 
 # --- Helpers ---
 
