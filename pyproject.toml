@@ -86,15 +86,15 @@ shell = """
   # deploy host, mirror newsletter-assistant's pyproject.toml pattern with
   # an `all` branch that does multi-port forwarding via Caddy on :8083.
   if [ "${target}" = "dagster" ]; then
-    echo "Dagster UI: http://localhost:3030 (forwarded to remote :3000)"
-    ssh -L 3030:127.0.0.1:3000 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
+    echo "Dagster UI: http://localhost:3030 (forwarded to remote host:3030)"
+    ssh -L 3030:127.0.0.1:3030 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
   else
     echo "Usage: uv run poe tunnel <dagster>"
     exit 1
   fi
 """
 envfile = ".env.deploy"
-help = "SSH tunnel to remote Dagster (localhost:3030 → server:3000)"
+help = "SSH tunnel to remote Dagster (localhost:3030 → server-host:3030, mapped from container :3000)"
 
 [tool.poe.tasks.tunnel.args.target]
 positional = true
