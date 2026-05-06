@@ -59,9 +59,6 @@ services:
       # won't be discovered. Either set RCLONE_CONFIG to point here, or revert
       # the non-root user. See PR #31 / PR #30 integration notes.
       - ./.rclone:/root/.config/rclone:ro
-    # No host port mapping for the gRPC code-server — webserver/daemon reach it
-    # via dagster_network. Server-side access is fronted by Tailscale,
-    # so internal-only is correct.
     networks:
       - dagster_network
     healthcheck:
@@ -89,12 +86,11 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
+    env_file: .env
     environment:
+      # Always Docker service DNS inside the network — overrides any
+      # DAGSTER_PG_HOST=localhost the user may have for poe-dev.
       DAGSTER_PG_HOST: postgres
-      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
-      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
-      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
-      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     ports:
       - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
@@ -115,12 +111,9 @@ services:
         condition: service_healthy
       dagster-code:
         condition: service_healthy
+    env_file: .env
     environment:
-      DAGSTER_PG_HOST: postgres
-      DAGSTER_PG_PORT: ${DAGSTER_PG_PORT}
-      DAGSTER_PG_USERNAME: ${DAGSTER_PG_USERNAME}
-      DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
-      DAGSTER_PG_DB: ${DAGSTER_PG_DB}
+      DAGSTER_PG_HOST: postgres   # always service DNS inside the bridge network
     networks:
       - dagster_network
     restart: on-failure
