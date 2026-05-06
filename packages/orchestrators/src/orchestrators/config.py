@@ -33,6 +33,16 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
     return DATA_DIR / subdir / strategy
 
 
+# DAG versions — one per Dagster pipeline, all colocated here for tracking.
+# Bump the matching constant whenever that pipeline's DAG logic changes; Dagster
+# compares this to the code_version stored on the last materialization and shows
+# downstream assets as stale until re-materialized. Decoupled from package
+# versions on purpose (the version-bump skill rolls package versions on every
+# release, which would otherwise mark every asset stale on every release).
+BACKUP_DAG_VERSION = "1"
+# WIKI_DAG_VERSION = "1"   # add when the wiki pipeline adopts the pattern
+
+
 # Backup settings
 # Default to the server layout (~/newsletter-assistant/data); laptops set
 # BACKUP_SOURCE_DIR=~/GitHub/newsletter-assistant/data in their shell.

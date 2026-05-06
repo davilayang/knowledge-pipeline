@@ -7,10 +7,11 @@ import sqlite3
 import subprocess
 import urllib.request
 from datetime import UTC, datetime
-from importlib.metadata import version
 from pathlib import Path
 
 import dagster as dg
+
+from orchestrators.config import BACKUP_DAG_VERSION
 
 from .def_config import (
     DRIVE_ROOT,
@@ -20,10 +21,6 @@ from .def_config import (
 )
 from .partitions import daily_partition_def
 from .resources import BackupResource, HealthcheckResource, RcloneResource
-
-# Tie asset code_version to the package version so a release bump signals
-# "logic may have changed" — Dagster shows downstream as stale until re-materialized.
-CODE_VERSION = version("knowledge-orchestrators")
 
 
 # ---------- helpers ----------
@@ -88,7 +85,7 @@ def _snapshot_one_db(
     key=["snapshots", "raw_store"],
     group_name="backup",
     compute_kind="sqlite",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": "newsletter-backup"},
     description="Consistent SQLite snapshot of raw_store.db for the partition's date.",
@@ -103,7 +100,7 @@ def snapshot_raw_store(
     key=["snapshots", "sessions"],
     group_name="backup",
     compute_kind="sqlite",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": "newsletter-backup"},
     description="Consistent SQLite snapshot of sessions.db for the partition's date.",
@@ -121,7 +118,7 @@ def snapshot_sessions(
     key=["drive", "capacity"],
     group_name="backup",
     compute_kind="rclone",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[
         dg.AssetDep(["snapshots", "raw_store"]),
@@ -176,7 +173,7 @@ def check_drive_capacity(
     key=["drive", "uploaded"],
     group_name="backup",
     compute_kind="rclone",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "capacity"])],
     description="Copy the partition's snapshot dir to the Drive remote.",
@@ -227,7 +224,7 @@ def upload_snapshots_to_drive(
     key=["drive", "pruned"],
     group_name="backup",
     compute_kind="rclone",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description=f"Delete Drive partition dirs beyond the newest {MAX_DRIVE_BACKUPS}.",
@@ -275,7 +272,7 @@ def prune_drive_backups(
     key=["local", "pruned"],
     group_name="backup",
     compute_kind="filesystem",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description=f"Delete local partition dirs beyond the newest {MAX_LOCAL_BACKUPS}.",
@@ -319,7 +316,7 @@ def prune_local_backups(
     key=["healthcheck", "pinged"],
     group_name="backup",
     compute_kind="http",
-    code_version=CODE_VERSION,
+    code_version=BACKUP_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["drive", "uploaded"])],
     description="POST to healthchecks.io — absence of this ping is the failure alert.",
