@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.2] — 2026-05-06
+
+### Changed
+
+- **Production Docker image drastically smaller** — `knowledge-retrievers` and `knowledge-evals` are now optional extras (`[workbench]`) in `knowledge-orchestrators`, so the production image no longer installs sentence-transformers, PyTorch, chromadb, or ragas (~8 GB of ML deps only needed for the RAG workbench). The image CMD now loads `orchestrators.defs.pipelines.definitions` (backup + wiki) instead of the full merger. Local dev is unchanged: `uv sync` at the workspace root still installs everything.
+- **uv cache permission crash on deploy fixed** — the `dagster` container user is created without a home directory, causing uv to fail creating `~/.cache/uv` at startup. `ENV UV_NO_CACHE=1` is now set in the Dockerfile so no home directory is needed.
+
+---
+
 ## [0.6.1] — 2026-05-06
 
 ### Changed

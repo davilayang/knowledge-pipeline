@@ -38,7 +38,7 @@ uv run --package <name> ...   # run inside a specific workspace member
 | `knowledge-evals` | `packages/evals` | Eval harnesses — RAG metrics (Ragas), wiki quality dimensions |
 | `knowledge-orchestrators` | `packages/orchestrators` | Dagster definitions — the **only** package allowed to depend on Dagster |
 
-**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers` (for index strategies). `orchestrators` is the top — depends on all four; everything Dagster-flavoured lives there. Nothing else may `import dagster`.
+**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers` (for index strategies). `orchestrators` is the top — depends on `domains` + `workflows` for production; `retrievers` + `evals` are optional extras (`[workbench]`) installed only for local RAG workbench use. Everything Dagster-flavoured lives in `orchestrators`. Nothing else may `import dagster`.
 
 ## Common Commands (via `poe`)
 
