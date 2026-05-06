@@ -65,4 +65,6 @@ HEALTHCHECK --timeout=1s --start-period=30s --interval=5s --retries=20 \
 # Load pipelines-only code location (backup + wiki). The full orchestrators.definitions
 # merger also includes the RAG workbench, which imports from retrievers/evals — packages
 # not installed in this image. Run workbench jobs locally via `poe dagster-dev`.
-CMD ["uv", "run", "dagster", "code-server", "start", "-h", "0.0.0.0", "-p", "4000", "-m", "orchestrators.defs.pipelines.definitions"]
+CMD ["uv", "run", "dagster", "code-server", "start", \
+     "-h", "0.0.0.0", "-p", "4000", \
+     "-m", "orchestrators.defs.pipelines.definitions"]
