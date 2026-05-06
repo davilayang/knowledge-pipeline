@@ -1,11 +1,8 @@
-# Code location image — contains project code and all dependencies.
-# Runs a gRPC code server that the webserver and daemon connect to.
+FROM python:3.13-slim
 
-# Refresh ~quarterly; check Python release notes before bumping.
-FROM python:3.13.13-slim
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
-# Refresh alongside Python image; check https://github.com/astral-sh/uv/releases.
-COPY --from=ghcr.io/astral-sh/uv:0.11.10 /uv /uvx /usr/local/bin/
+WORKDIR /app
 
 # rclone — needed for the backup pipeline's Drive offload assets.
 RUN apt-get update \
@@ -13,8 +10,6 @@ RUN apt-get update \
     && curl -fsSL https://rclone.org/install.sh | bash \
     && apt-get purge -y --auto-remove curl unzip \
     && rm -rf /var/lib/apt/lists/*
-
-WORKDIR /app
 
 # Install dependencies — this layer is cached until pyproject.toml / uv.lock change.
 # uv needs all workspace member manifests for resolution even when only installing
@@ -29,9 +24,8 @@ COPY packages/evals/pyproject.toml packages/evals/pyproject.toml
 COPY packages/orchestrators/pyproject.toml packages/orchestrators/pyproject.toml
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
-# Disable uv's on-disk cache at runtime. The venv is fully built during image
-# build; there's nothing to cache, and the dagster user has no home directory
-# so uv would fail trying to create ~/.cache/uv.
+# Disable uv's on-disk cache at runtime — the venv is fully built during image
+# build, there's nothing to cache.
 ENV UV_NO_CACHE=1
 RUN uv sync --frozen --no-dev --no-install-workspace --package knowledge-orchestrators
 
@@ -48,8 +42,13 @@ RUN uv sync --frozen --no-dev --package knowledge-orchestrators
 # Drop root before runtime.
 # Bind-mounted host directories (./data, ./datasets) must be writable by uid 1001
 # — see docker-compose.yml. Adjust host permissions if you see permission denied at runtime.
-RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin dagster \
-    && chown -R dagster:dagster /app
+# /home/dagster is created explicitly (not via useradd --create-home, which would
+# pull in skel dotfiles) so libs that cache to $HOME (langfuse, hf, etc.) have a
+# writable target without falling back to "/" or failing outright.
+RUN useradd --system --uid 1001 --no-create-home --home-dir /home/dagster --shell /usr/sbin/nologin dagster \
+    && mkdir -p /home/dagster \
+    && chown -R dagster:dagster /app /home/dagster
+ENV HOME=/home/dagster
 USER dagster
 
 EXPOSE 4000

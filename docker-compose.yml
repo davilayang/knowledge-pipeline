@@ -5,22 +5,11 @@
 #   docker compose down --volumes
 #
 # UI:  http://localhost:3030
-#
-# After code changes, rebuild and restart the code server:
-#   docker compose up --build dagster-code
-#
-# For local dev, skip Docker and use `uv run poe dev` which auto-reloads.
-#
-# Single Postgres, two databases: `dagster` (run history) and
-# `knowledge_pipeline` (wiki tables + langgraph_checkpoints). Each can be
-# backed up and restored independently via per-DB pg_dump.
+# For local dev, skip Docker and use `uv run poe dagster-dev` which auto-reloads.
 
 services:
+  # Configured with 2 databases: dagster & knowledge-pipeline
   postgres:
-    # Bumping the major version requires migrating the postgres_data volume
-    # (PG refuses to start on a data dir from an older major). Use pg_dumpall
-    # against the old container, recreate the volume, then restore. Skipping
-    # the dump will lose run history + wiki state.
     image: postgres:16
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
@@ -101,6 +90,18 @@ services:
       - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
       - dagster_network
+    healthcheck:
+      # /server_info is what the upstream Helm chart's readiness probe hits.
+      # Slim base has no curl; use stdlib urllib instead.
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://localhost:3000/server_info', timeout=2).read()"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
     restart: unless-stopped
 
   dagster-daemon:
