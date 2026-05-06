@@ -48,8 +48,8 @@ RUN uv sync --frozen --no-dev --package knowledge-orchestrators
 # Drop root before runtime.
 # Bind-mounted host directories (./data, ./datasets) must be writable by uid 1001
 # — see docker-compose.yml. Adjust host permissions if you see permission denied at runtime.
-RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin dagster
-RUN chown -R dagster:dagster /app
+RUN useradd --system --uid 1001 --no-create-home --shell /usr/sbin/nologin dagster \
+    && chown -R dagster:dagster /app
 USER dagster
 
 EXPOSE 4000

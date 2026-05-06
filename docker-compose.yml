@@ -17,7 +17,11 @@
 
 services:
   postgres:
-    image: postgres:14
+    # Bumping the major version requires migrating the postgres_data volume
+    # (PG refuses to start on a data dir from an older major). Use pg_dumpall
+    # against the old container, recreate the volume, then restore. Skipping
+    # the dump will lose run history + wiki state.
+    image: postgres:16
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
@@ -48,17 +52,16 @@ services:
     environment:
       DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
+      # rclone normally resolves config via $HOME/.config/rclone/rclone.conf, but
+      # the dagster user (uid 1001) has no home dir. Point rclone directly at the
+      # mounted file so the lookup doesn't depend on $HOME.
+      RCLONE_CONFIG: /app/.rclone/rclone.conf
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
       - ./backups:/app/backups
       # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
-      # Mounted read-only into the container's root home (rclone's default search path).
-      # NOTE: dagster-code now runs as non-root (uid 1001). rclone reads its config
-      # from $HOME/.config/rclone/ — for non-root invocations the mount path here
-      # won't be discovered. Either set RCLONE_CONFIG to point here, or revert
-      # the non-root user. See PR #31 / PR #30 integration notes.
-      - ./.rclone:/root/.config/rclone:ro
+      - ./.rclone:/app/.rclone:ro
     networks:
       - dagster_network
     healthcheck:
@@ -123,6 +126,12 @@ services:
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     networks:
       - dagster_network
+    healthcheck:
+      test: ["CMD", "dagster-daemon", "liveness-check"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 30s
     restart: on-failure
 
 networks:
