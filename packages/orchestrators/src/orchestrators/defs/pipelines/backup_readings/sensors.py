@@ -10,7 +10,7 @@ import urllib.request
 
 import dagster as dg
 
-from .def_config import PING_TIMEOUT_S
+from .def_config import PING_TIMEOUT_S, SENSOR_MIN_INTERVAL_S
 from .resources import HealthcheckResource
 from .schedules import backup_readings_job
 
@@ -20,6 +20,7 @@ logger = logging.getLogger(__name__)
 @dg.run_status_sensor(
     run_status=dg.DagsterRunStatus.SUCCESS,
     monitored_jobs=[backup_readings_job],
+    minimum_interval_seconds=SENSOR_MIN_INTERVAL_S,
     description=(
         "On successful backup_readings run, POST to healthchecks.io. "
         "Absence of this ping (within healthchecks period + grace) is the failure alert."

@@ -58,3 +58,10 @@ PIPELINE_TAG = "newsletter-backup"
 
 # Per-request timeout for the POST to healthchecks.io (see sensors.py).
 PING_TIMEOUT_S = 10
+
+# How often the daemon evaluates the run-status sensor. The sensor only fires
+# when a new backup_readings SUCCESS event arrives, so checking every 30s
+# (Dagster's default) is wasteful for a daily job. 5 min adds at most ~5 min
+# lag between job success and the ping — invisible against healthchecks'
+# day+hour-scale period+grace window.
+SENSOR_MIN_INTERVAL_S = 300
