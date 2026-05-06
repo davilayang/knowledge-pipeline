@@ -17,6 +17,7 @@ from .def_config import (
     DRIVE_USAGE_THRESHOLD,
     MAX_DRIVE_BACKUPS,
     MAX_LOCAL_BACKUPS,
+    PIPELINE_TAG,
 )
 from .partitions import daily_partition_def
 from .resources import BackupResource, RcloneResource
@@ -86,7 +87,7 @@ def _snapshot_one_db(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    op_tags={"dagster/concurrency_key": "newsletter-backup"},
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of raw_store.db for the partition's date.",
 )
 def snapshot_raw_store(
@@ -101,7 +102,7 @@ def snapshot_raw_store(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    op_tags={"dagster/concurrency_key": "newsletter-backup"},
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of sessions.db for the partition's date.",
 )
 def snapshot_sessions(

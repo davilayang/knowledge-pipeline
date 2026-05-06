@@ -38,7 +38,7 @@ Each daily partition produces:
 | `verify_snapshot_*` | **Blocking** asset checks: file size, `PRAGMA integrity_check`, table count |
 | `drive/capacity` | `rclone about` preflight; raises Failure at `>90%` Drive usage |
 | `drive/uploaded` | `rclone copy` of the partition dir to `<remote>:knowledge-pipeline-backups/<date>/` |
-| `drive/pruned` | Keep newest `MAX_DRIVE_BACKUPS=90` partition dirs on Drive |
+| `drive/pruned` | Keep newest `MAX_DRIVE_BACKUPS=70` partition dirs on Drive |
 | `local/pruned` | Keep newest `MAX_LOCAL_BACKUPS=14` partition dirs on disk |
 
 Plus one **sensor** (not an asset):
@@ -57,10 +57,12 @@ partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
 | `BACKUP_SOURCE_DIR` | `~/newsletter-assistant/data` | Uses default — set on laptops to `~/GitHub/newsletter-assistant/data` |
 | `BACKUP_DIR` | `<repo>/backups` | Uses default |
 | `DRIVE_REMOTE` | _(empty)_ | `drive/*` assets short-circuit; run still succeeds |
-| `HEALTHCHECK_PING_URL` | _(empty)_ | `healthcheck/pinged` short-circuits |
+| `HEALTHCHECK_PING_URL` | _(empty)_ | `ping_healthcheck_on_success` sensor short-circuits |
 
-Tunables in [`constants.py`](./constants.py): `MAX_LOCAL_BACKUPS`,
-`MAX_DRIVE_BACKUPS`, `DRIVE_USAGE_THRESHOLD`, `DRIVE_ROOT`.
+Tunables in [`def_config.py`](./def_config.py): retention (`MAX_LOCAL_BACKUPS`,
+`MAX_DRIVE_BACKUPS`), Drive (`DRIVE_USAGE_THRESHOLD`, `DRIVE_ROOT`),
+validation (`MIN_SNAPSHOT_BYTES`), scheduling (`SCHEDULE_CRON`,
+`JOB_MAX_RETRIES`, `PIPELINE_TAG`), and the healthcheck `PING_TIMEOUT_S`.
 
 ## rclone setup (laptop config → server)
 
@@ -160,7 +162,7 @@ Or via CLI: `dg launch --job backup_readings --partition <date>`.
 `check_drive_capacity` raises Dagster Failure at `>90%`. Either:
 
 - Free Drive space (manually delete from `<remote>:knowledge-pipeline-backups/`)
-- Lower `MAX_DRIVE_BACKUPS` in [`constants.py`](./constants.py) and re-deploy
+- Lower `MAX_DRIVE_BACKUPS` in [`def_config.py`](./def_config.py) and re-deploy
 - Bump `DRIVE_USAGE_THRESHOLD` (not recommended — you'll soon hit the hard quota)
 
 ### Restoring a snapshot

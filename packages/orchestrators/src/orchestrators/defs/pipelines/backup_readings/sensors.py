@@ -10,6 +10,7 @@ import urllib.request
 
 import dagster as dg
 
+from .def_config import PING_TIMEOUT_S
 from .resources import HealthcheckResource
 from .schedules import backup_readings_job
 
@@ -34,7 +35,7 @@ def ping_healthcheck_on_success(
     partition = context.dagster_run.tags.get("dagster/partition", "unknown")
     body = f"backup_readings ok for partition={partition}".encode()
     req = urllib.request.Request(healthcheck.ping_url, data=body, method="POST")
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    with urllib.request.urlopen(req, timeout=PING_TIMEOUT_S) as resp:
         resp.read()
 
     context.log.info("Pinged healthchecks for partition=%s", partition)

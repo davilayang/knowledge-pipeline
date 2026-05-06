@@ -4,13 +4,11 @@
 # same run — so a corrupt snapshot can never reach the upload step.
 
 import sqlite3
-from pathlib import Path
 
 import dagster as dg
 
+from .def_config import MIN_SNAPSHOT_BYTES
 from .resources import BackupResource
-
-MIN_SNAPSHOT_BYTES = 1024  # arbitrary tiny floor; an empty SQLite file is ~0–4KB
 
 
 def _verify_one(
