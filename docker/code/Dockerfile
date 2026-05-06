@@ -5,9 +5,15 @@ COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 WORKDIR /app
 
 # rclone — needed for the backup pipeline's Drive offload assets.
+# install.sh has no version flag, so we use the precompiled binary to pin.
+# Bump deliberately — check https://rclone.org/changelog/.
+ARG TARGETARCH
+ARG RCLONE_VERSION=1.74.0
 RUN apt-get update \
     && apt-get install -y --no-install-recommends ca-certificates curl unzip \
-    && curl -fsSL https://rclone.org/install.sh | bash \
+    && curl -fsSL "https://downloads.rclone.org/v${RCLONE_VERSION}/rclone-v${RCLONE_VERSION}-linux-${TARGETARCH:-amd64}.zip" -o /tmp/rclone.zip \
+    && unzip -j /tmp/rclone.zip "*/rclone" -d /usr/local/bin \
+    && rm /tmp/rclone.zip \
     && apt-get purge -y --auto-remove curl unzip \
     && rm -rf /var/lib/apt/lists/*
 
