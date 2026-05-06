@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.1] — 2026-05-06
+
+### Changed
+
+- **`dagster-code` now loads `.env` via `env_file`** — eliminates manual `DAGSTER_POSTGRES_*` duplication in docker-compose. `dagster-webserver` and `dagster-daemon` retain only their built-in env vars (least-privilege). Implementation: `docker-compose.yml` `dagster-code` service.
+- **Dev tunnel port corrected to 3030** — was 3000, which mismatched the `poe dev` / `poe tunnel` host port. `.env.example` reorganised by consumer group for clarity.
+
+---
+
 ## [0.6.0] — 2026-05-06
 
 Revamp DAG "backup_databases" to "backup_readings". The tasks are configured following best practices from "dagster-open-plaform" project. DAG will backup sqlite databases in local and on cloud at Google Drive.
