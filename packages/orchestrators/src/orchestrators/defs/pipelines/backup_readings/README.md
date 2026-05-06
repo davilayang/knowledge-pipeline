@@ -59,6 +59,11 @@ partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
 | `DRIVE_REMOTE` | _(empty)_ | `google_drive/*` assets short-circuit; run still succeeds |
 | `HEALTHCHECK_PING_URL` | _(empty)_ | `ping_healthcheck_on_success` sensor short-circuits |
 
+In Docker Compose, `BACKUP_SOURCE_DIR` in `.env` is the **host** path; compose
+bind-mounts it read-only to `/app/source` inside the container and overrides
+the env var there to the fixed container path. The pipeline code always sees a
+stable in-container path; the host-side path can move freely.
+
 Tunables in [`def_config.py`](./def_config.py): retention (`MAX_LOCAL_BACKUPS`,
 `MAX_DRIVE_BACKUPS`), Drive (`DRIVE_USAGE_THRESHOLD`, `DRIVE_ROOT`),
 validation (`MIN_SNAPSHOT_BYTES`), scheduling (`SCHEDULE_CRON`,

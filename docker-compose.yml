@@ -31,30 +31,41 @@ services:
     restart: unless-stopped
 
   dagster-code:
+    image: ${DOCKER_USER:-local}/kp-dagster-code
     build:
       context: .
       dockerfile: docker/code/Dockerfile
-    image: knowledge_pipeline_code
     env_file: .env
     environment:
-      DAGSTER_CURRENT_IMAGE: knowledge_pipeline_code
+      DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
       # rclone normally resolves config via $HOME/.config/rclone/rclone.conf, but
       # the dagster user (uid 1001) has no home dir. Point rclone directly at the
       # mounted file so the lookup doesn't depend on $HOME.
       RCLONE_CONFIG: /app/.rclone/rclone.conf
+      # The backup pipeline reads BACKUP_SOURCE_DIR from env. The host path on
+      # disk (e.g. /home/deploy/newsletter-assistant/data) doesn't exist inside
+      # the container; we bind-mount it at /app/source and override the env so
+      # the code always sees a stable in-container path.
+      BACKUP_SOURCE_DIR: /app/source
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
       - ./backups:/app/backups
       # rclone config — populated on the server by `deploy-hcloud.sh push-creds`.
       - ./.rclone:/app/.rclone:ro
+      # Source DB dir for backup_readings. BACKUP_SOURCE_DIR in .env points at
+      # the host path (e.g. /home/deploy/newsletter-assistant/data); compose
+      # bind-mounts that to /app/source read-only, and the container env above
+      # overrides BACKUP_SOURCE_DIR to /app/source for the code.
+      - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro
     networks:
       - dagster_network
     # Healthcheck inherited from docker/code/Dockerfile (single source of truth).
     restart: on-failure
 
   dagster-webserver:
+    image: ${DOCKER_USER:-local}/kp-dagster-webserver
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile
@@ -98,6 +109,7 @@ services:
     restart: unless-stopped
 
   dagster-daemon:
+    image: ${DOCKER_USER:-local}/kp-dagster-daemon
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile

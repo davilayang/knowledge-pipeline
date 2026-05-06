@@ -1,9 +1,6 @@
-# Keep in lockstep with docker/dagster/Dockerfile so both images share the same
-# CPython patch release. Refresh ~quarterly; check Python release notes before bumping.
-FROM python:3.13.13-slim
+FROM python:3.13-slim
 
-# Refresh alongside Python image; check https://github.com/astral-sh/uv/releases.
-COPY --from=ghcr.io/astral-sh/uv:0.11.11 /uv /uvx /usr/local/bin/
+COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
 
 WORKDIR /app
 
