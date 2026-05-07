@@ -13,6 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **`DRIVE_REMOTE` and `HEALTHCHECK_PING_URL` are now required for `backup_readings`.** Previously unset → silent skip of Drive upload + healthcheck ping. Now → run fails fast at startup. Implementation: `RcloneResource` / `HealthcheckResource` use `dg.EnvVar()`; `is_configured` short-circuits removed.
+- **Dagster webserver mounts at `/dags`** for reverse-proxy use. Docker UI is now at `http://localhost:3030/dags`; `poe dev` (local) is unchanged at `:3030`. Implementation: `--path-prefix=/dags` on the webserver entrypoint in `docker-compose.yml`; healthcheck probes `/dags/server_info`.
 
 ## [0.6.4] — 2026-05-07
 

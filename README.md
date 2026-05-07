@@ -43,7 +43,7 @@ uv run pytest tests/path/to/test_file.py -v   # single test file
 uv run poe dev
 ```
 
-- Dagster UI: http://localhost:3030
+- Dagster UI: http://localhost:3030 (no path prefix in `poe dev`)
 - Stop with `Ctrl-C`. Dev mode runs the webserver and daemon in one process; sensors and schedules tick automatically.
 
 ### Dagster Cluster (Docker)
@@ -60,11 +60,11 @@ docker compose restart dagster-code
 docker compose down --volumes
 ```
 
-- Dagster UI: http://localhost:3030
+- Dagster UI: http://localhost:3030/dags (the Docker webserver runs with `--path-prefix=/dags` for reverse-proxy mounting)
 
 ## Running Jobs
 
-**Via Dagster UI** (recommended): http://localhost:3030 → Assets → Materialize, or Jobs → Launch Run
+**Via Dagster UI** (recommended): http://localhost:3030 (`poe dev`) or http://localhost:3030/dags (Docker) → Assets → Materialize, or Jobs → Launch Run
 
 **Via CLI** (one-shot):
 

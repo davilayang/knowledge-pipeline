@@ -82,7 +82,7 @@ default = "deploy"
 
 [tool.poe.tasks.tunnel]
 shell = """
-echo "Dagster UI: http://localhost:3030 (forwarded to remote host:3030)"
+echo "Dagster UI: http://localhost:3030/dags (forwarded to remote :3030, served behind /dags prefix)"
 ssh -L 3030:127.0.0.1:3030 -i ${IDENTITY_FILE} ${DEPLOY_TARGET} -N
 """
 envfile = ".env.deploy"
