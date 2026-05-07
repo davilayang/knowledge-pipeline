@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.0] — 2026-05-07
+
+### Added
+
+- **`notes/` and `research_output/` are now included in daily backups.** The `backup_readings` pipeline snapshots both directories as gzip-tar archives (`notes.tgz`, `research_output.tgz`), verifies each with a blocking integrity check (readable archive, at least one member), and includes them in the Drive upload and prune cycle. Missing source dir → hard `Failure`. Implementation: `snapshot_notes` / `snapshot_research_output` assets + `verify_snapshot_notes` / `verify_snapshot_research_output` checks in `backup_readings/`; `ARCHIVE_DIRS` in `config.py`; `BackupResource.expected_files` property. `BACKUP_READINGS_DAG_VERSION` 2 → 3.
+
+---
+
 ## [0.6.7] — 2026-05-07
 
 ### Added
