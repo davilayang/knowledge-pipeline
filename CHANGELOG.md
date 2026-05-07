@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.7] — 2026-05-07
+
+### Added
+
+- **Co-emitted blocking checks on `storage_capacity` and `uploaded_snapshots`.** `drive_capacity_below_threshold` enforces the >90% Drive cap; the asset now always materializes so `used_pct` timeseries survives threshold violations. `all_snapshots_uploaded` re-lists Drive post-copy and catches rclone silent drops.
+- **`DRIVE_BACKUP_ROOT` env var** (required) — path prefix under `DRIVE_REMOTE`. Lets dev deploys point at a sibling dir (`...-dev`) without overwriting prod. Unset → fails fast at run init.
+- **`packages/orchestrators/STYLEGUIDE.md`** — checked-in conventions for Dagster pipelines in this repo.
+
+### Changed
+
+- **`check_drive_capacity` renamed to `storage_capacity`** (measurement-only; threshold moved to its blocking check). `BACKUP_READINGS_DAG_VERSION` 1 → 2.
+- **`compute_kind` uses icon-supported names**: `rclone`/`google_drive` → `googledrive`; `filesystem` → `file`.
+- **`backup_readings/README.md` reframed as a runbook** — failure-cascade diagram + ops + external setup; dropped code-mirroring tables.
+- **Redundant `status: "ok"` metadata removed** from 5 assets.
+
 ## [0.6.6] — 2026-05-07
 
 ### Changed

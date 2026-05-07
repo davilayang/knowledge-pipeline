@@ -28,10 +28,6 @@ MAX_DRIVE_BACKUPS = 70
 # Capacity preflight — fail the run if used / total exceeds this.
 DRIVE_USAGE_THRESHOLD = 0.90
 
-# Drive layout. The remote name is read from the DRIVE_REMOTE env var at runtime
-# (see resources.RcloneResource); this is just the path prefix under that remote.
-DRIVE_ROOT = "knowledge-pipeline-backups"
-
 
 # ---------- snapshot validation ----------
 

@@ -13,7 +13,6 @@ import dagster as dg
 from orchestrators.config import BACKUP_READINGS_DAG_VERSION
 
 from .def_config import (
-    DRIVE_ROOT,
     DRIVE_USAGE_THRESHOLD,
     MAX_DRIVE_BACKUPS,
     MAX_LOCAL_BACKUPS,
@@ -64,7 +63,6 @@ def _snapshot_one_db(
 
     return dg.MaterializeResult(
         metadata={
-            "status": dg.MetadataValue.text("ok"),
             "size_mb": dg.MetadataValue.float(size / (1024 * 1024)),
             "sha256": dg.MetadataValue.text(digest),
             "source_path": dg.MetadataValue.path(str(source)),
@@ -106,24 +104,30 @@ def snapshot_sessions(
     return _snapshot_one_db(context, backup, "sessions.db")
 
 
-# ---------- Drive capacity preflight ----------
+# ---------- Drive capacity observation ----------
 
 
 @dg.asset(
     key=["google_drive", "storage_capacity"],
     group_name="backup",
-    compute_kind="rclone",
+    compute_kind="googledrive",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[
         dg.AssetDep(["snapshots", "raw_store"]),
         dg.AssetDep(["snapshots", "sessions"]),
     ],
-    description="Preflight: fail the run if the Drive remote is over the usage threshold.",
+    check_specs=[
+        dg.AssetCheckSpec(
+            name="drive_capacity_below_threshold",
+            asset=dg.AssetKey(["google_drive", "storage_capacity"]),
+            blocking=True,
+            description=f"Fail when Drive used_pct > {DRIVE_USAGE_THRESHOLD:.0%}.",
+        )
+    ],
+    description="Daily Drive usage observation; co-emits the threshold check.",
 )
-def check_drive_capacity(
-    context: dg.AssetExecutionContext, rclone: RcloneResource
-) -> dg.MaterializeResult:
+def storage_capacity(context: dg.AssetExecutionContext, rclone: RcloneResource):
     out = subprocess.run(
         ["rclone", "about", "--json", f"{rclone.remote_name}:"],
         capture_output=True,
@@ -135,24 +139,33 @@ def check_drive_capacity(
     used = int(quota.get("used", 0))
     used_pct = used / total if total else 0.0
 
-    metadata = {
-        "remote": dg.MetadataValue.text(rclone.remote_name),
-        "used_gb": dg.MetadataValue.float(used / 1e9),
-        "total_gb": dg.MetadataValue.float(total / 1e9),
-        "used_pct": dg.MetadataValue.float(used_pct),
-    }
+    yield dg.MaterializeResult(
+        metadata={
+            "remote": dg.MetadataValue.text(rclone.remote_name),
+            "used_gb": dg.MetadataValue.float(used / 1e9),
+            "total_gb": dg.MetadataValue.float(total / 1e9),
+            "used_pct": dg.MetadataValue.float(used_pct),
+        }
+    )
 
-    if used_pct > DRIVE_USAGE_THRESHOLD:
-        raise dg.Failure(
-            description=(
-                f"Drive remote '{rclone.remote_name}' at "
-                f"{used_pct:.1%} of {total / 1e9:.1f} GB "
-                f"(threshold {DRIVE_USAGE_THRESHOLD:.0%}); refusing to upload."
-            ),
-            metadata=metadata,
-        )
-
-    return dg.MaterializeResult(metadata=metadata)
+    passed = used_pct <= DRIVE_USAGE_THRESHOLD
+    yield dg.AssetCheckResult(
+        check_name="drive_capacity_below_threshold",
+        passed=passed,
+        severity=dg.AssetCheckSeverity.ERROR,
+        description=(
+            None
+            if passed
+            else (
+                f"Drive remote '{rclone.remote_name}' at {used_pct:.1%} of "
+                f"{total / 1e9:.1f} GB (threshold {DRIVE_USAGE_THRESHOLD:.0%})."
+            )
+        ),
+        metadata={
+            "used_pct": dg.MetadataValue.float(used_pct),
+            "threshold": dg.MetadataValue.float(DRIVE_USAGE_THRESHOLD),
+        },
+    )
 
 
 # ---------- Drive upload ----------
@@ -161,20 +174,28 @@ def check_drive_capacity(
 @dg.asset(
     key=["google_drive", "uploaded_snapshots"],
     group_name="backup",
-    compute_kind="rclone",
+    compute_kind="googledrive",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "storage_capacity"])],
+    check_specs=[
+        dg.AssetCheckSpec(
+            name="all_snapshots_uploaded",
+            asset=dg.AssetKey(["google_drive", "uploaded_snapshots"]),
+            blocking=True,
+            description="Drive partition dir contains exactly the expected DB files.",
+        )
+    ],
     description="Copy the partition's snapshot dir to the Drive remote.",
 )
 def upload_snapshots_to_drive(
     context: dg.AssetExecutionContext,
     backup: BackupResource,
     rclone: RcloneResource,
-) -> dg.MaterializeResult:
+):
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
-    dst = rclone.remote_path(DRIVE_ROOT, partition)
+    dst = rclone.remote_path(rclone.drive_root, partition)
     started = datetime.now(tz=UTC)
     subprocess.run(
         ["rclone", "copy", str(src), dst, "--stats-one-line", "-v"],
@@ -182,17 +203,44 @@ def upload_snapshots_to_drive(
     )
     duration = (datetime.now(tz=UTC) - started).total_seconds()
 
-    files = sorted(p for p in src.iterdir() if p.is_file())
-    total_mb = sum(p.stat().st_size for p in files) / (1024 * 1024)
+    local_files = sorted(p for p in src.iterdir() if p.is_file())
+    total_mb = sum(p.stat().st_size for p in local_files) / (1024 * 1024)
 
-    return dg.MaterializeResult(
+    listed = subprocess.run(
+        ["rclone", "lsjson", dst, "--files-only"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    remote_entries = json.loads(listed.stdout) if listed.stdout.strip() else []
+    remote_names = {e["Name"] for e in remote_entries}
+    expected_names = set(backup.db_files)
+
+    yield dg.MaterializeResult(
         metadata={
-            "status": dg.MetadataValue.text("ok"),
             "remote_path": dg.MetadataValue.text(dst),
-            "files_uploaded": dg.MetadataValue.int(len(files)),
+            "files_uploaded": dg.MetadataValue.int(len(remote_names)),
             "mb_uploaded": dg.MetadataValue.float(total_mb),
             "duration_s": dg.MetadataValue.float(duration),
         }
+    )
+
+    missing = expected_names - remote_names
+    extra = remote_names - expected_names
+    passed = not missing
+    yield dg.AssetCheckResult(
+        check_name="all_snapshots_uploaded",
+        passed=passed,
+        severity=dg.AssetCheckSeverity.ERROR,
+        description=(
+            None if passed else f"Missing on Drive: {sorted(missing)}; extra: {sorted(extra)}."
+        ),
+        metadata={
+            "expected": dg.MetadataValue.json(sorted(expected_names)),
+            "uploaded": dg.MetadataValue.json(sorted(remote_names)),
+            "missing": dg.MetadataValue.json(sorted(missing)),
+            "extra": dg.MetadataValue.json(sorted(extra)),
+        },
     )
 
 
@@ -202,7 +250,7 @@ def upload_snapshots_to_drive(
 @dg.asset(
     key=["google_drive", "pruned_old_backups"],
     group_name="backup",
-    compute_kind="rclone",
+    compute_kind="googledrive",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],
@@ -211,7 +259,7 @@ def upload_snapshots_to_drive(
 def prune_drive_backups(
     context: dg.AssetExecutionContext, rclone: RcloneResource
 ) -> dg.MaterializeResult:
-    root = rclone.remote_path(DRIVE_ROOT)
+    root = rclone.remote_path(rclone.drive_root)
     listed = subprocess.run(
         ["rclone", "lsjson", root, "--dirs-only"],
         capture_output=True,
@@ -223,7 +271,7 @@ def prune_drive_backups(
 
     to_delete = dir_names[:-MAX_DRIVE_BACKUPS] if len(dir_names) > MAX_DRIVE_BACKUPS else []
     for name in to_delete:
-        subprocess.run(["rclone", "purge", rclone.remote_path(DRIVE_ROOT, name)], check=True)
+        subprocess.run(["rclone", "purge", rclone.remote_path(rclone.drive_root, name)], check=True)
         context.log.info("Drive: purged %s", name)
 
     summary = (
@@ -234,7 +282,6 @@ def prune_drive_backups(
 
     return dg.MaterializeResult(
         metadata={
-            "status": dg.MetadataValue.text("ok"),
             "summary": dg.MetadataValue.md(summary),
             "deleted": dg.MetadataValue.json(to_delete),
             "deleted_count": dg.MetadataValue.int(len(to_delete)),
@@ -247,7 +294,7 @@ def prune_drive_backups(
 @dg.asset(
     key=["local_disk", "pruned_old_backups"],
     group_name="backup",
-    compute_kind="filesystem",
+    compute_kind="file",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],
@@ -258,7 +305,7 @@ def prune_local_backups(
 ) -> dg.MaterializeResult:
     backup_root = backup.get_backup_dir()
     if not backup_root.exists():
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("no_root")})
+        return dg.MaterializeResult(metadata={"summary": dg.MetadataValue.md("_no backup root_")})
 
     dirs = sorted(d for d in backup_root.iterdir() if d.is_dir())
     to_delete = dirs[:-MAX_LOCAL_BACKUPS] if len(dirs) > MAX_LOCAL_BACKUPS else []
@@ -275,7 +322,6 @@ def prune_local_backups(
 
     return dg.MaterializeResult(
         metadata={
-            "status": dg.MetadataValue.text("ok"),
             "summary": dg.MetadataValue.md(summary),
             "deleted": dg.MetadataValue.json(deleted_names),
             "deleted_count": dg.MetadataValue.int(len(to_delete)),
@@ -292,7 +338,7 @@ def prune_local_backups(
 all_assets = [
     snapshot_raw_store,
     snapshot_sessions,
-    check_drive_capacity,
+    storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,
     prune_local_backups,

@@ -1,4 +1,4 @@
-# `backup_readings` pipeline
+# `backup_readings` runbook
 
 Daily-partitioned snapshot of the newsletter-assistant SQLite databases, with
 Google Drive offload via rclone and a healthchecks.io ping that turns silence
@@ -6,179 +6,132 @@ Google Drive offload via rclone and a healthchecks.io ping that turns silence
 
 ## DAG (per partition)
 
+Failure cascade — what blocks what when a step fails:
+
 ```
 snapshot_raw_store ─┐
-                    ├─→ verify_* (blocking) ─→ check_drive_capacity ─→ upload_snapshots_to_drive ─┐
-snapshot_sessions  ─┘                                                                              │
-                                                                                                   │
-                                                            ┌──────────────────────────────────────┤
-                                                            ▼                                      ▼
-                                                  prune_drive_backups                  prune_local_backups
-                                                                            (parallel siblings of upload)
+                    ├─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ───┐
+snapshot_sessions  ─┘    ↑                          ↑                    ↑               │
+                         │                          │                    │               │
+                  catches corrupt              catches Drive >        catches missing    │
+                  / empty SQLite               90% full (blocking)    files on Drive     │
+                                                                      (blocking)         │
+                                                                                         ▼
+                                                          prune_drive_backups   prune_local_backups
+                                                                  (parallel siblings)
 
-
-  on job SUCCESS  ──→  ping_healthcheck_on_success (run-status sensor; not part of the asset graph)
-                       POST to healthchecks.io. Absence of ping (within period + grace) is the alert.
+  on job SUCCESS  ──→  ping_healthcheck_on_success (run-status sensor)
+                       Absence of ping (within period + grace) is the alert.
 ```
 
-The healthcheck ping is **not an asset** — it's a run-status sensor that fires
-once on successful job completion. The ping itself has no per-partition history
-worth keeping (healthchecks.io maintains its own ping log), so modeling it as a
-sensor avoids stretching "asset" to mean "any side effect."
-
-Prune failures fail the run → no success ping → healthchecks alerts. Prune
-failures show as red in the Dagster UI in either case.
-
-Each daily partition produces:
-
-| Asset | What it does |
-|---|---|
-| `snapshots/raw_store` | SQLite `.backup()` of `raw_store.db` → `BACKUP_DIR/<date>/raw_store.db` |
-| `snapshots/sessions` | Same, for `sessions.db` |
-| `verify_snapshot_*` | **Blocking** asset checks: file size, `PRAGMA integrity_check`, table count |
-| `google_drive/storage_capacity` | `rclone about` preflight; raises Failure at `>90%` Drive usage |
-| `google_drive/uploaded_snapshots` | `rclone copy` of the partition dir to `<remote>:knowledge-pipeline-backups/<date>/` |
-| `google_drive/pruned_old_backups` | Keep newest `MAX_DRIVE_BACKUPS=70` partition dirs on Drive |
-| `local_disk/pruned_old_backups` | Keep newest `MAX_LOCAL_BACKUPS=14` partition dirs on disk |
-
-Plus one **sensor** (not an asset):
-
-| Sensor | What it does |
-|---|---|
-| `ping_healthcheck_on_success` | On successful `backup_readings` run, POSTs to `HEALTHCHECK_PING_URL`. |
-
-**Schedule:** `run_daily_backup` fires `0 3 * * *` UTC for the previous day's
-partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
-
-## Configuration
-
-| Env var | Required by | Default |
-|---|---|---|
-| `BACKUP_SOURCE_DIR` | all snapshot assets | `~/newsletter-assistant/data` (laptops set `~/GitHub/newsletter-assistant/data`) |
-| `BACKUP_DIR` | all snapshot + local prune assets | `<repo>/backups` |
-| `DRIVE_REMOTE` | `google_drive/*` assets | _(none — required for the full pipeline)_ |
-| `HEALTHCHECK_PING_URL` | `ping_healthcheck_on_success` sensor | _(none — required for the full pipeline)_ |
-
-In Docker Compose, `BACKUP_SOURCE_DIR` in `.env` is the **host** path; compose
-bind-mounts it read-only to `/app/source` inside the container and overrides
-the env var there to the fixed container path. The pipeline code always sees a
-stable in-container path; the host-side path can move freely.
-
-Tunables in [`def_config.py`](./def_config.py): retention (`MAX_LOCAL_BACKUPS`,
-`MAX_DRIVE_BACKUPS`), Drive (`DRIVE_USAGE_THRESHOLD`, `DRIVE_ROOT`),
-validation (`MIN_SNAPSHOT_BYTES`), scheduling (`SCHEDULE_CRON`,
-`JOB_MAX_RETRIES`, `PIPELINE_TAG`), and the healthcheck `PING_TIMEOUT_S`.
-
-## rclone setup (laptop config → server)
-
-The Drive flow needs `rclone` installed and a configured `gdrive` remote on the
-machine running the `dagster-code` container. Because Drive OAuth needs a
-browser, the simplest pattern is **configure on your laptop, push the credential
-to the server**.
-
-### 1. One-time on your laptop
-
-```bash
-brew install rclone     # macOS — Linux: `curl https://rclone.org/install.sh | sudo bash`
-rclone config
-# choose:
-#   n) New remote
-#   name> gdrive
-#   Storage> drive
-#   client_id>     (blank — uses rclone's shared OAuth client)
-#   client_secret> (blank)
-#   scope> 1                          (full Drive)  or  3 (drive.file — app-created files only)
-#   service_account_file>  (blank)
-#   Edit advanced config> n
-#   Use auto config> y                (browser pops, you click Allow)
-```
-
-This writes `~/.config/rclone/rclone.conf` containing the OAuth refresh token.
-Treat it like an SSH private key.
-
-Verify the remote works:
-
-```bash
-rclone lsd gdrive:
-rclone about gdrive: --json
-```
-
-### 2. Push the credential to the server
-
-```bash
-./scripts/deploy-hcloud.sh push-creds
-```
-
-That `rsync`s `~/.config/rclone/rclone.conf` from your laptop to
-`~/knowledge-pipeline/.rclone/rclone.conf` on the server (mode `0600`,
-parent dir `0700`). `docker-compose.yml` mounts `./.rclone` read-only into
-`dagster-code` at `/home/dagster/.config/rclone/` — rclone's default lookup
-path under `$HOME=/home/dagster`.
-
-The token self-refreshes on every invocation, so you only re-run `push-creds`
-if you re-auth (Google password change, scope change, or running `rclone
-config` again).
-
-### 3. Set the env vars on the server
-
-In `~/knowledge-pipeline/.env` on the server:
-
-```bash
-DRIVE_REMOTE=gdrive
-HEALTHCHECK_PING_URL=https://hc-ping.com/<your-uuid>
-# BACKUP_SOURCE_DIR is left at the default (~/newsletter-assistant/data)
-```
-
-Then redeploy: `./scripts/deploy-hcloud.sh deploy --no-build`. The container
-restart picks up the new env, and the Drive + healthcheck assets stop
-short-circuiting.
-
-## healthchecks.io setup
-
-1. Sign up at https://healthchecks.io (free tier covers ~20 checks).
-2. Create a new check:
-   - **Name:** `backup_readings`
-   - **Schedule:** Simple, period **1 day**, grace **2 hours**.
-   - (Or "cron" mode with `0 3 * * *` UTC if you want exact-time enforcement.)
-3. Copy the ping URL (`https://hc-ping.com/<uuid>`) into `HEALTHCHECK_PING_URL`.
-4. In the check's *Integrations* tab, attach your alert channel(s): email,
-   Slack, Discord, ntfy, Telegram, Pushover, etc. healthchecks fans out the
-   notification — **no per-channel code in this repo**.
-
-When a run succeeds, the `ping_healthcheck_on_success` sensor POSTs to that URL.
-If no ping arrives within `period + grace` (~26h by default), healthchecks
-sends "DOWN" alerts via your configured channels. This catches asset failures,
-broken cron, dead daemon, and code-location import errors uniformly.
+Any blocking check failure → upload skipped → no success → no ping →
+healthchecks alerts. Prune failures fail the run → same cascade.
 
 ## Operations
 
 ### Run once from CLI
 
 ```bash
-uv run poe backup    # → dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings
+uv run poe backup
+# → dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings
 ```
 
 ### Backfill missing partitions
 
-In the Dagster UI: Assets → group `backup` → select range → **Materialize**.
-Or via CLI: `dg launch --job backup_readings --partition <date>`.
+UI: Assets → group `backup` → select range → **Materialize**.
+CLI: `dg launch --job backup_readings --partition <date>`.
 
 ### Drive over the threshold
 
-`check_drive_capacity` raises Dagster Failure at `>90%`. Either:
+The `drive_capacity_below_threshold` check fails at `>90%`. The materialization
+of `storage_capacity` still commits (you keep the timeseries point), but the
+upload is gated. Recovery options:
 
-- Free Drive space (manually delete from `<remote>:knowledge-pipeline-backups/`)
-- Lower `MAX_DRIVE_BACKUPS` in [`def_config.py`](./def_config.py) and re-deploy
-- Bump `DRIVE_USAGE_THRESHOLD` (not recommended — you'll soon hit the hard quota)
+- Free Drive space (manually delete from `<remote>:<DRIVE_BACKUP_ROOT>/`).
+- Lower `MAX_DRIVE_BACKUPS` in [`def_config.py`](./def_config.py) and redeploy
+  so the next run prunes more aggressively.
+- Bump `DRIVE_USAGE_THRESHOLD` (not recommended — you'll soon hit the hard quota).
+
+### Snapshot integrity check failed
+
+The `verify_snapshot_*` blocking check trips when the SQLite file is
+suspiciously small, fails `PRAGMA integrity_check`, or has zero tables.
+The downstream upload doesn't run — the corrupt snapshot stays local-only.
+Common causes: source DB was being written during snapshot (rare, SQLite
+backup API handles concurrent reads), disk full on local backup volume.
+
+```bash
+sqlite3 backups/<date>/raw_store.db "PRAGMA integrity_check;"
+```
+
+### Upload count mismatch
+
+The `all_snapshots_uploaded` blocking check trips when the Drive partition dir
+has fewer files than expected after `rclone copy`. The metadata records
+`missing` and `extra` lists. Re-run the partition; if it persists,
+`rclone copy <local>/<date>/ <remote>/<date>/ -v` manually to inspect.
 
 ### Restoring a snapshot
 
 Local:
 ```bash
-cp ~/knowledge-pipeline/backups/<date>/raw_store.db ~/newsletter-assistant/data/raw_store.db
+cp backups/<date>/raw_store.db <BACKUP_SOURCE_DIR>/raw_store.db
 ```
 
 From Drive:
 ```bash
-rclone copy gdrive:knowledge-pipeline-backups/<date>/raw_store.db ~/newsletter-assistant/data/
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SOURCE_DIR>/
 ```
+
+## External setup
+
+### rclone OAuth (one-time on laptop, push to server)
+
+The Drive flow needs `rclone` installed and a `gdrive` remote configured on
+the machine running `dagster-code`. Drive OAuth needs a browser, so:
+configure on your laptop, push the credential to the server.
+
+```bash
+brew install rclone     # macOS — Linux: `curl https://rclone.org/install.sh | sudo bash`
+rclone config
+# n) New remote → name=gdrive → Storage=drive
+# client_id, client_secret = blank (uses rclone's shared OAuth client)
+# scope = 1 (full Drive) or 3 (drive.file — app-created files only)
+# Edit advanced = n; Use auto config = y (browser pops, click Allow)
+```
+
+This writes `~/.config/rclone/rclone.conf`. Treat it like an SSH private key.
+
+Verify:
+```bash
+rclone lsd gdrive:
+rclone about gdrive: --json
+```
+
+Push to server:
+```bash
+./scripts/deploy-hcloud.sh push-creds
+```
+
+That `rsync`s `~/.config/rclone/rclone.conf` to
+`~/knowledge-pipeline/.rclone/rclone.conf` on the server (mode `0600`,
+parent dir `0700`). Compose mounts `./.rclone` read-only into `dagster-code`
+at `/home/dagster/.config/rclone/`. The token self-refreshes; only re-run
+`push-creds` after a re-auth (password change, scope change, fresh
+`rclone config`).
+
+### healthchecks.io
+
+1. Sign up at https://healthchecks.io (free tier covers ~20 checks).
+2. Create a check named `backup_readings`. Schedule = simple, period 1 day,
+   grace 2 hours. (Or cron mode with `0 3 * * *` UTC for exact-time
+   enforcement.)
+3. Copy the ping URL (`https://hc-ping.com/<uuid>`) into `HEALTHCHECK_PING_URL`
+   in the server's `.env`.
+4. In the check's *Integrations* tab, attach alert channels (email, Slack,
+   Discord, ntfy, Telegram, Pushover, …). healthchecks fans out — no
+   per-channel code in this repo.
+
+If no ping arrives within `period + grace` (~26h default), healthchecks fires
+"DOWN" alerts. This catches asset failures, broken cron, dead daemon, and
+code-location import errors uniformly.
