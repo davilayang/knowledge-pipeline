@@ -82,6 +82,17 @@ def get_contents(
     return [_row_to_content(r) for r in rows]
 
 
+def get_content_ids(*, db_path: Path) -> list[str]:
+    """Return all content_ids ordered by stored_at — IDs only, no payload.
+
+    Used by discover_pending_content to enumerate raw_store cheaply (full
+    content_md is large). For batch reads of full rows use get_contents().
+    """
+    with _connect(db_path) as conn:
+        rows = conn.execute("SELECT content_id FROM contents ORDER BY stored_at").fetchall()
+    return [r["content_id"] for r in rows]
+
+
 def get_content_by_id(content_id: str, *, db_path: Path) -> ContentRow | None:
     """Return one ContentRow by content_id, or None if absent.
 

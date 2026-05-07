@@ -27,14 +27,13 @@ def discover_pending_content(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    source = RawStoreSource(wiki.get_raw_store_path())
-    all_items = source.get_items()
+    all_ids = RawStoreSource(wiki.get_raw_store_path()).get_item_ids()
     with psycopg.connect(wiki.database_url) as conn:
         done_ids = get_processed_ids(conn, status="ok")
         skipped_ids = get_processed_ids(conn, status="skipped")
     handled = done_ids | skipped_ids
 
-    pending_ids = [item.item_id for item in all_items if item.item_id not in handled]
+    pending_ids = [cid for cid in all_ids if cid not in handled]
     if wiki.max_articles > 0:
         pending_ids = pending_ids[: wiki.max_articles]
 
@@ -44,7 +43,7 @@ def discover_pending_content(
         context.instance.add_dynamic_partitions(items_partitions_def.name, to_add)
 
     summary = (
-        f"**Pending discovery** — {len(all_items)} raw items, "
+        f"**Pending discovery** — {len(all_ids)} raw items, "
         f"{len(done_ids)} done, {len(handled) - len(done_ids)} skipped/failed, "
         f"**{len(to_add)} new partitions registered** "
         f"(cap: {wiki.max_articles or 'none'})"
@@ -52,7 +51,7 @@ def discover_pending_content(
     return dg.MaterializeResult(
         metadata={
             "summary": dg.MetadataValue.md(summary),
-            "total_raw_items": dg.MetadataValue.int(len(all_items)),
+            "total_raw_items": dg.MetadataValue.int(len(all_ids)),
             "done": dg.MetadataValue.int(len(done_ids)),
             "pending_added": dg.MetadataValue.int(len(to_add)),
             "existing_partitions": dg.MetadataValue.int(len(existing)),
