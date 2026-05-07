@@ -68,10 +68,14 @@ dg launch -m orchestrators.defs.pipelines.definitions \
   --asset-selection wiki/index
 ```
 
-`discover_pending_contents` respects `WikiResource.max_per_discovery` (default
-50) — only that many new partitions are added per run, regardless of how
-many items are actually pending. Subsequent runs pick up the next batch.
-Set to `0` to disable the cap.
+`discover_pending_contents` respects `WikiResource.max_per_discovery`
+(default 30 — see `MAX_PER_DISCOVERY_DEFAULT` in `def_config.py`).
+Only that many new partitions are added per run; subsequent runs pick
+up the next batch. Set to `0` to disable the cap.
+
+For dev iteration, override via env: `WIKI_MAX_PER_DISCOVERY=2` in
+`.env` caps registration at 2 per run. For per-launch overrides, edit
+the launchpad YAML at materialization time.
 
 ### Re-process a single item from scratch
 

@@ -1,5 +1,6 @@
 # Resources for the synthesize_wiki pipeline.
 
+import os
 from pathlib import Path
 
 import dagster as dg
@@ -32,6 +33,15 @@ class WikiResource(dg.ConfigurableResource):
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
+    # WIKI_MAX_PER_DISCOVERY is a dev-convenience override — set it low
+    # in .env for fast iteration; prod leaves it unset and gets the
+    # MAX_PER_DISCOVERY_DEFAULT cap. Per-launch overrides via the
+    # launchpad still work and take precedence.
     return {
-        "wiki": WikiResource(database_url=dg.EnvVar("DATABASE_URL")),
+        "wiki": WikiResource(
+            database_url=dg.EnvVar("DATABASE_URL"),
+            max_per_discovery=int(
+                os.environ.get("WIKI_MAX_PER_DISCOVERY", MAX_PER_DISCOVERY_DEFAULT)
+            ),
+        ),
     }
