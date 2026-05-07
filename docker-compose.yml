@@ -82,7 +82,8 @@ services:
       DAGSTER_PG_PASSWORD: ${DAGSTER_PG_PASSWORD}
       DAGSTER_PG_DB: ${DAGSTER_PG_DB}
     ports:
-      - "${APP_HOST:-127.0.0.1}:3030:3000"
+      - "127.0.0.1:3030:3000"
+      - "${APP_HOST:-127.0.0.2}:3030:3000"
     networks:
       - dagster_network
     # python urllib instead of curl — slim base ships neither curl nor wget,
