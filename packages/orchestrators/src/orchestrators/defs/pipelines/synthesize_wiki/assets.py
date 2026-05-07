@@ -15,7 +15,7 @@ from .resources import WikiResource
 @dg.asset(
     key=["wiki", "pending"],
     group_name="wiki",
-    compute_kind="postgres",
+    compute_kind="sqlite",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
