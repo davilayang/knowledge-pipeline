@@ -5,8 +5,6 @@ gzip-tar archives of the flat-file `notes/` and `research_output/` dirs, with
 Google Drive offload via rclone and a healthchecks.io ping that turns silence
 (cron didn't fire, daemon died) into a loud alert.
 
-TODO: Other assets to backup: notes, research outputs
-
 ## DAG (per partition)
 
 Failure cascade — what blocks what when a step fails:
