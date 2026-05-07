@@ -143,7 +143,7 @@ def snapshot_sessions(
 @dg.asset(
     key=["snapshots", "notes"],
     group_name="backup",
-    compute_kind="tar",
+    compute_kind="file",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -158,7 +158,7 @@ def snapshot_notes(
 @dg.asset(
     key=["snapshots", "research_output"],
     group_name="backup",
-    compute_kind="tar",
+    compute_kind="file",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
