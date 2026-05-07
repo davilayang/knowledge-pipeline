@@ -2,10 +2,12 @@
 # Deploy knowledge-pipeline to a Hetzner VPS via Docker Compose.
 #
 # Usage:
-#   ./scripts/deploy-hcloud.sh setup                # One-time project setup
-#   ./scripts/deploy-hcloud.sh deploy               # Pull latest, rebuild & restart
-#   ./scripts/deploy-hcloud.sh deploy --no-build    # Restart only (skip image build)
-#   ./scripts/deploy-hcloud.sh push-creds           # Sync rclone.conf to server
+#   ./scripts/deploy-hcloud.sh setup                            # One-time project setup
+#   ./scripts/deploy-hcloud.sh deploy                           # Pull main, rebuild & restart
+#   ./scripts/deploy-hcloud.sh deploy --no-build                # Restart only (skip image build)
+#   ./scripts/deploy-hcloud.sh deploy --branch fix/foo          # Deploy a feature branch (testing)
+#   ./scripts/deploy-hcloud.sh deploy --branch fix/foo --no-build
+#   ./scripts/deploy-hcloud.sh push-creds                       # Sync rclone.conf to server
 #
 # Config is loaded from .env.deploy (create from .env.deploy.example).
 # Env vars can also be set inline: DEPLOY_TARGET=... ./scripts/deploy-hcloud.sh deploy
@@ -135,10 +137,23 @@ do_setup() {
 # ==============================================================================
 
 do_deploy() {
-    local target
+    local target branch="main" no_build=0
     target="$(deploy_target)"
 
+    # Parse flags. Order-independent; supports --branch X, --branch=X, --no-build.
+    while [ $# -gt 0 ]; do
+        case "$1" in
+            --no-build)  no_build=1; shift ;;
+            --branch)    [ -n "${2:-}" ] || error "--branch requires a name"
+                         branch="$2"; shift 2 ;;
+            --branch=*)  branch="${1#*=}"; shift ;;
+            "") shift ;;  # tolerate empty positional from old single-arg call sites
+            *) error "Unknown deploy flag: $1 (see usage at top of script)" ;;
+        esac
+    done
+
     info "Deploying to ${target}..."
+    [ "${branch}" != "main" ] && warn "Deploying branch '${branch}', not main — testing build, do not leave running"
     run_deploy true 2>/dev/null \
         || error "Cannot SSH to ${target}"
 
@@ -146,9 +161,9 @@ do_deploy() {
     run_deploy "[ -f ~/${REMOTE_DIR}/.env ]" \
         || error ".env not found on server — run 'setup' first"
 
-    # Pull latest code
-    info "Pulling latest from main..."
-    run_deploy "cd ~/${REMOTE_DIR} && git fetch origin && git reset --hard origin/main"
+    # Pull requested branch
+    info "Pulling latest from ${branch}..."
+    run_deploy "cd ~/${REMOTE_DIR} && git fetch origin && git reset --hard origin/${branch}"
 
     # Sync configs
     rsync -azv -e "ssh $(ssh_opts)" configs/ "${target}:~/${REMOTE_DIR}/configs/"
@@ -157,7 +172,7 @@ do_deploy() {
     compose="$(compose_cmd)"
 
     # Build and restart
-    if [ "${1:-}" != "--no-build" ]; then
+    if [ "${no_build}" -eq 0 ]; then
         info "Building images on server..."
         run_deploy "cd ~/${REMOTE_DIR} && ${compose} build"
     else
@@ -220,7 +235,7 @@ do_push_creds() {
 
 case "${1:-}" in
     setup)      do_setup ;;
-    deploy)     do_deploy "${2:-}" ;;
+    deploy)     shift; do_deploy "$@" ;;
     push-creds) do_push_creds ;;
     *)          usage ;;
 esac
