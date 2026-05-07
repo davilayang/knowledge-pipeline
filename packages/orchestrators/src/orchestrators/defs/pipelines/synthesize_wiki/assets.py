@@ -8,22 +8,23 @@ from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
-from .def_config import PIPELINE_TAG, content_partitions_def
+from .def_config import PIPELINE_TAG, item_partitions_def
 from .resources import WikiResource
 
 
 @dg.asset(
-    key=["wiki", "pending"],
+    key=["wiki", "pending_contents"],
     group_name="wiki",
     compute_kind="sqlite",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Discover raw_store items not yet in wiki.processed and register "
-        "them as wiki_contents dynamic partitions for downstream synthesis."
+        "Discover raw_store contents not yet in wiki.processed and register "
+        "them as wiki_items dynamic partitions for downstream synthesis. "
+        "Source-specific — sibling assets will land for notes and sessions."
     ),
 )
-def discover_pending_content(
+def discover_pending_contents(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
@@ -49,13 +50,13 @@ def discover_pending_content(
     if wiki.max_articles > 0:
         pending_ids = pending_ids[: wiki.max_articles]
 
-    existing = set(context.instance.get_dynamic_partitions(content_partitions_def.name))
+    existing = set(context.instance.get_dynamic_partitions(item_partitions_def.name))
     to_add = [pid for pid in pending_ids if pid not in existing]
     if to_add:
-        context.instance.add_dynamic_partitions(content_partitions_def.name, to_add)
+        context.instance.add_dynamic_partitions(item_partitions_def.name, to_add)
 
     summary = (
-        f"**Pending discovery** — {len(all_ids)} raw items, "
+        f"**Pending contents** — {len(all_ids)} raw items, "
         f"{len(done_ids)} done, {len(handled) - len(done_ids)} skipped/failed, "
         f"**{len(to_add)} new partitions registered** "
         f"(cap: {wiki.max_articles or 'none'})"
@@ -76,15 +77,16 @@ def discover_pending_content(
     group_name="wiki",
     compute_kind="openai",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
-    partitions_def=content_partitions_def,
-    deps=[dg.AssetDep(["wiki", "pending"])],
+    partitions_def=item_partitions_def,
+    deps=[dg.AssetDep(["wiki", "pending_contents"])],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Run the wiki_synthesis LangGraph workflow for one item_id. "
-        "Per-partition retry auto-resumes from the LangGraph checkpoint."
+        "Run the wiki_synthesis LangGraph workflow for one IngestItem. "
+        "Source-agnostic — handles whatever's in the wiki_items partition "
+        "set. Per-partition retry auto-resumes from the LangGraph checkpoint."
     ),
 )
-def synthesize_content(
+def synthesize_item(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
@@ -171,4 +173,4 @@ def regenerate_toc(
     )
 
 
-all_assets = [discover_pending_content, synthesize_content, regenerate_toc]
+all_assets = [discover_pending_contents, synthesize_item, regenerate_toc]

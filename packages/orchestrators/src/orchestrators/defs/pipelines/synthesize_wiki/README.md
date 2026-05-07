@@ -14,11 +14,11 @@ named-launch grouping in the UI; run it when you want to ingest.
 Failure cascade — what blocks what when a step fails:
 
 ```
-discover_pending_content   (key: wiki/pending — unpartitioned, manual)
+discover_pending_contents   (key: wiki/pending_contents — unpartitioned, manual)
   │  scans raw_store.db (SQLite) ∖ wiki.processed (PG)
-  │  → registers unseen item_ids as wiki_contents dynamic partitions
+  │  → registers unseen item_ids as wiki_items dynamic partitions
   ▼
-synthesize_content   (key: wiki/synthesized — partition: <item_id>)
+synthesize_item   (key: wiki/synthesized — partition: <item_id>)
   │  extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
   │
   │     pages + aliases + wiki.processed all written in ONE PG
@@ -32,10 +32,10 @@ regenerate_toc   (key: wiki/index — independent, see note below)
   reads wiki.pages → writes data/wiki/index.md (table of contents)
 ```
 
-- **`discover_pending_content` fails** (raw_store path missing, PG
-  unreachable) → no partitions registered → `synthesize_content` has
+- **`discover_pending_contents` fails** (raw_store path missing, PG
+  unreachable) → no partitions registered → `synthesize_item` has
   nothing to run on.
-- **`synthesize_content` fails on partition X** → only X. Checkpointer
+- **`synthesize_item` fails on partition X** → only X. Checkpointer
   state persists; retry resumes from the last successful node (skipping
   LLM calls already past). Other partitions and the TOC are unaffected.
 - **`regenerate_toc` fails** → `wiki.pages` is still authoritative;
@@ -44,7 +44,7 @@ regenerate_toc   (key: wiki/index — independent, see note below)
 > **Why `regenerate_toc` is not `deps=[wiki/synthesized]`**: with a
 > growing `DynamicPartitionsDefinition`, Dagster's default
 > `AllPartitionMapping` would block the TOC forever — every
-> `discover_pending_content` run registers fresh partitions that never
+> `discover_pending_contents` run registers fresh partitions that never
 > materialize. Re-materialize the TOC manually after a synthesis batch.
 > Phase E swaps this for a sensor that fires on each successful
 > `wiki/synthesized` partition.
@@ -56,7 +56,7 @@ regenerate_toc   (key: wiki/index — independent, see note below)
 ```bash
 # 1. Discover new raw_store items and register them as partitions.
 dg launch -m orchestrators.defs.pipelines.definitions \
-  --asset-selection wiki/pending
+  --asset-selection wiki/pending_contents
 
 # 2. Materialize the new partitions. UI is easier here:
 #    Assets → group `wiki` → wiki/synthesized → select partitions →
@@ -68,7 +68,7 @@ dg launch -m orchestrators.defs.pipelines.definitions \
   --asset-selection wiki/index
 ```
 
-`discover_pending_content` respects `WikiResource.max_articles` (default
+`discover_pending_contents` respects `WikiResource.max_articles` (default
 50) — only that many new partitions are added per run, regardless of how
 many items are actually pending. Subsequent runs pick up the next batch.
 Set to `0` to disable the cap.
@@ -79,7 +79,7 @@ A partition retry auto-resumes from the LangGraph checkpoint. To force a
 clean re-run (e.g. you changed prompts and want fresh LLM output):
 
 ```sql
--- Drop the processed marker so discover_pending_content picks it up again.
+-- Drop the processed marker so discover_pending_contents picks it up again.
 DELETE FROM wiki.processed WHERE item_id = '<item_id>';
 
 -- (Optional) drop the LangGraph checkpoint so it doesn't auto-resume.
@@ -88,7 +88,7 @@ DELETE FROM checkpoint_writes WHERE thread_id = 'wiki_synthesis__<item_id>';
 DELETE FROM checkpoint_blobs  WHERE thread_id = 'wiki_synthesis__<item_id>';
 ```
 
-Then re-trigger `wiki/pending` and materialize the partition.
+Then re-trigger `wiki/pending_contents` and materialize the partition.
 
 ### Workflow failed mid-flight (LLM error, PG hiccup)
 
