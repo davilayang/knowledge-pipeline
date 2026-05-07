@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.7.0] — 2026-05-07
+
+### Added
+
+- **`notes/` and `research_output/` are now included in daily backups.** The `backup_readings` pipeline snapshots both directories as gzip-tar archives (`notes.tgz`, `research_output.tgz`), verifies each with a blocking integrity check (readable archive, at least one member), and includes them in the Drive upload and prune cycle. Missing source dir → hard `Failure`. Implementation: `snapshot_notes` / `snapshot_research_output` assets + `verify_snapshot_notes` / `verify_snapshot_research_output` checks in `backup_readings/`; `ARCHIVE_DIRS` in `config.py`; `BackupResource.expected_files` property. `BACKUP_READINGS_DAG_VERSION` 2 → 3.
+
+---
+
 ## [0.6.7] — 2026-05-07
 
 ### Added
@@ -22,6 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`compute_kind` uses icon-supported names**: `rclone`/`google_drive` → `googledrive`; `filesystem` → `file`.
 - **`backup_readings/README.md` reframed as a runbook** — failure-cascade diagram + ops + external setup; dropped code-mirroring tables.
 - **Redundant `status: "ok"` metadata removed** from 5 assets.
+- **`ping_healthcheck_on_success` sensor evaluated hourly** (`SENSOR_MIN_INTERVAL_S` 300 → 3600). Daily job — 60 min eval cadence is invisible against healthchecks' day+hour period+grace window.
 
 ## [0.6.6] — 2026-05-07
 

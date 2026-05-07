@@ -1,6 +1,7 @@
 # `backup_readings` runbook
 
-Daily-partitioned snapshot of the newsletter-assistant SQLite databases, with
+Daily-partitioned snapshot of the newsletter-assistant SQLite databases plus
+gzip-tar archives of the flat-file `notes/` and `research_output/` dirs, with
 Google Drive offload via rclone and a healthchecks.io ping that turns silence
 (cron didn't fire, daemon died) into a loud alert.
 
@@ -11,16 +12,17 @@ TODO: Other assets to backup: notes, research outputs
 Failure cascade — what blocks what when a step fails:
 
 ```
-snapshot_raw_store ─┐
-                    ├─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ───┐
-snapshot_sessions  ─┘    ↑                          ↑                    ↑               │
-                         │                          │                    │               │
-                  catches corrupt              catches Drive >        catches missing    │
-                  / empty SQLite               90% full (blocking)    files on Drive     │
-                                                                      (blocking)         │
-                                                                                         ▼
-                                                          prune_drive_backups   prune_local_backups
-                                                                  (parallel siblings)
+snapshot_raw_store        ─┐
+snapshot_sessions          ─┤
+snapshot_notes             ─┼─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ──┐
+snapshot_research_output   ─┘    ↑                          ↑                    ↑              │
+                                 │                          │                    │              │
+                          catches corrupt              catches Drive >        catches missing   │
+                          / empty SQLite or            90% full (blocking)    files on Drive    │
+                          empty / unreadable tgz                              (blocking)        │
+                                                                                                ▼
+                                                                  prune_drive_backups   prune_local_backups
+                                                                          (parallel siblings)
 
   on job SUCCESS  ──→  ping_healthcheck_on_success (run-status sensor)
                        Absence of ping (within period + grace) is the alert.
@@ -75,14 +77,22 @@ has fewer files than expected after `rclone copy`. The metadata records
 
 ### Restoring a snapshot
 
-Local:
+Local (SQLite DBs):
 ```bash
 cp backups/<date>/raw_store.db <BACKUP_SOURCE_DIR>/raw_store.db
+```
+
+Local (tgz archives — extract back over the source dir):
+```bash
+tar -xzf backups/<date>/notes.tgz -C <BACKUP_SOURCE_DIR>
+tar -xzf backups/<date>/research_output.tgz -C <BACKUP_SOURCE_DIR>
 ```
 
 From Drive:
 ```bash
 rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SOURCE_DIR>/
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/notes.tgz /tmp/ \
+  && tar -xzf /tmp/notes.tgz -C <BACKUP_SOURCE_DIR>
 ```
 
 ## External setup

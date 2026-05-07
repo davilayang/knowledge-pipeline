@@ -4,7 +4,12 @@ from pathlib import Path
 
 import dagster as dg
 
-from orchestrators.config import BACKUP_DIR, BACKUP_SOURCE_DIR, DB_FILES
+from orchestrators.config import (
+    ARCHIVE_FILES,
+    BACKUP_DIR,
+    BACKUP_SOURCE_DIR,
+    DB_FILES,
+)
 
 
 class BackupResource(dg.ConfigurableResource):
@@ -13,6 +18,11 @@ class BackupResource(dg.ConfigurableResource):
     source_data_dir: str = str(BACKUP_SOURCE_DIR)
     backup_dir: str = str(BACKUP_DIR)
     db_files: list[str] = DB_FILES
+    archive_files: list[str] = ARCHIVE_FILES
+
+    @property
+    def expected_files(self) -> list[str]:
+        return self.db_files + self.archive_files
 
     def get_source_dir(self) -> Path:
         return Path(self.source_data_dir)

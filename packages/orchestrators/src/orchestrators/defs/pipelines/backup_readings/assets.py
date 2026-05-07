@@ -5,6 +5,7 @@ import json
 import shutil
 import sqlite3
 import subprocess
+import tarfile
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -71,6 +72,41 @@ def _snapshot_one_db(
     )
 
 
+def _snapshot_one_dir(
+    context: dg.AssetExecutionContext,
+    backup: BackupResource,
+    source_subdir: str,
+    archive_name: str,
+) -> dg.MaterializeResult:
+    source = backup.get_source_dir() / source_subdir
+    if not source.is_dir():
+        raise dg.Failure(
+            description=f"Source dir missing: {source}",
+            metadata={"source_path": dg.MetadataValue.path(str(source))},
+        )
+
+    dest = backup.get_partition_dir(context.partition_key) / archive_name
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    with tarfile.open(dest, "w:gz") as tf:
+        tf.add(source, arcname=source.name)
+
+    with tarfile.open(dest, "r:gz") as tf:
+        member_count = sum(1 for m in tf if m.isfile())
+
+    size = dest.stat().st_size
+    digest = _sha256(dest)
+
+    return dg.MaterializeResult(
+        metadata={
+            "size_mb": dg.MetadataValue.float(size / (1024 * 1024)),
+            "member_count": dg.MetadataValue.int(member_count),
+            "sha256": dg.MetadataValue.text(digest),
+            "source_path": dg.MetadataValue.path(str(source)),
+            "dest_path": dg.MetadataValue.path(str(dest)),
+        }
+    )
+
+
 # ---------- snapshot assets ----------
 
 
@@ -106,6 +142,38 @@ def snapshot_sessions(
     return _snapshot_one_db(context, backup, "sessions.db")
 
 
+@dg.asset(
+    key=["snapshots", "notes"],
+    group_name="backup",
+    compute_kind="file",
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description="gzip-tar archive of newsletter-assistant/data/notes/ for the partition's date.",
+)
+def snapshot_notes(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    return _snapshot_one_dir(context, backup, "notes", "notes.tgz")
+
+
+@dg.asset(
+    key=["snapshots", "research_output"],
+    group_name="backup",
+    compute_kind="file",
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "gzip-tar archive of newsletter-assistant/data/research_output/ for the partition's date."
+    ),
+)
+def snapshot_research_output(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    return _snapshot_one_dir(context, backup, "research_output", "research_output.tgz")
+
+
 # ---------- Drive capacity observation ----------
 
 
@@ -118,6 +186,8 @@ def snapshot_sessions(
     deps=[
         dg.AssetDep(["snapshots", "raw_store"]),
         dg.AssetDep(["snapshots", "sessions"]),
+        dg.AssetDep(["snapshots", "notes"]),
+        dg.AssetDep(["snapshots", "research_output"]),
     ],
     check_specs=[
         dg.AssetCheckSpec(
@@ -185,7 +255,7 @@ def storage_capacity(context: dg.AssetExecutionContext, rclone: RcloneResource):
             name="all_snapshots_uploaded",
             asset=dg.AssetKey(["google_drive", "uploaded_snapshots"]),
             blocking=True,
-            description="Drive partition dir contains exactly the expected DB files.",
+            description="Drive partition dir contains exactly the expected snapshot files.",
         )
     ],
     description="Copy the partition's snapshot dir to the Drive remote.",
@@ -216,7 +286,7 @@ def upload_snapshots_to_drive(
     )
     remote_entries = json.loads(listed.stdout) if listed.stdout.strip() else []
     remote_names = {e["Name"] for e in remote_entries}
-    expected_names = set(backup.db_files)
+    expected_names = set(backup.expected_files)
 
     yield dg.MaterializeResult(
         metadata={
@@ -340,6 +410,8 @@ def prune_local_backups(
 all_assets = [
     snapshot_raw_store,
     snapshot_sessions,
+    snapshot_notes,
+    snapshot_research_output,
     storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,
