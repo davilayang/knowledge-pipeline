@@ -10,9 +10,9 @@ Failure cascade — what blocks what when a step fails:
 
 ```
 snapshot_raw_store ─┐
-                    ├─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ─┐
-snapshot_sessions  ─┘    ↑                          ↑                    ↑              │
-                         │                          │                    │              │
+                    ├─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ───┐
+snapshot_sessions  ─┘    ↑                          ↑                    ↑               │
+                         │                          │                    │               │
                   catches corrupt              catches Drive >        catches missing    │
                   / empty SQLite               90% full (blocking)    files on Drive     │
                                                                       (blocking)         │
