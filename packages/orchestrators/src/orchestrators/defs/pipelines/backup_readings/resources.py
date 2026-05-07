@@ -1,6 +1,11 @@
 # Dagster resources for the backup pipeline.
+#
+# Required env vars (DRIVE_REMOTE, HEALTHCHECK_PING_URL) use dg.EnvVar so they
+# resolve at run-init, not at definitions load. Result: the gRPC server still
+# loads on a laptop without these set; only a run that actually uses the Drive
+# or healthcheck resource will fail fast at startup. Laptop dev runs the
+# snapshot subset (see README) and never touches those resources.
 
-import os
 from pathlib import Path
 
 import dagster as dg
@@ -26,14 +31,9 @@ class BackupResource(dg.ConfigurableResource):
 
 
 class RcloneResource(dg.ConfigurableResource):
-    """rclone remote for Drive upload + retention. Env-driven so the same code
-    runs on a laptop without rclone configured (Drive assets short-circuit)."""
+    """rclone remote for Drive upload + retention."""
 
-    remote_name: str = ""  # populated from DRIVE_REMOTE env at instantiation
-
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.remote_name)
+    remote_name: str
 
     def remote_path(self, *parts: str) -> str:
         # rclone path syntax: "<remote>:<path>"
@@ -42,19 +42,14 @@ class RcloneResource(dg.ConfigurableResource):
 
 
 class HealthcheckResource(dg.ConfigurableResource):
-    """healthchecks.io ping URL. Empty = no terminal ping (development mode)."""
+    """healthchecks.io ping URL."""
 
-    ping_url: str = ""
-
-    @property
-    def is_configured(self) -> bool:
-        return bool(self.ping_url)
+    ping_url: str
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
-    # .strip() so a whitespace-only env value reads as unset (matches `is_configured`).
     return {
         "backup": BackupResource(),
-        "rclone": RcloneResource(remote_name=os.getenv("DRIVE_REMOTE", "").strip()),
-        "healthcheck": HealthcheckResource(ping_url=os.getenv("HEALTHCHECK_PING_URL", "").strip()),
+        "rclone": RcloneResource(remote_name=dg.EnvVar("DRIVE_REMOTE")),
+        "healthcheck": HealthcheckResource(ping_url=dg.EnvVar("HEALTHCHECK_PING_URL")),
     }
