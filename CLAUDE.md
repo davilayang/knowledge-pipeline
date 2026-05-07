@@ -56,10 +56,16 @@ packages/
       workbench/   # Manually-triggered jobs (index strategies, eval)
       pipelines/   # Scheduled production (backup_readings, wiki)
 
+configs/           # Dagster config — dagster.yaml, workspace.yaml
+docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
+documents/         # Developer reference docs (INDEXING.md, RETRIEVAL.md)
+scripts/           # Deployment scripts — deploy-hcloud.sh
+tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
 data/              # Runtime, gitignored — raw_store.db, chroma/, wiki/, eval_results/
 backups/           # Backup pipeline landing — gitignored
 .rclone/           # rclone.conf, mounted into dagster-code — gitignored
+ai-findings/       # Investigation/discovery notes written by Claude Code sessions
 ```
 
 **Key entry points:**

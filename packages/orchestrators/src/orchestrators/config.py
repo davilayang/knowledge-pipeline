@@ -39,7 +39,7 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
 # downstream assets as stale until re-materialized. Decoupled from package
 # versions on purpose (the version-bump skill rolls package versions on every
 # release, which would otherwise mark every asset stale on every release).
-BACKUP_READINGS_DAG_VERSION = "2"
+BACKUP_READINGS_DAG_VERSION = "3"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 # WIKI_DAG_VERSION = "1"               # wiki synthesis pipeline adopts the pattern
@@ -52,3 +52,11 @@ BACKUP_SOURCE_DIR = Path(
     os.getenv("BACKUP_SOURCE_DIR", str(Path.home() / "newsletter-assistant" / "data"))
 ).expanduser()
 DB_FILES = ["raw_store.db", "sessions.db"]
+
+# Per-partition tarballs of flat-file directories under BACKUP_SOURCE_DIR.
+# Each entry: (source subdir name, archive file name).
+ARCHIVE_DIRS: list[tuple[str, str]] = [
+    ("notes", "notes.tgz"),
+    ("research_output", "research_output.tgz"),
+]
+ARCHIVE_FILES = [archive for _, archive in ARCHIVE_DIRS]
