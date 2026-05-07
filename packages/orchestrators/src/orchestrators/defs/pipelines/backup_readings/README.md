@@ -59,29 +59,6 @@ partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
 | `DRIVE_REMOTE` | `google_drive/*` assets | _(none — required for the full pipeline)_ |
 | `HEALTHCHECK_PING_URL` | `ping_healthcheck_on_success` sensor | _(none — required for the full pipeline)_ |
 
-The `RcloneResource` and `HealthcheckResource` use `dg.EnvVar()` for late
-binding, so the gRPC server still loads without `DRIVE_REMOTE` /
-`HEALTHCHECK_PING_URL`. A run that actually selects a Drive asset or the
-sensor will fail fast at run init if the var is missing.
-
-## Laptop dev — snapshot subset only
-
-Laptops typically don't have rclone or healthchecks configured. Run only the
-snapshot assets (which need `BACKUP_SOURCE_DIR` and `BACKUP_DIR`, both with
-sensible defaults):
-
-```bash
-dg launch -m orchestrators.defs.pipelines.definitions \
-    --asset-selection 'snapshots/*' \
-    --partition $(date -u +%Y-%m-%d)
-```
-
-Or in the Dagster UI: Assets → group `backup` → select `snapshots/raw_store`
-+ `snapshots/sessions` (plus their checks) → Materialize.
-
-Don't try to run the full job on a laptop — Drive and healthcheck assets
-will fail with a missing-env error at run init, by design.
-
 In Docker Compose, `BACKUP_SOURCE_DIR` in `.env` is the **host** path; compose
 bind-mounts it read-only to `/app/source` inside the container and overrides
 the env var there to the fixed container path. The pipeline code always sees a

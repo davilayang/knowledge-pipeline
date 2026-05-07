@@ -1,10 +1,4 @@
 # Dagster resources for the backup pipeline.
-#
-# Required env vars (DRIVE_REMOTE, HEALTHCHECK_PING_URL) use dg.EnvVar so they
-# resolve at run-init, not at definitions load. Result: the gRPC server still
-# loads on a laptop without these set; only a run that actually uses the Drive
-# or healthcheck resource will fail fast at startup. Laptop dev runs the
-# snapshot subset (see README) and never touches those resources.
 
 from pathlib import Path
 

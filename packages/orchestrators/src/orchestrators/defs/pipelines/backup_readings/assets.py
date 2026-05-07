@@ -244,9 +244,6 @@ def prune_drive_backups(
     )
 
 
-# Dep on `google_drive/uploaded_snapshots` is intentional: if Drive upload
-# failed, we don't want to prune the only local copy that hasn't been offloaded.
-# Laptop dev runs the snapshot subset only and never reaches this asset.
 @dg.asset(
     key=["local_disk", "pruned_old_backups"],
     group_name="backup",
