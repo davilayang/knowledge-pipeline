@@ -178,13 +178,21 @@ def storage_capacity(context: dg.AssetExecutionContext, rclone: RcloneResource):
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "storage_capacity"])],
+    check_specs=[
+        dg.AssetCheckSpec(
+            name="all_snapshots_uploaded",
+            asset=dg.AssetKey(["google_drive", "uploaded_snapshots"]),
+            blocking=True,
+            description="Drive partition dir contains exactly the expected DB files.",
+        )
+    ],
     description="Copy the partition's snapshot dir to the Drive remote.",
 )
 def upload_snapshots_to_drive(
     context: dg.AssetExecutionContext,
     backup: BackupResource,
     rclone: RcloneResource,
-) -> dg.MaterializeResult:
+):
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
     dst = rclone.remote_path(rclone.drive_root, partition)
@@ -195,16 +203,44 @@ def upload_snapshots_to_drive(
     )
     duration = (datetime.now(tz=UTC) - started).total_seconds()
 
-    files = sorted(p for p in src.iterdir() if p.is_file())
-    total_mb = sum(p.stat().st_size for p in files) / (1024 * 1024)
+    local_files = sorted(p for p in src.iterdir() if p.is_file())
+    total_mb = sum(p.stat().st_size for p in local_files) / (1024 * 1024)
 
-    return dg.MaterializeResult(
+    listed = subprocess.run(
+        ["rclone", "lsjson", dst, "--files-only"],
+        capture_output=True,
+        text=True,
+        check=True,
+    )
+    remote_entries = json.loads(listed.stdout) if listed.stdout.strip() else []
+    remote_names = {e["Name"] for e in remote_entries}
+    expected_names = set(backup.db_files)
+
+    yield dg.MaterializeResult(
         metadata={
             "remote_path": dg.MetadataValue.text(dst),
-            "files_uploaded": dg.MetadataValue.int(len(files)),
+            "files_uploaded": dg.MetadataValue.int(len(remote_names)),
             "mb_uploaded": dg.MetadataValue.float(total_mb),
             "duration_s": dg.MetadataValue.float(duration),
         }
+    )
+
+    missing = expected_names - remote_names
+    extra = remote_names - expected_names
+    passed = not missing
+    yield dg.AssetCheckResult(
+        check_name="all_snapshots_uploaded",
+        passed=passed,
+        severity=dg.AssetCheckSeverity.ERROR,
+        description=(
+            None if passed else f"Missing on Drive: {sorted(missing)}; extra: {sorted(extra)}."
+        ),
+        metadata={
+            "expected": dg.MetadataValue.json(sorted(expected_names)),
+            "uploaded": dg.MetadataValue.json(sorted(remote_names)),
+            "missing": dg.MetadataValue.json(sorted(missing)),
+            "extra": dg.MetadataValue.json(sorted(extra)),
+        },
     )
 
 
