@@ -85,6 +85,8 @@ services:
       - "${APP_HOST:-127.0.0.1}:3030:3000"
     networks:
       - dagster_network
+    # python urllib instead of curl — slim base ships neither curl nor wget,
+    # and Dagster's reference image is python:slim + pip install (no HTTP client).
     healthcheck:
       test:
         - CMD
