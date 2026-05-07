@@ -13,7 +13,6 @@ import dagster as dg
 from orchestrators.config import BACKUP_READINGS_DAG_VERSION
 
 from .def_config import (
-    DRIVE_ROOT,
     DRIVE_USAGE_THRESHOLD,
     MAX_DRIVE_BACKUPS,
     MAX_LOCAL_BACKUPS,
@@ -188,7 +187,7 @@ def upload_snapshots_to_drive(
 ) -> dg.MaterializeResult:
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
-    dst = rclone.remote_path(DRIVE_ROOT, partition)
+    dst = rclone.remote_path(rclone.drive_root, partition)
     started = datetime.now(tz=UTC)
     subprocess.run(
         ["rclone", "copy", str(src), dst, "--stats-one-line", "-v"],
@@ -224,7 +223,7 @@ def upload_snapshots_to_drive(
 def prune_drive_backups(
     context: dg.AssetExecutionContext, rclone: RcloneResource
 ) -> dg.MaterializeResult:
-    root = rclone.remote_path(DRIVE_ROOT)
+    root = rclone.remote_path(rclone.drive_root)
     listed = subprocess.run(
         ["rclone", "lsjson", root, "--dirs-only"],
         capture_output=True,
@@ -236,7 +235,7 @@ def prune_drive_backups(
 
     to_delete = dir_names[:-MAX_DRIVE_BACKUPS] if len(dir_names) > MAX_DRIVE_BACKUPS else []
     for name in to_delete:
-        subprocess.run(["rclone", "purge", rclone.remote_path(DRIVE_ROOT, name)], check=True)
+        subprocess.run(["rclone", "purge", rclone.remote_path(rclone.drive_root, name)], check=True)
         context.log.info("Drive: purged %s", name)
 
     summary = (

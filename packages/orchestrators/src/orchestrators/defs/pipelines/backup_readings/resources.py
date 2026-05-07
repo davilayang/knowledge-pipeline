@@ -28,6 +28,7 @@ class RcloneResource(dg.ConfigurableResource):
     """rclone remote for Drive upload + retention."""
 
     remote_name: str
+    drive_root: str
 
     def remote_path(self, *parts: str) -> str:
         # rclone path syntax: "<remote>:<path>"
@@ -44,6 +45,9 @@ class HealthcheckResource(dg.ConfigurableResource):
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "backup": BackupResource(),
-        "rclone": RcloneResource(remote_name=dg.EnvVar("DRIVE_REMOTE")),
+        "rclone": RcloneResource(
+            remote_name=dg.EnvVar("DRIVE_REMOTE"),
+            drive_root=dg.EnvVar("DRIVE_BACKUP_ROOT"),
+        ),
         "healthcheck": HealthcheckResource(ping_url=dg.EnvVar("HEALTHCHECK_PING_URL")),
     }
