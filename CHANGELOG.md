@@ -14,6 +14,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **`DRIVE_REMOTE` and `HEALTHCHECK_PING_URL` are now required for `backup_readings`.** Previously unset → silent skip of Drive upload + healthcheck ping. Now → run fails fast at startup. Implementation: `RcloneResource` / `HealthcheckResource` use `dg.EnvVar()`; `is_configured` short-circuits removed.
 - **Dagster webserver mounts at `/dags`** for reverse-proxy use. Docker UI is now at `http://localhost:3030/dags`; `poe dev` (local) is unchanged at `:3030`. Implementation: `--path-prefix=/dags` on the webserver entrypoint in `docker-compose.yml`; healthcheck probes `/dags/server_info`.
+- **Deploy a feature branch from CLI** via `./scripts/deploy-hcloud.sh deploy --branch <name>` (default still `main`). Forwards through poe with the `--` separator: `uv run poe deploy -- --branch fix/foo --no-build`. Warn banner when the branch isn't `main`.
+- **`APP_HOST` documented in `.env.example`** for operators fronting Dagster with a reverse proxy. Default `127.0.0.1` (laptop); set `172.17.0.1` on a server where a sibling Caddy container reaches Dagster via the docker0 gateway.
 
 ## [0.6.4] — 2026-05-07
 
