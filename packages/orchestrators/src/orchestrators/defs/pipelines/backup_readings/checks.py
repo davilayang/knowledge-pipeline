@@ -4,6 +4,7 @@
 # same run — so a corrupt snapshot can never reach the upload step.
 
 import sqlite3
+import tarfile
 
 import dagster as dg
 
@@ -92,4 +93,82 @@ def verify_snapshot_sessions(
     return _verify_one(context, backup, "sessions.db")
 
 
-all_checks = [verify_snapshot_raw_store, verify_snapshot_sessions]
+def _verify_one_archive(
+    context: dg.AssetCheckExecutionContext,
+    backup: BackupResource,
+    archive_name: str,
+) -> dg.AssetCheckResult:
+    path = backup.get_partition_dir(context.partition_key) / archive_name
+
+    if not path.exists():
+        return dg.AssetCheckResult(
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            description=f"Archive missing: {path}",
+        )
+
+    size = path.stat().st_size
+    size_kb = size / 1024
+    if size < MIN_SNAPSHOT_BYTES:
+        return dg.AssetCheckResult(
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            description=f"Archive suspiciously small: {size_kb:.2f} KB",
+            metadata={"size_kb": dg.MetadataValue.float(size_kb)},
+        )
+
+    try:
+        with tarfile.open(path, "r:gz") as tf:
+            member_count = sum(1 for m in tf if m.isfile())
+    except (tarfile.TarError, OSError) as exc:
+        return dg.AssetCheckResult(
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            description=f"Archive failed to open as gzip-tar: {exc}",
+            metadata={"size_kb": dg.MetadataValue.float(size_kb)},
+        )
+
+    metadata = {
+        "size_kb": dg.MetadataValue.float(size_kb),
+        "member_count": dg.MetadataValue.int(member_count),
+    }
+    if member_count == 0:
+        return dg.AssetCheckResult(
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            description="Archive contains no files",
+            metadata=metadata,
+        )
+    return dg.AssetCheckResult(passed=True, metadata=metadata)
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["snapshots", "notes"]),
+    name="verify_snapshot_notes",
+    blocking=True,
+    description="notes.tgz opens as gzip-tar and contains at least one file.",
+)
+def verify_snapshot_notes(
+    context: dg.AssetCheckExecutionContext, backup: BackupResource
+) -> dg.AssetCheckResult:
+    return _verify_one_archive(context, backup, "notes.tgz")
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["snapshots", "research_output"]),
+    name="verify_snapshot_research_output",
+    blocking=True,
+    description="research_output.tgz opens as gzip-tar and contains at least one file.",
+)
+def verify_snapshot_research_output(
+    context: dg.AssetCheckExecutionContext, backup: BackupResource
+) -> dg.AssetCheckResult:
+    return _verify_one_archive(context, backup, "research_output.tgz")
+
+
+all_checks = [
+    verify_snapshot_raw_store,
+    verify_snapshot_sessions,
+    verify_snapshot_notes,
+    verify_snapshot_research_output,
+]

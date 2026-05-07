@@ -14,12 +14,14 @@ def test_definitions_load_with_expected_shape():
     assert asset_keys == {
         "snapshots/raw_store",
         "snapshots/sessions",
+        "snapshots/notes",
+        "snapshots/research_output",
         "google_drive/storage_capacity",
         "google_drive/uploaded_snapshots",
         "google_drive/pruned_old_backups",
         "local_disk/pruned_old_backups",
     }
-    assert len(defs.asset_checks or []) == 2
+    assert len(defs.asset_checks or []) == 4
     assert sorted(s.name for s in defs.sensors) == ["ping_healthcheck_on_success"]
     assert sorted(j.name for j in defs.jobs) == ["backup_readings"]
     assert sorted(s.name for s in defs.schedules) == ["run_daily_backup"]
