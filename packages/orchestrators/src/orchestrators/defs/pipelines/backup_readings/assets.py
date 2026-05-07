@@ -52,12 +52,9 @@ def _snapshot_one_db(
 ) -> dg.MaterializeResult:
     source = backup.get_source_dir() / db_name
     if not source.exists():
-        context.log.warning("Source DB missing, skipping: %s", source)
-        return dg.MaterializeResult(
-            metadata={
-                "status": dg.MetadataValue.text("source_missing"),
-                "source_path": dg.MetadataValue.path(str(source)),
-            }
+        raise dg.Failure(
+            description=f"Source DB missing: {source}",
+            metadata={"source_path": dg.MetadataValue.path(str(source))},
         )
 
     dest = backup.get_partition_dir(context.partition_key) / db_name
