@@ -19,10 +19,9 @@ services:
       POSTGRES_DB: ${DAGSTER_PG_DB}
     volumes:
       - postgres_data:/var/lib/postgresql/data
+      # Init scripts auto-run alphabetically on first start (empty volume).
       - ./docker/postgres/init:/docker-entrypoint-initdb.d:ro
-      # Mount the wiki schema so 02-apply-wiki-schema.sh can load it on
-      # first container start. Single source of truth — the schema lives
-      # with the helpers in domains/wiki/state.py.
+      # Source of truth for wiki.sql; 02-apply-wiki-schema.sh reads it here.
       - ./packages/domains/src/domains/wiki/schema:/wiki-schema:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U $${POSTGRES_USER} -d $${POSTGRES_DB}"]
