@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.5] — 2026-05-07
+
+### Changed
+
+- **`DRIVE_REMOTE` and `HEALTHCHECK_PING_URL` are now required for `backup_readings`.** Previously unset → silent skip of Drive upload + healthcheck ping. Now → run fails fast at startup. Implementation: `RcloneResource` / `HealthcheckResource` use `dg.EnvVar()`; `is_configured` short-circuits removed.
+
 ## [0.6.4] — 2026-05-07
 
 Fix failed snapshot tasks in DAG "backup_readings" not raising error. Update `.env.example` to use simpler format.
