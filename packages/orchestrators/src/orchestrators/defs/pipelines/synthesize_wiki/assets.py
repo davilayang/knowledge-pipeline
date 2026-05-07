@@ -8,7 +8,7 @@ from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
-from .def_config import PIPELINE_TAG, items_partitions_def
+from .def_config import PIPELINE_TAG, content_partitions_def
 from .resources import WikiResource
 
 
@@ -20,7 +20,7 @@ from .resources import WikiResource
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Discover raw_store items not yet in wiki.processed and register "
-        "them as wiki_items dynamic partitions for downstream synthesis."
+        "them as wiki_contents dynamic partitions for downstream synthesis."
     ),
 )
 def discover_pending_content(
@@ -49,10 +49,10 @@ def discover_pending_content(
     if wiki.max_articles > 0:
         pending_ids = pending_ids[: wiki.max_articles]
 
-    existing = set(context.instance.get_dynamic_partitions(items_partitions_def.name))
+    existing = set(context.instance.get_dynamic_partitions(content_partitions_def.name))
     to_add = [pid for pid in pending_ids if pid not in existing]
     if to_add:
-        context.instance.add_dynamic_partitions(items_partitions_def.name, to_add)
+        context.instance.add_dynamic_partitions(content_partitions_def.name, to_add)
 
     summary = (
         f"**Pending discovery** — {len(all_ids)} raw items, "
@@ -76,7 +76,7 @@ def discover_pending_content(
     group_name="wiki",
     compute_kind="openai",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
-    partitions_def=items_partitions_def,
+    partitions_def=content_partitions_def,
     deps=[dg.AssetDep(["wiki", "pending"])],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(

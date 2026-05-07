@@ -9,7 +9,7 @@ import dagster as dg
 # registers new partitions; synthesize_content materializes one per
 # call, which lets Dagster fan out as many concurrent runs as the
 # queue and concurrency_key permit.
-items_partitions_def = dg.DynamicPartitionsDefinition(name="wiki_items")
+content_partitions_def = dg.DynamicPartitionsDefinition(name="wiki_contents")
 
 
 # ---------- cost guardrail ----------
@@ -18,7 +18,7 @@ items_partitions_def = dg.DynamicPartitionsDefinition(name="wiki_items")
 # is processed in batches across multiple runs. 0 = no cap (process all
 # pending at once — be sure max_concurrent_runs and OpenAI rate limits can
 # absorb the resulting fan-out).
-MAX_ARTICLES_DEFAULT = 50
+MAX_ARTICLES_DEFAULT = 30
 
 
 # ---------- job tags ----------

@@ -16,7 +16,7 @@ Failure cascade — what blocks what when a step fails:
 ```
 discover_pending_content   (key: wiki/pending — unpartitioned, manual)
   │  scans raw_store.db (SQLite) ∖ wiki.processed (PG)
-  │  → registers unseen item_ids as wiki_items dynamic partitions
+  │  → registers unseen item_ids as wiki_contents dynamic partitions
   ▼
 synthesize_content   (key: wiki/synthesized — partition: <item_id>)
   │  extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
