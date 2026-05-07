@@ -182,10 +182,6 @@ def upload_snapshots_to_drive(
 
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
-    if not src.exists() or not any(src.iterdir()):
-        context.log.warning("Nothing to upload for %s (no local snapshot).", partition)
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("no_source")})
-
     dst = rclone.remote_path(DRIVE_ROOT, partition)
     started = datetime.now(tz=UTC)
     subprocess.run(
