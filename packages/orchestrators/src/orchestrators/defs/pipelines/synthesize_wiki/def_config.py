@@ -5,16 +5,16 @@ import dagster as dg
 
 # ---------- partitioning ----------
 
-# One dynamic partition per source item_id. wiki_pending discovers and
-# registers new partitions; wiki_synthesized materializes one per call,
-# which lets Dagster fan out as many concurrent runs as the queue and
-# concurrency_key permit.
+# One dynamic partition per source item_id. discover_pending_content
+# registers new partitions; synthesize_content materializes one per
+# call, which lets Dagster fan out as many concurrent runs as the
+# queue and concurrency_key permit.
 items_partitions_def = dg.DynamicPartitionsDefinition(name="wiki_items")
 
 
 # ---------- cost guardrail ----------
 
-# Default cap on partitions registered per wiki_pending run. The full backlog
+# Default cap on partitions registered per discover_pending_content run. The full backlog
 # is processed in batches across multiple runs. 0 = no cap (process all
 # pending at once — be sure max_concurrent_runs and OpenAI rate limits can
 # absorb the resulting fan-out).

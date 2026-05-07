@@ -2,9 +2,9 @@
 
 LangGraph-driven synthesis of `raw_store` items into a structured wiki
 (concepts, tools, trends) backed by Postgres. One Dagster partition per
-source item; the graph fans out per extracted entity via the Send API and
-commits all writes (`wiki.pages` + `wiki.aliases` + `wiki.processed`) in a
-single transaction.
+source content item; the graph fans out per extracted entity via the
+LangGraph Send API and commits all writes (`wiki.pages` +
+`wiki.aliases` + `wiki.processed`) in a single transaction.
 
 Manually triggered — cost-aware, no cron. The asset job exists for
 named-launch grouping in the UI; run it when you want to ingest.
@@ -14,11 +14,11 @@ named-launch grouping in the UI; run it when you want to ingest.
 Failure cascade — what blocks what when a step fails:
 
 ```
-wiki_pending  (unpartitioned, manual trigger)
+discover_pending_content   (key: wiki/pending — unpartitioned, manual)
   │  scans raw_store.db (SQLite) ∖ wiki.processed (PG)
   │  → registers unseen item_ids as wiki_items dynamic partitions
   ▼
-wiki_synthesized [partition: <item_id>]   (LangGraph workflow)
+synthesize_content   (key: wiki/synthesized — partition: <item_id>)
   │  extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
   │
   │     pages + aliases + wiki.processed all written in ONE PG
@@ -28,25 +28,26 @@ wiki_synthesized [partition: <item_id>]   (LangGraph workflow)
   │  ↻ retry on the same partition auto-resumes from the LangGraph
   │    checkpoint — no LLM re-calls if the prior failure was in commit.
 
-wiki_index_updated  (independent — see note below)
-  reads wiki.pages → writes data/wiki/index.md
+regenerate_toc   (key: wiki/index — independent, see note below)
+  reads wiki.pages → writes data/wiki/index.md (table of contents)
 ```
 
-- **`wiki_pending` fails** (raw_store path missing, PG unreachable) → no
-  partitions registered → `wiki_synthesized` has nothing to run on.
-- **`wiki_synthesized` fails on partition X** → only X. Checkpointer state
-  persists; retry resumes from the last successful node (skipping LLM
-  calls already past). Other partitions and the index are unaffected.
-- **`wiki_index_updated` fails** → `wiki.pages` is still authoritative;
-  `index.md` goes stale until next run.
+- **`discover_pending_content` fails** (raw_store path missing, PG
+  unreachable) → no partitions registered → `synthesize_content` has
+  nothing to run on.
+- **`synthesize_content` fails on partition X** → only X. Checkpointer
+  state persists; retry resumes from the last successful node (skipping
+  LLM calls already past). Other partitions and the TOC are unaffected.
+- **`regenerate_toc` fails** → `wiki.pages` is still authoritative;
+  `data/wiki/index.md` goes stale until next run.
 
-> **Why `wiki_index_updated` is not `deps=[wiki_synthesized]`**: with a
+> **Why `regenerate_toc` is not `deps=[wiki/synthesized]`**: with a
 > growing `DynamicPartitionsDefinition`, Dagster's default
-> `AllPartitionMapping` would block the index forever — every
-> `wiki_pending` run registers fresh partitions that never materialize.
-> Re-materialize the index manually after a synthesis batch. Phase E
-> swaps this for a sensor that fires on each successful
-> `wiki_synthesized` partition.
+> `AllPartitionMapping` would block the TOC forever — every
+> `discover_pending_content` run registers fresh partitions that never
+> materialize. Re-materialize the TOC manually after a synthesis batch.
+> Phase E swaps this for a sensor that fires on each successful
+> `wiki/synthesized` partition.
 
 ## Operations
 
@@ -58,19 +59,19 @@ dg launch -m orchestrators.defs.pipelines.definitions \
   --asset-selection wiki/pending
 
 # 2. Materialize the new partitions. UI is easier here:
-#    Assets → group `wiki` → wiki_synthesized → select partitions →
+#    Assets → group `wiki` → wiki/synthesized → select partitions →
 #    Materialize. Concurrency is throttled by the pipeline's
 #    op_tags concurrency_key — fan-out is bounded.
 
-# 3. Refresh the index after the batch lands.
+# 3. Regenerate the table of contents after the batch lands.
 dg launch -m orchestrators.defs.pipelines.definitions \
   --asset-selection wiki/index
 ```
 
-`wiki_pending` respects `WikiResource.max_articles` (default 50) — only
-that many new partitions are added per run, regardless of how many items
-are actually pending. Subsequent runs pick up the next batch. Set to `0`
-to disable the cap.
+`discover_pending_content` respects `WikiResource.max_articles` (default
+50) — only that many new partitions are added per run, regardless of how
+many items are actually pending. Subsequent runs pick up the next batch.
+Set to `0` to disable the cap.
 
 ### Re-process a single item from scratch
 
@@ -78,7 +79,7 @@ A partition retry auto-resumes from the LangGraph checkpoint. To force a
 clean re-run (e.g. you changed prompts and want fresh LLM output):
 
 ```sql
--- Drop the processed marker so wiki_pending picks it up again.
+-- Drop the processed marker so discover_pending_content picks it up again.
 DELETE FROM wiki.processed WHERE item_id = '<item_id>';
 
 -- (Optional) drop the LangGraph checkpoint so it doesn't auto-resume.
@@ -87,7 +88,7 @@ DELETE FROM checkpoint_writes WHERE thread_id = 'wiki_synthesis__<item_id>';
 DELETE FROM checkpoint_blobs  WHERE thread_id = 'wiki_synthesis__<item_id>';
 ```
 
-Then re-trigger `wiki_pending` and materialize the partition.
+Then re-trigger `wiki/pending` and materialize the partition.
 
 ### Workflow failed mid-flight (LLM error, PG hiccup)
 
@@ -108,10 +109,11 @@ entities. If you're hitting OpenAI 429s:
 - Wait — the runner doesn't catch 429; the partition fails, you retry,
   the checkpointer resumes from where it stopped.
 
-### Index missing or stale
+### TOC missing or stale
 
-Just re-materialize `wiki_index_updated`. It reads everything in
-`wiki.pages` and overwrites `data/wiki/index.md` from scratch — idempotent.
+Just re-materialize `wiki/index`. `regenerate_toc` reads everything in
+`wiki.pages` and overwrites `data/wiki/index.md` from scratch —
+idempotent.
 
 ### Inspecting state
 
@@ -147,7 +149,7 @@ fails at the first `generate(...)` call inside the workflow.
 ### Langfuse tracing (optional)
 
 When `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` are
-set, every LangGraph run is traced. Each `wiki_synthesized` partition
+set, every LangGraph run is traced. Each `wiki/synthesized` partition
 appears as one trace named `wiki_synthesis__<item_id>` with sub-spans for
 `extract_entities`, each `process_entity`, and `commit`.
 

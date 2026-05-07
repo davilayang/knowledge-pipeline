@@ -85,7 +85,7 @@ def get_contents(
 def get_content_by_id(content_id: str, *, db_path: Path) -> ContentRow | None:
     """Return one ContentRow by content_id, or None if absent.
 
-    Used by the dynamic-partitioned wiki_synthesized asset to load just the
+    Used by the dynamic-partitioned synthesize_content asset to load just the
     one article for a given partition_key. Bulk get_contents() would also
     work but reads every row; this is the focused single-item lookup.
     """

@@ -23,7 +23,7 @@ from .resources import WikiResource
         "them as wiki_items dynamic partitions for downstream synthesis."
     ),
 )
-def wiki_pending(
+def discover_pending_content(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
@@ -73,7 +73,7 @@ def wiki_pending(
         "Per-partition retry auto-resumes from the LangGraph checkpoint."
     ),
 )
-def wiki_synthesized(
+def synthesize_content(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
@@ -117,11 +117,12 @@ def wiki_synthesized(
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Regenerate data/wiki/index.md from wiki.pages. NOT declared as "
-        "deps=[wiki_synthesized] — see README on AllPartitionMapping."
+        "Regenerate data/wiki/index.md (table of contents) from "
+        "wiki.pages. NOT declared as deps=[wiki/synthesized] — see "
+        "README on AllPartitionMapping."
     ),
 )
-def wiki_index_updated(
+def regenerate_toc(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
@@ -159,4 +160,4 @@ def wiki_index_updated(
     )
 
 
-all_assets = [wiki_pending, wiki_synthesized, wiki_index_updated]
+all_assets = [discover_pending_content, synthesize_content, regenerate_toc]
