@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.6] — 2026-05-07
+
+### Changed
+
+- **Webserver binds two ports now**: `127.0.0.1:3030` always (SSH tunnel) plus `${APP_HOST:-127.0.0.2}:3030` for sibling-container reach. Default is a no-op loopback alias so `docker compose up` works without env. Previously, setting `APP_HOST=172.17.0.1` for Caddy silently broke the tunnel.
+
 ## [0.6.5] — 2026-05-07
 
 ### Changed
