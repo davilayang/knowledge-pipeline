@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.6.4] — 2026-05-07
+
+Fix failed snapshot tasks in DAG "backup_readings" not raising error. Update `.env.example` to use simpler format.
+
+### Added
+
 ## [0.6.3] — 2026-05-07
 
 ### Added

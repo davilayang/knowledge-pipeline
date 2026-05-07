@@ -52,12 +52,9 @@ def _snapshot_one_db(
 ) -> dg.MaterializeResult:
     source = backup.get_source_dir() / db_name
     if not source.exists():
-        context.log.warning("Source DB missing, skipping: %s", source)
-        return dg.MaterializeResult(
-            metadata={
-                "status": dg.MetadataValue.text("source_missing"),
-                "source_path": dg.MetadataValue.path(str(source)),
-            }
+        raise dg.Failure(
+            description=f"Source DB missing: {source}",
+            metadata={"source_path": dg.MetadataValue.path(str(source))},
         )
 
     dest = backup.get_partition_dir(context.partition_key) / db_name
@@ -185,10 +182,6 @@ def upload_snapshots_to_drive(
 
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
-    if not src.exists() or not any(src.iterdir()):
-        context.log.warning("Nothing to upload for %s (no local snapshot).", partition)
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("no_source")})
-
     dst = rclone.remote_path(DRIVE_ROOT, partition)
     started = datetime.now(tz=UTC)
     subprocess.run(
