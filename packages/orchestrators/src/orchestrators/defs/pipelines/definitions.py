@@ -5,9 +5,9 @@
 
 import dagster as dg
 
-from . import backup_readings, wiki
+from . import backup_readings, synthesize_wiki
 
 defs = dg.Definitions.merge(
     backup_readings.defs,
-    wiki.defs,
+    synthesize_wiki.defs,
 )
