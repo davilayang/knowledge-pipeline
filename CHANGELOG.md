@@ -30,6 +30,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **`compute_kind` uses icon-supported names**: `rclone`/`google_drive` → `googledrive`; `filesystem` → `file`.
 - **`backup_readings/README.md` reframed as a runbook** — failure-cascade diagram + ops + external setup; dropped code-mirroring tables.
 - **Redundant `status: "ok"` metadata removed** from 5 assets.
+- **`ping_healthcheck_on_success` sensor evaluated hourly** (`SENSOR_MIN_INTERVAL_S` 300 → 3600). Daily job — 60 min eval cadence is invisible against healthchecks' day+hour period+grace window.
 
 ## [0.6.6] — 2026-05-07
 
