@@ -158,8 +158,17 @@ tracing — no errors, no warnings.
 
 ### Postgres
 
-`DATABASE_URL` points at the `knowledge_pipeline` database. Schema is
-applied by `domains/wiki/schema/wiki.sql` (run once per environment).
-The same Postgres instance hosts LangGraph checkpoints (separate tables
-managed by `langgraph-checkpoint-postgres`); no extra setup beyond the
-URL.
+`DATABASE_URL` points at the `knowledge_pipeline` database. The compose
+postgres container auto-creates that DB and applies the wiki schema on
+first start (see `docker/postgres/init/`). For non-compose deploys,
+apply manually once:
+
+```bash
+psql -d knowledge_pipeline -f packages/domains/src/domains/wiki/schema/wiki.sql
+```
+
+Schema CHANGE: `docker compose down -v && docker compose up -d postgres`
+re-runs the init scripts on a fresh volume (per the rebuild-don't-migrate
+decision). The same Postgres instance hosts LangGraph checkpoints
+(separate tables managed by `langgraph-checkpoint-postgres`); no extra
+setup beyond the URL.
