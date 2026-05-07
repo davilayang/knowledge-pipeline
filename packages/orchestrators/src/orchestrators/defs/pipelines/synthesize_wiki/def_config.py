@@ -10,7 +10,8 @@ import dagster as dg
 # synthesize_item materializes one per call regardless of source. This
 # lets Dagster fan out as many concurrent runs as the queue and
 # concurrency_key permit.
-item_partitions_def = dg.DynamicPartitionsDefinition(name="wiki_items")
+WIKI_ITEMS_PARTITIONS_NAME = "wiki_items"
+item_partitions_def = dg.DynamicPartitionsDefinition(name=WIKI_ITEMS_PARTITIONS_NAME)
 
 
 # ---------- cost guardrail ----------

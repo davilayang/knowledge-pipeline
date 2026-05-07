@@ -8,7 +8,7 @@ from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
-from .def_config import PIPELINE_TAG, item_partitions_def
+from .def_config import PIPELINE_TAG, WIKI_ITEMS_PARTITIONS_NAME, item_partitions_def
 from .resources import WikiResource
 
 
@@ -50,10 +50,10 @@ def discover_pending_contents(
     if wiki.max_articles > 0:
         pending_ids = pending_ids[: wiki.max_articles]
 
-    existing = set(context.instance.get_dynamic_partitions(item_partitions_def.name))
+    existing = set(context.instance.get_dynamic_partitions(WIKI_ITEMS_PARTITIONS_NAME))
     to_add = [pid for pid in pending_ids if pid not in existing]
     if to_add:
-        context.instance.add_dynamic_partitions(item_partitions_def.name, to_add)
+        context.instance.add_dynamic_partitions(WIKI_ITEMS_PARTITIONS_NAME, to_add)
 
     summary = (
         f"**Pending contents** — {len(all_ids)} raw items, "
