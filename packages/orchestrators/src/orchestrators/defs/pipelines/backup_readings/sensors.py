@@ -29,10 +29,6 @@ logger = logging.getLogger(__name__)
 def ping_healthcheck_on_success(
     context: dg.RunStatusSensorContext, healthcheck: HealthcheckResource
 ) -> None:
-    if not healthcheck.is_configured:
-        context.log.info("HEALTHCHECK_PING_URL unset; skipping ping.")
-        return
-
     partition = context.dagster_run.tags.get("dagster/partition", "unknown")
     body = f"backup_readings ok for partition={partition}".encode()
     req = urllib.request.Request(healthcheck.ping_url, data=body, method="POST")

@@ -1,8 +1,8 @@
 # `backup_readings` pipeline
 
 Daily-partitioned snapshot of the newsletter-assistant SQLite databases, with
-optional Google Drive offload via rclone and a healthchecks.io ping that turns
-silence (cron didn't fire, daemon died) into a loud alert.
+Google Drive offload via rclone and a healthchecks.io ping that turns silence
+(cron didn't fire, daemon died) into a loud alert.
 
 ## DAG (per partition)
 
@@ -52,12 +52,12 @@ partition, `run_key=<date>` (Dagster dedupes accidental double-fires).
 
 ## Configuration
 
-| Env var | Default | Effect when unset |
+| Env var | Required by | Default |
 |---|---|---|
-| `BACKUP_SOURCE_DIR` | `~/newsletter-assistant/data` | Uses default — set on laptops to `~/GitHub/newsletter-assistant/data` |
-| `BACKUP_DIR` | `<repo>/backups` | Uses default |
-| `DRIVE_REMOTE` | _(empty)_ | `google_drive/*` assets short-circuit; run still succeeds |
-| `HEALTHCHECK_PING_URL` | _(empty)_ | `ping_healthcheck_on_success` sensor short-circuits |
+| `BACKUP_SOURCE_DIR` | all snapshot assets | `~/newsletter-assistant/data` (laptops set `~/GitHub/newsletter-assistant/data`) |
+| `BACKUP_DIR` | all snapshot + local prune assets | `<repo>/backups` |
+| `DRIVE_REMOTE` | `google_drive/*` assets | _(none — required for the full pipeline)_ |
+| `HEALTHCHECK_PING_URL` | `ping_healthcheck_on_success` sensor | _(none — required for the full pipeline)_ |
 
 In Docker Compose, `BACKUP_SOURCE_DIR` in `.env` is the **host** path; compose
 bind-mounts it read-only to `/app/source` inside the container and overrides

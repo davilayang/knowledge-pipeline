@@ -124,10 +124,6 @@ def snapshot_sessions(
 def check_drive_capacity(
     context: dg.AssetExecutionContext, rclone: RcloneResource
 ) -> dg.MaterializeResult:
-    if not rclone.is_configured:
-        context.log.info("DRIVE_REMOTE unset; skipping capacity check.")
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("skipped")})
-
     out = subprocess.run(
         ["rclone", "about", "--json", f"{rclone.remote_name}:"],
         capture_output=True,
@@ -176,10 +172,6 @@ def upload_snapshots_to_drive(
     backup: BackupResource,
     rclone: RcloneResource,
 ) -> dg.MaterializeResult:
-    if not rclone.is_configured:
-        context.log.info("DRIVE_REMOTE unset; skipping upload.")
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("skipped")})
-
     partition = context.partition_key
     src = backup.get_partition_dir(partition)
     dst = rclone.remote_path(DRIVE_ROOT, partition)
@@ -219,9 +211,6 @@ def upload_snapshots_to_drive(
 def prune_drive_backups(
     context: dg.AssetExecutionContext, rclone: RcloneResource
 ) -> dg.MaterializeResult:
-    if not rclone.is_configured:
-        return dg.MaterializeResult(metadata={"status": dg.MetadataValue.text("skipped")})
-
     root = rclone.remote_path(DRIVE_ROOT)
     listed = subprocess.run(
         ["rclone", "lsjson", root, "--dirs-only"],
@@ -255,10 +244,6 @@ def prune_drive_backups(
     )
 
 
-# Dep on `google_drive/uploaded_snapshots` is intentional: we gate on "upload
-# attempted" (which materializes status=skipped when DRIVE_REMOTE is unset),
-# not "upload succeeded." Laptop dev still prunes; server with broken Drive
-# blocks here so the latest local copy isn't pruned away with no remote backup.
 @dg.asset(
     key=["local_disk", "pruned_old_backups"],
     group_name="backup",
