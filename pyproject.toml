@@ -72,7 +72,7 @@ help = "Run evaluation across RAG strategies"
 
 [tool.poe.tasks.deploy]
 cmd = "./scripts/deploy-hcloud.sh ${target}"
-help = "Run a deploy-hcloud.sh subcommand on Hetzner (default: deploy)"
+help = "Run a deploy-hcloud.sh subcommand on Hetzner (default: deploy). For the deploy subcommand, append --branch <name> and/or --no-build after a -- separator: uv run poe deploy -- --branch fix/foo"
 
 [tool.poe.tasks.deploy.args.target]
 positional = true
