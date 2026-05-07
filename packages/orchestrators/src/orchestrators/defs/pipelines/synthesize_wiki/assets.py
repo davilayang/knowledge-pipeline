@@ -28,6 +28,18 @@ def discover_pending_content(
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
     all_ids = RawStoreSource(wiki.get_raw_store_path()).get_item_ids()
+
+    if len(all_ids) >= 10_000:
+        raise dg.Failure(
+            description=(
+                f"raw_store has {len(all_ids)} items — full-scan discovery "
+                f"is no longer the right shape above 10k. Migrate to "
+                f"sensor-driven discovery (Phase E) before re-running. "
+                f"See ai-plannings/2026-05-07_phase-e-sensor-driven-discovery.md."
+            ),
+            metadata={"total_raw_items": dg.MetadataValue.int(len(all_ids))},
+        )
+
     with psycopg.connect(wiki.database_url) as conn:
         done_ids = get_processed_ids(conn, status="ok")
         skipped_ids = get_processed_ids(conn, status="skipped")
