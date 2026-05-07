@@ -22,6 +22,7 @@ from .resources import WikiResource
     group_name="wiki",
     compute_kind="sqlite",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
+    deps=[dg.AssetDep("raw_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Discover raw_store contents not yet in wiki.processed and register "

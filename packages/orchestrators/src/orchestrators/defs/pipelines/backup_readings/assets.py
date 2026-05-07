@@ -80,6 +80,7 @@ def _snapshot_one_db(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("raw_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of raw_store.db for the partition's date.",
 )
@@ -95,6 +96,7 @@ def snapshot_raw_store(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("sessions")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of sessions.db for the partition's date.",
 )
