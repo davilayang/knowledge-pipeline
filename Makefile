@@ -2,8 +2,8 @@
 
 .PHONY: dev build up down logs tunnel
 
-dev:  ## Launch Dagster UI at localhost:3000
-	-pkill -f dagster; uv run poe dev
+dev:  ## Launch Dagster UI at localhost:3030
+	-pkill -f dagster; uv run poe dagster-dev
 
 # --- Docker Compose ---
 
