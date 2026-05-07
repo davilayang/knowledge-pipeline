@@ -8,7 +8,12 @@ from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
-from .def_config import PIPELINE_TAG, WIKI_ITEMS_PARTITIONS_NAME, item_partitions_def
+from .def_config import (
+    PIPELINE_TAG,
+    SOURCE_RAW_STORE,
+    WIKI_ITEMS_PARTITIONS_NAME,
+    item_partitions_def,
+)
 from .resources import WikiResource
 
 
@@ -47,11 +52,15 @@ def discover_pending_contents(
     handled = done_ids | skipped_ids
 
     pending_ids = [cid for cid in all_ids if cid not in handled]
-    if wiki.max_articles > 0:
-        pending_ids = pending_ids[: wiki.max_articles]
+    if wiki.max_per_discovery > 0:
+        pending_ids = pending_ids[: wiki.max_per_discovery]
 
+    # Partition keys are source-prefixed so wiki_items can hold multiple
+    # sources without id collisions. The discoverer owns the prefix; the
+    # source layer keeps emitting raw IDs.
+    pending_keys = [f"{SOURCE_RAW_STORE}:{cid}" for cid in pending_ids]
     existing = set(context.instance.get_dynamic_partitions(WIKI_ITEMS_PARTITIONS_NAME))
-    to_add = [pid for pid in pending_ids if pid not in existing]
+    to_add = [k for k in pending_keys if k not in existing]
     if to_add:
         context.instance.add_dynamic_partitions(WIKI_ITEMS_PARTITIONS_NAME, to_add)
 
@@ -59,7 +68,7 @@ def discover_pending_contents(
         f"**Pending contents** — {len(all_ids)} raw items, "
         f"{len(done_ids)} done, {len(handled) - len(done_ids)} skipped/failed, "
         f"**{len(to_add)} new partitions registered** "
-        f"(cap: {wiki.max_articles or 'none'})"
+        f"(cap: {wiki.max_per_discovery or 'none'})"
     )
     return dg.MaterializeResult(
         metadata={
@@ -90,12 +99,23 @@ def synthesize_item(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    item_id = context.partition_key
-    item = RawStoreSource(wiki.get_raw_store_path()).get_item(item_id)
+    # partition_key shape: "<source>:<raw_id>" (see discover_pending_*).
+    source_type, raw_id = context.partition_key.split(":", 1)
+    if source_type == SOURCE_RAW_STORE:
+        item = RawStoreSource(wiki.get_raw_store_path()).get_item(raw_id)
+    else:
+        raise dg.Failure(
+            description=(
+                f"Unknown source_type {source_type!r} in partition_key "
+                f"{context.partition_key!r}. Only {SOURCE_RAW_STORE!r} is "
+                f"wired today; notes and sessions land in a follow-up PR."
+            ),
+            metadata={"partition_key": dg.MetadataValue.text(context.partition_key)},
+        )
     if item is None:
         raise dg.Failure(
-            description=f"raw_store has no item with content_id={item_id!r}",
-            metadata={"item_id": dg.MetadataValue.text(item_id)},
+            description=f"{source_type} has no item with id={raw_id!r}",
+            metadata={"item_id": dg.MetadataValue.text(raw_id)},
         )
 
     invoke_wiki_synthesis(item, db_url=wiki.database_url, wiki_dir=wiki.get_wiki_dir())
@@ -112,7 +132,7 @@ def synthesize_item(
     status = row[0] if row else "unknown"
     error = row[1] if row else None
     metadata: dict[str, dg.MetadataValue] = {
-        "item_id": dg.MetadataValue.text(item_id),
+        "item_id": dg.MetadataValue.text(raw_id),
         "source_type": dg.MetadataValue.text(item.source_type),
     }
     if status == "error" and error:

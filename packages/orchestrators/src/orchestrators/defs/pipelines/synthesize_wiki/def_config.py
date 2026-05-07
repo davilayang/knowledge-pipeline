@@ -16,11 +16,20 @@ item_partitions_def = dg.DynamicPartitionsDefinition(name=WIKI_ITEMS_PARTITIONS_
 
 # ---------- cost guardrail ----------
 
-# Default cap on partitions registered per discover_pending_* run. The full backlog
-# is processed in batches across multiple runs. 0 = no cap (process all
-# pending at once — be sure max_concurrent_runs and OpenAI rate limits can
-# absorb the resulting fan-out).
-MAX_ARTICLES_DEFAULT = 30
+# Default cap on partitions registered per discover_pending_* run. Applied
+# per-source (additive across sources — three discoverers each capped at
+# 30 means up to 90 new partitions per cycle). 0 = no cap. Tune
+# downward if LLM rate limits or OpenAI spend become a concern.
+MAX_PER_DISCOVERY_DEFAULT = 30
+
+
+# Source vocabulary for IngestItem.source_type and partition-key prefixes.
+# Partition keys take the form "<source>:<raw_id>" (e.g. "raw_store:abc123")
+# so the wiki_items partition set can hold multiple source kinds without
+# id collisions. wiki.processed.source_type uses the same string.
+SOURCE_RAW_STORE = "raw_store"
+SOURCE_LOCAL_FILE = "local_file"  # future
+SOURCE_SESSION = "session"  # future
 
 
 # ---------- job tags ----------

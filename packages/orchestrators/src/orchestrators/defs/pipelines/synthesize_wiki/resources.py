@@ -6,7 +6,7 @@ import dagster as dg
 
 from orchestrators.config import DATA_DIR, LOCAL_RAW_STORE
 
-from .def_config import MAX_ARTICLES_DEFAULT
+from .def_config import MAX_PER_DISCOVERY_DEFAULT
 
 
 class WikiResource(dg.ConfigurableResource):
@@ -21,7 +21,7 @@ class WikiResource(dg.ConfigurableResource):
 
     wiki_dir: str = str(DATA_DIR / "wiki")
     raw_store_db_path: str = str(LOCAL_RAW_STORE)
-    max_articles: int = MAX_ARTICLES_DEFAULT
+    max_per_discovery: int = MAX_PER_DISCOVERY_DEFAULT
     database_url: str
 
     def get_wiki_dir(self) -> Path:

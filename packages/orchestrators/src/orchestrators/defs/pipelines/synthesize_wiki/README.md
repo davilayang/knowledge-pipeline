@@ -68,7 +68,7 @@ dg launch -m orchestrators.defs.pipelines.definitions \
   --asset-selection wiki/index
 ```
 
-`discover_pending_contents` respects `WikiResource.max_articles` (default
+`discover_pending_contents` respects `WikiResource.max_per_discovery` (default
 50) — only that many new partitions are added per run, regardless of how
 many items are actually pending. Subsequent runs pick up the next batch.
 Set to `0` to disable the cap.
@@ -105,7 +105,7 @@ within a single partition the fan-out width = number of extracted
 entities. If you're hitting OpenAI 429s:
 
 - Lower the per-pipeline concurrency at the Dagster instance level.
-- Reduce `max_articles` so fewer partitions queue at once.
+- Reduce `max_per_discovery` so fewer partitions queue at once.
 - Wait — the runner doesn't catch 429; the partition fails, you retry,
   the checkpointer resumes from where it stopped.
 
