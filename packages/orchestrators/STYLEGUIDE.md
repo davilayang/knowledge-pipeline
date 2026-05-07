@@ -386,18 +386,38 @@ defs = dg.Definitions(
 
 Only public symbol is `defs`. Don't expose helpers from here.
 
-## README — every pipeline has one
+## README — operational, not structural
 
-Sections:
+Every pipeline has a `README.md`, but it's a **runbook**, not a documentation
+mirror of the code or UI. Dagster's Lineage view renders the asset graph;
+asset `description=` covers per-asset summaries; `.env.example` documents env
+contracts. Don't duplicate any of those — duplicates rot fast.
 
-1. **DAG diagram** (mermaid or ASCII art).
-2. **Partitions** — scheme, start date, backfill semantics.
-3. **Env vars** — required vs. optional, what each controls.
-4. **Operational runbook** — backfill, restore, alert wiring.
-5. **Layer-2 testing** — sandbox materialisation pattern (see existing READMEs).
+Required sections:
 
-Future operators (including future-you) read this before opening any `.py`
-file. Treat it as code, not docs — keep it current.
+1. **DAG (per partition)** — compact ASCII diagram showing **blocking
+   relationships and failure cascade**. Not a "what assets exist" map (UI
+   covers that) — a "what blocks what when something fails" map. Required
+   read for someone paged at 2am with no browser handy.
+2. **Runbook** — CLI ops (run-once, backfill via `dg launch`), recovery from
+   common failure modes ("Drive over threshold," "source DB missing,"
+   "snapshot integrity check failed"). Concrete `rclone copy ...` /
+   `dg launch ...` commands, not prose.
+3. **External setup** — only when the pipeline wires to third-party services
+   that need out-of-repo credentials or accounts (rclone OAuth, healthchecks.io
+   account, etc.). Skip this section when the pipeline runs entirely on local
+   resources.
+
+Drop these (anti-pattern — they duplicate and drift):
+
+- **Per-asset description tables** — that information lives in the
+  `description=` arg on each asset and renders in the UI.
+- **Env var tables** — `.env.example` is the source of truth; a README table
+  becomes a third source that disagrees with the others within a release.
+
+Update the README only when DAG topology changes (which already gates on a
+`code_version` bump) or operational procedures change. If you're tempted to
+add anything that "describes the code," delete it instead.
 
 ## Comments — default to none
 
@@ -470,7 +490,8 @@ When refactoring an existing DAG, look for and fix:
 - [ ] Measurement vs. policy split via asset checks (standalone or co-emitted
       depending on whether the check is independent or run-bound).
 - [ ] No redundant `status` metadata fields.
-- [ ] README has DAG diagram, env var list, restore runbook.
+- [ ] `README.md` is a runbook (DAG-blast-radius diagram, CLI ops, recovery
+      recipes, external-service setup) — not a description of the code or env vars.
 - [ ] Pipeline `defs` merged into `pipelines/definitions.py` and a sandbox
       test under `tests/<pipeline_name>/`.
 - [ ] Run `uv run poe check` clean (fmt, lint, all tests).
