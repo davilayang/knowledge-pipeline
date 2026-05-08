@@ -52,9 +52,12 @@ packages/
   evals/           # Ragas RAG eval + wiki eval — workbench only
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
-      shared/      # Shared resources (raw_store, chroma, etc.)
-      workbench/   # Manually-triggered jobs (index strategies, eval)
-      pipelines/   # Scheduled production (backup_readings, wiki)
+      shared/           # Shared resources (raw_store, chroma, etc.)
+      workbench/        # Manually-triggered jobs (index strategies, eval)
+      pipelines/        # Scheduled production pipelines
+        backup_readings/
+        synthesize_wiki/
+        upstream_sources.py
 
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
@@ -66,6 +69,7 @@ data/              # Runtime, gitignored — raw_store.db, chroma/, wiki/, eval_
 backups/           # Backup pipeline landing — gitignored
 .rclone/           # rclone.conf, mounted into dagster-code — gitignored
 ai-findings/       # Investigation/discovery notes written by Claude Code sessions
+ai-plannings/      # Implementation plans written by Claude Code sessions
 ```
 
 **Key entry points:**

@@ -22,7 +22,7 @@ gives full per-entity isolation.
 
 import logging
 from pathlib import Path
-from typing import TypedDict, Required, ReadOnly
+from typing import ReadOnly, Required, TypedDict
 
 from domains.wiki.io import write_page
 from domains.wiki.sources import IngestItem
