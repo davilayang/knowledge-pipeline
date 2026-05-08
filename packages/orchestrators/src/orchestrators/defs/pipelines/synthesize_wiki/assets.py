@@ -103,7 +103,7 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
 @dg.asset(
     key=["wiki", "pending"],
     group_name="wiki",
-    compute_kind="postgres",
+    compute_kind="sqlite",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[
