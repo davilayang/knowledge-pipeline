@@ -8,7 +8,13 @@ dependencies = [
     "knowledge-workflows",
     "knowledge-retrievers",
     "ragas>=0.2,<1.0",
+    "chromadb>=1.5,<2.0",
+    "openai>=2.0,<3.0",
+    "tenacity>=8.0",
 ]
+
+[project.scripts]
+eval-retrieval = "evals.retrieval.cli:main"
 
 [build-system]
 requires = ["hatchling"]
