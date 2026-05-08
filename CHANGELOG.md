@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`backup_readings` snapshots `research.db` instead of archiving `research_output/`.** Newsletter-assistant's `research.db` already contains the research output, so the tgz was redundant. New asset `snapshots/research` mirrors `raw_store.db`/`sessions.db` (SQLite `.backup()` API + `PRAGMA integrity_check`). Existing `research_output.tgz` files in local backups + Drive are left in place; retention naturally prunes them. `BACKUP_READINGS_DAG_VERSION` 3 → 4.
+
 ---
 
 ## [0.9.0] — 2026-05-08
