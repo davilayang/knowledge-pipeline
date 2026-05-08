@@ -15,6 +15,7 @@ commit_processed into one node here.
 """
 
 import logging
+from typing import TYPE_CHECKING
 
 import psycopg
 import yaml
@@ -30,12 +31,15 @@ from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.llm import generate_structured
 from workflows.wiki_synthesis.prompts import ENTITY_EXTRACTION_SYSTEM, ENTITY_EXTRACTION_USER
 
+if TYPE_CHECKING:
+    from workflows.wiki_synthesis.graph import WikiSynthesisState
+
 logger = logging.getLogger(__name__)
 
 EXTRACTION_MODEL = "gpt-4.1-nano"
 
 
-def extract_entities(state: dict) -> dict:
+def extract_entities(state: "WikiSynthesisState") -> dict:
     """Snapshot aliases → call extraction LLM → stage new aliases.
 
     On Postgres or LLM failure, returns extract_error in state so the workflow
@@ -79,7 +83,7 @@ def extract_entities(state: dict) -> dict:
         }
 
 
-def commit(state: dict) -> dict:
+def commit(state: "WikiSynthesisState") -> dict:
     """Terminal node — single Postgres transaction.
 
     Writes wiki.pages rows for successful entities, wiki.aliases for staged
