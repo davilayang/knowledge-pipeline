@@ -26,6 +26,7 @@ from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send
 
+from workflows.llm import LLMCall
 from workflows.wiki_synthesis.entity_graph import build_entity_graph
 from workflows.wiki_synthesis.nodes import commit, extract_entities
 
@@ -43,6 +44,7 @@ class WikiSynthesisState(TypedDict, total=False):
 
     # Aggregated from sub-graphs by the reducer
     entity_results: Annotated[list[dict], operator.add]
+    llm_calls: Annotated[list[LLMCall], operator.add]
 
 
 def fan_out(state: WikiSynthesisState) -> str | list[Send]:

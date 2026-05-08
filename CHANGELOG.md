@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`wiki/synthesized` reads from the latest `backup_readings` snapshot** instead of `data/raw_store.db`. New dep `snapshots/raw_store` with `LastPartitionMapping`; `WikiResource.backup_dir` replaces `raw_store_db_path`. A 2-day staleness guard skips (schedule) or fails (asset) the run if the newest snapshot is too old, so wiki never synthesises against silently stale data. Symmetric across laptop/server. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 3.
+
+### Added
+
+- **LLM cost metadata on every `wiki/synthesized` materialization.** Per-call usage flows up via a new `llm_calls` reducer through both wiki sub-graphs; the asset aggregates and attaches `cost_usd`, `input_tokens`, `output_tokens`, and a `cost_by_model` JSON breakdown. Pricing table at `workflows/costs.py` (gpt-4.1-nano, gpt-4.1-mini); unknown models report 0 and surface in `unknown_pricing_models` rather than failing the run. New helpers `generate_with_usage` / `generate_structured_with_usage` in `workflows.llm`.
+
 ---
 
 ## [0.9.1] — 2026-05-08

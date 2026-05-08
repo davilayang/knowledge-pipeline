@@ -2,7 +2,13 @@ from unittest.mock import MagicMock, patch
 
 from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
 from pydantic import BaseModel
-from workflows.llm import generate, generate_structured
+from workflows.llm import (
+    LLMCall,
+    generate,
+    generate_structured,
+    generate_structured_with_usage,
+    generate_with_usage,
+)
 
 
 @patch("workflows.llm.get_llm")
@@ -85,3 +91,63 @@ def test_generate_structured_with_system(mock_get_llm):
     assert len(messages) == 2
     assert isinstance(messages[0], SystemMessage)
     assert isinstance(messages[1], HumanMessage)
+
+
+@patch("workflows.llm.get_llm")
+def test_generate_with_usage_returns_token_counts(mock_get_llm):
+    response = AIMessage(
+        content="hi",
+        response_metadata={"model_name": "gpt-4.1-mini"},
+        usage_metadata={"input_tokens": 7, "output_tokens": 3, "total_tokens": 10},
+    )
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = response
+    mock_get_llm.return_value = mock_llm
+
+    call = generate_with_usage("hello")
+
+    assert isinstance(call, LLMCall)
+    assert call.content == "hi"
+    assert call.model == "gpt-4.1-mini"
+    assert call.input_tokens == 7
+    assert call.output_tokens == 3
+
+
+@patch("workflows.llm.get_llm")
+def test_generate_with_usage_handles_missing_usage_metadata(mock_get_llm):
+    response = AIMessage(content="x", response_metadata={"model_name": "gpt-4.1-mini"})
+    mock_llm = MagicMock()
+    mock_llm.invoke.return_value = response
+    mock_get_llm.return_value = mock_llm
+
+    call = generate_with_usage("hello", model="gpt-4.1-mini")
+
+    assert call.input_tokens == 0
+    assert call.output_tokens == 0
+
+
+@patch("workflows.llm.get_llm")
+def test_generate_structured_with_usage_returns_parsed_and_call(mock_get_llm):
+    class Info(BaseModel):
+        value: str
+
+    raw = AIMessage(
+        content="",
+        response_metadata={"model_name": "gpt-4.1-nano"},
+        usage_metadata={"input_tokens": 5, "output_tokens": 2, "total_tokens": 7},
+    )
+    parsed = Info(value="ok")
+
+    mock_llm = MagicMock()
+    mock_structured_llm = MagicMock()
+    mock_structured_llm.invoke.return_value = {"parsed": parsed, "raw": raw}
+    mock_llm.with_structured_output.return_value = mock_structured_llm
+    mock_get_llm.return_value = mock_llm
+
+    result, call = generate_structured_with_usage("Extract", schema=Info)
+
+    assert result is parsed
+    assert call.model == "gpt-4.1-nano"
+    assert call.input_tokens == 5
+    assert call.output_tokens == 2
+    mock_llm.with_structured_output.assert_called_once_with(Info, include_raw=True)

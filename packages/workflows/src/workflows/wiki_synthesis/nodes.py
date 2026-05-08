@@ -28,7 +28,7 @@ from domains.wiki.state import (
 )
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 
-from workflows.llm import generate_structured
+from workflows.llm import generate_structured_with_usage
 from workflows.wiki_synthesis.prompts import ENTITY_EXTRACTION_SYSTEM, ENTITY_EXTRACTION_USER
 
 if TYPE_CHECKING:
@@ -61,7 +61,7 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
             title=item.title,
             article_text=item.text,
         )
-        extraction: ExtractionResult = generate_structured(
+        extraction, call = generate_structured_with_usage(
             user_prompt,
             schema=ExtractionResult,
             system=ENTITY_EXTRACTION_SYSTEM,
@@ -73,6 +73,7 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
         return {
             "entities": list(extraction.entities),
             "staged_aliases": staged,
+            "llm_calls": [call],
         }
     except Exception as e:
         logger.exception("extract_entities failed for %s", item.item_id)

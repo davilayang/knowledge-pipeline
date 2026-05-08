@@ -10,10 +10,13 @@ Failure cascade — what blocks what when a step fails:
 
 ```
 schedule run_daily_synthesize_wiki   (cron 0 6 * * *)
+  │  resolves the newest backup_readings snapshot (BACKUP_DIR/<YYYY-MM-DD>/raw_store.db)
   │  reads raw_store IDs ∖ wiki.processed at fire time
-  │  → SkipReason if empty; else one RunRequest with item_ids in run_config
+  │  → SkipReason if no snapshot, snapshot stale (>2d), or no pending items
+  │  else one RunRequest with item_ids in run_config
   ▼
 wiki/synthesized   (key: wiki/synthesized — daily partition)
+  │  dep: snapshots/raw_store with LastPartitionMapping (newest available)
   │  loops config.item_ids through invoke_wiki_synthesis (ThreadPoolExecutor,
   │  cap = SYNTHESIS_CONCURRENCY)
   │
@@ -29,8 +32,12 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   reads wiki.pages → writes data/wiki/index.md (table of contents)
 ```
 
-- **Schedule fails** (raw_store path missing, PG unreachable) → no run
-  materialized; the next cron tick retries from scratch.
+- **No fresh snapshot** (backup_readings hasn't run in 2+ days, or
+  `BACKUP_DIR` is empty) → schedule emits `SkipReason`; manual re-materialize
+  raises `dg.Failure` with the snapshot date and age. Fix by running the
+  backup pipeline first.
+- **Schedule fails** (PG unreachable, scan error) → no run materialized; the
+  next cron tick retries from scratch.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into
   `wiki.processed` with `status='error'`; the run continues other items.
   The Dagster run shows green.
@@ -108,6 +115,20 @@ Send API. If you're hitting OpenAI 429s:
 
 Re-materialize `wiki/index` for today's partition. It reads everything in
 `wiki.pages` and overwrites `data/wiki/index.md` from scratch — idempotent.
+
+### LLM cost metadata
+
+Each `wiki/synthesized` materialization carries `cost_usd`, `input_tokens`,
+`output_tokens`, and a `cost_by_model` JSON breakdown computed from the
+`PRICING_PER_1M` table in `packages/workflows/src/workflows/costs.py`.
+Update that dict whenever OpenAI's pricing page changes; historical
+materializations keep their point-in-time numbers.
+
+If a model name appears in metadata's `unknown_pricing_models`, its calls
+contributed 0 to the displayed cost — add it to `PRICING_PER_1M` and re-run
+the partition to recompute. Retries on the same partition only show the
+incremental cost (per-item LangGraph checkpoints skip already-completed
+nodes), so a `$0.00` retry usually means everything was cached, not broken.
 
 ### Inspecting state
 

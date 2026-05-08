@@ -23,7 +23,7 @@ from domains.wiki.state import (
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
 
-from tests.wiki_synthesis._helpers import make_item
+from tests.wiki_synthesis._helpers import make_item, make_llm_call
 
 
 def _invoke(item, *, wiki_dir, db_url):
@@ -62,12 +62,12 @@ def test_creates_new_page(tmp_path: Path, wiki_pg, wiki_pg_url):
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
-            return_value=llm_output,
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            return_value=make_llm_call(content=llm_output),
         ),
     ):
         _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
@@ -93,7 +93,10 @@ def test_no_entities_returns_skipped(tmp_path: Path, wiki_pg, wiki_pg_url):
 
     extraction = ExtractionResult(entities=[])
 
-    with patch("workflows.wiki_synthesis.nodes.generate_structured", return_value=extraction):
+    with patch(
+        "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+        return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
+    ):
         _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)
 
     # No pages, no aliases
@@ -147,16 +150,16 @@ def test_failed_synthesis_continues(tmp_path: Path, wiki_pg, wiki_pg_url):
         if "entity_id: concept__rag" in prompt:
             raise RuntimeError("LLM timeout")
         if "entity_id: tool__chromadb" in prompt:
-            return chroma_output
+            return make_llm_call(content=chroma_output)
         raise AssertionError(f"unexpected prompt:\n{prompt[:200]}")
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=mock_generate,
         ),
     ):
@@ -202,11 +205,11 @@ def test_all_synthesis_fails_no_aliases_persisted(tmp_path: Path, wiki_pg, wiki_
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=RuntimeError("LLM timeout"),
         ),
     ):
@@ -237,7 +240,7 @@ def test_extract_failure_writes_error_row(tmp_path: Path, wiki_pg, wiki_pg_url):
     wiki_dir.mkdir()
 
     with patch(
-        "workflows.wiki_synthesis.nodes.generate_structured",
+        "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
         side_effect=RuntimeError("OpenAI 503"),
     ):
         _invoke(make_item(), wiki_dir=wiki_dir, db_url=wiki_pg_url)

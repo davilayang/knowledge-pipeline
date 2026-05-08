@@ -1,5 +1,5 @@
 # Definition-time config for the synthesize_wiki pipeline. Path-level config
-# (DATA_DIR, LOCAL_RAW_STORE) lives in orchestrators.config.
+# (DATA_DIR, BACKUP_DIR) lives in orchestrators.config.
 
 import dagster as dg
 
@@ -18,6 +18,15 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01",
 # and OpenAI rate-limit pressure; the schedule slices `pending[:max_per_tick]`.
 # 0 = no cap. Tune downward if quotas tighten.
 MAX_PER_TICK_DEFAULT = 30
+
+
+# ---------- snapshot freshness ----------
+
+# Skip the run if the newest backup_readings snapshot is older than this.
+# Backup pipeline runs ~03:00 UTC, this schedule runs ~06:00 UTC, so a fresh
+# (today) snapshot is the normal case; a 2-day window covers a single
+# missed/late backup without auto-running on stale data.
+MAX_SNAPSHOT_AGE_DAYS = 2
 
 
 # ---------- intra-op concurrency ----------

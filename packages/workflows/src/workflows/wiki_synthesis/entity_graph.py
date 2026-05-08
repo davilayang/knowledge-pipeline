@@ -21,15 +21,16 @@ gives full per-entity isolation.
 """
 
 import logging
+import operator
 from pathlib import Path
-from typing import ReadOnly, Required, TypedDict
+from typing import Annotated, ReadOnly, Required, TypedDict
 
 from domains.wiki.io import write_page
 from domains.wiki.sources import IngestItem
 from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 
-from workflows.llm import generate
+from workflows.llm import LLMCall, generate_with_usage
 from workflows.wiki_synthesis.parsing import (
     check_h2_preservation,
     parse_llm_page_output,
@@ -53,13 +54,14 @@ class EntityWorkflowState(TypedDict, total=False):
     sibling_entity_ids: Required[ReadOnly[list[str]]]
     wiki_dir: Required[ReadOnly[str]]
 
-    # Output: this list is concatenated into the parent's entity_results
+    # Output: these lists are concatenated into the parent's matching keys
     # via the parent state's operator.add reducer
     entity_results: list[dict]
+    llm_calls: Annotated[list[LLMCall], operator.add]
 
 
 class EntityWorkflowOutput(TypedDict, total=False):
-    """Restricted output schema — only entity_results propagates back.
+    """Restricted output schema — only the aggregated lists propagate back.
 
     Without this, the sub-graph would also try to write item / entity /
     sibling_entity_ids / wiki_dir back into the parent state on completion.
@@ -69,6 +71,7 @@ class EntityWorkflowOutput(TypedDict, total=False):
     """
 
     entity_results: list[dict]
+    llm_calls: list[LLMCall]
 
 
 def process_entity(state: EntityWorkflowState) -> dict:
@@ -109,10 +112,10 @@ def process_entity(state: EntityWorkflowState) -> dict:
                 article_text=item.text,
             )
 
-        raw = generate(user_prompt, system=PAGE_SYNTHESIS_SYSTEM, model=SYNTHESIS_MODEL)
+        call = generate_with_usage(user_prompt, system=PAGE_SYNTHESIS_SYSTEM, model=SYNTHESIS_MODEL)
 
         new_page = parse_llm_page_output(
-            raw=raw,
+            raw=call.content,
             entity_id=entity.entity_id,
             title=entity.title,
             page_type=entity.page_type,
@@ -133,7 +136,8 @@ def process_entity(state: EntityWorkflowState) -> dict:
                     "page": new_page,
                     "file_path": str(page_path.relative_to(wiki_dir)),
                 }
-            ]
+            ],
+            "llm_calls": [call],
         }
     except Exception as e:
         logger.exception("Failed to process entity %s", entity.entity_id)

@@ -1,16 +1,20 @@
 # Wiki synthesis pipeline. See README.md for the DAG diagram and runbook.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import date
 
 import dagster as dg
 import psycopg
 from domains.wiki.sources import IngestItem, RawStoreSource
 from domains.wiki.state import get_all_pages, get_processed_ids
+from workflows.costs import PRICING_PER_1M, cost_usd
+from workflows.llm import LLMCall
 from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
 from .def_config import (
+    MAX_SNAPSHOT_AGE_DAYS,
     PIPELINE_TAG,
     SOURCE_RAW_STORE,
     SYNTHESIS_CONCURRENCY,
@@ -26,21 +30,65 @@ class SynthesizeWikiConfig(dg.Config):
     source_type: str = SOURCE_RAW_STORE
 
 
+def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
+    """Aggregate per-call usage into Dagster MetadataValue entries.
+
+    Unknown models report cost 0 and surface in `unknown_pricing_models` so
+    the gap is visible in the UI without failing the run."""
+    total_in = sum(c.input_tokens for c in calls)
+    total_out = sum(c.output_tokens for c in calls)
+    total_usd = sum(cost_usd(c.model, c.input_tokens, c.output_tokens) for c in calls)
+    by_model = {
+        m: {
+            "calls": sum(1 for c in calls if c.model == m),
+            "input_tokens": sum(c.input_tokens for c in calls if c.model == m),
+            "output_tokens": sum(c.output_tokens for c in calls if c.model == m),
+            "cost_usd": round(
+                sum(
+                    cost_usd(c.model, c.input_tokens, c.output_tokens)
+                    for c in calls
+                    if c.model == m
+                ),
+                4,
+            ),
+        }
+        for m in {c.model for c in calls}
+    }
+    out: dict[str, dg.MetadataValue] = {
+        "llm_calls": dg.MetadataValue.int(len(calls)),
+        "input_tokens": dg.MetadataValue.int(total_in),
+        "output_tokens": dg.MetadataValue.int(total_out),
+        "cost_usd": dg.MetadataValue.float(round(total_usd, 4)),
+        "cost_by_model": dg.MetadataValue.json(by_model),
+    }
+    unknown = sorted({c.model for c in calls if c.model not in PRICING_PER_1M})
+    if unknown:
+        out["unknown_pricing_models"] = dg.MetadataValue.json(unknown)
+    return out
+
+
 @dg.asset(
     key=["wiki", "synthesized"],
     group_name="wiki",
     compute_kind="openai",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
-    deps=[dg.AssetDep("raw_store")],
+    deps=[
+        dg.AssetDep(
+            ["snapshots", "raw_store"],
+            partition_mapping=dg.LastPartitionMapping(),
+        )
+    ],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Run the wiki_synthesis LangGraph workflow for each pending item "
-        "supplied via run_config. The schedule discovers raw_store ∖ "
-        "wiki.processed and passes the slice as item_ids; the asset fans "
-        "out internally with a ThreadPoolExecutor. Per-item failures are "
-        "recorded in wiki.processed (status='error') without aborting the "
-        "batch; only run-level (auth/infra) errors fail the Dagster run."
+        "supplied via run_config. Reads the newest backup_readings snapshot "
+        "of raw_store.db (LastPartitionMapping); the schedule discovers "
+        "raw_store ∖ wiki.processed and passes the slice as item_ids. "
+        "The asset fans out internally with a ThreadPoolExecutor. Per-item "
+        "failures are recorded in wiki.processed (status='error') without "
+        "aborting the batch; only run-level (auth/infra) errors fail the "
+        "Dagster run."
     ),
 )
 def synthesized(
@@ -59,6 +107,30 @@ def synthesized(
     if not config.item_ids:
         return dg.MaterializeResult(
             metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
+        )
+
+    snapshot = wiki.latest_raw_store_snapshot()
+    if snapshot is None:
+        raise dg.Failure(
+            description=(
+                f"No raw_store snapshot under {wiki.backup_dir}. Run "
+                "backup_readings first, or backfill the missing partition."
+            ),
+        )
+    snapshot_path, snapshot_date = snapshot
+    age_days = (date.today() - snapshot_date).days
+    if age_days > MAX_SNAPSHOT_AGE_DAYS:
+        raise dg.Failure(
+            description=(
+                f"Newest raw_store snapshot is {snapshot_date.isoformat()} "
+                f"({age_days} days old, limit {MAX_SNAPSHOT_AGE_DAYS}). "
+                "Run backup_readings before resuming wiki synthesis."
+            ),
+            metadata={
+                "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
+                "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
+                "age_days": dg.MetadataValue.int(age_days),
+            },
         )
 
     db_url = wiki.database_url
@@ -80,7 +152,7 @@ def synthesized(
             }
         )
 
-    source = RawStoreSource(wiki.get_raw_store_path())
+    source = RawStoreSource(snapshot_path)
     items: list[IngestItem] = []
     missing: list[str] = []
     for raw_id in pending_ids:
@@ -96,6 +168,7 @@ def synthesized(
         )
     wiki_dir = wiki.get_wiki_dir()
     errors: list[tuple[str, str]] = []
+    all_calls: list[LLMCall] = []
     with ThreadPoolExecutor(max_workers=SYNTHESIS_CONCURRENCY) as pool:
         futures = {
             pool.submit(invoke_wiki_synthesis, item, db_url=db_url, wiki_dir=wiki_dir): item
@@ -104,10 +177,12 @@ def synthesized(
         for fut in as_completed(futures):
             item = futures[fut]
             try:
-                fut.result()
+                final_state = fut.result()
             except Exception as e:
                 context.log.exception("wiki synthesis raised for %s", item.item_id)
                 errors.append((item.item_id, repr(e)))
+            else:
+                all_calls.extend(final_state.get("llm_calls", []))
 
     with psycopg.connect(db_url) as conn:
         rows = conn.execute(
@@ -129,9 +204,12 @@ def synthesized(
         "summary": dg.MetadataValue.md(" — ".join(summary_parts)),
         "item_count": dg.MetadataValue.int(len(items)),
         "by_status": dg.MetadataValue.json(by_status),
+        "source_snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
+        "source_snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
     }
     if already:
         metadata["skipped_already_processed"] = dg.MetadataValue.int(already)
+    metadata.update(_cost_metadata(all_calls))
     if errors:
         raise dg.Failure(
             description=f"{len(errors)} item(s) raised out of the workflow",
