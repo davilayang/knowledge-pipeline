@@ -1,89 +1,78 @@
 # `synthesize_wiki` runbook
 
 LangGraph-driven synthesis of `raw_store` items into a structured wiki
-(concepts, tools, trends) backed by Postgres. One Dagster partition per
-source content item; the graph fans out per extracted entity via the
-LangGraph Send API and commits all writes (`wiki.pages` +
-`wiki.aliases` + `wiki.processed`) in a single transaction.
+(concepts, tools, trends) backed by Postgres. One scheduled tick per day
+(06:00 UTC) = one Dagster run = full pending → synthesized → index cycle.
 
-Manually triggered — cost-aware, no cron. The asset job exists for
-named-launch grouping in the UI; run it when you want to ingest.
-
-## DAG (per partition)
+## DAG (per scheduled tick)
 
 Failure cascade — what blocks what when a step fails:
 
 ```
-discover_pending_contents   (key: wiki/pending_contents — unpartitioned, manual)
-  │  scans raw_store.db (SQLite) ∖ wiki.processed (PG)
-  │  → registers unseen item_ids as wiki_items dynamic partitions
+schedule run_daily_synthesize_wiki   (cron 0 6 * * *)
+  │  reads raw_store IDs ∖ wiki.processed at fire time
+  │  → SkipReason if empty; else one RunRequest with item_ids in run_config
   ▼
-synthesize_item   (key: wiki/synthesized — partition: <item_id>)
-  │  extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
+wiki/synthesized   (key: wiki/synthesized — daily partition)
+  │  loops config.item_ids through invoke_wiki_synthesis (ThreadPoolExecutor,
+  │  cap = SYNTHESIS_CONCURRENCY)
   │
-  │     pages + aliases + wiki.processed all written in ONE PG
-  │     transaction. Aliases use ON CONFLICT DO NOTHING for cross-
-  │     partition concurrency safety.
+  │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
+  │     pages + aliases + wiki.processed all written in ONE PG transaction
+  │     per item. Aliases use ON CONFLICT DO NOTHING for cross-item safety.
   │
-  │  ↻ retry on the same partition auto-resumes from the LangGraph
-  │    checkpoint — no LLM re-calls if the prior failure was in commit.
-
-regenerate_toc   (key: wiki/index — independent, see note below)
+  │  ↻ retry on the same date partition replays the same item_ids; per-item
+  │    LangGraph checkpoints skip already-completed nodes (no duplicate
+  │    LLM spend if the prior failure was infra-side).
+  ▼
+wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   reads wiki.pages → writes data/wiki/index.md (table of contents)
 ```
 
-- **`discover_pending_contents` fails** (raw_store path missing, PG
-  unreachable) → no partitions registered → `synthesize_item` has
-  nothing to run on.
-- **`synthesize_item` fails on partition X** → only X. Checkpointer
-  state persists; retry resumes from the last successful node (skipping
-  LLM calls already past). Other partitions and the TOC are unaffected.
-- **`regenerate_toc` fails** → `wiki.pages` is still authoritative;
-  `data/wiki/index.md` goes stale until next run.
-
-> **Why `regenerate_toc` is not `deps=[wiki/synthesized]`**: with a
-> growing `DynamicPartitionsDefinition`, Dagster's default
-> `AllPartitionMapping` would block the TOC forever — every
-> `discover_pending_contents` run registers fresh partitions that never
-> materialize. Re-materialize the TOC manually after a synthesis batch.
-> Phase E swaps this for a sensor that fires on each successful
-> `wiki/synthesized` partition.
+- **Schedule fails** (raw_store path missing, PG unreachable) → no run
+  materialized; the next cron tick retries from scratch.
+- **`wiki/synthesized` per-item LLM failures** → swallowed into
+  `wiki.processed` with `status='error'`; the run continues other items.
+  The Dagster run shows green.
+- **`wiki/synthesized` run-level failures** (an item raises out of the
+  workflow — auth, infra) → the asset raises `dg.Failure`, the run fails,
+  Dagster retry replays the same `item_ids`. Per-item checkpoints prevent
+  duplicate LLM spend.
+- **`wiki/index` fails** → today's partition for `wiki/index` stays
+  unmaterialized; `wiki.pages` remains authoritative; re-materialize the
+  index manually or wait for the next tick.
 
 ## Operations
 
-### Run a synthesis batch
+### Daily run (default)
+
+The schedule fires at 06:00 UTC. Nothing to do — runs land in the Runs page
+under job `synthesize_wiki`, one per day.
+
+### Manual run (backfill, ad-hoc)
+
+UI: Jobs → `synthesize_wiki` → Launchpad → pick partition (date) →
+Materialize. The Launchpad's run config form requires `item_ids`; either
+fill in IDs manually or paste the schedule's most recent `item_ids`.
+
+CLI:
 
 ```bash
-# 1. Discover new raw_store items and register them as partitions.
-dg launch -m orchestrators.defs.pipelines.definitions \
-  --asset-selection wiki/pending_contents
-
-# 2. Materialize the new partitions. UI is easier here:
-#    Assets → group `wiki` → wiki/synthesized → select partitions →
-#    Materialize. Concurrency is throttled by the pipeline's
-#    op_tags concurrency_key — fan-out is bounded.
-
-# 3. Regenerate the table of contents after the batch lands.
-dg launch -m orchestrators.defs.pipelines.definitions \
-  --asset-selection wiki/index
+dg launch --job synthesize_wiki -m orchestrators.defs.pipelines.definitions \
+  --partition $(date +%Y-%m-%d) \
+  --config '{"ops": {"wiki__synthesized": {"config": {"item_ids": ["abc123","def456"]}}}}'
 ```
 
-`discover_pending_contents` respects `WikiResource.max_per_discovery`
-(default 30 — see `MAX_PER_DISCOVERY_DEFAULT` in `def_config.py`).
-Only that many new partitions are added per run; subsequent runs pick
-up the next batch. Set to `0` to disable the cap.
-
-For dev iteration, override via env: `WIKI_MAX_PER_DISCOVERY=2` in
-`.env` caps registration at 2 per run. For per-launch overrides, edit
-the launchpad YAML at materialization time.
+The op name is `wiki__synthesized` (asset key joined with `__`), not the
+function name.
 
 ### Re-process a single item from scratch
 
-A partition retry auto-resumes from the LangGraph checkpoint. To force a
-clean re-run (e.g. you changed prompts and want fresh LLM output):
+A retry auto-resumes from the LangGraph checkpoint. To force a clean re-run
+(e.g. you changed prompts and want fresh LLM output):
 
 ```sql
--- Drop the processed marker so discover_pending_contents picks it up again.
+-- Drop the processed marker so the next schedule tick picks it up again.
 DELETE FROM wiki.processed WHERE item_id = '<item_id>';
 
 -- (Optional) drop the LangGraph checkpoint so it doesn't auto-resume.
@@ -92,32 +81,33 @@ DELETE FROM checkpoint_writes WHERE thread_id = 'wiki_synthesis__<item_id>';
 DELETE FROM checkpoint_blobs  WHERE thread_id = 'wiki_synthesis__<item_id>';
 ```
 
-Then re-trigger `wiki/pending_contents` and materialize the partition.
+### Adjust cadence
 
-### Workflow failed mid-flight (LLM error, PG hiccup)
+Edit `SCHEDULE_CRON` in `def_config.py`. Examples:
 
-Just retry the partition. The runner detects an in-progress checkpoint
-(`graph.get_state(config).next` is non-empty) and resumes — already-
-completed nodes (including any LLM calls past the checkpoint) are skipped.
-A failure in `commit` retries only the PG transaction.
+- `"0 6 * * *"` — daily 06:00 UTC (current)
+- `"0 */4 * * *"` — every 4 hours; same daily partition reused for ticks
+  that fall on the same UTC day
+- `"0 * * * *"` — hourly; consider switching `wiki_daily_partition_def`
+  to `dg.HourlyPartitionsDefinition` to avoid catalog noise (existing
+  daily partitions are orphaned per the rebuild-don't-migrate doctrine)
 
 ### LLM rate limit / quota
 
-The Send fan-out runs entity sub-graphs in parallel. The pipeline's
-shared `concurrency_key` op tag throttles cross-partition parallelism, but
-within a single partition the fan-out width = number of extracted
-entities. If you're hitting OpenAI 429s:
+The asset fans out at most `SYNTHESIS_CONCURRENCY` (5) concurrent items.
+Each item internally fans out per extracted entity via the LangGraph
+Send API. If you're hitting OpenAI 429s:
 
-- Lower the per-pipeline concurrency at the Dagster instance level.
-- Reduce `max_per_discovery` so fewer partitions queue at once.
-- Wait — the runner doesn't catch 429; the partition fails, you retry,
-  the checkpointer resumes from where it stopped.
+- Lower `SYNTHESIS_CONCURRENCY` in `def_config.py`.
+- Lower `MAX_PER_TICK_DEFAULT` in `def_config.py` so fewer items queue
+  per tick.
+- Wait — the runner doesn't catch 429; the run fails, you retry, the
+  per-item checkpointer resumes from where it stopped.
 
 ### TOC missing or stale
 
-Just re-materialize `wiki/index`. `regenerate_toc` reads everything in
-`wiki.pages` and overwrites `data/wiki/index.md` from scratch —
-idempotent.
+Re-materialize `wiki/index` for today's partition. It reads everything in
+`wiki.pages` and overwrites `data/wiki/index.md` from scratch — idempotent.
 
 ### Inspecting state
 
@@ -125,17 +115,16 @@ idempotent.
 -- What's been processed, with status.
 SELECT status, COUNT(*) FROM wiki.processed GROUP BY status;
 
--- Failed partitions (workflow caught error, committed an error marker).
+-- Failed items (workflow caught error, committed an error marker).
 SELECT item_id, error FROM wiki.processed WHERE status = 'error';
 
 -- Pages by type.
 SELECT page_type, COUNT(*) FROM wiki.pages GROUP BY page_type;
 ```
 
-A partition with `status='error'` is a *successful* asset run from
-Dagster's perspective — the workflow handled the failure and recorded it.
-Distinct from a Dagster run failure (LLM exception that wasn't caught,
-PG unreachable, etc.).
+A row with `status='error'` is a *successful* asset run from Dagster's
+perspective — the workflow handled the failure and recorded it. Distinct
+from a Dagster run failure (auth error, PG unreachable, etc.).
 
 ## External setup
 
@@ -153,9 +142,10 @@ fails at the first `generate(...)` call inside the workflow.
 ### Langfuse tracing (optional)
 
 When `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` are
-set, every LangGraph run is traced. Each `wiki/synthesized` partition
-appears as one trace named `wiki_synthesis__<item_id>` with sub-spans for
-`extract_entities`, each `process_entity`, and `commit`.
+set, every LangGraph run is traced. Each item appears as one trace named
+`wiki_synthesis__<item_id>` with sub-spans for `extract_entities`, each
+`process_entity`, and `commit`. The `LANGFUSE_TRACING_ENVIRONMENT` env
+var (e.g. `production`) tags traces for filtering across deployments.
 
 If the Langfuse env vars are unset, the workflow runs fine without
 tracing — no errors, no warnings.

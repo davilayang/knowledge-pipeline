@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.0] — 2026-05-08
+
+### Changed
+
+- **`synthesize_wiki` is now schedule-driven, date-partitioned.** One scheduled tick (cron `0 6 * * *`) = one Dagster run = full pending → synthesized → index cycle. Discovery (`raw_store ∖ wiki.processed`) moved into the schedule; pending item_ids travel as `run_config` rather than per-item dynamic partitions. The asset fans out internally (ThreadPoolExecutor, cap 5) and re-filters against `wiki.processed` so retries don't re-pay for already-committed items.
+
+- **`wiki/index` daily-partitioned with `deps=[wiki/synthesized]`** — the AllPartitionMapping trap is gone now that the partition dimension is bounded.
+
+### Removed
+
+- **`discover_pending_contents` asset and `wiki_items` dynamic partitions** — discovery is no longer an asset; it's a function the schedule calls at fire time. `WIKI_MAX_PER_DISCOVERY` env var dropped (replaced by code-level `MAX_PER_TICK_DEFAULT`).
+
+---
+
 ## [0.8.0] — 2026-05-08
 
 ### Added
