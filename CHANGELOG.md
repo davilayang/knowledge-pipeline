@@ -8,6 +8,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.8.0] — 2026-05-08
+
+### Added
+
+- **`synthesize_wiki` pipeline** — three assets (`discover_pending_contents`, `synthesize_item`, `regenerate_toc`) wrapping a LangGraph workflow that turns raw_store items into wiki pages. Per-partition retry auto-resumes from the LangGraph checkpoint.
+
+- **`WIKI_MAX_PER_DISCOVERY` env var** — caps partitions registered per discovery (default 30). `LANGFUSE_TRACING_ENVIRONMENT` documented in `.env.example` for per-deploy trace tagging.
+
+- **Wiki schema auto-applied on first `compose up`** via `docker/postgres/init/02-apply-wiki-schema.sh`. No manual `psql` step on fresh deploys.
+
+- **Postgres exposed on `127.0.0.1:5432`** — laptop `dagster dev` reaches compose Pg without a port-forward. Loopback-only bind keeps Pg off the public NIC.
+
+- **Upstream source `AssetSpec`s** (`raw_store`, `sessions`, `notes`) in `upstream_sources.py` — anchor lineage in the Dagster UI, connecting `backup_readings` and `synthesize_wiki` via shared upstream nodes.
+
+### Changed
+
+- **`discover_pending_contents` hard-fails above 10 000 raw_store items.** Full-scan discovery isn't right at that scale → migrate to sensor-driven discovery.
+
+- **Partition keys source-prefixed** (`<source>:<id>`, e.g. `raw_store:abc123`) — avoids ID collisions across sources (notes, sessions, raw_store).
+
+- **`DATABASE_URL` required** — `WikiResource` uses `dg.EnvVar`; unset → fails at run init. `get_checkpointer(db_url: str)` no longer accepts `None` or env fallback.
+
+- **Discovery queries IDs only** via new `get_content_ids()` in `domains/store.py` — full content markdown no longer loaded for the diff.
+
+---
+
 ## [0.7.0] — 2026-05-07
 
 ### Added

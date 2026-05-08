@@ -3,8 +3,8 @@
 Shape (matches plan §Wiki workflow shape):
 
     START → extract_entities ─┬─ Send fan-out ──┬─→ entity_workflow ─┐
-                              │                  └─→ entity_workflow ─┤  (parallel)
-                              │                                       │
+                              │                 └─→ entity_workflow ─┤  (parallel)
+                              │                                      │
                               └─→ commit ←───────────────────────────┘
                                     │
                                   END
@@ -19,7 +19,7 @@ and routes straight to commit, which records a status='skipped' processed row.
 """
 
 import operator
-from typing import Annotated, TypedDict
+from typing import Annotated, ReadOnly, Required, TypedDict
 
 from domains.wiki.sources import IngestItem
 from domains.wiki.types import ExtractedEntity
@@ -31,15 +31,15 @@ from workflows.wiki_synthesis.nodes import commit, extract_entities
 
 
 class WikiSynthesisState(TypedDict, total=False):
-    # Inputs (set at invocation)
-    item: IngestItem
-    db_url: str
-    wiki_dir: str
+    # Inputs — set at invocation, never mutated
+    item: Required[ReadOnly[IngestItem]]
+    db_url: Required[ReadOnly[str]]
+    wiki_dir: Required[ReadOnly[str]]
 
     # Filled by extract_entities
     entities: list[ExtractedEntity]
     staged_aliases: list[tuple[str, str, list[str]]]
-    extract_error: str | None  # set if the extraction step itself raised
+    extract_error: str | None
 
     # Aggregated from sub-graphs by the reducer
     entity_results: Annotated[list[dict], operator.add]

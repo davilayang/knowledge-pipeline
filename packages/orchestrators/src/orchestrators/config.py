@@ -42,7 +42,7 @@ def strategy_dir(strategy: str, subdir: str) -> Path:
 BACKUP_READINGS_DAG_VERSION = "3"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
-# WIKI_DAG_VERSION = "1"               # wiki synthesis pipeline adopts the pattern
+SYNTHESIZE_WIKI_DAG_VERSION = "1"
 
 
 # Backup settings

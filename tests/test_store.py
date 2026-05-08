@@ -2,7 +2,13 @@ import sqlite3
 from pathlib import Path
 
 import pytest
-from domains.store import ContentRow, count_contents, get_contents, set_vector_status
+from domains.store import (
+    ContentRow,
+    count_contents,
+    get_content_ids,
+    get_contents,
+    set_vector_status,
+)
 
 
 @pytest.fixture
@@ -70,3 +76,8 @@ def test_set_vector_status(tmp_db: Path):
 
 def test_count_contents(tmp_db: Path):
     assert count_contents(db_path=tmp_db) == 2
+
+
+def test_get_content_ids_returns_ids_only_ordered(tmp_db: Path):
+    ids = get_content_ids(db_path=tmp_db)
+    assert ids == ["item-1", "item-2"]

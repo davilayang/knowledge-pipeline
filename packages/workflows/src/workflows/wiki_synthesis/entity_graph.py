@@ -22,7 +22,7 @@ gives full per-entity isolation.
 
 import logging
 from pathlib import Path
-from typing import TypedDict
+from typing import ReadOnly, Required, TypedDict
 
 from domains.wiki.io import write_page
 from domains.wiki.sources import IngestItem
@@ -48,10 +48,10 @@ SYNTHESIS_MODEL = "gpt-4.1-mini"
 
 class EntityWorkflowState(TypedDict, total=False):
     # From the parent's Send
-    item: IngestItem
-    entity: ExtractedEntity
-    sibling_entity_ids: list[str]
-    wiki_dir: str
+    item: Required[ReadOnly[IngestItem]]
+    entity: Required[ReadOnly[ExtractedEntity]]
+    sibling_entity_ids: Required[ReadOnly[list[str]]]
+    wiki_dir: Required[ReadOnly[str]]
 
     # Output: this list is concatenated into the parent's entity_results
     # via the parent state's operator.add reducer

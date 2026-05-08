@@ -18,10 +18,12 @@ replay tests).
 from pathlib import Path
 
 from domains.wiki.sources import IngestItem
+from langchain_core.callbacks import BaseCallbackHandler
+from langchain_core.runnables import RunnableConfig
 
 from workflows.shared.checkpointer import get_checkpointer
 from workflows.shared.observability import get_langfuse_callback
-from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
+from workflows.wiki_synthesis.graph import WikiSynthesisState, build_wiki_synthesis_graph
 
 
 def invoke_wiki_synthesis(
@@ -42,7 +44,7 @@ def invoke_wiki_synthesis(
     runs" vs "show me retries".
     """
     cb = get_langfuse_callback()
-    callbacks = [cb] if cb else []
+    callbacks: list[BaseCallbackHandler] = [cb] if cb else []
     metadata = {
         "langfuse_session_id": item.item_id,
         "langfuse_tags": [
@@ -51,12 +53,12 @@ def invoke_wiki_synthesis(
             "replay" if replay else "fresh",
         ],
     }
-    config = {
+    config: RunnableConfig = {
         "configurable": {"thread_id": f"wiki_synthesis__{item.item_id}"},
         "callbacks": callbacks,
         "metadata": metadata,
     }
-    state = {
+    state: WikiSynthesisState = {
         "item": item,
         "db_url": db_url,
         "wiki_dir": str(wiki_dir),

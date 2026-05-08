@@ -11,6 +11,33 @@ deciding which Dagster API to reach for.
 
 ## Pipeline scaffold
 
+### Naming — `verb_object`
+
+Pipeline folder names start with a verb describing what the DAG **does**,
+followed by the object being acted on. Examples:
+
+- ✅ `backup_readings` — backs up the readings DBs
+- ✅ `synthesize_wiki` — synthesizes the wiki from raw items
+- ✅ `embed_documents` — embeds documents into a vector store
+- ❌ `wiki` — noun only, doesn't say what happens
+- ❌ `readings_backup` — object-first, reads as a static artifact name
+
+Rationale: a pipeline is an **action over time**, not a thing. `verb_object`
+matches how operators describe runs ("kick off backup_readings"), how the
+asset job reads in the UI, and how schedule names land in Dagster's
+schedule list. Noun-only names describe outputs but hide the action — fine
+for an asset key (`["wiki", "synthesized"]`) but misleading for the
+pipeline that produces them.
+
+The same name applies to:
+
+- The folder under `pipelines/`
+- The `define_asset_job(name=...)` argument
+- The `PIPELINE_TAG` constant in `def_config.py`
+- The README title and any docs cross-references
+
+### Files
+
 One pipeline = one folder under
 `packages/orchestrators/src/orchestrators/defs/pipelines/<name>/`. Eight files:
 
@@ -478,6 +505,7 @@ When refactoring an existing DAG, look for and fix:
 
 ## Checklist for a new DAG
 
+- [ ] Folder named `verb_object` (e.g. `backup_readings`, `synthesize_wiki`).
 - [ ] Folder under `packages/orchestrators/src/orchestrators/defs/pipelines/<name>/`.
 - [ ] `<NAME>_DAG_VERSION = "1"` constant added to `orchestrators/config.py`.
 - [ ] Eight files (drop `checks.py` / `sensors.py` only if genuinely empty).

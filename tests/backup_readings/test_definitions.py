@@ -12,6 +12,12 @@ def test_definitions_load_with_expected_shape():
     contract that the rest of the pipeline relies on."""
     asset_keys = {"/".join(k.path) for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
+        # External upstreams referenced via deps. The full AssetSpecs live
+        # in pipelines/upstream_sources.py and are merged at the parent
+        # definitions level; backup_readings.defs alone sees them as
+        # implicit external nodes auto-created from the dep references.
+        "raw_store",
+        "sessions",
         "snapshots/raw_store",
         "snapshots/sessions",
         "snapshots/notes",
