@@ -103,7 +103,7 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
 @dg.asset(
     key=["wiki", "pending"],
     group_name="wiki",
-    compute_kind="sqlite",
+    kinds={"sqlite", "postgres"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[
@@ -123,6 +123,21 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
 def pending(
     context: dg.AssetExecutionContext, wiki: WikiResource
 ) -> dg.Output[tuple[str, list[str]]]:
+    # Three layers cooperate to keep the wiki forward-only without coupling
+    # its partition cadence to backup_readings':
+    #   1. LastPartitionMapping (decorator) — declarative lineage hint that
+    #      we depend on whichever snapshots/raw_store partition is newest,
+    #      not on a same-keyed one.
+    #   2. wiki.latest_raw_store_snapshot() — runtime fs scan that picks
+    #      the actual file. Source of truth for which snapshot we read.
+    #   3. Pinned path in this asset's output — handoff to wiki/synthesized
+    #      so it binds to the same file even if a new backup lands seconds
+    #      later.
+    # An offset-based partition mapping (e.g. TimeWindowPartitionMapping
+    # start_offset=-1) would collapse layers 1 and 2 into one, but at the
+    # cost of refusing to run on days backup is delayed. We chose
+    # robustness over per-partition determinism — the wiki is forward-only;
+    # we never want to backfill it from a specific historical snapshot.
     snapshot_path, snapshot_date = _resolve_snapshot(wiki)
     raw_ids = RawStoreSource(snapshot_path).get_item_ids()
     eligible = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
@@ -156,7 +171,7 @@ def pending(
 @dg.asset(
     key=["wiki", "synthesized"],
     group_name="wiki",
-    compute_kind="openai",
+    kinds={"openai", "sqlite", "postgres"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     ins={"pending": dg.AssetIn(["wiki", "pending"])},
@@ -277,7 +292,7 @@ def synthesized(
 @dg.asset(
     key=["wiki", "index"],
     group_name="wiki",
-    compute_kind="file",
+    kinds={"postgres", "file"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[dg.AssetDep(["wiki", "synthesized"])],
