@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.9.0] — 2026-05-08
+
 ### Changed
 
 - **`synthesize_wiki` is now schedule-driven, date-partitioned.** One scheduled tick (cron `0 6 * * *`) = one Dagster run = full pending → synthesized → index cycle. Discovery (`raw_store ∖ wiki.processed`) moved into the schedule; pending item_ids travel as `run_config` rather than per-item dynamic partitions. The asset fans out internally (ThreadPoolExecutor, cap 5) and re-filters against `wiki.processed` so retries don't re-pay for already-committed items.
