@@ -2,6 +2,7 @@
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import date
+from pathlib import Path
 
 import dagster as dg
 import psycopg
@@ -25,20 +26,8 @@ from .def_config import (
 from .resources import WikiResource
 
 
-def _resolve_snapshot(wiki: WikiResource) -> tuple:
-    """Resolve the freshest backup snapshot or raise dg.Failure.
-
-    Shared between wiki/pending and wiki/synthesized so a manual launch of
-    either asset enforces the same freshness contract."""
-    snapshot = wiki.latest_raw_store_snapshot()
-    if snapshot is None:
-        raise dg.Failure(
-            description=(
-                f"No raw_store snapshot under {wiki.backup_dir}. Run "
-                "backup_readings first, or backfill the missing partition."
-            ),
-        )
-    snapshot_path, snapshot_date = snapshot
+def _check_snapshot_freshness(snapshot_path: Path, snapshot_date: date) -> None:
+    """Raise dg.Failure if `snapshot_date` is older than MAX_SNAPSHOT_AGE_DAYS."""
     age_days = (date.today() - snapshot_date).days
     if age_days > MAX_SNAPSHOT_AGE_DAYS:
         raise dg.Failure(
@@ -53,17 +42,35 @@ def _resolve_snapshot(wiki: WikiResource) -> tuple:
                 "age_days": dg.MetadataValue.int(age_days),
             },
         )
+
+
+def _resolve_snapshot(wiki: WikiResource) -> tuple[Path, date]:
+    """Discover + freshness-check the newest snapshot, or raise dg.Failure.
+
+    Used by wiki/pending. wiki/synthesized doesn't call this — it uses the
+    snapshot path pinned in pending's output and re-runs the freshness check
+    against the pinned date so a stale pickled list (manual re-materialize
+    days later) fails loudly instead of synthesising stale data."""
+    snapshot = wiki.latest_raw_store_snapshot()
+    if snapshot is None:
+        raise dg.Failure(
+            description=(
+                f"No raw_store snapshot under {wiki.backup_dir}. Run "
+                "backup_readings first, or backfill the missing partition."
+            ),
+        )
+    snapshot_path, snapshot_date = snapshot
+    _check_snapshot_freshness(snapshot_path, snapshot_date)
     return snapshot_path, snapshot_date
 
 
 def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
-    """Aggregate per-call usage into Dagster MetadataValue entries.
-
-    Unknown models report cost 0 and surface in `unknown_pricing_models` so
-    the gap is visible in the UI without failing the run."""
+    """Aggregate per-call usage into Dagster MetadataValue entries."""
     total_in = sum(c.input_tokens for c in calls)
     total_out = sum(c.output_tokens for c in calls)
-    total_usd = sum(cost_usd(c.model, c.input_tokens, c.output_tokens) for c in calls)
+    # `sum(<gen>)` returns int 0 when the generator is empty; force float so
+    # dg.MetadataValue.float() doesn't type-reject the no-calls case.
+    total_usd = sum((cost_usd(c.model, c.input_tokens, c.output_tokens) for c in calls), 0.0)
     by_model = {
         m: {
             "calls": sum(1 for c in calls if c.model == m),
@@ -113,7 +120,9 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
         "backlog so growth is visible per partition."
     ),
 )
-def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[list[str]]:
+def pending(
+    context: dg.AssetExecutionContext, wiki: WikiResource
+) -> dg.Output[tuple[str, list[str]]]:
     snapshot_path, snapshot_date = _resolve_snapshot(wiki)
     raw_ids = RawStoreSource(snapshot_path).get_item_ids()
     eligible = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
@@ -122,8 +131,11 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
     full = [r for r in eligible if r not in handled]
     queued = full[:MAX_PER_TICK_DEFAULT] if MAX_PER_TICK_DEFAULT > 0 else full
+    # Pin the snapshot path in the output so wiki/synthesized binds to the
+    # exact same file we just discovered against — no re-resolve, no race
+    # if backup_readings lands a new partition between the two assets.
     return dg.Output(
-        queued,
+        (str(snapshot_path), queued),
         metadata={
             "summary": dg.MetadataValue.md(
                 f"**{len(queued)} queued** (backlog {len(full)}"
@@ -159,15 +171,22 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
 )
 def synthesized(
     context: dg.AssetExecutionContext,
-    pending: list[str],
+    pending: tuple[str, list[str]],
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    if not pending:
+    snapshot_path_str, pending_ids_input = pending
+    if not pending_ids_input:
         return dg.MaterializeResult(
             metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
         )
 
-    snapshot_path, snapshot_date = _resolve_snapshot(wiki)
+    snapshot_path = Path(snapshot_path_str)
+    # Pinned by wiki/pending — recover the date from the partition dir name
+    # (BACKUP_DIR/<YYYY-MM-DD>/raw_store.db) and re-run the freshness check
+    # so a stale pickled list (manual re-materialize days later) fails loud.
+    snapshot_date = date.fromisoformat(snapshot_path.parent.name)
+    _check_snapshot_freshness(snapshot_path, snapshot_date)
+
     db_url = wiki.database_url
     # Re-filter against wiki.processed so retries don't re-pay for items that
     # already committed in a prior attempt. Dagster retry replays the
@@ -175,8 +194,8 @@ def synthesized(
     # LangGraph thread re-runs from START on a fresh invoke.
     with psycopg.connect(db_url) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
-    pending_ids = [iid for iid in pending if iid not in handled]
-    already = len(pending) - len(pending_ids)
+    pending_ids = [iid for iid in pending_ids_input if iid not in handled]
+    already = len(pending_ids_input) - len(pending_ids)
     if not pending_ids:
         return dg.MaterializeResult(
             metadata={
@@ -231,7 +250,7 @@ def synthesized(
     if by_status:
         summary_parts.append(", ".join(f"{c} {s}" for s, c in sorted(by_status.items())))
     if errors:
-        summary_parts.append(f"{len(errors)} raised")
+        summary_parts.append(f"{len(errors)} raised (cost may underreport)")
     if already:
         summary_parts.append(f"{already} already processed (skipped)")
     metadata: dict[str, dg.MetadataValue] = {
@@ -244,6 +263,9 @@ def synthesized(
     if already:
         metadata["skipped_already_processed"] = dg.MetadataValue.int(already)
     metadata.update(_cost_metadata(all_calls))
+    # Per-item failures may have racked up LLM calls before raising; those
+    # are inside the LangGraph thread state, not in the future's return.
+    metadata["cost_complete"] = dg.MetadataValue.bool(not errors)
     if errors:
         raise dg.Failure(
             description=f"{len(errors)} item(s) raised out of the workflow",

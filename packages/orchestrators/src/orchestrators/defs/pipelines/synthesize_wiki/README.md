@@ -129,9 +129,29 @@ materializations keep their point-in-time numbers.
 
 If a model name appears in metadata's `unknown_pricing_models`, its calls
 contributed 0 to the displayed cost — add it to `PRICING_PER_1M` and re-run
-the partition to recompute. Retries on the same partition only show the
-incremental cost (per-item LangGraph checkpoints skip already-completed
-nodes), so a `$0.00` retry usually means everything was cached, not broken.
+the partition to recompute.
+
+Retry-cost behaviour is mixed and worth knowing:
+- An item whose prior attempt **interrupted mid-thread** (process killed,
+  PG blip during a node) → LangGraph resumes from the last checkpointed
+  node on retry; only the remaining LLM calls are billed.
+- An item whose prior attempt **completed successfully but the run failed
+  for unrelated reasons** (sibling item raised, infra error after commit)
+  → the per-item re-filter against `wiki.processed` skips it on retry;
+  zero cost added.
+- An item whose prior attempt **was already in `wiki.processed`** before
+  the run started (a thread that ended-but-the-run-restarted-from-scratch
+  case is not currently exercised) → same as above; the re-filter catches it.
+
+So a `$0.00` retry materialization means every item was either skipped by
+the re-filter or resumed from a checkpoint with no remaining LLM work —
+not that the LLM "cached" anything.
+
+When the run completes with `errors > 0`, the `cost_complete` metadata
+boolean is `false`: per-item failures may have racked up LLM calls before
+raising, and those calls aren't reflected in `cost_usd` for this
+materialization. Refer to Langfuse for ground-truth per-trace cost in that
+scenario.
 
 ### Inspecting state
 

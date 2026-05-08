@@ -5,17 +5,17 @@ import dagster as dg
 
 # ---------- partitioning ----------
 
-# One Dagster run per scheduled tick. Items pending in raw_store ∖
-# wiki.processed travel as run_config (not partition keys), so the partition
-# dimension stays bounded — wiki/index can declare deps on wiki/synthesized
-# with IdentityPartitionMapping. Start date is the day this shape lands.
+# Daily partition; end_offset=1 makes today's partition materializable so
+# the schedule can fire a same-day run. Start date is the day this shape
+# lands; backfilling earlier partitions isn't supported (raw_store snapshot
+# may not exist for them, and the freshness guard would reject anyway).
 wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01", end_offset=1)
 
 
 # ---------- cost guardrail ----------
 
 # Default cap on items processed per scheduled tick. Limits per-run LLM spend
-# and OpenAI rate-limit pressure; the schedule slices `pending[:max_per_tick]`.
+# and OpenAI rate-limit pressure; wiki/pending slices `eligible[:max_per_tick]`.
 # 0 = no cap. Tune downward if quotas tighten.
 MAX_PER_TICK_DEFAULT = 30
 
