@@ -119,6 +119,12 @@ def generate_structured_with_usage[
     llm = get_llm(model)
     structured_llm = llm.with_structured_output(schema, include_raw=True)
     result = structured_llm.invoke(_build_messages(prompt, system), config=_invoke_config())
+    # include_raw=True captures parse errors instead of raising. Re-raise to
+    # match the bare generate_structured() contract (caller wants fail-fast,
+    # not a None payload that crashes later).
+    err = result.get("parsing_error")
+    if err is not None:
+        raise err
     parsed: T = result["parsed"]
     raw: AIMessage = result["raw"]
     return parsed, _to_llm_call(raw, fallback_model=model)

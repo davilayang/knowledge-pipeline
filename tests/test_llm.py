@@ -140,7 +140,11 @@ def test_generate_structured_with_usage_returns_parsed_and_call(mock_get_llm):
 
     mock_llm = MagicMock()
     mock_structured_llm = MagicMock()
-    mock_structured_llm.invoke.return_value = {"parsed": parsed, "raw": raw}
+    mock_structured_llm.invoke.return_value = {
+        "parsed": parsed,
+        "raw": raw,
+        "parsing_error": None,
+    }
     mock_llm.with_structured_output.return_value = mock_structured_llm
     mock_get_llm.return_value = mock_llm
 
@@ -151,3 +155,28 @@ def test_generate_structured_with_usage_returns_parsed_and_call(mock_get_llm):
     assert call.input_tokens == 5
     assert call.output_tokens == 2
     mock_llm.with_structured_output.assert_called_once_with(Info, include_raw=True)
+
+
+@patch("workflows.llm.get_llm")
+def test_generate_structured_with_usage_reraises_parsing_error(mock_get_llm):
+    """include_raw=True captures parse errors in result['parsing_error'];
+    the helper must re-raise so callers don't get a silent None payload."""
+
+    class Info(BaseModel):
+        value: str
+
+    boom = ValueError("schema validation failed")
+    mock_llm = MagicMock()
+    mock_structured_llm = MagicMock()
+    mock_structured_llm.invoke.return_value = {
+        "parsed": None,
+        "raw": AIMessage(content="<garbage>"),
+        "parsing_error": boom,
+    }
+    mock_llm.with_structured_output.return_value = mock_structured_llm
+    mock_get_llm.return_value = mock_llm
+
+    import pytest
+
+    with pytest.raises(ValueError, match="schema validation failed"):
+        generate_structured_with_usage("Extract", schema=Info)
