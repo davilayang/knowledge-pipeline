@@ -5,31 +5,41 @@ import dagster as dg
 
 # ---------- partitioning ----------
 
-# One dynamic partition per IngestItem (source-prefixed item_id). The
-# per-source discover_pending_* assets each register partitions here;
-# synthesize_item materializes one per call regardless of source. This
-# lets Dagster fan out as many concurrent runs as the queue and
-# concurrency_key permit.
-WIKI_ITEMS_PARTITIONS_NAME = "wiki_items"
-item_partitions_def = dg.DynamicPartitionsDefinition(name=WIKI_ITEMS_PARTITIONS_NAME)
+# One Dagster run per scheduled tick. Items pending in raw_store ∖
+# wiki.processed travel as run_config (not partition keys), so the partition
+# dimension stays bounded — wiki/index can declare deps on wiki/synthesized
+# with IdentityPartitionMapping. Start date is the day this shape lands.
+wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01", end_offset=1)
 
 
 # ---------- cost guardrail ----------
 
-# Default cap on partitions registered per discover_pending_* run. Applied
-# per-source (additive across sources — three discoverers each capped at
-# 30 means up to 90 new partitions per cycle). 0 = no cap. Tune
-# downward if LLM rate limits or OpenAI spend become a concern.
-MAX_PER_DISCOVERY_DEFAULT = 30
+# Default cap on items processed per scheduled tick. Limits per-run LLM spend
+# and OpenAI rate-limit pressure; the schedule slices `pending[:max_per_tick]`.
+# 0 = no cap. Tune downward if quotas tighten.
+MAX_PER_TICK_DEFAULT = 30
 
 
-# Source vocabulary for IngestItem.source_type and partition-key prefixes.
-# Partition keys take the form "<source>:<raw_id>" (e.g. "raw_store:abc123")
-# so the wiki_items partition set can hold multiple source kinds without
-# id collisions. wiki.processed.source_type uses the same string.
+# ---------- intra-op concurrency ----------
+
+# Cap on concurrent per-item synthesis calls inside a single run. The asset
+# fans out N items via a ThreadPoolExecutor; this is the executor's max_workers.
+# Sized to the OpenAI rate-limit headroom we observed during the styleguide
+# rewrite — ~5 parallel mini calls is the sweet spot.
+SYNTHESIS_CONCURRENCY = 5
+
+
+# Source vocabulary for IngestItem.source_type. wiki.processed.source_type uses
+# the same string. Today only raw_store is wired; sessions/local_file land
+# alongside per-source discovery in a follow-up.
 SOURCE_RAW_STORE = "raw_store"
 SOURCE_LOCAL_FILE = "local_file"  # future
 SOURCE_SESSION = "session"  # future
+
+
+# ---------- schedule ----------
+
+SCHEDULE_CRON = "0 6 * * *"
 
 
 # ---------- job tags ----------

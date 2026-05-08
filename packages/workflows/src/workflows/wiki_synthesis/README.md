@@ -2,8 +2,8 @@
 
 A LangGraph workflow that turns one source document into incremental updates
 to a structured wiki. One invocation handles one document; the Dagster asset
-that wraps it (`pipelines/synthesize_wiki/assets.py:synthesize_item`) runs one
-invocation per partition.
+that wraps it (`pipelines/synthesize_wiki/assets.py:synthesized`) runs one
+invocation per pending item in a scheduled tick.
 
 For operations (how to launch, retry, debug), see the asset's runbook:
 `packages/orchestrators/src/orchestrators/defs/pipelines/synthesize_wiki/README.md`.
@@ -139,8 +139,8 @@ fail the entity, which is recorded as a per-entity error and surfaces in
 diff in git, and reference. They're authored by the synthesis LLM, not
 hand-edited.
 
-**Postgres is the dedup/lineage truth.** When `discover_pending_contents`
-asks "what's already done?", it reads `wiki.processed`, not the disk.
+**Postgres is the dedup/lineage truth.** When the schedule asks "what's
+already done?", it reads `wiki.processed`, not the disk.
 When the extractor asks "which entities exist?", it reads `wiki.aliases`,
 not file listings. This separation lets the workflow be retry-idempotent
 without depending on filesystem state being perfectly consistent with PG.

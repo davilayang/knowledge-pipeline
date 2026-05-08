@@ -18,7 +18,7 @@ raw_store_source = dg.AssetSpec(
     description=(
         "newsletter-assistant SQLite — `contents` table holds newsletter "
         "scrapes (article markdown + metadata). Consumed by "
-        "snapshot_raw_store (backup_readings) and discover_pending_contents "
+        "snapshot_raw_store (backup_readings) and wiki/synthesized "
         "(synthesize_wiki)."
     ),
     metadata={
@@ -33,7 +33,7 @@ sessions_source = dg.AssetSpec(
     description=(
         "newsletter-assistant SQLite — session turns from user/LLM chats. "
         "Consumed by snapshot_sessions (backup_readings); future consumer: "
-        "discover_pending_sessions (synthesize_wiki)."
+        "synthesize_wiki sessions discovery."
     ),
     metadata={
         "owner": dg.MetadataValue.text("newsletter-assistant"),
@@ -46,7 +46,7 @@ notes_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "newsletter-assistant user notes (markdown files). Future consumer: "
-        "discover_pending_notes (synthesize_wiki). No current consumer."
+        "synthesize_wiki notes discovery. No current consumer."
     ),
     metadata={
         "owner": dg.MetadataValue.text("newsletter-assistant"),
