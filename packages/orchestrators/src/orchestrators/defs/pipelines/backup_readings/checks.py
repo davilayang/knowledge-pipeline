@@ -155,20 +155,20 @@ def verify_snapshot_notes(
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["snapshots", "research_output"]),
-    name="verify_snapshot_research_output",
+    asset=dg.AssetKey(["snapshots", "research"]),
+    name="verify_snapshot_research",
     blocking=True,
-    description="research_output.tgz opens as gzip-tar and contains at least one file.",
+    description="research.db opens, integrity_check passes, has tables.",
 )
-def verify_snapshot_research_output(
+def verify_snapshot_research(
     context: dg.AssetCheckExecutionContext, backup: BackupResource
 ) -> dg.AssetCheckResult:
-    return _verify_one_archive(context, backup, "research_output.tgz")
+    return _verify_one(context, backup, "research.db")
 
 
 all_checks = [
     verify_snapshot_raw_store,
     verify_snapshot_sessions,
     verify_snapshot_notes,
-    verify_snapshot_research_output,
+    verify_snapshot_research,
 ]

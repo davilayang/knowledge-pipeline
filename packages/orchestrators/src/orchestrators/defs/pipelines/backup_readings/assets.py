@@ -158,20 +158,18 @@ def snapshot_notes(
 
 
 @dg.asset(
-    key=["snapshots", "research_output"],
+    key=["snapshots", "research"],
     group_name="backup",
-    compute_kind="file",
+    compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    description=(
-        "gzip-tar archive of newsletter-assistant/data/research_output/ for the partition's date."
-    ),
+    description="Consistent SQLite snapshot of research.db for the partition's date.",
 )
-def snapshot_research_output(
+def snapshot_research(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_dir(context, backup, "research_output", "research_output.tgz")
+    return _snapshot_one_db(context, backup, "research.db")
 
 
 # ---------- Drive capacity observation ----------
@@ -187,7 +185,7 @@ def snapshot_research_output(
         dg.AssetDep(["snapshots", "raw_store"]),
         dg.AssetDep(["snapshots", "sessions"]),
         dg.AssetDep(["snapshots", "notes"]),
-        dg.AssetDep(["snapshots", "research_output"]),
+        dg.AssetDep(["snapshots", "research"]),
     ],
     check_specs=[
         dg.AssetCheckSpec(
@@ -411,7 +409,7 @@ all_assets = [
     snapshot_raw_store,
     snapshot_sessions,
     snapshot_notes,
-    snapshot_research_output,
+    snapshot_research,
     storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,

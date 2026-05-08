@@ -21,7 +21,7 @@ def test_definitions_load_with_expected_shape():
         "snapshots/raw_store",
         "snapshots/sessions",
         "snapshots/notes",
-        "snapshots/research_output",
+        "snapshots/research",
         "google_drive/storage_capacity",
         "google_drive/uploaded_snapshots",
         "google_drive/pruned_old_backups",

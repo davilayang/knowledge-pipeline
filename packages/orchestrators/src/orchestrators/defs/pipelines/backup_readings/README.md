@@ -1,19 +1,21 @@
 # `backup_readings` runbook
 
-Daily-partitioned snapshot of the newsletter-assistant SQLite databases plus
-gzip-tar archives of the flat-file `notes/` and `research_output/` dirs, with
-Google Drive offload via rclone and a healthchecks.io ping that turns silence
-(cron didn't fire, daemon died) into a loud alert.
+Daily-partitioned snapshot of the newsletter-assistant SQLite databases
+(`raw_store.db`, `sessions.db`, `research.db`) plus a gzip-tar archive of the
+flat-file `notes/` dir, with Google Drive offload via rclone and a
+healthchecks.io ping that turns silence (cron didn't fire, daemon died) into
+a loud alert.
 
 ## DAG (per partition)
 
 Failure cascade — what blocks what when a step fails:
 
 ```
-snapshot_raw_store        ─┐
+snapshot_raw_store         ─┐
 snapshot_sessions          ─┤
+snapshot_research          ─┤
 snapshot_notes             ─┼─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ──┐
-snapshot_research_output   ─┘    ↑                          ↑                    ↑              │
+                                 ↑                          ↑                    ↑              │
                                  │                          │                    │              │
                           catches corrupt              catches Drive >        catches missing   │
                           / empty SQLite or            90% full (blocking)    files on Drive    │
@@ -83,7 +85,6 @@ cp backups/<date>/raw_store.db <BACKUP_SOURCE_DIR>/raw_store.db
 Local (tgz archives — extract back over the source dir):
 ```bash
 tar -xzf backups/<date>/notes.tgz -C <BACKUP_SOURCE_DIR>
-tar -xzf backups/<date>/research_output.tgz -C <BACKUP_SOURCE_DIR>
 ```
 
 From Drive:
