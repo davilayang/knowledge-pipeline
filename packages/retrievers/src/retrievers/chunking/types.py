@@ -1,12 +1,6 @@
-# Shared types for chunking strategies.
+# Re-export Chunk from domains.types so retrievers chunking strategies
+# share one canonical type with domain-side chunkers (e.g. turn_grouping).
 
-from dataclasses import dataclass
+from domains.types import Chunk
 
-
-@dataclass
-class Chunk:
-    """A single chunk of content with its heading context."""
-
-    text: str
-    heading: str  # nearest heading ancestor (empty if none)
-    index: int  # position in the chunk sequence
+__all__ = ["Chunk"]

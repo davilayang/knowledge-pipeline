@@ -1,7 +1,6 @@
 """Source adapters for wiki ingest — pure generators, no state filtering."""
 
 import hashlib
-from dataclasses import dataclass
 from datetime import date
 from pathlib import Path
 from typing import Protocol
@@ -9,18 +8,14 @@ from typing import Protocol
 import yaml
 
 from domains.store import ContentRow, get_content_by_id, get_content_ids, get_contents
+from domains.types import IngestItem
 
-
-@dataclass
-class IngestItem:
-    """Normalized input shape for wiki ingest."""
-
-    item_id: str
-    title: str
-    date: date | None
-    text: str
-    source_type: str  # "raw_store" | "local_file"
-    source_ref: str  # e.g. "raw_store:content_123" or "local:notes.md"
+__all__ = [
+    "IngestItem",
+    "IngestSource",
+    "RawStoreSource",
+    "LocalFileSource",
+]
 
 
 class IngestSource(Protocol):
