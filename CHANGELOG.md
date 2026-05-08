@@ -8,7 +8,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **`wiki/synthesized` reads from the latest `backup_readings` snapshot** instead of `data/raw_store.db`. New dep `snapshots/raw_store` with `LastPartitionMapping`; `WikiResource.backup_dir` replaces `raw_store_db_path`. A 2-day staleness guard skips (schedule) or fails (asset) the run if the newest snapshot is too old, so wiki never synthesises against silently stale data. Symmetric across laptop/server. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 3.
+- **`wiki/synthesized` reads from the latest `backup_readings` snapshot** instead of `data/raw_store.db`. `WikiResource.backup_dir` replaces `raw_store_db_path`. A 2-day staleness guard skips (schedule) or fails (asset) the run if the newest snapshot is too old, so wiki never synthesises against silently stale data. Symmetric across laptop/server.
+
+- **Discovery moved into a `wiki/pending` asset.** Schedule fires daily with no `run_config` and only enforces snapshot freshness; `wiki/pending` reads `raw_store ∖ wiki.processed` against the newest snapshot, applies the per-tick cap, and emits the work order as `list[str]`. `wiki/synthesized` consumes it via `dg.AssetIn`. Manual `Materialize all` from the UI now works without hand-typed run_config; `SynthesizeWikiConfig` removed. `wiki/pending` materialization metadata exposes `total_pending` / `queued` / `capped` / `excluded_by_source` for backlog visibility. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 4.
+
+- **`wiki/pending` filters by `ALLOWED_CONTENT_ID_PREFIXES`** (today: `"medium::"` only). Current synthesis prompts assume article-shape inputs; non-article `raw_store` rows (transcripts, etc.) are skipped at discovery time and counted in the `excluded_by_source` metadata. Widen the allowlist after the eval harness + per-source-type prompt path land.
 
 ### Added
 

@@ -46,6 +46,18 @@ SOURCE_LOCAL_FILE = "local_file"  # future
 SOURCE_SESSION = "session"  # future
 
 
+# ---------- raw_store content-id allowlist ----------
+
+# raw_store.contents.content_id is shaped like "<origin>::<url>" (e.g.
+# "medium::https://medium.com/..."). This tuple gates which origins flow
+# through wiki synthesis. Today: article-shape only — current prompts assume
+# article inputs (single-author, narrative, markdown-structured); transcripts
+# (podcast/video) need separate prompt handling + chunking before they can be
+# safely synthesised. Extend after the eval harness lands and per-source
+# prompt sets exist.
+ALLOWED_CONTENT_ID_PREFIXES: tuple[str, ...] = ("medium::",)
+
+
 # ---------- schedule ----------
 
 SCHEDULE_CRON = "0 6 * * *"

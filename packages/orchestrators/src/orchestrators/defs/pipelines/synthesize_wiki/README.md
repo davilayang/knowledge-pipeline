@@ -10,21 +10,29 @@ Failure cascade — what blocks what when a step fails:
 
 ```
 schedule run_daily_synthesize_wiki   (cron 0 6 * * *)
-  │  resolves the newest backup_readings snapshot (BACKUP_DIR/<YYYY-MM-DD>/raw_store.db)
-  │  reads raw_store IDs ∖ wiki.processed at fire time
-  │  → SkipReason if no snapshot, snapshot stale (>2d), or no pending items
-  │  else one RunRequest with item_ids in run_config
+  │  freshness guard only — SkipReason if no snapshot or snapshot >2d old
+  │  else bare RunRequest (no run_config)
+  ▼
+wiki/pending   (key: wiki/pending — daily partition)
+  │  dep: snapshots/raw_store with LastPartitionMapping (newest available)
+  │  filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
+  │  "medium::" only — current prompts assume article-shape inputs);
+  │  reads eligible IDs ∖ wiki.processed; output is the capped work order
+  │  (≤ MAX_PER_TICK_DEFAULT). Metadata exposes total_pending (pre-cap),
+  │  queued (post-cap), capped (bool), excluded_by_source — daily backlog
+  │  timeseries.
   ▼
 wiki/synthesized   (key: wiki/synthesized — daily partition)
-  │  dep: snapshots/raw_store with LastPartitionMapping (newest available)
-  │  loops config.item_ids through invoke_wiki_synthesis (ThreadPoolExecutor,
-  │  cap = SYNTHESIS_CONCURRENCY)
+  │  in: pending (list[str] from wiki/pending via Dagster IO manager)
+  │  loops the pending list through invoke_wiki_synthesis (ThreadPoolExecutor,
+  │  cap = SYNTHESIS_CONCURRENCY); re-filters against wiki.processed for
+  │  retry idempotency.
   │
   │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
   │     pages + aliases + wiki.processed all written in ONE PG transaction
   │     per item. Aliases use ON CONFLICT DO NOTHING for cross-item safety.
   │
-  │  ↻ retry on the same date partition replays the same item_ids; per-item
+  │  ↻ retry on the same date partition replays the same pending list; per-item
   │    LangGraph checkpoints skip already-completed nodes (no duplicate
   │    LLM spend if the prior failure was infra-side).
   ▼
@@ -33,18 +41,18 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
 ```
 
 - **No fresh snapshot** (backup_readings hasn't run in 2+ days, or
-  `BACKUP_DIR` is empty) → schedule emits `SkipReason`; manual re-materialize
-  raises `dg.Failure` with the snapshot date and age. Fix by running the
-  backup pipeline first.
-- **Schedule fails** (PG unreachable, scan error) → no run materialized; the
-  next cron tick retries from scratch.
+  `BACKUP_DIR` is empty) → schedule emits `SkipReason`; manually
+  re-materializing `wiki/pending` raises `dg.Failure` with the snapshot date
+  and age. Fix by running the backup pipeline first.
+- **`wiki/pending` empty list** → `wiki/synthesized` materializes a no-op
+  result (`_no pending items this tick_`). Run is green; no LLM calls.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into
   `wiki.processed` with `status='error'`; the run continues other items.
   The Dagster run shows green.
 - **`wiki/synthesized` run-level failures** (an item raises out of the
   workflow — auth, infra) → the asset raises `dg.Failure`, the run fails,
-  Dagster retry replays the same `item_ids`. Per-item checkpoints prevent
-  duplicate LLM spend.
+  Dagster retry replays the pickled pending list. Per-item checkpoints
+  prevent duplicate LLM spend.
 - **`wiki/index` fails** → today's partition for `wiki/index` stays
   unmaterialized; `wiki.pages` remains authoritative; re-materialize the
   index manually or wait for the next tick.
@@ -58,20 +66,15 @@ under job `synthesize_wiki`, one per day.
 
 ### Manual run (backfill, ad-hoc)
 
-UI: Jobs → `synthesize_wiki` → Launchpad → pick partition (date) →
-Materialize. The Launchpad's run config form requires `item_ids`; either
-fill in IDs manually or paste the schedule's most recent `item_ids`.
+UI: Assets → group `wiki` → select range → **Materialize**. No run config
+required — `wiki/pending` discovers its own work order.
 
 CLI:
 
 ```bash
 dg launch --job synthesize_wiki -m orchestrators.defs.pipelines.definitions \
-  --partition $(date +%Y-%m-%d) \
-  --config '{"ops": {"wiki__synthesized": {"config": {"item_ids": ["abc123","def456"]}}}}'
+  --partition $(date +%Y-%m-%d)
 ```
-
-The op name is `wiki__synthesized` (asset key joined with `__`), not the
-function name.
 
 ### Re-process a single item from scratch
 
@@ -131,6 +134,39 @@ incremental cost (per-item LangGraph checkpoints skip already-completed
 nodes), so a `$0.00` retry usually means everything was cached, not broken.
 
 ### Inspecting state
+
+`wiki/pending` materialization metadata is the daily backlog reading:
+`total_pending` (pre-cap, eligible only), `queued` (post-cap, what got
+synthesized), `capped` (bool — `true` if the queue exceeded
+`MAX_PER_TICK_DEFAULT`), `excluded_by_source` (raw_store rows skipped
+because their content_id prefix isn't in `ALLOWED_CONTENT_ID_PREFIXES`).
+If `capped` stays `true` for more than a few days you're falling behind —
+either raise the cap, increase tick frequency, or both. If
+`excluded_by_source` is large you've got non-article sources accumulating
+that the current prompts won't handle well — see "Adding new sources" below
+before adding their prefix to the allowlist.
+
+### Adding new sources
+
+`ALLOWED_CONTENT_ID_PREFIXES` in `def_config.py` gates which `raw_store`
+content_id prefixes flow through wiki synthesis. Today only `"medium::"`
+is allowed because current prompts in
+`packages/workflows/src/workflows/wiki_synthesis/prompts.py` are tuned
+for article-shape inputs (single-author narrative, markdown structure).
+
+Before adding a transcript-shape prefix (podcast, video) to the allowlist:
+
+1. Stand up the eval harness and baseline current article quality.
+2. Add a per-source-type prompt path (extraction + synthesis prompts that
+   acknowledge transcript shape — speakers, timestamps, ASR errors, length).
+3. Add a transcript pre-processing node before extraction (chunking,
+   disfluency strip, speaker-label normalisation).
+4. Re-baseline against the eval harness with the new prefix included.
+
+Skipping (1)–(3) and just widening the allowlist will produce
+low-quality wiki pages and waste LLM budget on noise.
+
+Direct SQL:
 
 ```sql
 -- What's been processed, with status.

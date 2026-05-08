@@ -14,6 +14,8 @@ from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
 from .def_config import (
+    ALLOWED_CONTENT_ID_PREFIXES,
+    MAX_PER_TICK_DEFAULT,
     MAX_SNAPSHOT_AGE_DAYS,
     PIPELINE_TAG,
     SOURCE_RAW_STORE,
@@ -23,11 +25,35 @@ from .def_config import (
 from .resources import WikiResource
 
 
-class SynthesizeWikiConfig(dg.Config):
-    """Per-run inputs supplied by the schedule (or Launchpad)."""
+def _resolve_snapshot(wiki: WikiResource) -> tuple:
+    """Resolve the freshest backup snapshot or raise dg.Failure.
 
-    item_ids: list[str]
-    source_type: str = SOURCE_RAW_STORE
+    Shared between wiki/pending and wiki/synthesized so a manual launch of
+    either asset enforces the same freshness contract."""
+    snapshot = wiki.latest_raw_store_snapshot()
+    if snapshot is None:
+        raise dg.Failure(
+            description=(
+                f"No raw_store snapshot under {wiki.backup_dir}. Run "
+                "backup_readings first, or backfill the missing partition."
+            ),
+        )
+    snapshot_path, snapshot_date = snapshot
+    age_days = (date.today() - snapshot_date).days
+    if age_days > MAX_SNAPSHOT_AGE_DAYS:
+        raise dg.Failure(
+            description=(
+                f"Newest raw_store snapshot is {snapshot_date.isoformat()} "
+                f"({age_days} days old, limit {MAX_SNAPSHOT_AGE_DAYS}). "
+                "Run backup_readings before resuming wiki synthesis."
+            ),
+            metadata={
+                "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
+                "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
+                "age_days": dg.MetadataValue.int(age_days),
+            },
+        )
+    return snapshot_path, snapshot_date
 
 
 def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
@@ -68,9 +94,9 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
 
 
 @dg.asset(
-    key=["wiki", "synthesized"],
+    key=["wiki", "pending"],
     group_name="wiki",
-    compute_kind="openai",
+    compute_kind="postgres",
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[
@@ -81,68 +107,76 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
     ],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Run the wiki_synthesis LangGraph workflow for each pending item "
-        "supplied via run_config. Reads the newest backup_readings snapshot "
-        "of raw_store.db (LastPartitionMapping); the schedule discovers "
-        "raw_store ∖ wiki.processed and passes the slice as item_ids. "
-        "The asset fans out internally with a ThreadPoolExecutor. Per-item "
-        "failures are recorded in wiki.processed (status='error') without "
-        "aborting the batch; only run-level (auth/infra) errors fail the "
-        "Dagster run."
+        "Discover raw_store items not yet in wiki.processed against the "
+        "newest backup_readings snapshot. Output is the capped work order "
+        "consumed by wiki/synthesized; metadata exposes the pre-cap "
+        "backlog so growth is visible per partition."
+    ),
+)
+def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[list[str]]:
+    snapshot_path, snapshot_date = _resolve_snapshot(wiki)
+    raw_ids = RawStoreSource(snapshot_path).get_item_ids()
+    eligible = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
+    excluded_by_source = len(raw_ids) - len(eligible)
+    with psycopg.connect(wiki.database_url) as conn:
+        handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
+    full = [r for r in eligible if r not in handled]
+    queued = full[:MAX_PER_TICK_DEFAULT] if MAX_PER_TICK_DEFAULT > 0 else full
+    return dg.Output(
+        queued,
+        metadata={
+            "summary": dg.MetadataValue.md(
+                f"**{len(queued)} queued** (backlog {len(full)}"
+                + (", capped" if len(queued) < len(full) else "")
+                + f"; {excluded_by_source} excluded by source allowlist)"
+            ),
+            "total_pending": dg.MetadataValue.int(len(full)),
+            "queued": dg.MetadataValue.int(len(queued)),
+            "capped": dg.MetadataValue.bool(len(queued) < len(full)),
+            "excluded_by_source": dg.MetadataValue.int(excluded_by_source),
+            "allowed_prefixes": dg.MetadataValue.json(list(ALLOWED_CONTENT_ID_PREFIXES)),
+            "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
+            "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
+        },
+    )
+
+
+@dg.asset(
+    key=["wiki", "synthesized"],
+    group_name="wiki",
+    compute_kind="openai",
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
+    partitions_def=wiki_daily_partition_def,
+    ins={"pending": dg.AssetIn(["wiki", "pending"])},
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Run the wiki_synthesis LangGraph workflow for each item in the "
+        "wiki/pending list. Re-filters against wiki.processed so retries "
+        "don't re-pay for items committed in a prior attempt. Per-item "
+        "failures land in wiki.processed (status='error') without aborting "
+        "the batch; only run-level (auth/infra) errors fail the Dagster run."
     ),
 )
 def synthesized(
     context: dg.AssetExecutionContext,
-    config: SynthesizeWikiConfig,
+    pending: list[str],
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    if config.source_type != SOURCE_RAW_STORE:
-        raise dg.Failure(
-            description=(
-                f"source_type={config.source_type!r} is not wired yet; "
-                f"only {SOURCE_RAW_STORE!r} is supported."
-            ),
-        )
-
-    if not config.item_ids:
+    if not pending:
         return dg.MaterializeResult(
             metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
         )
 
-    snapshot = wiki.latest_raw_store_snapshot()
-    if snapshot is None:
-        raise dg.Failure(
-            description=(
-                f"No raw_store snapshot under {wiki.backup_dir}. Run "
-                "backup_readings first, or backfill the missing partition."
-            ),
-        )
-    snapshot_path, snapshot_date = snapshot
-    age_days = (date.today() - snapshot_date).days
-    if age_days > MAX_SNAPSHOT_AGE_DAYS:
-        raise dg.Failure(
-            description=(
-                f"Newest raw_store snapshot is {snapshot_date.isoformat()} "
-                f"({age_days} days old, limit {MAX_SNAPSHOT_AGE_DAYS}). "
-                "Run backup_readings before resuming wiki synthesis."
-            ),
-            metadata={
-                "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
-                "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
-                "age_days": dg.MetadataValue.int(age_days),
-            },
-        )
-
+    snapshot_path, snapshot_date = _resolve_snapshot(wiki)
     db_url = wiki.database_url
     # Re-filter against wiki.processed so retries don't re-pay for items that
-    # already committed in a prior attempt. The schedule does this once at
-    # tick time; we redo it here because run_config is replayed verbatim and
-    # invoke_wiki_synthesis on a successfully-ended thread is a fresh run,
-    # not a no-op.
+    # already committed in a prior attempt. Dagster retry replays the
+    # IO-manager-pickled `pending` list verbatim, and a successfully-ended
+    # LangGraph thread re-runs from START on a fresh invoke.
     with psycopg.connect(db_url) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
-    pending_ids = [iid for iid in config.item_ids if iid not in handled]
-    already = len(config.item_ids) - len(pending_ids)
+    pending_ids = [iid for iid in pending if iid not in handled]
+    already = len(pending) - len(pending_ids)
     if not pending_ids:
         return dg.MaterializeResult(
             metadata={
@@ -163,7 +197,7 @@ def synthesized(
             items.append(item)
     if missing:
         raise dg.Failure(
-            description=f"raw_store missing {len(missing)} item(s) supplied via run_config",
+            description=f"raw_store missing {len(missing)} item(s) from wiki/pending",
             metadata={"missing": dg.MetadataValue.json(missing[:50])},
         )
     wiki_dir = wiki.get_wiki_dir()
@@ -189,7 +223,7 @@ def synthesized(
             "SELECT status, COUNT(*) FROM wiki.processed "
             "WHERE source_type = %s AND item_id = ANY(%s) "
             "GROUP BY status",
-            (config.source_type, [i.item_id for i in items]),
+            (SOURCE_RAW_STORE, [i.item_id for i in items]),
         ).fetchall()
     by_status = {status: count for status, count in rows}
 
@@ -270,4 +304,4 @@ def regenerate_toc(
     )
 
 
-all_assets = [synthesized, regenerate_toc]
+all_assets = [pending, synthesized, regenerate_toc]
