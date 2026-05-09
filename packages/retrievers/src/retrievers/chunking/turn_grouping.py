@@ -7,6 +7,13 @@ Standard recursive splitters break sessions mid-turn, producing chunks like
 turns into chunks bounded by ``max_tokens``, with ``overlap_turns`` carryover
 between adjacent windows so a question and its answer don't get split across
 chunks without context.
+
+Marker collisions: if a turn body contains a line that itself matches the
+``<<<TURN role=… ts=…>>>`` pattern, the parser will treat it as a turn
+boundary and split the body there. Newsletter-assistant's voice transcripts
+are STT/TTS text where this is exceedingly unlikely, but the failure mode is
+a *silently wrong* chunk split — not a crash. If a future source materially
+increases collision risk, escape the marker on serialize.
 """
 
 import re
@@ -71,7 +78,15 @@ def turn_grouping_chunker(
                 index=len(chunks),
             )
         )
-        carry = window[-overlap_turns:] if overlap_turns > 0 else []
+        # Drop oversize turns from the carry so they don't replicate into
+        # every adjacent chunk: an oversize turn already appears in the chunk
+        # it triggered; carrying it forward as overlap would re-emit it on
+        # the next size violation, cascading into N copies.
+        carry = (
+            [t for t in window[-overlap_turns:] if t.char_len() <= max_chars]
+            if overlap_turns > 0
+            else []
+        )
         window = list(carry)
         window_chars = sum(t.char_len() for t in window)
 

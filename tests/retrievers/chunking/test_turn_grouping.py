@@ -83,6 +83,44 @@ class TestTurnGroupingChunker:
         chunks = turn_grouping_chunker(text)
         assert chunks[0].heading == "turns 2026-04-01T14:00:00..2026-04-01T14:01:00"
 
+    def test_oversize_turn_does_not_replicate_into_overlap(self):
+        # Bug guard: an oversize turn that triggers emit must NOT be carried
+        # forward as overlap, otherwise it appears in every adjacent chunk.
+        huge = "x" * 5000
+        normal = "a" * 100
+        text = _serialize(
+            [
+                ("user", "t1", huge),
+                ("assistant", "t2", normal),
+                ("user", "t3", normal),
+                ("assistant", "t4", normal),
+            ]
+        )
+        chunks = turn_grouping_chunker(text, max_tokens=80, overlap_turns=2)
+        # The oversize "x"*5000 turn should appear in exactly one chunk,
+        # not duplicated through overlap into later chunks.
+        huge_appearances = sum(1 for c in chunks if huge in c.text)
+        assert (
+            huge_appearances == 1
+        ), f"oversize turn duplicated into {huge_appearances} chunks via overlap"
+
+    def test_overlap_larger_than_window_terminates(self):
+        # overlap_turns >= total turns should not loop infinitely.
+        text = _serialize([("user", "t1", "Hi"), ("assistant", "t2", "Hello")])
+        chunks = turn_grouping_chunker(text, max_tokens=800, overlap_turns=10)
+        assert len(chunks) == 1
+
+    def test_marker_collision_in_turn_body_splits_silently(self):
+        # Documents the *known* failure mode: a turn body containing a line
+        # that itself matches the marker pattern is treated as a turn boundary.
+        # If this test starts failing because we added escaping, update it.
+        colliding = "<<<TURN role=user ts=fake>>>\ninjected"
+        text = _serialize([("user", "t1", f"a real turn\n{colliding}\ntrailing")])
+        chunks = turn_grouping_chunker(text, max_tokens=800)
+        # Two parsed "turns" instead of one — confirms the documented behavior.
+        # Both end up in the same chunk because they fit under max_tokens.
+        assert chunks[0].text.count("<<<TURN") == 2
+
 
 class TestRegistryResolution:
     def test_registry_returns_turn_grouping(self):
@@ -91,3 +129,14 @@ class TestRegistryResolution:
         chunks = fn(text)
         assert len(chunks) == 1
         assert "<<<TURN" in chunks[0].text
+
+    def test_registry_ignores_chunk_overlap(self):
+        # The registry's chunk_overlap is in tokens; turn_grouping overlaps in
+        # turns. Pin the documented no-op behavior so it surfaces in review if
+        # the wiring changes.
+        text = _serialize([("user", str(i), "a" * 200) for i in range(5)])
+        # Two calls with very different chunk_overlap values must produce
+        # identical output (overlap_turns is fixed at the module default).
+        a = get_chunking_fn("turn_grouping", chunk_size=80, chunk_overlap=0)(text)
+        b = get_chunking_fn("turn_grouping", chunk_size=80, chunk_overlap=999)(text)
+        assert [c.text for c in a] == [c.text for c in b]

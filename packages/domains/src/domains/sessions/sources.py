@@ -1,6 +1,12 @@
 """SessionsSource — read voice-session transcripts from newsletter-assistant's
 ``sessions.db``.
 
+Schema lock — scope: only the tables this reader consumes
+(``sessions`` + ``turns``). The same DB also holds ``tool_calls``,
+``llm_events``, ``facts``, ``facts_history`` and ``lens_log`` (writer-side,
+see ``newsletter-assistant`` ``session_store.py``); their schema is
+irrelevant here and intentionally not pinned.
+
 Schema lock (newsletter-assistant ``packages/knowledge/src/knowledge/session_store.py``):
 
     sessions(
