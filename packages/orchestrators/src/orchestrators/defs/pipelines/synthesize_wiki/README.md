@@ -10,12 +10,14 @@ Failure cascade — what blocks what when a step fails:
 
 ```
 schedule run_daily_synthesize_wiki   (cron 0 6 * * *)
-  │  freshness guard only — SkipReason if no snapshot or snapshot >2d old
-  │  else bare RunRequest (no run_config)
+  │  fires partition (D-1) on day D — same key as backup_readings'
+  │  03:00 UTC materialisation. Bare RunRequest, no run_config.
   ▼
-wiki/pending   (key: wiki/pending — daily partition)
-  │  dep: snapshots/raw_store with LastPartitionMapping (newest available)
-  │  filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
+wiki/pending   (key: wiki/pending — daily partition, key = data-date)
+  │  dep: snapshots/raw_store (default IdentityPartitionMapping — same key)
+  │  reads BACKUP_DIR/<partition_key>/raw_store.db; raises dg.Failure if
+  │  the file is absent (backup_readings hasn't materialised that partition).
+  │  Filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
   │  "medium::" only — current prompts assume article-shape inputs);
   │  reads eligible IDs ∖ wiki.processed; output is the capped work order
   │  (≤ MAX_PER_TICK_DEFAULT). Metadata exposes total_pending (pre-cap),
@@ -24,9 +26,10 @@ wiki/pending   (key: wiki/pending — daily partition)
   ▼
 wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  in: pending (list[str] from wiki/pending via Dagster IO manager)
-  │  loops the pending list through invoke_wiki_synthesis (ThreadPoolExecutor,
-  │  cap = SYNTHESIS_CONCURRENCY); re-filters against wiki.processed for
-  │  retry idempotency.
+  │  derives the same snapshot path from its own partition_key; loops the
+  │  pending list through invoke_wiki_synthesis (ThreadPoolExecutor, cap
+  │  = SYNTHESIS_CONCURRENCY); re-filters against wiki.processed for retry
+  │  idempotency.
   │
   │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
   │     pages + aliases + wiki.processed all written in ONE PG transaction
@@ -40,10 +43,12 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   reads wiki.pages → writes data/wiki/index.md (table of contents)
 ```
 
-- **No fresh snapshot** (backup_readings hasn't run in 2+ days, or
-  `BACKUP_DIR` is empty) → schedule emits `SkipReason`; manually
-  re-materializing `wiki/pending` raises `dg.Failure` with the snapshot date
-  and age. Fix by running the backup pipeline first.
+- **Snapshot missing** for the wiki partition's key (backup_readings didn't
+  run, or its partition for that date hasn't materialised) → `wiki/pending`
+  raises `dg.Failure` with the expected path. The schedule still fires;
+  there's no fallback to an older snapshot. Fix: run `backup_readings` for
+  that partition (or wait for the next 03:00 UTC tick if it'll catch up
+  naturally).
 - **`wiki/pending` empty list** → `wiki/synthesized` materializes a no-op
   result (`_no pending items this tick_`). Run is green; no LLM calls.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into

@@ -1,68 +1,13 @@
 """Pure-function tests for synthesize_wiki/assets.py helpers.
 
-The asset functions themselves require a wiki_pg fixture + raw_store.db
-file + LangGraph mocking, which is the territory of the existing
-wiki_synthesis tests. These tests cover the small standalone helpers:
-_resolve_snapshot's Failure paths, _check_snapshot_freshness, and
-_cost_metadata's aggregation correctness — places where a regression
-would silently change a Dagster materialization's metadata.
+Asset functions themselves require wiki_pg + raw_store.db + LangGraph
+mocking (covered by the wiki_synthesis test suite). These cover the
+pure helpers — _cost_metadata aggregation correctness — where a
+regression would silently change a Dagster materialization's metadata.
 """
 
-from datetime import date, timedelta
-from pathlib import Path
-
-import dagster as dg
-import pytest
-from orchestrators.defs.pipelines.synthesize_wiki.assets import (
-    _check_snapshot_freshness,
-    _cost_metadata,
-    _resolve_snapshot,
-)
-from orchestrators.defs.pipelines.synthesize_wiki.def_config import MAX_SNAPSHOT_AGE_DAYS
-from orchestrators.defs.pipelines.synthesize_wiki.resources import WikiResource
+from orchestrators.defs.pipelines.synthesize_wiki.assets import _cost_metadata
 from workflows.llm import LLMCall
-
-# ---------- _resolve_snapshot / _check_snapshot_freshness ----------
-
-
-def _wiki(tmp_path: Path) -> WikiResource:
-    return WikiResource(backup_dir=str(tmp_path), database_url="postgresql://x")
-
-
-def test_resolve_snapshot_raises_failure_when_no_snapshot(tmp_path: Path):
-    """Manual launch with empty backup_dir should fail with backup_dir in the message."""
-    with pytest.raises(dg.Failure) as exc:
-        _resolve_snapshot(_wiki(tmp_path))
-    assert str(tmp_path) in exc.value.description
-
-
-def test_resolve_snapshot_raises_failure_when_stale(tmp_path: Path):
-    """Stale snapshot: dg.Failure with snapshot_path / snapshot_date / age_days metadata."""
-    stale_date = date.today() - timedelta(days=MAX_SNAPSHOT_AGE_DAYS + 1)
-    stale_dir = tmp_path / stale_date.isoformat()
-    stale_dir.mkdir()
-    (stale_dir / "raw_store.db").write_text("")
-
-    with pytest.raises(dg.Failure) as exc:
-        _resolve_snapshot(_wiki(tmp_path))
-
-    md = exc.value.metadata
-    assert md["snapshot_date"].text == stale_date.isoformat()
-    assert md["age_days"].value == MAX_SNAPSHOT_AGE_DAYS + 1
-
-
-def test_check_snapshot_freshness_passes_when_within_limit():
-    fresh = date.today() - timedelta(days=MAX_SNAPSHOT_AGE_DAYS)
-    _check_snapshot_freshness(Path("/tmp/x.db"), fresh)  # no raise
-
-
-def test_check_snapshot_freshness_raises_one_day_past_limit():
-    stale = date.today() - timedelta(days=MAX_SNAPSHOT_AGE_DAYS + 1)
-    with pytest.raises(dg.Failure):
-        _check_snapshot_freshness(Path("/tmp/x.db"), stale)
-
-
-# ---------- _cost_metadata ----------
 
 
 def _call(model: str, input_tokens: int, output_tokens: int) -> LLMCall:

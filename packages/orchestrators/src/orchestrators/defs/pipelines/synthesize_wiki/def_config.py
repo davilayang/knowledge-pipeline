@@ -5,11 +5,11 @@ import dagster as dg
 
 # ---------- partitioning ----------
 
-# Daily partition; end_offset=1 makes today's partition materializable so
-# the schedule can fire a same-day run. Start date is the day this shape
-# lands; backfilling earlier partitions isn't supported (raw_store snapshot
-# may not exist for them, and the freshness guard would reject anyway).
-wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01", end_offset=1)
+# Daily partition aligned with snapshots/raw_store (both default end_offset=0):
+# partition_key = data-date. wiki/pending(D) reads snapshot(D) via the default
+# IdentityPartitionMapping. Schedule on day D fires partition D-1, after backup
+# materialised it at 03:00 UTC.
+wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 
 
 # ---------- cost guardrail ----------
@@ -18,15 +18,6 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01",
 # and OpenAI rate-limit pressure; wiki/pending slices `eligible[:max_per_tick]`.
 # 0 = no cap. Tune downward if quotas tighten.
 MAX_PER_TICK_DEFAULT = 30
-
-
-# ---------- snapshot freshness ----------
-
-# Skip the run if the newest backup_readings snapshot is older than this.
-# Backup pipeline runs ~03:00 UTC, this schedule runs ~06:00 UTC, so a fresh
-# (today) snapshot is the normal case; a 2-day window covers a single
-# missed/late backup without auto-running on stale data.
-MAX_SNAPSHOT_AGE_DAYS = 2
 
 
 # ---------- intra-op concurrency ----------

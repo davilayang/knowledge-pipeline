@@ -1,6 +1,5 @@
 # Resources for the synthesize_wiki pipeline.
 
-from datetime import date
 from pathlib import Path
 
 import dagster as dg
@@ -11,11 +10,10 @@ from orchestrators.config import BACKUP_DIR, DATA_DIR
 class WikiResource(dg.ConfigurableResource):
     """Paths for wiki synthesis.
 
-    Reads the source raw_store from the most recent `backup_readings`
-    snapshot under `backup_dir/<YYYY-MM-DD>/raw_store.db` rather than the
-    live newsletter-assistant DB. Symmetric across laptop/server: both
-    consume the daily snapshot, decoupling wiki cadence from upstream
-    write activity.
+    Reads the source raw_store from the backup_readings snapshot for the
+    current partition (`backup_dir/<partition_key>/raw_store.db`). 1:1
+    binding via IdentityPartitionMapping — if the snapshot is missing,
+    wiki/pending raises rather than falling back to anything older.
 
     All durable state (wiki.processed / wiki.pages / wiki.aliases plus the
     LangGraph checkpoints) lives in the Postgres pointed to by
@@ -34,30 +32,12 @@ class WikiResource(dg.ConfigurableResource):
     def get_backup_dir(self) -> Path:
         return Path(self.backup_dir)
 
-    def latest_raw_store_snapshot(self) -> tuple[Path, date] | None:
-        """Newest <date>/raw_store.db under backup_dir, or None if absent.
+    def snapshot_path_for(self, partition_key: str) -> Path:
+        """Path to raw_store.db inside the snapshot dir for `partition_key`.
 
-        Scans for ISO-date subdirs (YYYY-MM-DD) that contain raw_store.db.
-        Caller decides staleness.
-        """
-        root = self.get_backup_dir()
-        if not root.is_dir():
-            return None
-        candidates: list[tuple[date, Path]] = []
-        for entry in root.iterdir():
-            if not entry.is_dir():
-                continue
-            try:
-                d = date.fromisoformat(entry.name)
-            except ValueError:
-                continue
-            db_path = entry / "raw_store.db"
-            if db_path.exists():
-                candidates.append((d, db_path))
-        if not candidates:
-            return None
-        d, p = max(candidates, key=lambda t: t[0])
-        return p, d
+        Pure derivation; does not check that the file exists. Callers
+        (wiki/pending) handle the missing-file case."""
+        return self.get_backup_dir() / partition_key / "raw_store.db"
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:

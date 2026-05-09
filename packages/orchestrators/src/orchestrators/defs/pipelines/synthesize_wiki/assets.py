@@ -1,8 +1,6 @@
 # Wiki synthesis pipeline. See README.md for the DAG diagram and runbook.
 
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from datetime import date
-from pathlib import Path
 
 import dagster as dg
 import psycopg
@@ -17,51 +15,12 @@ from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 from .def_config import (
     ALLOWED_CONTENT_ID_PREFIXES,
     MAX_PER_TICK_DEFAULT,
-    MAX_SNAPSHOT_AGE_DAYS,
     PIPELINE_TAG,
     SOURCE_RAW_STORE,
     SYNTHESIS_CONCURRENCY,
     wiki_daily_partition_def,
 )
 from .resources import WikiResource
-
-
-def _check_snapshot_freshness(snapshot_path: Path, snapshot_date: date) -> None:
-    """Raise dg.Failure if `snapshot_date` is older than MAX_SNAPSHOT_AGE_DAYS."""
-    age_days = (date.today() - snapshot_date).days
-    if age_days > MAX_SNAPSHOT_AGE_DAYS:
-        raise dg.Failure(
-            description=(
-                f"Newest raw_store snapshot is {snapshot_date.isoformat()} "
-                f"({age_days} days old, limit {MAX_SNAPSHOT_AGE_DAYS}). "
-                "Run backup_readings before resuming wiki synthesis."
-            ),
-            metadata={
-                "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
-                "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
-                "age_days": dg.MetadataValue.int(age_days),
-            },
-        )
-
-
-def _resolve_snapshot(wiki: WikiResource) -> tuple[Path, date]:
-    """Discover + freshness-check the newest snapshot, or raise dg.Failure.
-
-    Used by wiki/pending. wiki/synthesized doesn't call this — it uses the
-    snapshot path pinned in pending's output and re-runs the freshness check
-    against the pinned date so a stale pickled list (manual re-materialize
-    days later) fails loudly instead of synthesising stale data."""
-    snapshot = wiki.latest_raw_store_snapshot()
-    if snapshot is None:
-        raise dg.Failure(
-            description=(
-                f"No raw_store snapshot under {wiki.backup_dir}. Run "
-                "backup_readings first, or backfill the missing partition."
-            ),
-        )
-    snapshot_path, snapshot_date = snapshot
-    _check_snapshot_freshness(snapshot_path, snapshot_date)
-    return snapshot_path, snapshot_date
 
 
 def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
@@ -106,39 +65,27 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
     kinds={"sqlite", "postgres"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
-    deps=[
-        dg.AssetDep(
-            ["snapshots", "raw_store"],
-            partition_mapping=dg.LastPartitionMapping(),
-        )
-    ],
+    deps=[dg.AssetDep(["snapshots", "raw_store"])],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Discover raw_store items not yet in wiki.processed against the "
-        "newest backup_readings snapshot. Output is the capped work order "
-        "consumed by wiki/synthesized; metadata exposes the pre-cap "
-        "backlog so growth is visible per partition."
+        "snapshots/raw_store partition with the same key (1:1 via the "
+        "default IdentityPartitionMapping). Output is the capped work order "
+        "consumed by wiki/synthesized; metadata exposes the pre-cap backlog "
+        "so growth is visible per partition."
     ),
 )
-def pending(
-    context: dg.AssetExecutionContext, wiki: WikiResource
-) -> dg.Output[tuple[str, list[str]]]:
-    # Three layers cooperate to keep the wiki forward-only without coupling
-    # its partition cadence to backup_readings':
-    #   1. LastPartitionMapping (decorator) — declarative lineage hint that
-    #      we depend on whichever snapshots/raw_store partition is newest,
-    #      not on a same-keyed one.
-    #   2. wiki.latest_raw_store_snapshot() — runtime fs scan that picks
-    #      the actual file. Source of truth for which snapshot we read.
-    #   3. Pinned path in this asset's output — handoff to wiki/synthesized
-    #      so it binds to the same file even if a new backup lands seconds
-    #      later.
-    # An offset-based partition mapping (e.g. TimeWindowPartitionMapping
-    # start_offset=-1) would collapse layers 1 and 2 into one, but at the
-    # cost of refusing to run on days backup is delayed. We chose
-    # robustness over per-partition determinism — the wiki is forward-only;
-    # we never want to backfill it from a specific historical snapshot.
-    snapshot_path, snapshot_date = _resolve_snapshot(wiki)
+def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[list[str]]:
+    snapshot_path = wiki.snapshot_path_for(context.partition_key)
+    if not snapshot_path.exists():
+        raise dg.Failure(
+            description=(
+                f"Snapshot missing: {snapshot_path}. backup_readings has "
+                f"not materialised partition {context.partition_key}."
+            ),
+            metadata={"snapshot_path": dg.MetadataValue.path(str(snapshot_path))},
+        )
+
     raw_ids = RawStoreSource(snapshot_path).get_item_ids()
     eligible = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
     excluded_by_source = len(raw_ids) - len(eligible)
@@ -146,11 +93,8 @@ def pending(
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
     full = [r for r in eligible if r not in handled]
     queued = full[:MAX_PER_TICK_DEFAULT] if MAX_PER_TICK_DEFAULT > 0 else full
-    # Pin the snapshot path in the output so wiki/synthesized binds to the
-    # exact same file we just discovered against — no re-resolve, no race
-    # if backup_readings lands a new partition between the two assets.
     return dg.Output(
-        (str(snapshot_path), queued),
+        queued,
         metadata={
             "summary": dg.MetadataValue.md(
                 f"**{len(queued)} queued** (backlog {len(full)}"
@@ -162,7 +106,6 @@ def pending(
             "capped": dg.MetadataValue.bool(len(queued) < len(full)),
             "excluded_by_source": dg.MetadataValue.int(excluded_by_source),
             "allowed_prefixes": dg.MetadataValue.json(list(ALLOWED_CONTENT_ID_PREFIXES)),
-            "snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
             "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
         },
     )
@@ -186,22 +129,15 @@ def pending(
 )
 def synthesized(
     context: dg.AssetExecutionContext,
-    pending: tuple[str, list[str]],
+    pending: list[str],
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    snapshot_path_str, pending_ids_input = pending
-    if not pending_ids_input:
+    if not pending:
         return dg.MaterializeResult(
             metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
         )
 
-    snapshot_path = Path(snapshot_path_str)
-    # Pinned by wiki/pending — recover the date from the partition dir name
-    # (BACKUP_DIR/<YYYY-MM-DD>/raw_store.db) and re-run the freshness check
-    # so a stale pickled list (manual re-materialize days later) fails loud.
-    snapshot_date = date.fromisoformat(snapshot_path.parent.name)
-    _check_snapshot_freshness(snapshot_path, snapshot_date)
-
+    snapshot_path = wiki.snapshot_path_for(context.partition_key)
     db_url = wiki.database_url
     # Re-filter against wiki.processed so retries don't re-pay for items that
     # already committed in a prior attempt. Dagster retry replays the
@@ -209,8 +145,8 @@ def synthesized(
     # LangGraph thread re-runs from START on a fresh invoke.
     with psycopg.connect(db_url) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
-    pending_ids = [iid for iid in pending_ids_input if iid not in handled]
-    already = len(pending_ids_input) - len(pending_ids)
+    pending_ids = [iid for iid in pending if iid not in handled]
+    already = len(pending) - len(pending_ids)
     if not pending_ids:
         return dg.MaterializeResult(
             metadata={
@@ -272,7 +208,6 @@ def synthesized(
         "summary": dg.MetadataValue.md(" — ".join(summary_parts)),
         "item_count": dg.MetadataValue.int(len(items)),
         "by_status": dg.MetadataValue.json(by_status),
-        "source_snapshot_date": dg.MetadataValue.text(snapshot_date.isoformat()),
         "source_snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
     }
     if already:

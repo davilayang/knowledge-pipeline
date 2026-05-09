@@ -1,23 +1,17 @@
 # Asset job + daily schedule for synthesize_wiki.
 #
-# Schedule fires at 06:00 UTC and emits a bare RunRequest — no run_config.
-# Discovery of pending items lives in wiki/pending; the schedule is reduced
-# to a freshness guard so a missing/stale snapshot becomes a SkipReason
-# (cheap, no run created) rather than a daily-failing materialization until
-# backup_readings catches up.
+# Schedule fires at 06:00 UTC and emits a bare RunRequest for partition D-1
+# (the data-date that backup_readings materialised at 03:00 UTC the same day).
+# wiki/pending validates the snapshot exists and raises if missing — no
+# freshness window, no fallback, deliberately fail loud so the operator
+# notices a stalled backup.
 
-from datetime import date
+from datetime import timedelta
 
 import dagster as dg
 
 from .assets import all_assets
-from .def_config import (
-    JOB_MAX_RETRIES,
-    MAX_SNAPSHOT_AGE_DAYS,
-    PIPELINE_TAG,
-    SCHEDULE_CRON,
-)
-from .resources import WikiResource
+from .def_config import JOB_MAX_RETRIES, PIPELINE_TAG, SCHEDULE_CRON
 
 synthesize_wiki_job = dg.define_asset_job(
     name="synthesize_wiki",
@@ -34,27 +28,11 @@ synthesize_wiki_job = dg.define_asset_job(
 )
 
 
-@dg.schedule(
-    cron_schedule=SCHEDULE_CRON,
-    job=synthesize_wiki_job,
-    required_resource_keys={"wiki"},
-)
-def run_daily_synthesize_wiki(
-    context: dg.ScheduleEvaluationContext,
-) -> dg.RunRequest | dg.SkipReason:
-    wiki: WikiResource = context.resources.wiki
-    snapshot = wiki.latest_raw_store_snapshot()
-    if snapshot is None:
-        return dg.SkipReason(f"no raw_store snapshot under {wiki.backup_dir}")
-    _, snapshot_date = snapshot
-    age_days = (date.today() - snapshot_date).days
-    if age_days > MAX_SNAPSHOT_AGE_DAYS:
-        return dg.SkipReason(
-            f"newest raw_store snapshot is {snapshot_date.isoformat()} "
-            f"({age_days} days old, limit {MAX_SNAPSHOT_AGE_DAYS})"
-        )
-
-    partition = context.scheduled_execution_time.date().isoformat()
+@dg.schedule(cron_schedule=SCHEDULE_CRON, job=synthesize_wiki_job)
+def run_daily_synthesize_wiki(context: dg.ScheduleEvaluationContext) -> dg.RunRequest:
+    # Partition key = data-date (matches snapshots/raw_store). On day D fire
+    # partition D-1 — the snapshot backup_readings produced at 03:00 UTC.
+    partition = (context.scheduled_execution_time.date() - timedelta(days=1)).isoformat()
     return dg.RunRequest(run_key=partition, partition_key=partition)
 
 
