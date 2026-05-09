@@ -1,6 +1,8 @@
 # Definition-time config for the synthesize_wiki pipeline. Path-level config
 # (DATA_DIR, BACKUP_DIR) lives in orchestrators.config.
 
+import os
+
 import dagster as dg
 
 # ---------- partitioning ----------
@@ -14,10 +16,10 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 
 # ---------- cost guardrail ----------
 
-# Default cap on items processed per scheduled tick. Limits per-run LLM spend
-# and OpenAI rate-limit pressure; wiki/pending slices `eligible[:WIKI_MAX_PER_TICK]`.
-# 0 = no cap. Tune downward if quotas tighten.
-WIKI_MAX_PER_TICK = 30
+# Cap on items processed per scheduled tick. Limits per-run LLM spend and
+# OpenAI rate-limit pressure; wiki/pending slices `eligible[:WIKI_MAX_PER_TICK]`.
+# Override via WIKI_MAX_PER_TICK env in deploy `.env`; 0 = no cap.
+WIKI_MAX_PER_TICK = int(os.getenv("WIKI_MAX_PER_TICK", "30"))
 
 
 SOURCE_RAW_STORE = "raw_store"

@@ -84,6 +84,9 @@ def process_entity(state: EntityWorkflowState) -> dict:
     item = state["item"]
     sibling_ids = state["sibling_entity_ids"]
     wiki_dir = Path(state["wiki_dir"])
+    # Track LLM calls outside the try block so a downstream raise (parse,
+    # H2 check, write) doesn't drop tokens we already paid for.
+    llm_calls: list[LLMCall] = []
 
     try:
         page_path = wiki_dir / entity.page_type / f"{slug_from_id(entity.entity_id)}.md"
@@ -113,6 +116,7 @@ def process_entity(state: EntityWorkflowState) -> dict:
             )
 
         call = generate_with_usage(user_prompt, system=PAGE_SYNTHESIS_SYSTEM, model=SYNTHESIS_MODEL)
+        llm_calls.append(call)
 
         new_page = parse_llm_page_output(
             raw=call.content,
@@ -137,7 +141,7 @@ def process_entity(state: EntityWorkflowState) -> dict:
                     "file_path": str(page_path.relative_to(wiki_dir)),
                 }
             ],
-            "llm_calls": [call],
+            "llm_calls": llm_calls,
         }
     except Exception as e:
         logger.exception("Failed to process entity %s", entity.entity_id)
@@ -148,7 +152,8 @@ def process_entity(state: EntityWorkflowState) -> dict:
                     "entity_id": entity.entity_id,
                     "error": f"{type(e).__name__}: {e}",
                 }
-            ]
+            ],
+            "llm_calls": llm_calls,
         }
 
 

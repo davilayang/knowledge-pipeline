@@ -121,10 +121,11 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Run the wiki_synthesis LangGraph workflow for each item in the "
-        "wiki/pending list. Re-filters against wiki.processed so retries "
-        "don't re-pay for items committed in a prior attempt. Per-item "
-        "failures land in wiki.processed (status='error') without aborting "
-        "the batch; only run-level (auth/infra) errors fail the Dagster run."
+        "wiki/pending list, sequentially. The commit txn is idempotent "
+        "(ON CONFLICT) so a retry re-processes already-committed items at "
+        "the cost of duplicate LLM spend. Per-item failures land in "
+        "wiki.processed (status='error') without aborting the batch; only "
+        "run-level (auth/infra) errors fail the Dagster run."
     ),
 )
 def synthesized(
@@ -157,13 +158,7 @@ def synthesized(
     wiki_dir = wiki.get_wiki_dir()
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []
-    # Sequential per-item synthesis. Matches the DOP idiom (no stdlib
-    # concurrency inside an asset), keeps Langfuse trace nesting clean,
-    # and stays gentle on OpenAI rate limits. With WIKI_MAX_PER_TICK=30
-    # the daily run takes a few minutes — operationally invisible.
-    #
-    # If throughput becomes a real constraint, options in increasing
-    # complexity:
+    # Parallelism options if throughput becomes a constraint:
     #   - ThreadPoolExecutor inside this loop (~5x for I/O-bound LLM
     #     calls; plain Python, not Dagster-native).
     #   - Graph-backed asset with DynamicOutput — real Dagster fan-out
@@ -207,8 +202,9 @@ def synthesized(
         "source_snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
     }
     metadata.update(_cost_metadata(all_calls))
-    # Per-item failures may have racked up LLM calls before raising; those
-    # are inside the LangGraph thread state, not in the future's return.
+    # cost_complete is True only when no item raised out of invoke_wiki_synthesis.
+    # In-workflow caught failures (e.g. parse error after the LLM returned)
+    # are accounted by the workflow's llm_calls reducer.
     metadata["cost_complete"] = dg.MetadataValue.bool(not errors)
     if errors:
         raise dg.Failure(

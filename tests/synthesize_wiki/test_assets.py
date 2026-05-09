@@ -6,7 +6,11 @@ pure helpers — _cost_metadata aggregation correctness — where a
 regression would silently change a Dagster materialization's metadata.
 """
 
-from orchestrators.defs.pipelines.synthesize_wiki.assets import _cost_metadata
+from unittest.mock import MagicMock
+
+import dagster as dg
+from orchestrators.defs.pipelines.synthesize_wiki.assets import _cost_metadata, synthesized
+from orchestrators.defs.pipelines.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
 
 
@@ -58,3 +62,21 @@ def test_cost_metadata_empty_calls():
     assert md["input_tokens"].value == 0
     assert md["cost_usd"].value == 0.0
     assert md["cost_by_model"].value == {}
+
+
+# ---------- synthesized: empty pending shortcut ----------
+
+
+def test_synthesized_no_op_on_empty_pending(tmp_path):
+    """Empty work order: short-circuit with the no-op summary; no LLM
+    calls, no PG, no snapshot read. Guards against a future refactor
+    that flips the empty check or adds a pre-PG-query."""
+    wiki = WikiResource(backup_dir=str(tmp_path), database_url="postgresql://x")
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    result = synthesized.op.compute_fn.decorated_fn(ctx, pending=[], wiki=wiki)
+
+    assert isinstance(result, dg.MaterializeResult)
+    summary = result.metadata["summary"].value
+    assert "_no pending items this tick_" in summary
