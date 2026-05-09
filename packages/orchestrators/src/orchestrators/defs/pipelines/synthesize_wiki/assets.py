@@ -139,27 +139,11 @@ def synthesized(
 
     snapshot_path = wiki.snapshot_path_for(context.partition_key)
     db_url = wiki.database_url
-    # Re-filter against wiki.processed so retries don't re-pay for items that
-    # already committed in a prior attempt. Dagster retry replays the
-    # IO-manager-pickled `pending` list verbatim, and a successfully-ended
-    # LangGraph thread re-runs from START on a fresh invoke.
-    with psycopg.connect(db_url) as conn:
-        handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
-    pending_ids = [iid for iid in pending if iid not in handled]
-    already = len(pending) - len(pending_ids)
-    if not pending_ids:
-        return dg.MaterializeResult(
-            metadata={
-                "summary": dg.MetadataValue.md(f"_all {already} items already processed_"),
-                "item_count": dg.MetadataValue.int(0),
-                "skipped_already_processed": dg.MetadataValue.int(already),
-            }
-        )
 
     source = RawStoreSource(snapshot_path)
     items: list[IngestItem] = []
     missing: list[str] = []
-    for raw_id in pending_ids:
+    for raw_id in pending:
         item = source.get_item(raw_id)
         if item is None:
             missing.append(raw_id)
@@ -202,16 +186,12 @@ def synthesized(
         summary_parts.append(", ".join(f"{c} {s}" for s, c in sorted(by_status.items())))
     if errors:
         summary_parts.append(f"{len(errors)} raised (cost may underreport)")
-    if already:
-        summary_parts.append(f"{already} already processed (skipped)")
     metadata: dict[str, dg.MetadataValue] = {
         "summary": dg.MetadataValue.md(" — ".join(summary_parts)),
         "item_count": dg.MetadataValue.int(len(items)),
         "by_status": dg.MetadataValue.json(by_status),
         "source_snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
     }
-    if already:
-        metadata["skipped_already_processed"] = dg.MetadataValue.int(already)
     metadata.update(_cost_metadata(all_calls))
     # Per-item failures may have racked up LLM calls before raising; those
     # are inside the LangGraph thread state, not in the future's return.

@@ -136,21 +136,21 @@ If a model name appears in metadata's `unknown_pricing_models`, its calls
 contributed 0 to the displayed cost — add it to `PRICING_PER_1M` and re-run
 the partition to recompute.
 
-Retry-cost behaviour is mixed and worth knowing:
+Retry-cost behaviour:
 - An item whose prior attempt **interrupted mid-thread** (process killed,
   PG blip during a node) → LangGraph resumes from the last checkpointed
   node on retry; only the remaining LLM calls are billed.
 - An item whose prior attempt **completed successfully but the run failed
   for unrelated reasons** (sibling item raised, infra error after commit)
-  → the per-item re-filter against `wiki.processed` skips it on retry;
-  zero cost added.
-- An item whose prior attempt **was already in `wiki.processed`** before
-  the run started (a thread that ended-but-the-run-restarted-from-scratch
-  case is not currently exercised) → same as above; the re-filter catches it.
+  → re-processed in full on retry. LLM cost re-paid; the commit txn is
+  idempotent (`wiki.processed` / `wiki.pages` / `wiki.aliases` all use
+  `ON CONFLICT`), so no DB conflict, but expect double-billing on the
+  re-run items.
 
-So a `$0.00` retry materialization means every item was either skipped by
-the re-filter or resumed from a checkpoint with no remaining LLM work —
-not that the LLM "cached" anything.
+This is a deliberate trade — the alternative (re-filtering against
+`wiki.processed` inside `synthesized`) reaches back into PG state that
+`wiki/pending` already owns. Worst-case cost amplification is bounded
+(`max_retries=1`, `MAX_PER_TICK_DEFAULT=30`).
 
 When the run completes with `errors > 0`, the `cost_complete` metadata
 boolean is `false`: per-item failures may have racked up LLM calls before
