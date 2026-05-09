@@ -1,7 +1,5 @@
 # Wiki synthesis pipeline. See README.md for the DAG diagram and runbook.
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
-
 import dagster as dg
 import psycopg
 from domains.wiki.sources import IngestItem, RawStoreSource
@@ -17,7 +15,6 @@ from .def_config import (
     MAX_PER_TICK_DEFAULT,
     PIPELINE_TAG,
     SOURCE_RAW_STORE,
-    SYNTHESIS_CONCURRENCY,
     wiki_daily_partition_def,
 )
 from .resources import WikiResource
@@ -157,20 +154,29 @@ def synthesized(
     wiki_dir = wiki.get_wiki_dir()
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []
-    with ThreadPoolExecutor(max_workers=SYNTHESIS_CONCURRENCY) as pool:
-        futures = {
-            pool.submit(invoke_wiki_synthesis, item, db_url=db_url, wiki_dir=wiki_dir): item
-            for item in items
-        }
-        for fut in as_completed(futures):
-            item = futures[fut]
-            try:
-                final_state = fut.result()
-            except Exception as e:
-                context.log.exception("wiki synthesis raised for %s", item.item_id)
-                errors.append((item.item_id, repr(e)))
-            else:
-                all_calls.extend(final_state.get("llm_calls", []))
+    # Sequential per-item synthesis. Matches the DOP idiom (no stdlib
+    # concurrency inside an asset), keeps Langfuse trace nesting clean,
+    # and stays gentle on OpenAI rate limits. With MAX_PER_TICK_DEFAULT=30
+    # the daily run takes a few minutes — operationally invisible.
+    #
+    # If throughput becomes a real constraint, options in increasing
+    # complexity:
+    #   - ThreadPoolExecutor inside this loop (~5x for I/O-bound LLM
+    #     calls; plain Python, not Dagster-native).
+    #   - Graph-backed asset with DynamicOutput — real Dagster fan-out
+    #     across ops, multiprocess executor parallelises; ~100 LOC plus
+    #     ~1-2s/op orchestration overhead per item.
+    #   - MultiPartitionsDefinition (date × item) — fan-out via the run
+    #     launcher; revives the dynamic-partition catalog growth that
+    #     0.9.0 deliberately removed.
+    for item in items:
+        try:
+            final_state = invoke_wiki_synthesis(item, db_url=db_url, wiki_dir=wiki_dir)
+        except Exception as e:
+            context.log.exception("wiki synthesis raised for %s", item.item_id)
+            errors.append((item.item_id, repr(e)))
+        else:
+            all_calls.extend(final_state.get("llm_calls", []))
 
     with psycopg.connect(db_url) as conn:
         rows = conn.execute(

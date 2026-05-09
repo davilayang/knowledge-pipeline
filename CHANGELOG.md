@@ -8,6 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **`wiki/synthesized` iterates pending items sequentially.** Dropped the `ThreadPoolExecutor` (and `SYNTHESIS_CONCURRENCY` constant) — a daily cron at 30 items/run doesn't need 5× speedup, and sequential execution matches the DOP idiom, keeps Langfuse trace nesting clean, and stays gentle on OpenAI rate limits. Comment in `assets.py` documents the parallelism options if throughput becomes a real constraint.
+
 - **`wiki/synthesized` reads from `backup_readings` snapshots, 1:1 by partition key.** The wiki `DailyPartitionsDefinition` is now aligned with `snapshots/raw_store` (default `end_offset=0`); the schedule fires partition D-1 on day D — the snapshot backup_readings materialises at 03:00 UTC the same day. `wiki/pending` derives `BACKUP_DIR/<partition_key>/raw_store.db` directly and raises `dg.Failure` if missing. No filesystem scan, no freshness window, no fallback snapshot — surface a stalled backup loud. `WikiResource.backup_dir` replaces `raw_store_db_path`; new `WikiResource.snapshot_path_for(partition_key)`.
 
 - **Discovery moved into a `wiki/pending` asset.** Schedule fires daily with no `run_config`; `wiki/pending` reads `raw_store ∖ wiki.processed` against the partition-bound snapshot, applies the per-tick cap, and emits the work order as `list[str]`. `wiki/synthesized` consumes it via `dg.AssetIn`. Manual `Materialize all` from the UI now works without hand-typed run_config; `SynthesizeWikiConfig` removed. `wiki/pending` materialization metadata exposes `total_pending` / `queued` / `capped` / `excluded_by_source` for backlog visibility. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 4.

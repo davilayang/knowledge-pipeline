@@ -20,15 +20,6 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 MAX_PER_TICK_DEFAULT = 30
 
 
-# ---------- intra-op concurrency ----------
-
-# Cap on concurrent per-item synthesis calls inside a single run. The asset
-# fans out N items via a ThreadPoolExecutor; this is the executor's max_workers.
-# Sized to the OpenAI rate-limit headroom we observed during the styleguide
-# rewrite — ~5 parallel mini calls is the sweet spot.
-SYNTHESIS_CONCURRENCY = 5
-
-
 SOURCE_RAW_STORE = "raw_store"
 
 

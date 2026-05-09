@@ -26,10 +26,12 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   ▼
 wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  in: pending (list[str] from wiki/pending via Dagster IO manager)
-  │  derives the same snapshot path from its own partition_key; loops the
-  │  pending list through invoke_wiki_synthesis (ThreadPoolExecutor, cap
-  │  = SYNTHESIS_CONCURRENCY); re-filters against wiki.processed for retry
-  │  idempotency.
+  │  derives the same snapshot path from its own partition_key; iterates
+  │  the pending list sequentially through invoke_wiki_synthesis. No
+  │  re-filter — the commit txn is idempotent (ON CONFLICT) so a retry
+  │  re-processes already-committed items at the cost of duplicate LLM
+  │  spend. See `assets.py` for parallelism options if throughput becomes
+  │  a real constraint.
   │
   │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
   │     pages + aliases + wiki.processed all written in ONE PG transaction
@@ -109,11 +111,12 @@ Edit `SCHEDULE_CRON` in `def_config.py`. Examples:
 
 ### LLM rate limit / quota
 
-The asset fans out at most `SYNTHESIS_CONCURRENCY` (5) concurrent items.
-Each item internally fans out per extracted entity via the LangGraph
-Send API. If you're hitting OpenAI 429s:
+Item synthesis is sequential — one item at a time within a partition's
+run. Each item internally fans out per extracted entity via the
+LangGraph Send API (entity-level parallelism happens inside one
+`invoke_wiki_synthesis` call, not across items). If you're hitting
+OpenAI 429s:
 
-- Lower `SYNTHESIS_CONCURRENCY` in `def_config.py`.
 - Lower `MAX_PER_TICK_DEFAULT` in `def_config.py` so fewer items queue
   per tick.
 - Wait — the runner doesn't catch 429; the run fails, you retry, the
