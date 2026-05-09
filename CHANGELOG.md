@@ -6,19 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.9.2] — 2026-05-09
+
 ### Changed
 
-- **`wiki/synthesized` iterates pending items sequentially.** Dropped the `ThreadPoolExecutor` (and `SYNTHESIS_CONCURRENCY` constant) — a daily cron at 30 items/run doesn't need 5× speedup, and sequential execution matches the DOP idiom, keeps Langfuse trace nesting clean, and stays gentle on OpenAI rate limits. Comment in `assets.py` documents the parallelism options if throughput becomes a real constraint.
+- **`wiki/synthesized` is now bound 1:1 to `backup_readings` snapshots by partition key.** Reads `BACKUP_DIR/<partition_key>/raw_store.db` directly; missing snapshot raises `dg.Failure` immediately — no filesystem scan, no freshness window, no fallback. `WikiResource.backup_dir` replaces `raw_store_db_path`. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 3.
 
-- **`wiki/synthesized` reads from `backup_readings` snapshots, 1:1 by partition key.** The wiki `DailyPartitionsDefinition` is now aligned with `snapshots/raw_store` (default `end_offset=0`); the schedule fires partition D-1 on day D — the snapshot backup_readings materialises at 03:00 UTC the same day. `wiki/pending` derives `BACKUP_DIR/<partition_key>/raw_store.db` directly and raises `dg.Failure` if missing. No filesystem scan, no freshness window, no fallback snapshot — surface a stalled backup loud. `WikiResource.backup_dir` replaces `raw_store_db_path`; new `WikiResource.snapshot_path_for(partition_key)`.
+- **Discovery extracted into a `wiki/pending` asset; schedule fires with no run config.** `wiki/pending` reads `raw_store ∖ wiki.processed` from the partition-bound snapshot, applies the per-tick cap, and emits the work order as `list[str]`; `wiki/synthesized` consumes it via `AssetIn`. `SynthesizeWikiConfig` removed — `Materialize all` from the UI now works without hand-typed run_config. Materialization metadata exposes `total_pending`, `queued`, `capped`, `excluded_by_source`, and `item_ids` for backlog visibility.
 
-- **Discovery moved into a `wiki/pending` asset.** Schedule fires daily with no `run_config`; `wiki/pending` reads `raw_store ∖ wiki.processed` against the partition-bound snapshot, applies the per-tick cap, and emits the work order as `list[str]`. `wiki/synthesized` consumes it via `dg.AssetIn`. Manual `Materialize all` from the UI now works without hand-typed run_config; `SynthesizeWikiConfig` removed. `wiki/pending` materialization metadata exposes `total_pending` / `queued` / `capped` / `excluded_by_source` for backlog visibility. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 4.
+- **Source-prefix allowlist gates wiki discovery.** `ALLOWED_CONTENT_ID_PREFIXES = ("medium::",)` in `def_config.py` — only Medium articles enter the wiki today; other raw_store rows are skipped at discovery and counted in `excluded_by_source`. Widen the allowlist once per-source-type prompts land.
 
-- **`wiki/pending` filters by `ALLOWED_CONTENT_ID_PREFIXES`** (today: `"medium::"` only). Current synthesis prompts assume article-shape inputs; non-article `raw_store` rows (transcripts, etc.) are skipped at discovery time and counted in the `excluded_by_source` metadata. Widen the allowlist after the eval harness + per-source-type prompt path land.
+- **Per-tick cap is now `WIKI_MAX_PER_TICK` env var** (default 30). Was `MAX_PER_TICK_DEFAULT`, a code-level constant. Previously the executor was a `ThreadPoolExecutor`; synthesis now iterates sequentially — simpler, gentler on rate limits, and sufficient at cap 30 / daily cadence.
 
 ### Added
 
-- **LLM cost metadata on every `wiki/synthesized` materialization.** Per-call usage flows up via a new `llm_calls` reducer through both wiki sub-graphs; the asset aggregates and attaches `cost_usd`, `input_tokens`, `output_tokens`, and a `cost_by_model` JSON breakdown. Pricing table at `workflows/costs.py` (gpt-4.1-nano, gpt-4.1-mini); unknown models report 0 and surface in `unknown_pricing_models` rather than failing the run. New helpers `generate_with_usage` / `generate_structured_with_usage` in `workflows.llm`.
+- **LLM cost metadata on every `wiki/synthesized` materialization.** Per-call usage flows through both wiki sub-graphs via a new `llm_calls` reducer; the asset attaches `cost_usd`, `input_tokens`, `output_tokens`, `cost_by_model` (JSON breakdown), and `cost_complete` (false when any item errored). New `workflows/costs.py` pricing table (gpt-4.1-nano, gpt-4.1-mini); unknown models surface in `unknown_pricing_models` rather than failing the run. New `generate_with_usage` / `generate_structured_with_usage` helpers in `workflows.llm`; the structured variant now re-raises `parsing_error` instead of silently returning `None`.
 
 ---
 
