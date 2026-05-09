@@ -20,7 +20,7 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   │  Filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
   │  "medium::" only — current prompts assume article-shape inputs);
   │  reads eligible IDs ∖ wiki.processed; output is the capped work order
-  │  (≤ MAX_PER_TICK_DEFAULT). Metadata exposes total_pending (pre-cap),
+  │  (≤ WIKI_MAX_PER_TICK). Metadata exposes total_pending (pre-cap),
   │  queued (post-cap), capped (bool), excluded_by_source — daily backlog
   │  timeseries.
   ▼
@@ -117,7 +117,7 @@ LangGraph Send API (entity-level parallelism happens inside one
 `invoke_wiki_synthesis` call, not across items). If you're hitting
 OpenAI 429s:
 
-- Lower `MAX_PER_TICK_DEFAULT` in `def_config.py` so fewer items queue
+- Lower `WIKI_MAX_PER_TICK` in `def_config.py` so fewer items queue
   per tick.
 - Wait — the runner doesn't catch 429; the run fails, you retry, the
   per-item checkpointer resumes from where it stopped.
@@ -153,7 +153,7 @@ Retry-cost behaviour:
 This is a deliberate trade — the alternative (re-filtering against
 `wiki.processed` inside `synthesized`) reaches back into PG state that
 `wiki/pending` already owns. Worst-case cost amplification is bounded
-(`max_retries=1`, `MAX_PER_TICK_DEFAULT=30`).
+(`max_retries=1`, `WIKI_MAX_PER_TICK=30`).
 
 When the run completes with `errors > 0`, the `cost_complete` metadata
 boolean is `false`: per-item failures may have racked up LLM calls before
@@ -166,7 +166,7 @@ scenario.
 `wiki/pending` materialization metadata is the daily backlog reading:
 `total_pending` (pre-cap, eligible only), `queued` (post-cap, what got
 synthesized), `capped` (bool — `true` if the queue exceeded
-`MAX_PER_TICK_DEFAULT`), `excluded_by_source` (raw_store rows skipped
+`WIKI_MAX_PER_TICK`), `excluded_by_source` (raw_store rows skipped
 because their content_id prefix isn't in `ALLOWED_CONTENT_ID_PREFIXES`).
 If `capped` stays `true` for more than a few days you're falling behind —
 either raise the cap, increase tick frequency, or both. If

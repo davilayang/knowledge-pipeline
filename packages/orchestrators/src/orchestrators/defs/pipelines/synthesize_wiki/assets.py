@@ -14,9 +14,9 @@ from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
 from .def_config import (
     ALLOWED_CONTENT_ID_PREFIXES,
-    MAX_PER_TICK_DEFAULT,
     PIPELINE_TAG,
     SOURCE_RAW_STORE,
+    WIKI_MAX_PER_TICK,
     wiki_daily_partition_def,
 )
 from .resources import WikiResource
@@ -91,7 +91,7 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
     with psycopg.connect(wiki.database_url) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
     full = [r for r in eligible if r not in handled]
-    queued = full[:MAX_PER_TICK_DEFAULT] if MAX_PER_TICK_DEFAULT > 0 else full
+    queued = full[:WIKI_MAX_PER_TICK] if WIKI_MAX_PER_TICK > 0 else full
     return dg.Output(
         queued,
         metadata={
@@ -159,7 +159,7 @@ def synthesized(
     all_calls: list[LLMCall] = []
     # Sequential per-item synthesis. Matches the DOP idiom (no stdlib
     # concurrency inside an asset), keeps Langfuse trace nesting clean,
-    # and stays gentle on OpenAI rate limits. With MAX_PER_TICK_DEFAULT=30
+    # and stays gentle on OpenAI rate limits. With WIKI_MAX_PER_TICK=30
     # the daily run takes a few minutes — operationally invisible.
     #
     # If throughput becomes a real constraint, options in increasing
