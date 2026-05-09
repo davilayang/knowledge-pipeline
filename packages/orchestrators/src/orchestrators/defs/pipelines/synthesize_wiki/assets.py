@@ -1,5 +1,7 @@
 # Wiki synthesis pipeline. See README.md for the DAG diagram and runbook.
 
+import time
+
 import dagster as dg
 import psycopg
 from domains.wiki.sources import IngestItem, RawStoreSource
@@ -104,6 +106,7 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
             "excluded_by_source": dg.MetadataValue.int(excluded_by_source),
             "allowed_prefixes": dg.MetadataValue.json(list(ALLOWED_CONTENT_ID_PREFIXES)),
             "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
+            "item_ids": dg.MetadataValue.json(queued),
         },
     )
 
@@ -169,7 +172,9 @@ def synthesized(
     #   - MultiPartitionsDefinition (date × item) — fan-out via the run
     #     launcher; revives the dynamic-partition catalog growth that
     #     0.9.0 deliberately removed.
-    for item in items:
+    for i, item in enumerate(items, 1):
+        context.log.info("[%d/%d] synthesizing %s", i, len(items), item.item_id)
+        started = time.monotonic()
         try:
             final_state = invoke_wiki_synthesis(item, db_url=db_url, wiki_dir=wiki_dir)
         except Exception as e:
@@ -177,6 +182,9 @@ def synthesized(
             errors.append((item.item_id, repr(e)))
         else:
             all_calls.extend(final_state.get("llm_calls", []))
+            context.log.info(
+                "[%d/%d] %s done in %.1fs", i, len(items), item.item_id, time.monotonic() - started
+            )
 
     with psycopg.connect(db_url) as conn:
         rows = conn.execute(
