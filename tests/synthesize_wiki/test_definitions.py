@@ -11,10 +11,8 @@ from orchestrators.defs.pipelines.synthesize_wiki import defs
 def test_definitions_load_with_expected_shape():
     asset_keys = {"/".join(k.path) for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
-        # snapshots/raw_store is an external upstream — declared by
-        # backup_readings, referenced here via AssetDep with
-        # LastPartitionMapping. It surfaces as an implicit node in the
-        # pipeline-level definitions object.
+        # snapshots/raw_store is an external upstream owned by
+        # backup_readings; surfaces as an implicit node here via AssetDep.
         "snapshots/raw_store",
         "wiki/pending",
         "wiki/synthesized",

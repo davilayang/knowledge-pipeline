@@ -29,12 +29,7 @@ MAX_PER_TICK_DEFAULT = 30
 SYNTHESIS_CONCURRENCY = 5
 
 
-# Source vocabulary for IngestItem.source_type. wiki.processed.source_type uses
-# the same string. Today only raw_store is wired; sessions/local_file land
-# alongside per-source discovery in a follow-up.
 SOURCE_RAW_STORE = "raw_store"
-SOURCE_LOCAL_FILE = "local_file"  # future
-SOURCE_SESSION = "session"  # future
 
 
 # ---------- raw_store content-id allowlist ----------
