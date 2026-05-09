@@ -291,7 +291,10 @@ value; an unset env var fails fast at run init.
 ```python
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "backup": BackupResource(),
+        "backup": BackupResource(
+            source_data_dir=dg.EnvVar("BACKUP_SOURCE_DIR"),
+            backup_dir=dg.EnvVar("BACKUP_DIR"),
+        ),
         "rclone": RcloneResource(
             remote_name=dg.EnvVar("DRIVE_REMOTE"),
             drive_root=dg.EnvVar("DRIVE_BACKUP_ROOT"),
@@ -310,9 +313,11 @@ resource still works. Only a run that actually requires the resource fails
 fast. (See PR #35 / #37 for the pattern in action.)
 
 **Exception:** `os.getenv(..., default)` is appropriate for **truly
-code-stable** defaults — e.g. a relative path like `BACKUP_DIR=./backups`
-that makes sense in every environment. The test is "would this same value
-ever be wrong in any deploy?" If yes, use `dg.EnvVar` and require it.
+code-stable** defaults — e.g. an operational tuning knob like
+`WIKI_MAX_PER_TICK=30` that's the same intent across deploys. The test is
+"would this same value ever be wrong in any deploy?" If yes, use `dg.EnvVar`
+and require it. Per-host paths fail this test (laptop ≠ container) and must
+be required.
 
 ### `is_configured` short-circuits — don't
 
@@ -384,8 +389,8 @@ daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-01-01")
 
 No env reads, no functions, no I/O. Tunables that ship with the code (and are
 the same across deployments). Per-deployment values live on resources via
-`dg.EnvVar`; path-level config that orchestrators read (e.g. `BACKUP_DIR`)
-goes in `orchestrators/config.py`.
+`dg.EnvVar` (e.g. `BACKUP_DIR`, `DATABASE_URL`); shared static paths
+(e.g. `DATA_DIR`) go in `orchestrators/config.py`.
 
 Why this split: tunables ship with the code (versioned), env vars are
 per-deployment. Mixing them blurs which knob lives where.
@@ -482,7 +487,7 @@ non-obviousness.
   `Definitions.merge(...)` is clearer with our pipeline count. Revisit when
   >10 pipelines or when we want org-wide post-discovery policies.
 - **`dg.EnvVar()` for absolutely everything** — we keep `os.getenv(..., default)`
-  for code-stable defaults (e.g. `BACKUP_DIR=./backups`).
+  for code-stable operational knobs (e.g. `WIKI_MAX_PER_TICK=30`).
 - **Inline asset checks** — keep `checks.py` separate. Easier to audit which
   invariants are enforced.
 

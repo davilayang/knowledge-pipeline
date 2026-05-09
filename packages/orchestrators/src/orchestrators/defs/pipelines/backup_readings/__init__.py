@@ -1,9 +1,9 @@
 # Backup pipeline — daily-partitioned snapshot of newsletter-assistant SQLite
 # DBs with optional Drive offload (rclone) and healthchecks.io success ping.
 #
-# Env vars (all optional except source path on non-default hosts):
-#   BACKUP_SOURCE_DIR     — defaults to ~/newsletter-assistant/data
-#   BACKUP_DIR            — defaults to <repo>/backups
+# Env vars:
+#   BACKUP_SOURCE_DIR     — required; absolute path to source DB dir
+#   BACKUP_DIR            — required; absolute path to local snapshot landing dir
 #   DRIVE_REMOTE          — rclone remote name; unset disables Drive flow
 #   HEALTHCHECK_PING_URL  — full ping URL; unset disables success ping
 

@@ -1,10 +1,5 @@
 # Paths and settings for the knowledge pipeline.
-#
-# TODO: migrate path/env config to pydantic-settings (BaseSettings) — gets us
-# typed config, validation, .env file support, and a single Settings() singleton
-# instead of the os.getenv-and-Path-coerce pattern below.
 
-import os
 from pathlib import Path
 
 # Project root
@@ -18,7 +13,6 @@ SOURCE_RAW_STORE = DATASETS_DIR / "raw_store_2026-04-05.db"
 
 # Working data directories (runtime artifacts, not checked in)
 DATA_DIR = PROJECT_DIR / "data"
-BACKUP_DIR = Path(os.getenv("BACKUP_DIR", str(PROJECT_DIR / "backups")))
 
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
@@ -46,11 +40,6 @@ SYNTHESIZE_WIKI_DAG_VERSION = "3"
 
 
 # Backup settings
-# Default to the server layout (~/newsletter-assistant/data); laptops set
-# BACKUP_SOURCE_DIR=~/GitHub/newsletter-assistant/data in their shell.
-BACKUP_SOURCE_DIR = Path(
-    os.getenv("BACKUP_SOURCE_DIR", str(Path.home() / "newsletter-assistant" / "data"))
-).expanduser()
 DB_FILES = ["raw_store.db", "sessions.db", "research.db"]
 
 # Per-partition tarballs of flat-file directories under BACKUP_SOURCE_DIR.

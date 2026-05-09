@@ -99,4 +99,4 @@ Three Dagster containers + Postgres:
 
 Daily-partitioned. See `packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md` for the DAG diagram and full runbook (rclone setup, healthchecks.io, restore).
 
-Per-host config is env-driven (`BACKUP_SOURCE_DIR`, `BACKUP_DIR`, `DRIVE_REMOTE`, `HEALTHCHECK_PING_URL`) — all optional with short-circuit behaviour for laptop dev. In Docker Compose, `BACKUP_SOURCE_DIR` is the host path; compose bind-mounts it to `/app/source` and overrides the in-container env var.
+Per-host config is env-driven via required `dg.EnvVar` (`BACKUP_SOURCE_DIR`, `BACKUP_DIR`, `DRIVE_REMOTE`, `DRIVE_BACKUP_ROOT`, `HEALTHCHECK_PING_URL`) — unset → run init fails fast. Set in deploy `.env` or shell profile. In Docker Compose, `BACKUP_SOURCE_DIR` is the host path; compose bind-mounts it to `/app/source` and overrides the in-container env var to that fixed path.

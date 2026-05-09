@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`BACKUP_DIR` and `BACKUP_SOURCE_DIR` are now required env vars** resolved via `dg.EnvVar` at run init (was: silent module-load fallback to `<repo>/backups` and `~/newsletter-assistant/data`). Misconfigured deploys now fail fast with a clear "env var not set" error rather than silently writing to the wrong path or surfacing a downstream `Snapshot missing` failure. Symmetric with `DATABASE_URL`. Laptop dev: set both in your shell profile or `.env`.
+
 ---
 
 ## [0.9.2] — 2026-05-09
