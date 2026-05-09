@@ -6,8 +6,6 @@ import dagster as dg
 
 from orchestrators.config import (
     ARCHIVE_FILES,
-    BACKUP_DIR,
-    BACKUP_SOURCE_DIR,
     DB_FILES,
 )
 
@@ -15,8 +13,8 @@ from orchestrators.config import (
 class BackupResource(dg.ConfigurableResource):
     """Where to read source DBs from and where to land local snapshots."""
 
-    source_data_dir: str = str(BACKUP_SOURCE_DIR)
-    backup_dir: str = str(BACKUP_DIR)
+    source_data_dir: str
+    backup_dir: str
     db_files: list[str] = DB_FILES
     archive_files: list[str] = ARCHIVE_FILES
 
@@ -54,7 +52,10 @@ class HealthcheckResource(dg.ConfigurableResource):
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "backup": BackupResource(),
+        "backup": BackupResource(
+            source_data_dir=dg.EnvVar("BACKUP_SOURCE_DIR"),
+            backup_dir=dg.EnvVar("BACKUP_DIR"),
+        ),
         "rclone": RcloneResource(
             remote_name=dg.EnvVar("DRIVE_REMOTE"),
             drive_root=dg.EnvVar("DRIVE_BACKUP_ROOT"),

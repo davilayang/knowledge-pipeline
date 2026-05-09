@@ -1,5 +1,6 @@
-# Definition-time config for the synthesize_wiki pipeline. Path-level config
-# (DATA_DIR, BACKUP_DIR) lives in orchestrators.config.
+# Definition-time config for the synthesize_wiki pipeline. Static path config
+# (DATA_DIR) lives in orchestrators.config; per-host paths (BACKUP_DIR,
+# DATABASE_URL) are required dg.EnvVar fields on WikiResource.
 
 import os
 

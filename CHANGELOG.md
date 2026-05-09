@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.3] — 2026-05-09
+
+### Changed
+
+- **`BACKUP_DIR` and `BACKUP_SOURCE_DIR` are now required `dg.EnvVar`** (was: silent fallback to `<repo>/backups` and `~/newsletter-assistant/data`). Misconfigured deploys fail fast at run init. Symmetric with `DATABASE_URL`.
+
+---
+
 ## [0.9.2] — 2026-05-09
 
 ### Changed

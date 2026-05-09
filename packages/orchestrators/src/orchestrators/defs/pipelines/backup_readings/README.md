@@ -96,6 +96,23 @@ rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/notes.tgz /tmp/ \
 
 ## External setup
 
+### Required env vars
+
+All resolved via `dg.EnvVar` at run init — unset → fail fast with a clear
+"env var not set" error before any asset runs.
+
+| Var | Purpose |
+|---|---|
+| `BACKUP_SOURCE_DIR` | Absolute path to the source DB dir (e.g. `~/newsletter-assistant/data` on laptop, bind-mounted to `/app/source` in compose) |
+| `BACKUP_DIR` | Absolute path where partition snapshots land locally |
+| `DRIVE_REMOTE` | rclone remote name (e.g. `gdrive`) |
+| `DRIVE_BACKUP_ROOT` | Drive folder under the remote (e.g. `knowledge-pipeline/backups`) |
+| `HEALTHCHECK_PING_URL` | healthchecks.io ping URL |
+| `DATABASE_URL` | Postgres URL for Dagster + LangGraph + wiki state |
+
+Set in the deploy `.env` (server) or shell profile (laptop). See
+`.env.example` at the repo root.
+
 ### rclone OAuth (one-time on laptop, push to server)
 
 The Drive flow needs `rclone` installed and a `gdrive` remote configured on

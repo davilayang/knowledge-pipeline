@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-retrievers"
-version = "0.9.2"
+version = "0.9.3"
 description = "RAG infrastructure — chunking, embedding, vector store, retrieval strategies"
 requires-python = ">=3.13"
 dependencies = [

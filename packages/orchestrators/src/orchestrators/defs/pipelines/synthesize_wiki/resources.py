@@ -4,7 +4,7 @@ from pathlib import Path
 
 import dagster as dg
 
-from orchestrators.config import BACKUP_DIR, DATA_DIR
+from orchestrators.config import DATA_DIR
 
 
 class WikiResource(dg.ConfigurableResource):
@@ -23,7 +23,7 @@ class WikiResource(dg.ConfigurableResource):
     """
 
     wiki_dir: str = str(DATA_DIR / "wiki")
-    backup_dir: str = str(BACKUP_DIR)
+    backup_dir: str
     database_url: str
 
     def get_wiki_dir(self) -> Path:
@@ -42,5 +42,8 @@ class WikiResource(dg.ConfigurableResource):
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "wiki": WikiResource(database_url=dg.EnvVar("DATABASE_URL")),
+        "wiki": WikiResource(
+            backup_dir=dg.EnvVar("BACKUP_DIR"),
+            database_url=dg.EnvVar("DATABASE_URL"),
+        ),
     }
