@@ -1,40 +1,40 @@
 # Definition-time config for the synthesize_wiki pipeline. Path-level config
-# (DATA_DIR, LOCAL_RAW_STORE) lives in orchestrators.config.
+# (DATA_DIR, BACKUP_DIR) lives in orchestrators.config.
+
+import os
 
 import dagster as dg
 
 # ---------- partitioning ----------
 
-# One Dagster run per scheduled tick. Items pending in raw_store ∖
-# wiki.processed travel as run_config (not partition keys), so the partition
-# dimension stays bounded — wiki/index can declare deps on wiki/synthesized
-# with IdentityPartitionMapping. Start date is the day this shape lands.
-wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01", end_offset=1)
+# Daily partition aligned with snapshots/raw_store (both default end_offset=0):
+# partition_key = data-date. wiki/pending(D) reads snapshot(D) via the default
+# IdentityPartitionMapping. Schedule on day D fires partition D-1, after backup
+# materialised it at 03:00 UTC.
+wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 
 
 # ---------- cost guardrail ----------
 
-# Default cap on items processed per scheduled tick. Limits per-run LLM spend
-# and OpenAI rate-limit pressure; the schedule slices `pending[:max_per_tick]`.
-# 0 = no cap. Tune downward if quotas tighten.
-MAX_PER_TICK_DEFAULT = 30
+# Cap on items processed per scheduled tick. Limits per-run LLM spend and
+# OpenAI rate-limit pressure; wiki/pending slices `eligible[:WIKI_MAX_PER_TICK]`.
+# Override via WIKI_MAX_PER_TICK env in deploy `.env`; 0 = no cap.
+WIKI_MAX_PER_TICK = int(os.getenv("WIKI_MAX_PER_TICK", "30"))
 
 
-# ---------- intra-op concurrency ----------
-
-# Cap on concurrent per-item synthesis calls inside a single run. The asset
-# fans out N items via a ThreadPoolExecutor; this is the executor's max_workers.
-# Sized to the OpenAI rate-limit headroom we observed during the styleguide
-# rewrite — ~5 parallel mini calls is the sweet spot.
-SYNTHESIS_CONCURRENCY = 5
-
-
-# Source vocabulary for IngestItem.source_type. wiki.processed.source_type uses
-# the same string. Today only raw_store is wired; sessions/local_file land
-# alongside per-source discovery in a follow-up.
 SOURCE_RAW_STORE = "raw_store"
-SOURCE_LOCAL_FILE = "local_file"  # future
-SOURCE_SESSION = "session"  # future
+
+
+# ---------- raw_store content-id allowlist ----------
+
+# raw_store.contents.content_id is shaped like "<origin>::<url>" (e.g.
+# "medium::https://medium.com/..."). This tuple gates which origins flow
+# through wiki synthesis. Today: article-shape only — current prompts assume
+# article inputs (single-author, narrative, markdown-structured); transcripts
+# (podcast/video) need separate prompt handling + chunking before they can be
+# safely synthesised. Extend after the eval harness lands and per-source
+# prompt sets exist.
+ALLOWED_CONTENT_ID_PREFIXES: tuple[str, ...] = ("medium::",)
 
 
 # ---------- schedule ----------

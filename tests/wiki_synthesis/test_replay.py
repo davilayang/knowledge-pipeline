@@ -42,6 +42,7 @@ from tests.wiki_synthesis._helpers import (
     extract_entity_id_from_prompt,
     make_extraction,
     make_item,
+    make_llm_call,
 )
 
 
@@ -68,7 +69,7 @@ def test_commit_failure_then_resume_skips_fan_out(tmp_path: Path, wiki_pg, wiki_
     def tracking_generate(prompt, *, system="", model=""):
         eid = extract_entity_id_from_prompt(prompt)
         active_log[0].append(eid)
-        return build_synthesis_output(eid)
+        return make_llm_call(content=build_synthesis_output(eid))
 
     config = {"configurable": {"thread_id": "wiki_synthesis__commit_replay"}}
     state = {
@@ -84,11 +85,11 @@ def test_commit_failure_then_resume_skips_fan_out(tmp_path: Path, wiki_pg, wiki_
     # The whole commit txn rolls back; the workflow exception propagates.
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=tracking_generate,
         ),
         patch(
@@ -122,11 +123,11 @@ def test_commit_failure_then_resume_skips_fan_out(tmp_path: Path, wiki_pg, wiki_
     active_log[0] = pass2_calls
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=tracking_generate,
         ),
     ):
@@ -160,7 +161,7 @@ def test_fresh_invocation_does_not_resume(tmp_path: Path, wiki_pg, wiki_pg_url):
     def gen(prompt, *, system="", model=""):
         nonlocal call_count
         call_count += 1
-        return build_synthesis_output(extract_entity_id_from_prompt(prompt))
+        return make_llm_call(content=build_synthesis_output(extract_entity_id_from_prompt(prompt)))
 
     config = {"configurable": {"thread_id": "wiki_synthesis__fresh"}}
     state = {
@@ -172,11 +173,11 @@ def test_fresh_invocation_does_not_resume(tmp_path: Path, wiki_pg, wiki_pg_url):
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=gen,
         ),
     ):

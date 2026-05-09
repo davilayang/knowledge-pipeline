@@ -17,7 +17,7 @@ from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.shared.observability import get_langfuse_callback
 from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
 
-from tests.wiki_synthesis._helpers import make_item
+from tests.wiki_synthesis._helpers import make_item, make_llm_call
 
 
 def _runner_item():
@@ -64,12 +64,12 @@ def test_runner_invokes_workflow_end_to_end(tmp_path: Path, wiki_pg, wiki_pg_url
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
-            return_value=llm_output,
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            return_value=make_llm_call(content=llm_output),
         ),
     ):
         invoke_wiki_synthesis(_runner_item(), db_url=wiki_pg_url, wiki_dir=wiki_dir)
@@ -105,8 +105,8 @@ def test_runner_passes_langfuse_metadata_when_callback_configured(tmp_path: Path
             },
         ),
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch("langgraph.pregel.Pregel.invoke", new=fake_invoke),
     ):
@@ -146,8 +146,8 @@ def test_runner_omits_callback_when_unconfigured(tmp_path: Path, wiki_pg_url):
     try:
         with (
             patch(
-                "workflows.wiki_synthesis.nodes.generate_structured",
-                return_value=extraction,
+                "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+                return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
             ),
             patch("langgraph.pregel.Pregel.invoke", new=fake_invoke),
         ):
@@ -198,15 +198,15 @@ def test_runner_re_runs_on_completed_thread(tmp_path: Path, wiki_pg, wiki_pg_url
     def counting_generate(prompt, *, system="", model=""):
         nonlocal synthesis_calls
         synthesis_calls += 1
-        return llm_output
+        return make_llm_call(content=llm_output)
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=counting_generate,
         ),
     ):

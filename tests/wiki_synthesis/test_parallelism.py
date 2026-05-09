@@ -22,6 +22,7 @@ from tests.wiki_synthesis._helpers import (
     extract_entity_id_from_prompt,
     make_extraction,
     make_item,
+    make_llm_call,
 )
 
 
@@ -46,17 +47,17 @@ def test_send_fan_out_runs_sub_graphs_in_parallel(tmp_path: Path, wiki_pg, wiki_
         # Block until all n_entities threads arrive. Raises BrokenBarrierError
         # on timeout if fewer threads show up (i.e. Send is serialized).
         barrier.wait()
-        return build_synthesis_output(eid)
+        return make_llm_call(content=build_synthesis_output(eid))
 
     extraction = make_extraction(*[f"concept__e{i}" for i in range(n_entities)])
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=parallel_generate,
         ),
     ):

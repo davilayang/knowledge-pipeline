@@ -28,7 +28,7 @@ from domains.wiki.state import (
 )
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 
-from workflows.llm import generate_structured
+from workflows.llm import LLMCall, generate_structured_with_usage
 from workflows.wiki_synthesis.prompts import ENTITY_EXTRACTION_SYSTEM, ENTITY_EXTRACTION_USER
 
 if TYPE_CHECKING:
@@ -49,6 +49,9 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
     """
     item = state["item"]
     db_url = state["db_url"]
+    # Track LLM calls outside the try block so a downstream raise
+    # (parsing, alias-staging) doesn't drop tokens we already paid for.
+    llm_calls: list[LLMCall] = []
 
     try:
         with psycopg.connect(db_url) as conn:
@@ -61,18 +64,20 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
             title=item.title,
             article_text=item.text,
         )
-        extraction: ExtractionResult = generate_structured(
+        extraction, call = generate_structured_with_usage(
             user_prompt,
             schema=ExtractionResult,
             system=ENTITY_EXTRACTION_SYSTEM,
             model=EXTRACTION_MODEL,
         )
+        llm_calls.append(call)
 
         staged = _stage_alias_updates(store, extraction.entities)
 
         return {
             "entities": list(extraction.entities),
             "staged_aliases": staged,
+            "llm_calls": llm_calls,
         }
     except Exception as e:
         logger.exception("extract_entities failed for %s", item.item_id)
@@ -80,6 +85,7 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
             "entities": [],
             "staged_aliases": [],
             "extract_error": f"{type(e).__name__}: {e}",
+            "llm_calls": llm_calls,
         }
 
 

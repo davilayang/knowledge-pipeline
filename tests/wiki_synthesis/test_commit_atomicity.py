@@ -32,6 +32,7 @@ from tests.wiki_synthesis._helpers import (
     build_synthesis_output,
     make_extraction,
     make_item,
+    make_llm_call,
 )
 
 
@@ -52,16 +53,16 @@ def test_commit_txn_rolls_back_when_insert_processed_fails(tmp_path: Path, wiki_
     def gen(prompt, *, system="", model=""):
         # Pick the right entity based on which prompt this is
         if "rollback_a" in prompt and "entity_id: concept__rollback_a" in prompt:
-            return build_synthesis_output("concept__rollback_a")
-        return build_synthesis_output("concept__rollback_b")
+            return make_llm_call(content=build_synthesis_output("concept__rollback_a"))
+        return make_llm_call(content=build_synthesis_output("concept__rollback_b"))
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
             side_effect=gen,
         ),
         patch(
@@ -102,12 +103,12 @@ def test_commit_txn_rolls_back_when_upsert_page_fails(tmp_path: Path, wiki_pg, w
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured",
-            return_value=extraction,
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate",
-            return_value=build_synthesis_output("concept__early_fail"),
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            return_value=make_llm_call(content=build_synthesis_output("concept__early_fail")),
         ),
         patch(
             "workflows.wiki_synthesis.nodes.upsert_page",

@@ -12,6 +12,19 @@ from datetime import date
 
 from domains.wiki.sources import IngestItem
 from domains.wiki.types import ExtractedEntity, ExtractionResult
+from workflows.llm import LLMCall
+
+
+def make_llm_call(
+    content: str = "", model: str = "gpt-4.1-mini", *, input_tokens: int = 0, output_tokens: int = 0
+) -> LLMCall:
+    """Build an LLMCall for mocking *_with_usage helpers in tests."""
+    return LLMCall(
+        content=content,
+        model=model,
+        input_tokens=input_tokens,
+        output_tokens=output_tokens,
+    )
 
 
 def make_item(**overrides) -> IngestItem:

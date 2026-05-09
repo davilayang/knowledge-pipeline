@@ -8,6 +8,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.2] — 2026-05-09
+
+### Changed
+
+- **`wiki/synthesized` is now bound 1:1 to `backup_readings` snapshots by partition key.** Reads `BACKUP_DIR/<partition_key>/raw_store.db` directly; missing snapshot raises `dg.Failure` immediately — no filesystem scan, no freshness window, no fallback. `WikiResource.backup_dir` replaces `raw_store_db_path`. `SYNTHESIZE_WIKI_DAG_VERSION` 2 → 3.
+
+- **Discovery extracted into a `wiki/pending` asset; schedule fires with no run config.** `wiki/pending` reads `raw_store ∖ wiki.processed` from the partition-bound snapshot, applies the per-tick cap, and emits the work order as `list[str]`; `wiki/synthesized` consumes it via `AssetIn`. `SynthesizeWikiConfig` removed — `Materialize all` from the UI now works without hand-typed run_config. Materialization metadata exposes `total_pending`, `queued`, `capped`, `excluded_by_source`, and `item_ids` for backlog visibility.
+
+- **Source-prefix allowlist gates wiki discovery.** `ALLOWED_CONTENT_ID_PREFIXES = ("medium::",)` in `def_config.py` — only Medium articles enter the wiki today; other raw_store rows are skipped at discovery and counted in `excluded_by_source`. Widen the allowlist once per-source-type prompts land.
+
+- **Per-tick cap is now `WIKI_MAX_PER_TICK` env var** (default 30). Was `MAX_PER_TICK_DEFAULT`, a code-level constant. Previously the executor was a `ThreadPoolExecutor`; synthesis now iterates sequentially — simpler, gentler on rate limits, and sufficient at cap 30 / daily cadence.
+
+### Added
+
+- **LLM cost metadata on every `wiki/synthesized` materialization.** Per-call usage flows through both wiki sub-graphs via a new `llm_calls` reducer; the asset attaches `cost_usd`, `input_tokens`, `output_tokens`, `cost_by_model` (JSON breakdown), and `cost_complete` (false when any item errored). New `workflows/costs.py` pricing table (gpt-4.1-nano, gpt-4.1-mini); unknown models surface in `unknown_pricing_models` rather than failing the run. New `generate_with_usage` / `generate_structured_with_usage` helpers in `workflows.llm`; the structured variant now re-raises `parsing_error` instead of silently returning `None`.
+
+---
+
 ## [0.9.1] — 2026-05-08
 
 ### Changed
