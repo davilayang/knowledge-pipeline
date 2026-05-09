@@ -49,7 +49,7 @@ class ResearchSource:
             return None
         with self._connect() as conn:
             row = conn.execute(
-                "SELECT id, title, file_path, content, created_at " "FROM documents WHERE id = ?",
+                "SELECT id, title, file_path, content, created_at FROM documents WHERE id = ?",
                 (doc_id,),
             ).fetchone()
         if row is None:
