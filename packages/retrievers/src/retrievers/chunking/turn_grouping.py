@@ -3,17 +3,18 @@
 Standard recursive splitters break sessions mid-turn, producing chunks like
 "…retrieval-augmented genera" / "tion is when…" — incoherent for retrieval.
 ``turn_grouping_chunker`` parses the marker-delimited transcript produced by
-``SessionsSource``, then greedily packs consecutive turns into chunks bounded
-by ``max_tokens``, with ``overlap_turns`` carryover between adjacent windows
-so a question and its answer don't get split across chunks without context.
+``domains.sessions.sources.SessionsSource``, then greedily packs consecutive
+turns into chunks bounded by ``max_tokens``, with ``overlap_turns`` carryover
+between adjacent windows so a question and its answer don't get split across
+chunks without context.
 """
 
 import re
 from dataclasses import dataclass
 
-from domains.types import Chunk
+from domains.sessions.sources import TURN_MARKER_PREFIX
 
-from .sources import TURN_MARKER_PREFIX
+from .types import Chunk
 
 # Match a turn marker line: <<<TURN role=user ts=...>>>
 _TURN_RE = re.compile(
@@ -21,9 +22,10 @@ _TURN_RE = re.compile(
     re.MULTILINE,
 )
 
-# Char-per-token ratio matching retrievers.chunking.registry._CHARS_PER_TOKEN —
-# kept inline so this module doesn't reach into a private constant.
+# Char-per-token ratio matching retrievers.chunking.registry._CHARS_PER_TOKEN.
 _CHARS_PER_TOKEN = 4
+
+DEFAULT_OVERLAP_TURNS = 2
 
 
 @dataclass(frozen=True)
@@ -36,14 +38,13 @@ class _Turn:
         return f"{TURN_MARKER_PREFIX} role={self.role} ts={self.ts}>>>\n{self.content}"
 
     def char_len(self) -> int:
-        # Marker line + newline + content; small fixed overhead per turn.
         return len(self.serialize())
 
 
 def turn_grouping_chunker(
     text: str,
     max_tokens: int = 800,
-    overlap_turns: int = 2,
+    overlap_turns: int = DEFAULT_OVERLAP_TURNS,
 ) -> list[Chunk]:
     """Group consecutive turns into chunks bounded by ``max_tokens``.
 
@@ -70,8 +71,6 @@ def turn_grouping_chunker(
                 index=len(chunks),
             )
         )
-        # Carry overlap_turns into the next window so question/answer pairs
-        # bridging a boundary aren't separated.
         carry = window[-overlap_turns:] if overlap_turns > 0 else []
         window = list(carry)
         window_chars = sum(t.char_len() for t in window)
@@ -93,7 +92,7 @@ def _parse_turns(text: str) -> list[_Turn]:
         return []
     turns: list[_Turn] = []
     for i, m in enumerate(matches):
-        body_start = m.end() + 1  # skip the trailing newline after the marker
+        body_start = m.end() + 1
         body_end = matches[i + 1].start() - 1 if i + 1 < len(matches) else len(text)
         content = text[body_start:body_end].rstrip("\n")
         turns.append(_Turn(role=m["role"], ts=m["ts"], content=content))
@@ -101,7 +100,6 @@ def _parse_turns(text: str) -> list[_Turn]:
 
 
 def _window_heading(window: list[_Turn]) -> str:
-    """Heading exposes the time-range and turn count for retrieval context."""
     first, last = window[0], window[-1]
     if first.ts == last.ts:
         return f"turns {first.ts}"

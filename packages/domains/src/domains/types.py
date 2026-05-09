@@ -23,12 +23,3 @@ class IngestItem:
     author: str | None = None
     url: str | None = None
     started_at: datetime | None = None
-
-
-@dataclass
-class Chunk:
-    """A single chunk of content produced by a chunking strategy."""
-
-    text: str
-    heading: str  # nearest heading ancestor (empty if none)
-    index: int  # position in the chunk sequence

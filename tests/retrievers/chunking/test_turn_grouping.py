@@ -1,4 +1,5 @@
-from domains.sessions.chunking import turn_grouping_chunker
+from retrievers.chunking.registry import get_chunking_fn
+from retrievers.chunking.turn_grouping import turn_grouping_chunker
 
 
 def _serialize(turns: list[tuple[str, str, str]]) -> str:
@@ -81,3 +82,12 @@ class TestTurnGroupingChunker:
         )
         chunks = turn_grouping_chunker(text)
         assert chunks[0].heading == "turns 2026-04-01T14:00:00..2026-04-01T14:01:00"
+
+
+class TestRegistryResolution:
+    def test_registry_returns_turn_grouping(self):
+        fn = get_chunking_fn("turn_grouping", chunk_size=200, chunk_overlap=10)
+        text = _serialize([("user", "t1", "Hi"), ("assistant", "t2", "Hello there")])
+        chunks = fn(text)
+        assert len(chunks) == 1
+        assert "<<<TURN" in chunks[0].text
