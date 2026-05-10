@@ -17,21 +17,9 @@ from retrievers.chunking.types import Chunk
 from .dataset import group_by_source
 from .embedder import Embedder
 from .metrics import aggregate_mean, aggregate_recall, hit_at_k, mrr_at_k, ndcg_at_k
-from .types import EvalPair, EvalRunResult, SourceMetrics
+from .types import EvalConfig, EvalPair, EvalRunResult, SourceMetrics
 
 ChunkingFn = Callable[[str], list[Chunk]]
-
-
-@dataclass(frozen=True)
-class EvalConfig:
-    embedding_model: str
-    embedding_dims: int
-    chunker_by_source: dict[str, str]
-    chunk_size: int = 800
-    chunk_overlap: int = 100
-    recall_k: int = 5
-    rank_k: int = 10
-    item_limit: int | None = None
 
 
 @dataclass
