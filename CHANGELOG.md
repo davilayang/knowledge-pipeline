@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`SessionsSource` and `ResearchSource`** (`domains/sessions/`, `domains/research/`) — pure-data adapters reading newsletter-assistant's `sessions.db` and `research.db`. Both assert WAL on connect; `SessionsSource` gates on `ended_at IS NOT NULL` so live sessions never reach the indexer. Schema-lock comments at the top of each source pin the upstream contract. `ResearchSource` reads `documents.content` directly (the writer commits the body atomically with the row), so no disk reads or file-existence checks are needed.
+
+- **`turn_grouping_chunker`** (`retrievers/chunking/turn_grouping.py`, registered as `"turn_grouping"` in the chunking registry) — packs consecutive transcript turns into `max_tokens`-bounded windows with `overlap_turns` carryover, preserving turn boundaries. Standard recursive splitters break sessions mid-turn; this groups on the marker-delimited format `SessionsSource` produces. Reads `TURN_MARKER_PREFIX` from `domains.sessions.sources`.
+
+- **`packages/domains/README.md`** — layer-purpose doc: pure data adapters, no LLM, no Dagster, no internal imports.
+
+### Changed
+
+- **`IngestItem` hoisted to `domains/types.py`** with optional `author` / `url` / `started_at` fields for sources that carry them. `domains.wiki.sources` re-exports it for back-compat with existing `synthesize_wiki` consumers.
+
+- **`turn_grouping` registered in `retrievers.chunking.registry`** alongside `markdown` / `recursive` / `semantic` / etc — pipelines and the eval harness resolve it via `get_chunking_fn("turn_grouping", ...)` like any other strategy. `chunk_overlap` is in tokens for other chunkers but is ignored here (turn_grouping overlaps in turns, not tokens; defaults to 2).
+
 ---
 
 ## [0.9.3] — 2026-05-09

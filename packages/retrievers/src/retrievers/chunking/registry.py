@@ -12,6 +12,7 @@ from langchain_text_splitters import (
     TokenTextSplitter,
 )
 
+from .turn_grouping import turn_grouping_chunker
 from .types import Chunk
 
 # Each chunking function takes text and returns list[Chunk].
@@ -203,6 +204,22 @@ def _make_sentence_transformer_token(chunk_size: int, chunk_overlap: int) -> Chu
     return _chunk
 
 
+def _make_turn_grouping(chunk_size: int, chunk_overlap: int) -> ChunkingFn:
+    """Group consecutive transcript turns into ``chunk_size``-token windows.
+
+    ``chunk_overlap`` is in tokens for other chunkers; turn_grouping overlaps
+    in *turns*, so the parameter is ignored here. Overlap is fixed at the
+    module default (``turn_grouping.DEFAULT_OVERLAP_TURNS``); experiments
+    that need a different value should call ``turn_grouping_chunker`` directly.
+    """
+    del chunk_overlap
+
+    def _chunk(text: str) -> list[Chunk]:
+        return turn_grouping_chunker(text, max_tokens=chunk_size)
+
+    return _chunk
+
+
 # ---------------------------------------------------------------------------
 # Registry
 # ---------------------------------------------------------------------------
@@ -216,6 +233,7 @@ _CHUNKING_FACTORIES: dict[str, Callable[[int, int], ChunkingFn]] = {
     "token": _make_token,
     "semantic": _make_semantic,
     "sentence_transformer_token": _make_sentence_transformer_token,
+    "turn_grouping": _make_turn_grouping,
 }
 
 _DEFAULT_CHUNK_SIZE = 800
