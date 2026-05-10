@@ -1,14 +1,25 @@
 [project]
 name = "knowledge-evals"
 version = "0.9.1"
-description = "Eval harnesses — RAG metrics, wiki quality dimensions, baselines"
+description = "Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding), wiki dimensions"
 requires-python = ">=3.13"
 dependencies = [
     "knowledge-domains",
     "knowledge-workflows",
     "knowledge-retrievers",
+    # Retrieval eval (evals.retrieval) — runs against a real Chroma instance,
+    # embeds via OpenAI with tenacity retry on transient failures.
+    "chromadb>=1.5,<2.0",
+    "openai>=2.0,<3.0",
+    "tenacity>=8.0",
+    # Reserved for the generation-quality eval layer (faithfulness /
+    # answer-relevance / grounding) once wiki+research workflows consume
+    # retrieved context. Not imported yet — see CHANGELOG.
     "ragas>=0.2,<1.0",
 ]
+
+[project.scripts]
+eval-retrieval = "evals.retrieval.cli:main"
 
 [build-system]
 requires = ["hatchling"]

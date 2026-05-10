@@ -138,13 +138,22 @@ help = "Run the research agent workflow from the CLI"
 
 ## Evals ##
 
-[tool.poe.tasks.wiki-eval]
-cmd = "python -m evals.cli.wiki_eval"
-help = "Run the wiki evaluation harness across all six quality dimensions"
+[tool.poe.tasks.retrieval-eval]
+cmd = "python -m evals.retrieval.cli"
+help = """
+  Run the retrieval eval harness — scores a (model, dims, chunker) config on
+  Recall@5 / MRR@10 / nDCG@10 against datasets/retrieval_eval.jsonl.
+  Pass CLI flags after `--`, e.g.
+    uv run poe retrieval-eval -- --raw-store-db /backup/raw_store.db --limit 50
+"""
 
-[tool.poe.tasks.rag-eval]
-cmd = "python -m evals.cli.rag_eval"
-help = "Run the RAG evaluation harness with Ragas metrics"
+[tool.poe.tasks.wiki-eval]
+cmd = "python -m evals.wiki.cli"
+help = "Run the wiki-quality eval harness — six quality dimensions across synthesized wiki pages. Not yet implemented; reserved for the layer that evaluates wiki output beyond plain retrieval."
+
+[tool.poe.tasks.generation-eval]
+cmd = "python -m evals.generation.cli"
+help = "Run the generation-quality eval harness — faithfulness / answer relevance / grounding (Ragas-backed). Not yet implemented; reserved for the layer that evaluates LLM responses against retrieved context."
 
 ## Reset ##
 
