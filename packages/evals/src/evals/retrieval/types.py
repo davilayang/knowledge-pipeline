@@ -23,6 +23,18 @@ class EvalPair:
     expected_content_id: str
 
 
+@dataclass(frozen=True)
+class EvalConfig:
+    embedding_model: str
+    embedding_dims: int
+    chunker_by_source: dict[str, str]
+    chunk_size: int = 800
+    chunk_overlap: int = 100
+    recall_k: int = 5
+    rank_k: int = 10
+    item_limit: int | None = None
+
+
 @dataclass
 class SourceMetrics:
     source: str

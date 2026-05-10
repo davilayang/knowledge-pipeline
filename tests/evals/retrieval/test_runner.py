@@ -11,8 +11,8 @@ import chromadb
 import pytest
 from domains.types import IngestItem
 from evals.retrieval.embedder import DeterministicFakeEmbedder
-from evals.retrieval.runner import EvalConfig, run_eval
-from evals.retrieval.types import EvalPair
+from evals.retrieval.runner import run_eval
+from evals.retrieval.types import EvalConfig, EvalPair
 
 
 def _item(item_id: str, text: str, source_type: str = "raw_store") -> IngestItem:

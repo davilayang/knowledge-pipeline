@@ -28,8 +28,8 @@ from domains.types import IngestItem
 from .cache import CachedEmbedder
 from .dataset import load_eval_set
 from .embedder import OpenAIEmbedder
-from .runner import EvalConfig, run_eval
-from .types import EvalRunResult
+from .runner import run_eval
+from .types import EvalConfig, EvalRunResult
 
 
 def main(argv: list[str] | None = None) -> int:
