@@ -1872,7 +1872,7 @@ wheels = [
 
 [[package]]
 name = "jupyter-collaboration"
-version = "4.3.0"
+version = "4.0.2"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "jupyter-collaboration-ui" },
@@ -1880,9 +1880,9 @@ dependencies = [
     { name = "jupyter-server-ydoc" },
     { name = "jupyterlab" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7b/b7/86b8f2aca6a554668c55c88401ba9ba6e355fdcc7d71cb3dd0bec85c330e/jupyter_collaboration-4.3.0.tar.gz", hash = "sha256:6ef03664fdda0fddf47d2904db29a659c8ef4d2f307080b89cdef72e7e7b24c9", size = 3734, upload-time = "2026-03-31T10:08:36.166Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/c2/51/13b6dc5e5b0c4435109b2acf1f3f65d3f31abf5c51809646b1d6124ebe12/jupyter_collaboration-4.0.2.tar.gz", hash = "sha256:3172858aec0edfa4d91ac2e57a6454bb2d38256fc60963157604412054d0ba21", size = 3571, upload-time = "2025-04-22T16:05:05.01Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e4/1b/b518e55344a2bb787a8025d6cb51353b91d7af07e3756cc06b2ecb88098d/jupyter_collaboration-4.3.0-py3-none-any.whl", hash = "sha256:6dd3d7129e95a04e11f1fd22915f167023bebd4badc4cf1b71f73fb2690f5648", size = 4751, upload-time = "2026-03-31T10:08:34.383Z" },
+    { url = "https://files.pythonhosted.org/packages/9c/91/bc81ac074e6e83c691d774d83991444c15d0946298be812c580039d7d451/jupyter_collaboration-4.0.2-py3-none-any.whl", hash = "sha256:8deff0aa53246bafd2b1a18ad5c5e145609111cc295a788420c79ab43ffccaa8", size = 4641, upload-time = "2025-04-22T16:05:03.645Z" },
 ]
 
 [[package]]
@@ -2047,7 +2047,7 @@ wheels = [
 
 [[package]]
 name = "jupyterlab"
-version = "4.5.7"
+version = "4.4.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "async-lru" },
@@ -2064,9 +2064,9 @@ dependencies = [
     { name = "tornado" },
     { name = "traitlets" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/2b/22/8440ec827762146e7cdecf04335bd348795899d29dc6ae82238707353a2c/jupyterlab-4.5.7.tar.gz", hash = "sha256:55a9822c4754da305f41e113452c68383e214dcf96de760146af89ce5d5117b0", size = 23992763, upload-time = "2026-04-29T16:43:51.328Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/f6/55/3ef7e6bfe988d7df3d453cc27912846d50590c90790848594f7228c89569/jupyterlab-4.4.1.tar.gz", hash = "sha256:c75c4f33056fbd84f0b31eb44622a00c7a5f981b85adfeb198a83721f0465808", size = 23028447, upload-time = "2025-04-22T18:22:33.423Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/3d/aa/537b8f7d80e799af19af35fb3ddfc970b951088a13c57dd9387dcfbb7f61/jupyterlab-4.5.7-py3-none-any.whl", hash = "sha256:fba4cb0e2c44a52859669d8c98b45de029d5e515f8407bf8534d2a8fc5f0964d", size = 12450123, upload-time = "2026-04-29T16:43:46.639Z" },
+    { url = "https://files.pythonhosted.org/packages/29/82/c8784597c5a03426c1ef20c48aff37e8cfe050ab5ca87f0d51069f02b362/jupyterlab-4.4.1-py3-none-any.whl", hash = "sha256:989bca3f9cf2d04b2022e7e657e2df6d4aca808b364810d31c4865edd968a5f7", size = 12292928, upload-time = "2025-04-22T18:22:25.831Z" },
 ]
 
 [[package]]
@@ -2263,6 +2263,7 @@ notebooks = [
     { name = "jupyterlab" },
     { name = "matplotlib" },
     { name = "pandas" },
+    { name = "pycrdt" },
 ]
 
 [package.dev-dependencies]
@@ -2277,9 +2278,9 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "ipykernel", marker = "extra == 'notebooks'", specifier = ">=6.0" },
-    { name = "jupyter-collaboration", marker = "extra == 'notebooks'", specifier = ">=4.0" },
-    { name = "jupyter-mcp-tools", marker = "extra == 'notebooks'", specifier = ">=0.1" },
-    { name = "jupyterlab", marker = "extra == 'notebooks'", specifier = ">=4.0" },
+    { name = "jupyter-collaboration", marker = "extra == 'notebooks'", specifier = "==4.0.2" },
+    { name = "jupyter-mcp-tools", marker = "extra == 'notebooks'", specifier = ">=0.1.4" },
+    { name = "jupyterlab", marker = "extra == 'notebooks'", specifier = "==4.4.1" },
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-evals", editable = "packages/evals" },
     { name = "knowledge-orchestrators", editable = "packages/orchestrators" },
@@ -2287,6 +2288,7 @@ requires-dist = [
     { name = "knowledge-workflows", editable = "packages/workflows" },
     { name = "matplotlib", marker = "extra == 'notebooks'", specifier = ">=3.8" },
     { name = "pandas", marker = "extra == 'notebooks'", specifier = ">=2.0" },
+    { name = "pycrdt", marker = "extra == 'notebooks'" },
 ]
 provides-extras = ["notebooks"]
 

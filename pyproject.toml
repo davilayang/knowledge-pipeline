@@ -15,16 +15,13 @@ dependencies = [
 
 [project.optional-dependencies]
 notebooks = [
-    "jupyterlab>=4.0",
+    "jupyterlab==4.4.1",
     "pandas>=2.0",
     "matplotlib>=3.8",
     "ipykernel>=6.0",
-    # Server-side companions for the jupyter MCP server (see .mcp.json):
-    # collaboration enables real-time kernel inspection over YJS;
-    # jupyter-mcp-tools exposes the kernel-execute / cell-edit tools the
-    # MCP client invokes.
-    "jupyter-collaboration>=4.0",
-    "jupyter-mcp-tools>=0.1",
+    "jupyter-collaboration==4.0.2",
+    "jupyter-mcp-tools>=0.1.4",
+    "pycrdt",
 ]
 
 [dependency-groups]
