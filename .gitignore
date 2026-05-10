@@ -8,6 +8,7 @@ creds
 *.pem
 .zed
 *.ipynb
+!notebooks/*.ipynb
 .ipynb_checkpoints
 .mcp.json
 .playwright-mcp

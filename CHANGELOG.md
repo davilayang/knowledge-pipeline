@@ -6,7 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.9.4] — 2026-05-10
+
 ### Added
+
+- **`notebooks/` scaffold** — checked-in JupyterLab notebooks for exploratory work that pairs with the retrieval eval harness: `01_explore_sources.ipynb` (sanity-check sources), `02_build_retrieval_eval_set.ipynb` (Phase C dataset bootstrap), `03_compare_eval_runs.ipynb` (cross-config plots), `04_inspect_retrieval_misses.ipynb` (drill into Recall@5=0 cases). New `[notebooks]` workspace extra (`jupyterlab` / `pandas` / `matplotlib` / `ipykernel` / `jupyter-collaboration` / `jupyter-mcp-tools`); launch via `uv run poe notebooks`. Opt-in — prod install stays slim.
+
+- **Jupyter MCP integration documented** — `notebooks/README.md` describes how to drop a local (gitignored) `.mcp.json` to give Claude Code tools for introspecting and operating on a running JupyterLab session. The `notebooks` poe task starts the server on port 8888 with a fixed localhost-only dev token matching the documented config. Per-developer opt-in.
 
 - **`evals.retrieval` harness + `eval-retrieval` CLI** — drives index → query → per-source metrics on the four sources (`raw_store`, `notes`, `sessions`, `research`). Evaluates the end-to-end retrieval system (chunker + embedding model + vector index + query path) the `populate_vector_store` pipeline produces, not the vector store as storage. Pluggable `Embedder` protocol with `OpenAIEmbedder` (Matryoshka `dimensions` + tenacity retry on transient errors only — `RateLimitError`/`APIConnectionError`/`InternalServerError`; non-transient 4xx like `AuthenticationError` raise immediately) and `DeterministicFakeEmbedder` for tests. On-disk embedding cache keyed on `(model, dims, sha256(text))` with atomic write-then-rename. Document-level metrics: Recall@5, MRR@10, nDCG@10. Results land in `data/eval_results/retrieval_<timestamp>.json`. CLI rejects empty source-flag invocations and exits non-zero when no per-source metrics are produced.
 

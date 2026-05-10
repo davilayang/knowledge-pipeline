@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.9.3"
+version = "0.9.4"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -11,6 +11,20 @@ dependencies = [
     "knowledge-orchestrators",
     "knowledge-retrievers",
     "knowledge-workflows",
+]
+
+[project.optional-dependencies]
+notebooks = [
+    "jupyterlab>=4.0",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
+    "ipykernel>=6.0",
+    # Server-side companions for the jupyter MCP server (see .mcp.json):
+    # collaboration enables real-time kernel inspection over YJS;
+    # jupyter-mcp-tools exposes the kernel-execute / cell-edit tools the
+    # MCP client invokes.
+    "jupyter-collaboration>=4.0",
+    "jupyter-mcp-tools>=0.1",
 ]
 
 [dependency-groups]
@@ -154,6 +168,22 @@ help = "Run the wiki-quality eval harness — six quality dimensions across synt
 [tool.poe.tasks.generation-eval]
 cmd = "python -m evals.generation.cli"
 help = "Run the generation-quality eval harness — faithfulness / answer relevance / grounding (Ragas-backed). Not yet implemented; reserved for the layer that evaluates LLM responses against retrieved context."
+
+## Notebooks ##
+
+[tool.poe.tasks.notebooks]
+cmd = """
+  uv run --extra notebooks jupyter lab notebooks/
+    --port 8888
+    --IdentityProvider.token local-jupyter-dev-token
+    --no-browser
+"""
+help = """
+  Launch JupyterLab on port 8888 with the [notebooks] extra installed.
+  The token is a fixed localhost-only dev string (no real secret) that
+  matches .mcp.json so the jupyter MCP server can authenticate against
+  this server. Don't expose 8888 publicly.
+"""
 
 ## Reset ##
 
