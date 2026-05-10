@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.5] — 2026-05-10
+
+### Changed
+
+- Change jupyter start command with uv to `uv run poe jupyter`, set server token to mock string as "JUPYTER_SERVER_TOKEN"
+
 ## [0.9.4] — 2026-05-10
 
 ### Added

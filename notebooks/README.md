@@ -5,9 +5,7 @@ Exploratory and operational notebooks. Not production code — no scheduled runs
 ## Launch
 
 ```bash
-uv run poe notebooks
-# (equivalent to: uv run --extra notebooks jupyter lab notebooks/ --port 8888 \
-#   --IdentityProvider.token local-jupyter-dev-token --no-browser)
+uv run poe jupyter
 ```
 
 The `notebooks` extra installs `jupyterlab`, `pandas`, `matplotlib`, `ipykernel`, plus `jupyter-collaboration` and `jupyter-mcp-tools` (the server-side companions for the MCP integration below). Opt-in — prod installs stay slim.
@@ -35,7 +33,7 @@ A local `.mcp.json` at the repo root can register a `jupyter` MCP server that le
 To use it:
 
 1. Drop the JSON above into `.mcp.json` at the repo root (gitignored).
-2. Run `uv run poe notebooks` in a terminal — starts JupyterLab on port 8888 with the matching token.
+2. Run `uv run poe jupyter` in a terminal — starts JupyterLab on port 8888 with the matching token.
 3. Open Claude Code in the repo. First time, it'll prompt to approve the project's `.mcp.json` (`jupyter` server entry).
 4. Approve. Claude Code can now invoke MCP tools against the running server.
 

@@ -13,17 +13,19 @@ dependencies = [
     "knowledge-workflows",
 ]
 
+# For user-facing extras
 [project.optional-dependencies]
 notebooks = [
-    "jupyterlab==4.4.1",
-    "pandas>=2.0",
-    "matplotlib>=3.8",
     "ipykernel>=6.0",
+    "jupyterlab",
+    "jupyterlab-vim",
     "jupyter-collaboration==4.0.2",
     "jupyter-mcp-tools>=0.1.4",
-    "pycrdt",
+    "pandas>=2.0",
+    "matplotlib>=3.8",
 ]
 
+# For local dev/test/lint tooling
 [dependency-groups]
 dev = [
     "black>=24.0,<25.0",
@@ -168,13 +170,14 @@ help = "Run the generation-quality eval harness — faithfulness / answer releva
 
 ## Notebooks ##
 
-[tool.poe.tasks.notebooks]
+[tool.poe.tasks.jupyter]
 cmd = """
   uv run --extra notebooks jupyter lab notebooks/
     --port 8888
-    --IdentityProvider.token local-jupyter-dev-token
+    --IdentityProvider.token "${JUPYTER_SERVER_TOKEN}"
     --no-browser
 """
+envfile = ".env"
 help = """
   Launch JupyterLab on port 8888 with the [notebooks] extra installed.
   The token is a fixed localhost-only dev string (no real secret) that
