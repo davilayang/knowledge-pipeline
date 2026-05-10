@@ -1,4 +1,11 @@
 # Retrieval evaluation metrics for comparing RAG strategies.
+#
+# TODO: tidy up and unify with evals.retrieval.metrics. This module operates
+# on `expected_ids: list[str]` (set-style, multi-expected) while
+# evals.retrieval.metrics operates on a single `expected: str` (binary
+# document-level relevance). Same math, two interfaces, two callers — the
+# workbench evaluate ops here, the new retrieval harness there. Consolidate
+# once the workbench job's contract is settled.
 
 
 def recall_at_k(retrieved_ids: list[str], expected_ids: list[str], k: int = 5) -> float:
