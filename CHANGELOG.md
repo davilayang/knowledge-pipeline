@@ -12,23 +12,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **`notebooks/` scaffold** — checked-in JupyterLab notebooks for exploratory work that pairs with the retrieval eval harness: `01_explore_sources.ipynb` (sanity-check sources), `02_build_retrieval_eval_set.ipynb` (Phase C dataset bootstrap), `03_compare_eval_runs.ipynb` (cross-config plots), `04_inspect_retrieval_misses.ipynb` (drill into Recall@5=0 cases). New `[notebooks]` workspace extra (`jupyterlab` / `pandas` / `matplotlib` / `ipykernel` / `jupyter-collaboration` / `jupyter-mcp-tools`); launch via `uv run poe notebooks`. Opt-in — prod install stays slim.
+- **`evals.retrieval` harness + `eval-retrieval` CLI** — scores `(model, dims, chunker)` configs on Recall@5 / MRR@10 / nDCG@10 over expected `content_id`. `OpenAIEmbedder` with tenacity retry on transient errors only; on-disk embedding cache keyed on `(model, dims, sha256(text))`. Results in `data/eval_results/retrieval_<timestamp>.json`.
 
-- **Jupyter MCP integration documented** — `notebooks/README.md` describes how to drop a local (gitignored) `.mcp.json` to give Claude Code tools for introspecting and operating on a running JupyterLab session. The `notebooks` poe task starts the server on port 8888 with a fixed localhost-only dev token matching the documented config. Per-developer opt-in.
+- **`SessionsSource` and `ResearchSource`** in `domains/{sessions,research}/` — read newsletter-assistant's `sessions.db` and `research.db`. Both assert WAL; `SessionsSource` gates on `ended_at IS NOT NULL`; `ResearchSource` reads `documents.content` directly (the writer commits it with the row).
 
-- **`evals.retrieval` harness + `eval-retrieval` CLI** — drives index → query → per-source metrics on the four sources (`raw_store`, `notes`, `sessions`, `research`). Evaluates the end-to-end retrieval system (chunker + embedding model + vector index + query path) the `populate_vector_store` pipeline produces, not the vector store as storage. Pluggable `Embedder` protocol with `OpenAIEmbedder` (Matryoshka `dimensions` + tenacity retry on transient errors only — `RateLimitError`/`APIConnectionError`/`InternalServerError`; non-transient 4xx like `AuthenticationError` raise immediately) and `DeterministicFakeEmbedder` for tests. On-disk embedding cache keyed on `(model, dims, sha256(text))` with atomic write-then-rename. Document-level metrics: Recall@5, MRR@10, nDCG@10. Results land in `data/eval_results/retrieval_<timestamp>.json`. CLI rejects empty source-flag invocations and exits non-zero when no per-source metrics are produced.
+- **`turn_grouping_chunker`** in `retrievers/chunking/turn_grouping.py`, registered as `"turn_grouping"` — packs consecutive transcript turns into `max_tokens`-bounded windows with overlap, preserving turn boundaries.
 
-- **`SessionsSource` and `ResearchSource`** (`domains/sessions/`, `domains/research/`) — pure-data adapters reading newsletter-assistant's `sessions.db` and `research.db`. Both assert WAL on connect; `SessionsSource` gates on `ended_at IS NOT NULL` so live sessions never reach the indexer. Schema-lock comments at the top of each source pin the upstream contract. `ResearchSource` reads `documents.content` directly (the writer commits the body atomically with the row), so no disk reads or file-existence checks are needed.
+- **`packages/domains/README.md`** — layer-purpose doc.
 
-- **`turn_grouping_chunker`** (`retrievers/chunking/turn_grouping.py`, registered as `"turn_grouping"` in the chunking registry) — packs consecutive transcript turns into `max_tokens`-bounded windows with `overlap_turns` carryover, preserving turn boundaries. Standard recursive splitters break sessions mid-turn; this groups on the marker-delimited format `SessionsSource` produces. Reads `TURN_MARKER_PREFIX` from `domains.sessions.sources`.
-
-- **`packages/domains/README.md`** — layer-purpose doc: pure data adapters, no LLM, no Dagster, no internal imports.
+- **`notebooks/` scaffold** + `[notebooks]` workspace extra + `notebooks` poe task — four exploratory notebooks for Phase C work; opt-in JupyterLab via `uv run poe notebooks`. `notebooks/README.md` documents a per-developer (gitignored) `.mcp.json` template for the Claude Code Jupyter MCP server.
 
 ### Changed
 
-- **`IngestItem` hoisted to `domains/types.py`** with optional `author` / `url` / `started_at` fields for sources that carry them. `domains.wiki.sources` re-exports it for back-compat with existing `synthesize_wiki` consumers.
+- **`IngestItem` and `Chunk` hoisted into a shared types module each** — `domains/types.py` for `IngestItem` (with optional `author`/`url`/`started_at`); `retrievers/chunking/types.py` for `Chunk`. Wiki and chunking modules re-export for back-compat.
 
-- **`turn_grouping` registered in `retrievers.chunking.registry`** alongside `markdown` / `recursive` / `semantic` / etc — pipelines and the eval harness resolve it via `get_chunking_fn("turn_grouping", ...)` like any other strategy. `chunk_overlap` is in tokens for other chunkers but is ignored here (turn_grouping overlaps in turns, not tokens; defaults to 2).
+- **`rag-eval` poe task renamed to `generation-eval`** (named for what it measures, not the library). New `retrieval-eval` task wired to the new harness; `wiki-eval` marked as TODO until that layer lands.
 
 ---
 
