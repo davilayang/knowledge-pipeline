@@ -21,7 +21,7 @@ Main is **protected**. All changes go through feature branches and pull requests
 | `knowledge-domains` | `packages/domains` | Pure data layer — types, schema, sources (no LLM/Dagster deps) |
 | `knowledge-workflows` | `packages/workflows` | LangGraph workflows + agent primitives (wiki synthesis, research) |
 | `knowledge-retrievers` | `packages/retrievers` | RAG infra — chunking, embedding, vector store, retrieval strategies |
-| `knowledge-evals` | `packages/evals` | Eval harnesses — RAG metrics (Ragas), wiki quality dimensions |
+| `knowledge-evals` | `packages/evals` | Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding, reserved), wiki dimensions (reserved) |
 | `knowledge-orchestrators` | `packages/orchestrators` | Dagster definitions — the **only** package allowed to depend on Dagster |
 
 **Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers`. `orchestrators` is the top — depends on `domains` + `workflows` for production; `retrievers` + `evals` are optional extras (`[workbench]`) for the local RAG workbench. Nothing outside `orchestrators` may `import dagster`.
@@ -49,7 +49,7 @@ packages/
   domains/         # Pure data layer (no LLM/Dagster deps)
   workflows/       # LangGraph workflows + agents (wiki synthesis, research)
   retrievers/      # RAG infra — workbench only
-  evals/           # Ragas RAG eval + wiki eval — workbench only
+  evals/           # Retrieval eval (active), generation + wiki eval (reserved) — workbench only
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
       shared/           # Shared resources (raw_store, chroma, etc.)
@@ -65,6 +65,7 @@ documents/         # Developer reference docs (INDEXING.md, RETRIEVAL.md)
 scripts/           # Deployment scripts — deploy-hcloud.sh
 tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
+notebooks/         # Exploratory notebooks (Phase C / debugging) — opt-in `[notebooks]` extra
 data/              # Runtime, gitignored — raw_store.db, chroma/, wiki/, eval_results/
 backups/           # Backup pipeline landing — gitignored
 .rclone/           # rclone.conf, mounted into dagster-code — gitignored
