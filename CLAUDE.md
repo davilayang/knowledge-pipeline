@@ -50,6 +50,7 @@ packages/
   workflows/       # LangGraph workflows + agents (wiki synthesis, research)
   retrievers/      # RAG infra — workbench only
   evals/           # Retrieval eval (active), generation + wiki eval (reserved) — workbench only
+    datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
       shared/           # Shared resources (raw_store, chroma, etc.)
