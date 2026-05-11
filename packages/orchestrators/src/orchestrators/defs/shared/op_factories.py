@@ -6,7 +6,7 @@ import json
 import logging
 
 import dagster as dg
-from domains.store import get_contents
+from domains.raw_store.sources import get_contents
 
 from .resources import RawStoreResource, StrategyPathsResource, VectorStoreResource
 

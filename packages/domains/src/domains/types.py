@@ -10,6 +10,7 @@ that some adapters expose and others don't — consumers read what they need.
 
 from dataclasses import dataclass
 from datetime import date, datetime
+from typing import Protocol
 
 
 @dataclass
@@ -23,3 +24,9 @@ class IngestItem:
     author: str | None = None
     url: str | None = None
     started_at: datetime | None = None
+
+
+class IngestSource(Protocol):
+    """Protocol for ingest sources — pure generators."""
+
+    def get_items(self) -> list[IngestItem]: ...

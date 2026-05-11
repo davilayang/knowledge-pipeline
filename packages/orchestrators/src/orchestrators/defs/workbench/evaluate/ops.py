@@ -7,7 +7,7 @@ import time
 from datetime import UTC, datetime
 
 import dagster as dg
-from domains.store import count_contents
+from domains.raw_store.sources import count_contents
 from evals.rag import mrr, precision_at_k, recall_at_k
 from retrievers.retrieval import build_strategy
 from retrievers.vector_store.chroma import get_client, get_collection
