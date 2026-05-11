@@ -4,7 +4,8 @@ import time
 
 import dagster as dg
 import psycopg
-from domains.wiki.sources import IngestItem, RawStoreSource
+from domains.raw_store.sources import RawStoreSource
+from domains.types import IngestItem
 from domains.wiki.state import get_all_pages, get_processed_ids
 from workflows.costs import PRICING_PER_1M, cost_usd
 from workflows.llm import LLMCall

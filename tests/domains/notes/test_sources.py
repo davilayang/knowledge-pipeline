@@ -1,72 +1,7 @@
-import sqlite3
 from datetime import date
 from pathlib import Path
 
-from domains.wiki.sources import LocalFileSource, RawStoreSource
-
-
-def _create_test_db(tmp_path: Path) -> Path:
-    db_path = tmp_path / "test.db"
-    conn = sqlite3.connect(db_path)
-    conn.execute(
-        """
-        CREATE TABLE contents (
-            content_id TEXT PRIMARY KEY,
-            newsletter_id INTEGER,
-            source_key TEXT,
-            content_date TEXT,
-            title TEXT,
-            author TEXT,
-            url TEXT,
-            content_md TEXT,
-            scrape_status TEXT DEFAULT 'full',
-            fetch_tier TEXT,
-            fetch_attempts INTEGER DEFAULT 0,
-            vector_status TEXT DEFAULT 'pending',
-            stored_at TEXT
-        )
-    """
-    )
-    conn.execute(
-        """
-        INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
-                              content_date, stored_at)
-        VALUES ('abc123', 1, 'the_batch', 'RAG is All You Need', 'Author',
-                '# RAG\n\nRAG is a technique...', '2026-04-01', '2026-04-01T00:00:00')
-    """
-    )
-    conn.execute(
-        """
-        INSERT INTO contents (content_id, newsletter_id, source_key, title, author, content_md,
-                              stored_at)
-        VALUES ('def456', 1, 'boring_cash_cow', 'Building RAG Products', 'Author',
-                '# Building\n\nHow to build...', '2026-04-02T00:00:00')
-    """
-    )
-    conn.commit()
-    conn.close()
-    return db_path
-
-
-class TestRawStoreSource:
-    def test_yields_all_items(self, tmp_path: Path):
-        db_path = _create_test_db(tmp_path)
-        source = RawStoreSource(db_path=db_path)
-        items = source.get_items()
-
-        assert len(items) == 2
-        assert items[0].item_id == "abc123"
-        assert items[0].source_type == "raw_store"
-        assert items[0].source_ref == "raw_store:abc123"
-
-    def test_item_fields(self, tmp_path: Path):
-        db_path = _create_test_db(tmp_path)
-        source = RawStoreSource(db_path=db_path)
-        item = source.get_items()[0]
-
-        assert item.title == "RAG is All You Need"
-        assert item.date == date(2026, 4, 1)
-        assert "RAG is a technique" in item.text
+from domains.notes.sources import LocalFileSource
 
 
 class TestLocalFileSource:

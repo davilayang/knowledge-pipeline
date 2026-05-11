@@ -21,7 +21,7 @@ and routes straight to commit, which records a status='skipped' processed row.
 import operator
 from typing import Annotated, ReadOnly, Required, TypedDict
 
-from domains.wiki.sources import IngestItem
+from domains.types import IngestItem
 from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 from langgraph.types import Send

@@ -122,12 +122,12 @@ def _load_items(args: argparse.Namespace) -> dict[str, list[IngestItem]]:
     items: dict[str, list[IngestItem]] = {}
 
     if args.raw_store_db is not None:
-        from domains.wiki.sources import RawStoreSource
+        from domains.raw_store.sources import RawStoreSource
 
         items["raw_store"] = RawStoreSource(args.raw_store_db).get_items()
 
     if args.notes_dir is not None:
-        from domains.wiki.sources import LocalFileSource
+        from domains.notes.sources import LocalFileSource
 
         items["notes"] = LocalFileSource(args.notes_dir).get_items()
 

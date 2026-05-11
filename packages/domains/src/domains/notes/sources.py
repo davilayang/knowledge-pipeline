@@ -1,60 +1,12 @@
-"""Source adapters for wiki ingest — pure generators, no state filtering."""
+"""LocalFileSource — yields IngestItems from a directory of markdown files."""
 
 import hashlib
 from datetime import date
 from pathlib import Path
-from typing import Protocol
 
 import yaml
 
-from domains.store import ContentRow, get_content_by_id, get_content_ids, get_contents
 from domains.types import IngestItem
-
-__all__ = [
-    "IngestItem",
-    "IngestSource",
-    "RawStoreSource",
-    "LocalFileSource",
-]
-
-
-class IngestSource(Protocol):
-    """Protocol for wiki ingest sources — pure generators."""
-
-    def get_items(self) -> list[IngestItem]: ...
-
-
-# TODO: Duplicate function to store.py?  should use the same format
-# raw_store/sources.py
-class RawStoreSource:
-    """Yields IngestItems from raw_store.db."""
-
-    def __init__(self, db_path: Path):
-        self._db_path = db_path
-
-    def get_items(self) -> list[IngestItem]:
-        rows: list[ContentRow] = get_contents(db_path=self._db_path)
-        return [self._to_item(r) for r in rows]
-
-    def get_item_ids(self) -> list[str]:
-        """IDs-only enumeration — cheap discovery without pulling content_md."""
-        return get_content_ids(db_path=self._db_path)
-
-    def get_item(self, item_id: str) -> IngestItem | None:
-        """Single-row lookup by item_id (= content_id). None if absent."""
-        row = get_content_by_id(item_id, db_path=self._db_path)
-        return self._to_item(row) if row else None
-
-    @staticmethod
-    def _to_item(row: ContentRow) -> IngestItem:
-        return IngestItem(
-            item_id=row.content_id,
-            title=row.title,
-            date=row.content_date,
-            text=row.content_md,
-            source_type="raw_store",
-            source_ref=f"raw_store:{row.content_id}",
-        )
 
 
 class LocalFileSource:

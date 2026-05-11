@@ -25,8 +25,8 @@ import operator
 from pathlib import Path
 from typing import Annotated, ReadOnly, Required, TypedDict
 
+from domains.types import IngestItem
 from domains.wiki.io import write_page
-from domains.wiki.sources import IngestItem
 from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 
