@@ -4,7 +4,33 @@ Guidance for Claude Code working in this repo.
 
 ## Project Overview
 
-Dagster-orchestrated knowledge pipeline; companion to `newsletter-assistant`. See [`CHANGELOG.md`](CHANGELOG.md) for release history.
+@docs/concept/personal-knowledge-os.md
+
+The framing above is auto-imported (via Claude Code's `@-import`) so every
+session sees it. Edit `docs/concept/personal-knowledge-os.md` to update; do
+not duplicate the content here.
+
+## Decision rubric for future work
+
+When evaluating a PR, feature, pipeline change, or architectural decision, ask:
+
+1. **Does it move us toward thinking-partner depth?** (Better recall quality,
+   more useful entity wiki pages, sharper cross-content connection — all feed
+   back into newsletter-assistant's ability to be a thinking partner)
+2. **Does it serve at least one exit ramp?** (Application: smoother bridges
+   from corpus to research panel. Retention: better wiki pages, better
+   indexing, better retrieval, better cross-corpus joins.)
+3. **Does it strengthen the second brain over time?** (This repo IS most of
+   the second brain — wikis, indices, retrieval evaluation. Most work here
+   will pass this test by default; the sharper question is *which* part of
+   the second brain it strengthens, and whether it closes a current gap.)
+4. **Does it serve the personal-corpus-of-one shape?** (vs. generic
+   multi-tenant pipeline patterns — this is one user's reading life, not a
+   SaaS. Don't build for hypothetical scale.)
+
+Work that doesn't pass any of these probably isn't worth doing right now.
+Work that strengthens an underbuilt or in-flight piece (per the trajectory
+above) beats work that polishes the already-working layer.
 
 ## Git Workflow
 
