@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.7] — 2026-05-11
+
+### Changed
+
+- **Project framing in `CLAUDE.md` reoriented around the personal-knowledge-OS concept with two compounding exit ramps** — apply (research panel + codebase, owned by `newsletter-assistant`) and retain (wiki + indexing + retrieval, owned by this repo). Adds a "Where we are on the journey" section honest about what works today (backups + wiki synthesis) vs. WIP (index pipeline + evals) vs. aspirational (cross-corpus retrieval ranking, wiki-to-voice-agent bridge), plus a 4-point decision rubric for evaluating future work. Same framing applied in companion repo `newsletter-assistant`.
+
+---
+
 ## [0.9.6] — 2026-05-11
 
 ### Changed
