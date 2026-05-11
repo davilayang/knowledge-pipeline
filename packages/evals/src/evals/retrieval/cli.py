@@ -101,8 +101,8 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument(
         "--eval-set",
         type=Path,
-        default=Path("datasets/retrieval_eval.jsonl"),
-        help="Path to JSONL eval pairs.",
+        default=Path("packages/evals/datasets/retrieval_eval.jsonl"),
+        help="Path to JSONL eval pairs. Default resolves from repo root.",
     )
     p.add_argument("--raw-store-db", type=Path, default=None)
     p.add_argument("--sessions-db", type=Path, default=None)

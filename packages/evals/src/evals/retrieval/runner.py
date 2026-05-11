@@ -130,7 +130,17 @@ def _index_source(
 
     if ids:
         embeddings = embedder.embed_batch(docs)
-        collection.upsert(ids=ids, documents=docs, embeddings=embeddings, metadatas=metas)
+        # Chroma rejects batches above its server-side max (default 5461). Stay
+        # well under the cap so headroom for future server-side changes.
+        BATCH = 4000
+        for start in range(0, len(ids), BATCH):
+            stop = start + BATCH
+            collection.upsert(
+                ids=ids[start:stop],
+                documents=docs[start:stop],
+                embeddings=embeddings[start:stop],
+                metadatas=metas[start:stop],
+            )
 
     return _IndexedSource(
         source=source,

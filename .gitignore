@@ -9,6 +9,7 @@ creds
 .zed
 *.ipynb
 !notebooks/*.ipynb
+.jupyter*
 .ipynb_checkpoints
 .mcp.json
 .playwright-mcp
@@ -30,7 +31,7 @@ wheels/
 
 # Runtime data
 data/
-datasets/
+/datasets/
 logs/
 NOTES/
 backups/

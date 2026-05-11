@@ -8,11 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
-## [0.9.5] — 2026-05-10
+## [0.9.5] — 2026-05-11
+
+### Added
+
+- **Pinned retrieval eval dataset** (`packages/evals/datasets/retrieval_eval.jsonl`) — 166 labelled query/expected-`content_id` pairs spanning raw_store, sessions, notes, and research corpora. The `eval-retrieval` CLI now defaults `--eval-set` to this file, so `uv run eval-retrieval` works out of the box without specifying a path.
+
+- **`LocalFileSource.get_item_ids` / `get_item`** — `LocalFileSource` in `domains/wiki/sources.py` now implements the full `IngestSource` interface (matching `SessionsSource`, `ResearchSource`, and the raw-store source). All four sources are now interchangeable in eval and ingestion loops.
 
 ### Changed
 
-- Change jupyter start command with uv to `uv run poe jupyter`, set server token to mock string as "JUPYTER_SERVER_TOKEN"
+- **Embedding and Chroma upsert no longer hit provider limits on large corpora.** `OpenAIEmbedder` now sub-batches at a 250k-token budget per request (was: unbounded → OpenAI 400 at >300k tokens). Chroma upserts chunk at 4000 items (was: unbounded → server `max_batch_size` error above 5461). Both limits are internal; the CLI and runner API are unchanged.
 
 ## [0.9.4] — 2026-05-10
 
