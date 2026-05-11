@@ -24,6 +24,8 @@ class IngestSource(Protocol):
     def get_items(self) -> list[IngestItem]: ...
 
 
+# TODO: Duplicate function to store.py?  should use the same format
+# raw_store/sources.py
 class RawStoreSource:
     """Yields IngestItems from raw_store.db."""
 
@@ -69,6 +71,23 @@ class LocalFileSource:
         for path in sorted(self._inbox_dir.glob("*.md")):
             items.append(self._to_item(path))
         return items
+
+    def get_item_ids(self) -> list[str]:
+        # IDs derive from sha256(filename:content), so enumerating them still
+        # requires reading each file. Cheaper than building IngestItems but not
+        # cheap.
+        if not self._inbox_dir.exists():
+            return []
+        return [self._to_item(p).item_id for p in sorted(self._inbox_dir.glob("*.md"))]
+
+    def get_item(self, item_id: str) -> IngestItem | None:
+        if not self._inbox_dir.exists():
+            return None
+        for path in sorted(self._inbox_dir.glob("*.md")):
+            item = self._to_item(path)
+            if item.item_id == item_id:
+                return item
+        return None
 
     @staticmethod
     def _to_item(path: Path) -> IngestItem:

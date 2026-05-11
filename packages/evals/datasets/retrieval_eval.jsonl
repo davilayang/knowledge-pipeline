@@ -1,0 +1,166 @@
+{"query": "What are the steps for AI analytics in non-technical teams?", "source": "notes", "expected_content_id": "07634f6c674bf94f"}
+{"query": "List notable open-source AI tools to watch this year.", "source": "notes", "expected_content_id": "0ce4916957135ce6"}
+{"query": "What are effective RAG architectures for development?", "source": "notes", "expected_content_id": "12e75f5ed339c8d2"}
+{"query": "What features should an AI agent harness include?", "source": "notes", "expected_content_id": "183c7053d42339c4"}
+{"query": "How does MemPalace achieve high recall in retrieval?", "source": "notes", "expected_content_id": "2811b68085257a28"}
+{"query": "What skills are needed to build AI agents?", "source": "notes", "expected_content_id": "2e8a29a8c85a53d0"}
+{"query": "What are the applications of OpenClaw AI?", "source": "notes", "expected_content_id": "3500418cfd4bc660"}
+{"query": "How will AI agents change work in the future?", "source": "notes", "expected_content_id": "3b0604ea65613856"}
+{"query": "How can I improve my AI content generation process?", "source": "notes", "expected_content_id": "3b5a817cea546383"}
+{"query": "How is AI changing data professionals' roles?", "source": "notes", "expected_content_id": "3df0913a8d751742"}
+{"query": "How can I improve my attention span effectively?", "source": "notes", "expected_content_id": "52416e2df285b32d"}
+{"query": "What are best practices for AI data governance?", "source": "notes", "expected_content_id": "549b0c601849d5f7"}
+{"query": "How can AI enhance coding efficiency for programmers?", "source": "notes", "expected_content_id": "56cf5123002d57fa"}
+{"query": "How is AI changing coding practices?", "source": "notes", "expected_content_id": "6973a7483c5209dc"}
+{"query": "How can traditional ML inform agentic AI design?", "source": "notes", "expected_content_id": "6ed91348b3c23770"}
+{"query": "What is Voltropy's approach to AI memory management?", "source": "notes", "expected_content_id": "720b677af5706d2e"}
+{"query": "How to develop a production-ready voice-agent AI?", "source": "notes", "expected_content_id": "86d75b8116434247"}
+{"query": "What is the AI product development workflow?", "source": "notes", "expected_content_id": "89456a45871536d4"}
+{"query": "How does MoE-Mamba improve AI performance?", "source": "notes", "expected_content_id": "8981043175b23ba8"}
+{"query": "How can I improve retrieval accuracy in RAG systems?", "source": "notes", "expected_content_id": "8d9c42f3e018dd43"}
+{"query": "What are the key insights from Anthropic's engineering playbook?", "source": "notes", "expected_content_id": "937825b5a5d5ef5b"}
+{"query": "What is the RAS approach in knowledge retrieval?", "source": "notes", "expected_content_id": "9f8709685a8c20af"}
+{"query": "How does the Alaya-vijnana system differ from traditional AI memory?", "source": "notes", "expected_content_id": "a3f07c99c4f8cd0d"}
+{"query": "How can OCR and LLM work together effectively?", "source": "notes", "expected_content_id": "a668f1eacc392746"}
+{"query": "How does chunking affect retrieval accuracy in AI systems?", "source": "notes", "expected_content_id": "a9ba69e873bba2dc"}
+{"query": "What are the key components of an AI agent architecture?", "source": "notes", "expected_content_id": "c168782b0ae99de1"}
+{"query": "How to implement multi-agent architecture for data quality?", "source": "notes", "expected_content_id": "c53b41583ae5b9a5"}
+{"query": "What are the benefits of using ontology in personal knowledge graphs?", "source": "notes", "expected_content_id": "c8469009fecb673f"}
+{"query": "How does the Agentic RAG model improve information retrieval?", "source": "notes", "expected_content_id": "d16bc9be2c249c9e"}
+{"query": "How do senior developers contribute to software stability in AI?", "source": "notes", "expected_content_id": "d5b88b734a0bb8dc"}
+{"query": "How can tech companies scale effectively?", "source": "notes", "expected_content_id": "edef9e3be3929c9e"}
+{"query": "What is mechanical sympathy in software engineering?", "source": "notes", "expected_content_id": "ef956a51add55209"}
+{"query": "What are the dangers of superintelligent AI?", "source": "notes", "expected_content_id": "f13ae8e4e2ce24dd"}
+{"query": "What skills do I need to build AI systems like a Claude Architect?", "source": "notes", "expected_content_id": "f930ceface0c7a61"}
+{"query": "How to design a robust voice AI assistant?", "source": "notes", "expected_content_id": "f983fcd07f930cce"}
+{"query": "What is harness engineering in AI development?", "source": "raw_store", "expected_content_id": "medium::https://ai.gopubby.com/harness-engineering-what-every-ai-engineer-needs-to-know-in-2026-0ab649e5686a"}
+{"query": "How does hyperbolic geometry improve knowledge retrieval?", "source": "raw_store", "expected_content_id": "medium::https://levelup.gitconnected.com/hyperbolicrag-curved-spaces-better-answers-aad2736adb9c"}
+{"query": "What are effective logging techniques in Python?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@HassanNauman/7-python-logging-patterns-that-make-debugging-10x-easier-f8f52b426896"}
+{"query": "What is a roadmap for becoming a senior data engineer?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@ThinkingInTech/the-ultimate-3-month-roadmap-to-senior-data-engineering-9f5894d09722"}
+{"query": "What Python libraries can help clean messy data?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@abdur.rahman12/7-python-libraries-that-clean-data-beautifully-0593e6c5a642"}
+{"query": "How does Agentic RAG improve information retrieval systems?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@alphaiterations/build-agentic-rag-using-langgraph-b568aa26d710"}
+{"query": "What are the advantages of Qwen 3.6 Plus over competitors?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@chewloongnian/qwen-3-6-plus-just-hit-1-trillion-daily-tokens-heres-why-developers-are-ditching-5-m-claude-for-530c2a2fa9f1"}
+{"query": "What is the difference between AI-ready and analytics-ready data?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@community_md101/ai-ready-data-vs-analytics-ready-data-f67ef0804341"}
+{"query": "What are Andrew Ng's views on AI strategy for businesses?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@intellizab/andrew-ngs-brutal-reality-check-if-your-ai-strategy-is-just-saving-money-you-re-already-dead-c5fed75d139e"}
+{"query": "How can AI improve my data engineering process?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@jagadeshjamjalanarayanan/7-smarter-ways-to-use-ai-in-data-engineering-projects-395993ae227b"}
+{"query": "What are the signs of AI writing?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@jejomarcontawe/the-single-most-prevalent-ai-writing-tell-spoiler-alert-its-not-em-dashes-c56dea4150f4"}
+{"query": "How should organizations create effective AI roadmaps?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@jens-linden/data-and-ai-roadmaps-failure-by-design-0e1e7903be36"}
+{"query": "How can I improve productivity with AI coding tools?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@keyscan/stop-babysitting-claude-code-get-work-done-10x-faster-with-code-container-fcd515381751"}
+{"query": "What is the Echo feature in Claude Desktop?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@kotrotsos/claude-desktop-has-a-hidden-feature-6322a22ab625"}
+{"query": "What are the dangers of superintelligent AI?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@max.petrusenko/the-book-that-terrified-the-people-building-ai-and-why-you-should-read-it-4877a99b87cc"}
+{"query": "How does Andrej Karpathy's autoresearch work?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@nkwrites/getting-started-with-andrej-karpathys-autoresearch-full-guide-c2f3a80b9ce6"}
+{"query": "What resources are recommended for software engineers to learn AI?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@paoloperrone/the-6-month-roadmap-from-software-engineer-to-ai-engineer-d6db08c9d696"}
+{"query": "What do data scientists actually do on the job?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@reliabledataengineering/we-hired-10-data-scientists-they-spent-3-years-cleaning-csvs-fcc58df236ea"}
+{"query": "What are the steps to operate a budget-friendly AI agent?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@ryanshrott/im-running-a-state-of-the-art-ai-agent-for-10-a-month-here-s-exactly-how-13e042aeb32c"}
+{"query": "What does it mean for data to be ready for AI?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@sauravsinghsisodiya/what-ai-ready-data-actually-means-and-why-most-teams-get-it-wrong-fd0fe7a0b649"}
+{"query": "How is OpenAI's spending affecting the AI market?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@sergeykleftzov/sam-altman-just-confirmed-that-the-ai-bubble-has-begun-to-deflate-662c36163db1"}
+{"query": "How does a self-evolving AI improve its code?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@shipx/he-wrote-200-lines-of-code-and-walked-away-what-happened-next-will-blow-your-mind-f4a319c15292"}
+{"query": "Principles for developing production-grade AI agents", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@sifatmusfique/building-a-production-grade-ai-agent-from-scratch-in-2026-a-principles-first-guide-5b21754dc201"}
+{"query": "How to effectively evaluate AI agents?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@theyashwanthsai/agent-evals-are-hard-what-building-300-ai-agents-taught-me-b8afebe8d4a4"}
+{"query": "How does PageIndex improve document retrieval without vectors?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@visrow/what-is-pageindex-how-to-build-a-vectorless-rag-system-no-embeddings-no-vector-db-dc097fae3071"}
+{"query": "How to build a robust harness for AI models?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@yadavdivy296/7-agent-harness-components-every-ai-developer-needs-to-build-reliable-ai-agent-systems-383af6428ce6"}
+{"query": "How can failure in projects lead to career growth?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/@yt-cloudwaydigital/cto-shut-down-my-ai-initiative-my-career-skyrocketed-afterwards-5022e9000836"}
+{"query": "What is the role of Markov Chains in modeling user growth?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/data-science/modeling-dau-with-markov-chain-640ea4fddeb4"}
+{"query": "What tools are used for AI agent tracking?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/fundamentals-of-artificial-intelligence/observability-instrumentation-traces-spans-in-ai-agent-evals-ae7c043c3020"}
+{"query": "How can programmers adapt to AI advancements?", "source": "raw_store", "expected_content_id": "medium::https://medium.com/on-technology/programmer-typist-61adbf469646"}
+{"query": "What are the costs of running multi-agent systems?", "source": "raw_store", "expected_content_id": "medium::https://pub.towardsai.net/we-spent-47-000-running-ai-agents-in-production-heres-what-nobody-tells-you-about-a2a-and-mcp-5f845848de33"}
+{"query": "What are Yann LeCun's new projects after leaving Meta?", "source": "raw_store", "expected_content_id": "medium::https://pub.towardsai.net/yann-lecun-quit-meta-5-months-ago-to-bet-1-03b-against-llms-his-3-new-world-models-just-shipped-673be1325347"}
+{"query": "What Python practices reduce technical debt effectively?", "source": "raw_store", "expected_content_id": "medium::https://python.plainenglish.io/10-python-habits-that-prevent-technical-debt-59d9fe64a281"}
+{"query": "How does coding improve AI problem-solving abilities?", "source": "raw_store", "expected_content_id": "tldr::https://danielmiessler.com/blog/coding-is-a-meta-task"}
+{"query": "How did Meta utilize AI for data management?", "source": "raw_store", "expected_content_id": "tldr::https://engineering.fb.com/2026/04/06/developer-tools/how-meta-used-ai-to-map-tribal-knowledge-in-large-scale-data-pipelines"}
+{"query": "Why is collaboration important in AI software development?", "source": "raw_store", "expected_content_id": "tldr::https://maggieappleton.com/zero-alignment"}
+{"query": "What is mechanical sympathy in product design?", "source": "raw_store", "expected_content_id": "tldr::https://newsletter.vickiboykis.com/archive/mechanical-sympathy"}
+{"query": "How are AI agents changing software design?", "source": "raw_store", "expected_content_id": "tldr::https://x.com/teddy_riker/status/2047312986696454584"}
+{"query": "What are the advantages of columnar storage in databases?", "source": "raw_store", "expected_content_id": "web::https://buttondown.com/jaffray/archive/columnar-storage-is-normalization"}
+{"query": "What are advanced techniques for text chunking?", "source": "raw_store", "expected_content_id": "web::https://codesignal.com/learn/courses/chunking-and-storing-text-for-efficient-llm-processing/lessons/advanced-chunking-techniques-for-llms"}
+{"query": "How did Notion adapt to become AI-native?", "source": "raw_store", "expected_content_id": "web::https://colossus.com/article/inside-notion"}
+{"query": "How can I assess the performance of the OpenAI API?", "source": "raw_store", "expected_content_id": "web::https://developers.openai.com/api/docs/guides/evaluation-best-practices"}
+{"query": "How can harness engineering improve AI agent performance?", "source": "raw_store", "expected_content_id": "web::https://heeki.medium.com/building-an-agent-harness-31942331d605"}
+{"query": "What are the latest advancements in Retrieval-Augmented Generation?", "source": "raw_store", "expected_content_id": "web::https://huggingface.co/posts/Kseniase/836565977783893"}
+{"query": "Why did the author quit their tech job?", "source": "raw_store", "expected_content_id": "web::https://ky.fyi/posts/ai-burnout"}
+{"query": "How can I add memory to an AI agent?", "source": "raw_store", "expected_content_id": "web::https://timkellogg.me/blog/2026/04/27/memory-patterns"}
+{"query": "How does poor data affect AI performance?", "source": "raw_store", "expected_content_id": "web::https://www.cio.com/article/4158048/how-poor-data-foundations-can-undermine-ai-success.html"}
+{"query": "What are effective metrics for evaluating language models?", "source": "raw_store", "expected_content_id": "web::https://www.confident-ai.com/blog/llm-evaluation-metrics-everything-you-need-for-llm-evaluation"}
+{"query": "What are data shift and data drift?", "source": "raw_store", "expected_content_id": "web::https://www.montecarlodata.com/blog-data-shift-vs-data-drift"}
+{"query": "What questions should I expect in a data engineering interview?", "source": "raw_store", "expected_content_id": "web::https://www.startdataengineering.com/post/de_interview_sd"}
+{"query": "How is software engineering changing with AI?", "source": "raw_store", "expected_content_id": "web::https://www.timdavis.com/blog/probabilistic-engineering-and-the-24-7-employee"}
+{"query": "How are video clips changing media consumption?", "source": "raw_store", "expected_content_id": "web::https://x.com/edels0n/status/2044080758164472058"}
+{"query": "What is the role of understanding in design?", "source": "raw_store", "expected_content_id": "web::https://x.com/karrisaarinen/status/2045257582470983691"}
+{"query": "How can I create a personal knowledge base for AI?", "source": "raw_store", "expected_content_id": "youtube::https://www.youtube.com/watch?v=7huCP6RkcY4"}
+{"query": "How has information retrieval evolved over time?", "source": "raw_store", "expected_content_id": "youtube::https://www.youtube.com/watch?v=JB2P5Gk23VI"}
+{"query": "How to create a profitable app as a solo developer?", "source": "raw_store", "expected_content_id": "youtube::https://www.youtube.com/watch?v=_tLJR5OaiCw"}
+{"query": "How does a clean home affect mental health?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/BcSQ5mAHOS4"}
+{"query": "How can I make studying more enjoyable?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/QVWINTeyUOk"}
+{"query": "How can I improve my attention span?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/ZXHrPfWJcCI"}
+{"query": "How can I organize YouTube videos into a knowledge system?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/sboNwYmH3AY"}
+{"query": "How can I assess the quality of voice agent responses?", "source": "research", "expected_content_id": "10"}
+{"query": "What are effective metrics for evaluating voice assistants?", "source": "research", "expected_content_id": "10"}
+{"query": "What innovative evaluation methods exist for voice agents?", "source": "research", "expected_content_id": "10"}
+{"query": "How does the newsletter-assistant rate in security and reliability?", "source": "research", "expected_content_id": "3"}
+{"query": "What are the strengths of the newsletter-assistant project?", "source": "research", "expected_content_id": "3"}
+{"query": "What skills are evaluated in the agentic engineering review?", "source": "research", "expected_content_id": "3"}
+{"query": "How can I improve my knowledge retrieval system?", "source": "research", "expected_content_id": "4"}
+{"query": "How does LLM Wiki differ from traditional retrieval systems?", "source": "research", "expected_content_id": "4"}
+{"query": "What are the limitations of the current knowledge pipeline?", "source": "research", "expected_content_id": "4"}
+{"query": "Explain the relationship between RAG and LLM Wiki.", "source": "research", "expected_content_id": "5"}
+{"query": "How to integrate voice agents with knowledge retrieval?", "source": "research", "expected_content_id": "5"}
+{"query": "What are the components of a knowledge retrieval system?", "source": "research", "expected_content_id": "5"}
+{"query": "Describe the roles of QuickVoiceAgent and TaskWorkerAgent.", "source": "research", "expected_content_id": "7"}
+{"query": "How can I reduce latency in a newsletter assistant?", "source": "research", "expected_content_id": "7"}
+{"query": "What is the dual-agent architecture in software design?", "source": "research", "expected_content_id": "7"}
+{"query": "Can you explain the proposed retrieval pipeline upgrades?", "source": "research", "expected_content_id": "8"}
+{"query": "What are the key differences between current memory and MemPalace?", "source": "research", "expected_content_id": "8"}
+{"query": "What are the memory improvements for the Newsletter Assistant?", "source": "research", "expected_content_id": "8"}
+{"query": "Details on the implementation plan for evaluating AI assistants.", "source": "research", "expected_content_id": "9"}
+{"query": "How to evaluate a newsletter assistant's performance?", "source": "research", "expected_content_id": "9"}
+{"query": "What are the best practices for AI evaluation in 2026?", "source": "research", "expected_content_id": "9"}
+{"query": "Can you summarize the article on OpenClaw setup?", "source": "sessions", "expected_content_id": "27859f9b-a0ee-46dd-aa41-48a81b94d042"}
+{"query": "What topics are covered in the March 10, 2026 newsletter?", "source": "sessions", "expected_content_id": "27859f9b-a0ee-46dd-aa41-48a81b94d042"}
+{"query": "How can SaaS companies increase user engagement?", "source": "sessions", "expected_content_id": "newsletter-02d19c69d987"}
+{"query": "What are the predictions for AI and data science in 2025?", "source": "sessions", "expected_content_id": "newsletter-02d19c69d987"}
+{"query": "How do AI-assisted writing tools improve user experience?", "source": "sessions", "expected_content_id": "newsletter-046762002178"}
+{"query": "What are the benefits of AI writing tools?", "source": "sessions", "expected_content_id": "newsletter-046762002178"}
+{"query": "How can Claude help with diagram creation?", "source": "sessions", "expected_content_id": "newsletter-0dbf2f2bb7fb"}
+{"query": "What were the main themes in yesterday's Medium newsletter?", "source": "sessions", "expected_content_id": "newsletter-0dbf2f2bb7fb"}
+{"query": "Can you summarize today's Medium newsletter on AI?", "source": "sessions", "expected_content_id": "newsletter-10b63d603299"}
+{"query": "What are the latest trends in AI technology?", "source": "sessions", "expected_content_id": "newsletter-10b63d603299"}
+{"query": "How can I unit test dbt macros effectively?", "source": "sessions", "expected_content_id": "newsletter-18834047aa70"}
+{"query": "What framework is recommended for testing dbt macros?", "source": "sessions", "expected_content_id": "newsletter-18834047aa70"}
+{"query": "How does visual hierarchy impact user interfaces?", "source": "sessions", "expected_content_id": "newsletter-27abeb6a26b8"}
+{"query": "What are the key principles of UI/UX design?", "source": "sessions", "expected_content_id": "newsletter-27abeb6a26b8"}
+{"query": "What articles are featured in today's Medium Daily Digest?", "source": "sessions", "expected_content_id": "newsletter-29cb685ea345"}
+{"query": "What innovations did NVIDIA and Meta introduce in AI recently?", "source": "sessions", "expected_content_id": "newsletter-29cb685ea345"}
+{"query": "How does hyperbolic geometry improve data retrieval?", "source": "sessions", "expected_content_id": "newsletter-3b9544e05a16"}
+{"query": "What is HyperbolicRAG and how does it work?", "source": "sessions", "expected_content_id": "newsletter-3b9544e05a16"}
+{"query": "Summarize Karpathy's autoresearch techniques from today\u2019s newsletter.", "source": "sessions", "expected_content_id": "newsletter-526fcca5ec21"}
+{"query": "What are the latest articles about Andrej Karpathy?", "source": "sessions", "expected_content_id": "newsletter-526fcca5ec21"}
+{"query": "How is AI influencing nuclear energy revival?", "source": "sessions", "expected_content_id": "newsletter-560552d23691"}
+{"query": "What are the latest trends in China's biotech industry?", "source": "sessions", "expected_content_id": "newsletter-560552d23691"}
+{"query": "Can you share today's newsletter details?", "source": "sessions", "expected_content_id": "newsletter-576108034097"}
+{"query": "What was discussed in the last session?", "source": "sessions", "expected_content_id": "newsletter-576108034097"}
+{"query": "Explain the unique components of Claude Code's system.", "source": "sessions", "expected_content_id": "newsletter-62630b397f31"}
+{"query": "What is harness engineering in AI model design?", "source": "sessions", "expected_content_id": "newsletter-62630b397f31"}
+{"query": "Can you summarize recent articles on RAG chunking?", "source": "sessions", "expected_content_id": "newsletter-71de12037cc7"}
+{"query": "What are the latest trends in AI and technology?", "source": "sessions", "expected_content_id": "newsletter-71de12037cc7"}
+{"query": "How does Deep Agents compare to Claude Code?", "source": "sessions", "expected_content_id": "newsletter-743b41f5d9ba"}
+{"query": "What can developers do with LangChain Deep Agents?", "source": "sessions", "expected_content_id": "newsletter-743b41f5d9ba"}
+{"query": "How does consumer behavior relate to AI in finance?", "source": "sessions", "expected_content_id": "newsletter-8681433bd085"}
+{"query": "What are the latest trends in AI ethics and gaming?", "source": "sessions", "expected_content_id": "newsletter-8681433bd085"}
+{"query": "Can you explain Anthropic's approach to launching AI products?", "source": "sessions", "expected_content_id": "newsletter-92793caf55ca"}
+{"query": "How does Anthropic speed up product development in AI?", "source": "sessions", "expected_content_id": "newsletter-92793caf55ca"}
+{"query": "Explain the concept of agent engineering skills.", "source": "sessions", "expected_content_id": "newsletter-954722415559"}
+{"query": "What are the key areas in agent development?", "source": "sessions", "expected_content_id": "newsletter-954722415559"}
+{"query": "What are the best practices for deploying open models?", "source": "sessions", "expected_content_id": "newsletter-9599eccfc7d7"}
+{"query": "What are the key insights from the Gemma 4 video?", "source": "sessions", "expected_content_id": "newsletter-9599eccfc7d7"}
+{"query": "Explain the latest architecture for autonomous information retrieval.", "source": "sessions", "expected_content_id": "newsletter-96421747a9c6"}
+{"query": "How does information retrieval evolve beyond keyword search?", "source": "sessions", "expected_content_id": "newsletter-96421747a9c6"}
+{"query": "How is AI changing job roles in tech teams?", "source": "sessions", "expected_content_id": "newsletter-969feed56877"}
+{"query": "What are the latest trends in AI-native software engineering?", "source": "sessions", "expected_content_id": "newsletter-969feed56877"}
+{"query": "How to design reliable systems for AI models?", "source": "sessions", "expected_content_id": "newsletter-a84edd6b532d"}
+{"query": "Why is workflow design more important than model choice?", "source": "sessions", "expected_content_id": "newsletter-a84edd6b532d"}
+{"query": "How does LFM 2.5 perform in benchmarks?", "source": "sessions", "expected_content_id": "newsletter-b5205566a9d7"}
+{"query": "What are the latest strategies in AI chunking techniques?", "source": "sessions", "expected_content_id": "newsletter-b5205566a9d7"}
+{"query": "How do I set up MindsDB for data integration?", "source": "sessions", "expected_content_id": "newsletter-c75a919e19f4"}
+{"query": "What are the benefits of using MindsDB?", "source": "sessions", "expected_content_id": "newsletter-c75a919e19f4"}
+{"query": "How can I improve my RAG system for complex questions?", "source": "sessions", "expected_content_id": "newsletter-dc68f93b510d"}
+{"query": "What are the limitations of traditional RAG systems?", "source": "sessions", "expected_content_id": "newsletter-dc68f93b510d"}

@@ -21,6 +21,16 @@ from tenacity import (
 # those would burn the attempt budget on a misconfigured key.
 _TRANSIENT_OPENAI_ERRORS = (RateLimitError, APIConnectionError, InternalServerError)
 
+# OpenAI's `/embeddings` accepts at most 300k input tokens per request. We
+# under-shoot to leave headroom for tokenizer drift between our cheap char-based
+# estimator and the real BPE count.
+_MAX_TOKENS_PER_REQUEST = 250_000
+
+
+def _estimate_tokens(text: str) -> int:
+    # Approximate 4 chars/token — fine as a budget guard, not a billing oracle.
+    return max(1, len(text) // 4)
+
 
 class Embedder(Protocol):
     model: str
@@ -50,14 +60,33 @@ class OpenAIEmbedder:
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
-        for attempt in self._retry_policy:
-            with attempt:
-                resp = self._client.embeddings.create(
-                    model=self.model,
-                    input=texts,
-                    dimensions=self.dims,
-                )
-        return [list(d.embedding) for d in resp.data]
+        out: list[list[float]] = []
+        for sub in self._sub_batches(texts):
+            for attempt in self._retry_policy:
+                with attempt:
+                    resp = self._client.embeddings.create(
+                        model=self.model,
+                        input=sub,
+                        dimensions=self.dims,
+                    )
+            out.extend(list(d.embedding) for d in resp.data)
+        return out
+
+    @staticmethod
+    def _sub_batches(texts: list[str]) -> list[list[str]]:
+        batches: list[list[str]] = []
+        cur: list[str] = []
+        cur_tokens = 0
+        for t in texts:
+            est = _estimate_tokens(t)
+            if cur and cur_tokens + est > _MAX_TOKENS_PER_REQUEST:
+                batches.append(cur)
+                cur, cur_tokens = [], 0
+            cur.append(t)
+            cur_tokens += est
+        if cur:
+            batches.append(cur)
+        return batches
 
 
 class DeterministicFakeEmbedder:
