@@ -14,10 +14,12 @@ Pure data adapters. Files or DBs → typed `IngestItem`s.
 
 ```
 src/domains/
-├── types.py            # IngestItem — the shape every source yields
-├── store.py            # raw_store.db row types and query helpers
+├── types.py            # IngestItem + IngestSource Protocol — the shape every source yields
+├── raw_store/          # raw_store.db — newsletter-assistant ingest store
+│   └── sources.py      # RawStoreSource + ContentRow + query helpers
+├── notes/              # Local markdown inbox
+│   └── sources.py      # LocalFileSource
 ├── wiki/               # Wiki state — Postgres-backed run state
-│   ├── sources.py      # RawStoreSource, LocalFileSource (re-exports IngestItem)
 │   ├── state.py        # wiki.processed / wiki.pages run state
 │   ├── aliases.py      # alias resolution
 │   ├── io.py           # markdown page IO

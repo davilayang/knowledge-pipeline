@@ -17,7 +17,7 @@ replay tests).
 
 from pathlib import Path
 
-from domains.wiki.sources import IngestItem
+from domains.types import IngestItem
 from langchain_core.callbacks import BaseCallbackHandler
 from langchain_core.runnables import RunnableConfig
 

@@ -12,6 +12,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.9.6] — 2026-05-11
+
+### Changed
+
+- **`domains.*` import paths reorganised for source-module symmetry.** `domains.store` is removed; `domains.wiki.sources.{RawStoreSource, LocalFileSource, IngestItem, IngestSource}` are split into their canonical homes. New paths: `RawStoreSource` → `domains.raw_store.sources`; `LocalFileSource` → `domains.notes.sources`; `IngestItem` and `IngestSource` → `domains.types`. Any external code (notebooks, downstream scripts) importing from the old paths will get `ImportError` and must be updated.
+
+---
+
 ## [0.9.5] — 2026-05-11
 
 ### Added

@@ -10,7 +10,7 @@ tests so we're not duplicating the same factories four times.
 import re
 from datetime import date
 
-from domains.wiki.sources import IngestItem
+from domains.types import IngestItem
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.llm import LLMCall
 
