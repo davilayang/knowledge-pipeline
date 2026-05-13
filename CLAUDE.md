@@ -90,7 +90,7 @@ docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
 scripts/           # Deployment scripts — deploy-hcloud.sh
 tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
-notebooks/         # Exploratory notebooks (Phase C / debugging) — opt-in `[notebooks]` extra
+notebooks/         # Exploratory notebooks (Phase C / debugging)
 data/              # Runtime, gitignored — raw_store.db, chroma/, wiki/, eval_results/
 backups/           # Backup pipeline landing — gitignored
 .rclone/           # rclone.conf, mounted into dagster-code — gitignored
