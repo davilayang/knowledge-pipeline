@@ -8,6 +8,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.10.0] — 2026-05-12
+
+### Changed
+
+- **`VectorStoreResource` is now HTTP-only.** The `chroma_path` config field is removed; replace with `chroma_host` (required) and `chroma_port` (default `8000`). `get_collection` no longer accepts an `embedding_model` argument — pass only `name`. Any config YAML or resource instantiation referencing `chroma_path` or `embedding_model` must be updated.
+
+- **`OpenAIEmbedder` moved to `retrievers.embedding`.** The old import path `evals.retrieval.embedder.OpenAIEmbedder` is gone; update to `from retrievers.embedding import OpenAIEmbedder`.
+
+- **`chromadb` (full) replaced by `chromadb-client` across all packages.** `sentence-transformers`, `rank-bm25`, `langchain-experimental`, and `langchain-community` are no longer installed. Any code that called `SentenceTransformerEmbeddingFunction` or BM25/hybrid retrieval helpers must be rewritten.
+
+- **`knowledge-retrievers` is now a base dependency of `knowledge-orchestrators`** (no longer opt-in via `[workbench]`). The `[workbench]` extras group is removed entirely; there is no longer a separate extras gate for RAG dependencies.
+
+- **Production Docker image now includes `retrievers` source.** Previously excluded to avoid ML dep weight; with `chromadb-client` replacing the full `chromadb`+`sentence-transformers` stack, the separation is no longer needed.
+
+### Removed
+
+- **`[workbench]` extras, workbench code location, and all `idx_*` indexing strategies removed.** The `orchestrators.defs.workbench` code location is gone. `poe index`, `poe eval`, and `poe reset-indices` tasks are removed. `dagster-dev` no longer loads the workbench code location. `strategies.yaml`, `op_factories.py`, `StrategyPathsResource`, and all `idx_markdown_*` / `idx_recursive_*` / `idx_semantic_*` Dagster assets are deleted.
+
+- **`eval-retrieval` CLI no longer requires `--extra workbench`.** The eval harness now runs from the base install; the `[workbench]` flag that was previously required to activate the dependency chain is gone.
+
+---
+
 ## [0.9.7] — 2026-05-11
 
 ### Changed

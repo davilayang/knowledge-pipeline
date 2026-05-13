@@ -1,19 +1,19 @@
 """Tests for OpenAIEmbedder retry policy.
 
-Mocks ``OpenAI`` at its import location in ``evals.retrieval.embedder`` per
+Mocks ``OpenAI`` at its import location in ``retrievers.embedding.openai`` per
 CLAUDE.md's "patch at the import location" rule.
 """
 
 from unittest.mock import MagicMock, patch
 
 import pytest
-from evals.retrieval.embedder import OpenAIEmbedder
 from openai import (
     APIConnectionError,
     AuthenticationError,
     InternalServerError,
     RateLimitError,
 )
+from retrievers.embedding.openai import OpenAIEmbedder
 
 
 def _stub_response(vectors: list[list[float]]) -> MagicMock:
@@ -24,7 +24,7 @@ def _stub_response(vectors: list[list[float]]) -> MagicMock:
 
 def _build_embedder(create_side_effect):
     """Construct an OpenAIEmbedder whose .embeddings.create is mocked."""
-    with patch("evals.retrieval.embedder.OpenAI") as mock_openai:
+    with patch("retrievers.embedding.openai.OpenAI") as mock_openai:
         client = MagicMock()
         client.embeddings.create.side_effect = create_side_effect
         mock_openai.return_value = client

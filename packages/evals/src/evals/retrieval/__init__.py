@@ -9,8 +9,8 @@ Submodules:
 
 - :mod:`evals.retrieval.types`     — eval-pair dataclass + result types
 - :mod:`evals.retrieval.dataset`   — JSONL loader for the eval set
-- :mod:`evals.retrieval.embedder`  — pluggable embedder protocol + OpenAI client
-- :mod:`evals.retrieval.cache`     — disk-backed embedding cache
+- :mod:`evals.retrieval.cache`     — disk-backed embedding cache (wraps
+  :class:`retrievers.embedding.Embedder`)
 - :mod:`evals.retrieval.metrics`   — Recall@k / MRR@k / nDCG@k
 - :mod:`evals.retrieval.runner`    — index → query → metrics orchestration
 - :mod:`evals.retrieval.cli`       — ``eval-retrieval`` console script

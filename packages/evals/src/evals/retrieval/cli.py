@@ -24,10 +24,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from domains.types import IngestItem
+from retrievers.embedding import OpenAIEmbedder
 
 from .cache import CachedEmbedder
 from .dataset import load_eval_set
-from .embedder import OpenAIEmbedder
 from .runner import run_eval
 from .types import EvalConfig, EvalRunResult
 

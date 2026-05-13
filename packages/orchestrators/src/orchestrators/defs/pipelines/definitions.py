@@ -1,7 +1,7 @@
 # Pipelines code location — scheduled production jobs.
-# Each sub-Definitions registers its own resources; shared_resources (which
-# pulls in chromadb/retrievers) is intentionally not imported here so this
-# code location can run without the workbench optional deps installed.
+# Each sub-Definitions registers its own resources. No shared resource is
+# wired here today; Phase D's populate_vector_store adds the live Chroma
+# resource at its own definitions level.
 
 import dagster as dg
 

@@ -16,15 +16,6 @@ DATA_DIR = PROJECT_DIR / "data"
 
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
-CHROMA_PATH = DATA_DIR / "chroma"
-
-# Eval results
-EVAL_RESULTS_DIR = DATA_DIR / "eval_results"
-
-
-def strategy_dir(strategy: str, subdir: str) -> Path:
-    """Return a per-strategy data directory, e.g. data/chunks/idx_markdown_minilm/."""
-    return DATA_DIR / subdir / strategy
 
 
 # DAG versions — one per Dagster pipeline, all colocated here for tracking.
