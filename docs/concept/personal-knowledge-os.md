@@ -63,10 +63,16 @@ This framing describes the destination. Reality today in this repo:
   (date-partitioned, scheduled). Wiki synthesis pipeline (first version,
   date-partitioned, scheduled). Domain layer covering raw_store / sessions /
   research / notes — sources are interchangeable in ingestion loops.
-- **Built but no consumer yet:** Wiki synthesis. Wiki pages accumulate in
-  `data/wiki/` but newsletter-assistant doesn't read them yet — the bridge
-  from wiki synthesis to the voice agent's recall flow is THE open piece on
-  this side, and arguably the highest-leverage gap in the whole system.
+- **Built, consumer-bridge designed 2026-05-13:** Wiki synthesis. Wiki
+  pages accumulate in `data/wiki/`; newsletter-assistant doesn't read
+  them yet, but the cross-repo bridge design landed (hub
+  architecture.md §8.3, ADR-013). Producer-side execution is an
+  **additive** frontmatter contract — `summary`, `aliases`,
+  `num_sources` fields plus a `data/wiki/_index/aliases.json` sidecar
+  written at end of each `synthesize_wiki` tick. See this repo's
+  `ai-plannings/` for the producer-side execution stub. Consumer
+  wiring lands in Wave 6 on the newsletter-assistant side; producer
+  contract additions are unblocked today.
 - **In flight:** Index pipeline (raw_store → Chroma) — the path that turns
   fetched articles into vectors used by newsletter-assistant's `recall` tool.
   Retriever and generation evals — first cuts of the eval harness exist
@@ -83,7 +89,8 @@ This framing describes the destination. Reality today in this repo:
   coherently (weighting "what's in your reading history" vs "your past
   conversations" vs "what you noted") is not built.
 
-PRs that close the wiki-consumer gap, push the index pipeline + evals toward
-driving production retrieval, or improve cross-corpus retrieval are
-higher-leverage than PRs that polish the already-working backup or synthesis
-layers.
+PRs that ship the producer-side wiki-bridge contract additions
+(unblocked today — see `ai-plannings/`), push the index pipeline +
+evals toward driving production retrieval, or improve cross-corpus
+retrieval are higher-leverage than PRs that polish the already-
+working backup or synthesis layers.
