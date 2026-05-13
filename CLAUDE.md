@@ -82,6 +82,7 @@ packages/
       shared/           # Shared resources (raw_store, chroma, etc.)
       pipelines/        # Scheduled production pipelines
         backup_readings/
+        populate_vector_store/
         synthesize_wiki/
         upstream_sources.py
 

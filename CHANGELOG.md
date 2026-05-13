@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.0] — 2026-05-13
+
+### Added
+
+- **`populate_vector_store` pipeline embeds raw_store, notes, sessions, and research into ChromaDB** via OpenAI `text-embedding-3-small` (1536 dims). Four collections are written: `contents`, `notes`, `conversations`, `research_documents`. Metadata per chunk includes `content_id`, `chunk_index`, `_embedding_model`, `_embedding_dims`, plus optional fields (`title`, `author`, `content_date`, `url`, `started_at`, `source_ref`). Pipeline launches paused (`STOPPED`) — manual trigger only for now.
+
+- **New required env vars `CHROMA_HOST` and `CHROMA_PORT`** to connect the pipeline to ChromaDB; unset → run init fails fast. Optional tuning knobs: `OPENAI_EMBEDDING_MODEL` (default `text-embedding-3-small`), `OPENAI_EMBEDDING_DIMS` (default `1536`), `VECTOR_STORE_MAX_PER_TICK` (default `50`), `VECTOR_STORE_INGEST_CONCURRENCY` (default `4`). All documented in `.env.example`.
+
+---
+
 ## [0.10.0] — 2026-05-12
 
 ### Changed
