@@ -4,7 +4,7 @@ Eval harnesses — does retrieval find the right document, does generation answe
 
 ## Rules
 
-- **No Dagster imports.** Evals run from a CLI or notebook, not from an asset graph. The workbench job that wraps an eval lives in `orchestrators/`.
+- **No Dagster imports.** Evals run from a CLI or notebook, not from an asset graph.
 - **Cross-package imports are allowed downward**: `domains` for `IngestItem`, `retrievers` for chunkers (`get_chunking_fn`) and chunk types. `workflows` is fair game when generation eval lands. Never depend on `orchestrators`.
 - **External services are explicit.** OpenAI (embedding + judge) is a hard dep; the harness uses `tenacity` retry on transient failures only. Chroma is reached via `HttpClient` — caller starts the server, eval doesn't.
 - **Datasets live with the package** (`packages/evals/datasets/`), not at repo root. They're part of the package contract; moving evals out of this repo someday should take the dataset along.
@@ -19,7 +19,6 @@ packages/evals/
 │   ├── README.md                 # dataset cadence + Option 1 rationale
 │   └── retrieval_eval.jsonl      # pinned eval pairs (Phase C v0 — 166 pairs)
 ├── src/evals/
-│   ├── rag.py                    # legacy set-style metrics; workbench only
 │   └── retrieval/                # ✅ active retrieval eval harness
 │       ├── types.py              # EvalPair, EvalConfig, SourceMetrics, EvalRunResult
 │       ├── dataset.py            # load_eval_set, group_by_source (strict JSONL parse)
@@ -54,7 +53,6 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
 | `evals.generation` | ⬜ reserved | Faithfulness / answer-relevance / grounding for wiki + research answers. `ragas` is the planned harness, already in deps. | TBD |
 | `evals.wiki` | ⬜ reserved | Wiki synthesis quality (entity merging, alias coverage, summary fidelity). Gold reference still undecided. | TBD |
-| `evals.rag` (legacy) | 🟡 maintenance | Set-style `(retrieved_ids, expected_ids: list[str])` metrics. Used by the workbench `evaluate_retrieval_strategies` job; TODO at `rag.py:1` to consolidate with `retrieval.metrics`. | imported directly |
 
 ## The batch-cap trap (operational reality)
 
@@ -69,7 +67,7 @@ If you add a new embedder or a new vector store, copy the sub-batch discipline �
 
 ```bash
 # Default: text-embedding-3-small @ 1536, current chunkers, eval-set auto-resolves
-uv run --package knowledge-orchestrators --extra workbench eval-retrieval \
+uv run eval-retrieval \
   --raw-store-db   "$BACKUP_SOURCE_DIR/raw_store.db" \
   --sessions-db    "$BACKUP_SOURCE_DIR/sessions.db" \
   --research-db    "$BACKUP_SOURCE_DIR/research.db" \

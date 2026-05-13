@@ -87,7 +87,6 @@ packages/
 
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
-documents/         # Developer reference docs (INDEXING.md, RETRIEVAL.md)
 scripts/           # Deployment scripts — deploy-hcloud.sh
 tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
