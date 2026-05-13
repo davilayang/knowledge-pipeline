@@ -1,6 +1,5 @@
 """Embedder protocol + OpenAI implementation."""
 
-import hashlib
 from typing import Protocol
 
 from openai import (
@@ -87,21 +86,3 @@ class OpenAIEmbedder:
         if cur:
             batches.append(cur)
         return batches
-
-
-class DeterministicFakeEmbedder:
-    """Hash-based deterministic embedder for tests."""
-
-    def __init__(self, model: str = "fake", dims: int = 16):
-        self.model = model
-        self.dims = dims
-
-    def embed_batch(self, texts: list[str]) -> list[list[float]]:
-        out: list[list[float]] = []
-        for text in texts:
-            h = hashlib.sha256(text.encode("utf-8")).digest()
-            vec = [(h[i % len(h)] / 255.0) for i in range(self.dims)]
-            # L2-normalize so cosine distance behaves predictably.
-            norm = sum(x * x for x in vec) ** 0.5 or 1.0
-            out.append([x / norm for x in vec])
-        return out

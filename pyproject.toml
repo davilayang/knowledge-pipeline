@@ -64,22 +64,13 @@ code_location_name = "orchestrators"
 [tool.poe.tasks.dagster-dev]
 cmd = """
   dagster dev --port 3030
-    -m orchestrators.defs.workbench.definitions
     -m orchestrators.defs.pipelines.definitions
 """
-help = "Launch Dagster UI at localhost:3030 with workbench + pipelines as separate code locations"
-
-[tool.poe.tasks.index]
-cmd = "dg launch -m orchestrators.defs.workbench.definitions --job idx_markdown_minilm"
-help = "Run index job once from CLI"
+help = "Launch Dagster UI at localhost:3030 with the pipelines code location"
 
 [tool.poe.tasks.backup]
 cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings"
 help = "Run readings backup job once from CLI"
-
-[tool.poe.tasks.eval]
-cmd = "dg launch -m orchestrators.defs.workbench.definitions --job evaluate_retrieval_strategies"
-help = "Run evaluation across RAG strategies"
 
 ## Deploy ##
 
@@ -186,10 +177,6 @@ help = """
 """
 
 ## Reset ##
-
-[tool.poe.tasks.reset-indices]
-cmd = "rm -rf data/chunks/ data/embeddings/ data/chroma/"
-help = "Delete all chunks, embeddings, and ChromaDB data (re-run index jobs to rebuild)"
 
 [tool.poe.tasks.reset-wiki]
 cmd = "python -m orchestrators.scripts.reset_wiki"

@@ -1,17 +1,15 @@
 [project]
 name = "knowledge-retrievers"
 version = "0.9.7"
-description = "RAG infrastructure — chunking, embedding, vector store, retrieval strategies"
+description = "RAG infrastructure — chunking, embedding (OpenAI), Chroma HTTP client, retrieval protocols"
 requires-python = ">=3.13"
 dependencies = [
     "knowledge-domains",
-    "chromadb>=1.5,<2.0",
-    "sentence-transformers>=3.0,<4.0",
-    "rank-bm25>=0.2,<1.0",
+    "chromadb-client>=1.5,<2.0",
     "langchain-text-splitters>=1.1,<2.0",
-    "langchain-experimental>=0.3,<1.0",
-    "langchain-community>=0.3,<1.0",
     "tiktoken>=0.9,<1.0",
+    "openai>=1.0",
+    "tenacity>=8.0",
 ]
 
 [build-system]

@@ -17,7 +17,7 @@ import hashlib
 import json
 from pathlib import Path
 
-from .embedder import Embedder
+from retrievers.embedding import Embedder
 
 
 class CachedEmbedder:

@@ -1,7 +1,8 @@
 from pathlib import Path
 
 from evals.retrieval.cache import CachedEmbedder
-from evals.retrieval.embedder import DeterministicFakeEmbedder
+
+from ._fake_embedder import DeterministicFakeEmbedder
 
 
 class _CountingEmbedder:

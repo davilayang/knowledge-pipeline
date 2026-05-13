@@ -13,9 +13,9 @@ import chromadb
 from domains.types import IngestItem
 from retrievers.chunking.registry import get_chunking_fn
 from retrievers.chunking.types import Chunk
+from retrievers.embedding import Embedder
 
 from .dataset import group_by_source
-from .embedder import Embedder
 from .metrics import aggregate_mean, aggregate_recall, hit_at_k, mrr_at_k, ndcg_at_k
 from .types import EvalConfig, EvalPair, EvalRunResult, SourceMetrics
 

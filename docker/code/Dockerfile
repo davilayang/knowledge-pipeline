@@ -16,9 +16,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # Install dependencies — this layer is cached until pyproject.toml / uv.lock change.
-# uv needs all workspace member manifests for resolution even when only installing
-# a subset — retrievers/evals pyproject.toml are copied for graph resolution only,
-# their source and deps are not installed (they're optional extras in orchestrators).
 COPY pyproject.toml uv.lock ./
 
 COPY packages/domains/pyproject.toml packages/domains/pyproject.toml
@@ -34,11 +31,9 @@ ENV UV_LINK_MODE=copy
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev --no-install-workspace --package knowledge-orchestrators
 
-# Copy source for production workspace members only (domains + workflows + orchestrators).
-# retrievers and evals are workbench-only optional extras — excluded from this image
-# to avoid pulling in sentence-transformers/PyTorch/chromadb/ragas (~8GB of ML deps).
 COPY packages/domains/src/ packages/domains/src/
 COPY packages/workflows/src/ packages/workflows/src/
+COPY packages/retrievers/src/ packages/retrievers/src/
 COPY packages/orchestrators/src/ packages/orchestrators/src/
 
 # Install workspace packages (editable) after source is copied.
@@ -66,12 +61,9 @@ EXPOSE 4000
 HEALTHCHECK --timeout=5s --start-period=30s --interval=5s --retries=5 \
     CMD ["/app/.venv/bin/dagster", "api", "grpc-health-check", "-p", "4000"]
 
-# Load pipelines-only code location (backup + wiki). The full orchestrators.definitions
-# merger also includes the RAG workbench, which imports from retrievers/evals — packages
-# not installed in this image. Run workbench jobs locally via `poe dagster-dev`.
 # Invoke the binary from the prebuilt venv directly. `uv run` would re-sync the
-# workspace at startup (defaults to all packages, dev deps included), pulling in
-# the exact extras we excluded at build time and adding ~13 s to startup.
+# workspace at startup (defaults to all packages, dev deps included), adding
+# ~13 s to startup.
 CMD ["/app/.venv/bin/dagster", "code-server", "start", \
      "-h", "0.0.0.0", "-p", "4000", \
      "-m", "orchestrators.defs.pipelines.definitions"]

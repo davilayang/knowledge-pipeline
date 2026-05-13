@@ -1,18 +1,20 @@
-"""End-to-end runner tests against an in-memory chroma + fake embedder.
+"""End-to-end runner tests against an in-memory fake chroma + fake embedder.
 
-We exercise the real Chroma client (EphemeralClient) and real chunking
-registry — only the embedder is faked, so the indexing / query path matches
-production behaviour byte-for-byte.
+The thin chromadb-client cannot run an embedded server, so we stand in a
+tiny in-memory fake exposing the surface the runner uses (upsert/query/get).
+The chunking registry is real, so the indexing / query path matches
+production behaviour modulo the cosine math.
 """
 
 from datetime import date
 
-import chromadb
 import pytest
 from domains.types import IngestItem
-from evals.retrieval.embedder import DeterministicFakeEmbedder
 from evals.retrieval.runner import run_eval
 from evals.retrieval.types import EvalConfig, EvalPair
+
+from ._fake_chroma import FakeChromaClient
+from ._fake_embedder import DeterministicFakeEmbedder
 
 
 def _item(item_id: str, text: str, source_type: str = "raw_store") -> IngestItem:
@@ -28,7 +30,7 @@ def _item(item_id: str, text: str, source_type: str = "raw_store") -> IngestItem
 
 @pytest.fixture
 def chroma():
-    return chromadb.EphemeralClient()
+    return FakeChromaClient()
 
 
 class TestRunEval:
