@@ -1,7 +1,8 @@
 """Behavioural tests for populate_vector_store assets.
 
-Mocks at the import boundary: ``OpenAI`` and Chroma collections are stubbed
-at ``orchestrators.defs.pipelines.populate_vector_store.assets``. No live calls.
+Mocks at the import boundary: ``OpenAIEmbedder`` and Chroma collections are
+stubbed at ``orchestrators.defs.pipelines.populate_vector_store.assets``. No
+live calls.
 """
 
 from datetime import date
@@ -10,7 +11,6 @@ from unittest.mock import MagicMock, patch
 import dagster as dg
 import pytest
 from domains.types import IngestItem
-from openai import APIConnectionError
 from orchestrators.defs.pipelines.populate_vector_store import assets as pvs_assets
 from orchestrators.defs.pipelines.populate_vector_store.assets import (
     SOURCE_TO_COLLECTION,
@@ -168,29 +168,33 @@ def test_pending_zero_items_in_source_short_circuits():
 # ------------------------------------------------------------------
 
 
-def _fake_openai_class(dims: int = 1536):
-    """Build a MagicMock that mimics ``OpenAI()``: returns a client whose
-    ``embeddings.create(...)`` produces ``dims``-vectors of the right count."""
+def _fake_embedder_class(dims: int = 1536):
+    """Build a stub OpenAIEmbedder class. Instances expose ``embed_batch(texts)``
+    returning ``dims``-vectors of the right count, and the class-level
+    ``embed_batch`` MagicMock tracks calls across all instances."""
 
-    class _Resp:
-        def __init__(self, n):
-            self.data = [MagicMock(embedding=[0.1] * dims) for _ in range(n)]
+    embed_batch = MagicMock(side_effect=lambda texts: [[0.1] * dims for _ in texts])
 
-    client = MagicMock()
-    client.embeddings.create.side_effect = lambda model, input, dimensions: _Resp(len(input))
-    klass = MagicMock(return_value=client)
-    return klass, client
+    class _FakeEmbedder:
+        def __init__(self, model: str, dims: int = dims):
+            self.model = model
+            self.dims = dims
+
+        def embed_batch(self, texts):
+            return embed_batch(texts)
+
+    return _FakeEmbedder, embed_batch
 
 
 def test_ingest_short_circuits_on_empty_pending():
-    """Empty pending slice → no source.get_item, no chroma writes, no OpenAI."""
+    """Empty pending slice → no source.get_item, no chroma writes, no embedding."""
     sources = _StubSources(raw_store=_StubSource([_item("a")]))
     raw_collection = _StubCollection()
     vector_store = _StubVectorStore({"contents": raw_collection})
     ctx = MagicMock(spec=dg.AssetExecutionContext)
 
-    fake_openai, fake_client = _fake_openai_class()
-    with patch.object(pvs_assets, "OpenAI", fake_openai):
+    fake_embedder, embed_batch = _fake_embedder_class()
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
         result = contents.op.compute_fn.decorated_fn(
             ctx, pending={"raw_store": []}, sources=sources, vector_store=vector_store
         )
@@ -198,7 +202,7 @@ def test_ingest_short_circuits_on_empty_pending():
     assert isinstance(result, dg.MaterializeResult)
     assert raw_collection.upsert_calls == []
     assert raw_collection.delete_calls == []
-    fake_client.embeddings.create.assert_not_called()
+    embed_batch.assert_not_called()
 
 
 def test_ingest_upserts_to_correct_collection():
@@ -207,9 +211,9 @@ def test_ingest_upserts_to_correct_collection():
     raw_collection = _StubCollection()
     vector_store = _StubVectorStore({"contents": raw_collection})
     ctx = MagicMock(spec=dg.AssetExecutionContext)
-    fake_openai, _ = _fake_openai_class()
+    fake_embedder, _ = _fake_embedder_class()
 
-    with patch.object(pvs_assets, "OpenAI", fake_openai):
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
         contents.op.compute_fn.decorated_fn(
             ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
         )
@@ -232,9 +236,9 @@ def test_ingest_idempotent_rerun_yields_same_ids():
     raw_collection = _StubCollection()
     vector_store = _StubVectorStore({"contents": raw_collection})
     ctx = MagicMock(spec=dg.AssetExecutionContext)
-    fake_openai, _ = _fake_openai_class()
+    fake_embedder, _ = _fake_embedder_class()
 
-    with patch.object(pvs_assets, "OpenAI", fake_openai):
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
         contents.op.compute_fn.decorated_fn(
             ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
         )
@@ -257,9 +261,9 @@ def test_ingest_body_shrink_deletes_stale_chunks():
     raw_collection = _StubCollection(existing_ids=["a::chunk-0", "a::chunk-1", "a::chunk-2"])
     vector_store = _StubVectorStore({"contents": raw_collection})
     ctx = MagicMock(spec=dg.AssetExecutionContext)
-    fake_openai, _ = _fake_openai_class()
+    fake_embedder, _ = _fake_embedder_class()
 
-    with patch.object(pvs_assets, "OpenAI", fake_openai):
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
         contents.op.compute_fn.decorated_fn(
             ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
         )
@@ -268,44 +272,6 @@ def test_ingest_body_shrink_deletes_stale_chunks():
     assert raw_collection.upsert_calls[0]["ids"] == ["a::chunk-0"]
     # Verify the old chunks 1 and 2 are gone post-delete; only the freshly-upserted chunk-0 remains.
     assert raw_collection._ids == ["a::chunk-0"]
-
-
-def test_ingest_retries_transient_openai_error(monkeypatch):
-    """Tenacity passes through a transient APIConnectionError: the embeddings
-    call raises once, then succeeds."""
-    sources = _StubSources(raw_store=_StubSource([_item("a", text="hello")]))
-    raw_collection = _StubCollection()
-    vector_store = _StubVectorStore({"contents": raw_collection})
-    ctx = MagicMock(spec=dg.AssetExecutionContext)
-
-    client = MagicMock()
-    calls = {"n": 0}
-
-    class _Resp:
-        def __init__(self, n):
-            self.data = [MagicMock(embedding=[0.1] * 1536) for _ in range(n)]
-
-    def _create(model, input, dimensions):
-        calls["n"] += 1
-        if calls["n"] == 1:
-            raise APIConnectionError(request=MagicMock())
-        return _Resp(len(input))
-
-    client.embeddings.create.side_effect = _create
-    fake_openai = MagicMock(return_value=client)
-
-    # Make tenacity backoff instant for the test.
-    import tenacity
-
-    monkeypatch.setattr(tenacity.nap.time, "sleep", lambda _s: None)
-
-    with patch.object(pvs_assets, "OpenAI", fake_openai):
-        contents.op.compute_fn.decorated_fn(
-            ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
-        )
-
-    assert calls["n"] == 2
-    assert len(raw_collection.upsert_calls) == 1
 
 
 def test_ingest_raises_on_per_item_failure():
@@ -324,11 +290,11 @@ def test_ingest_raises_on_per_item_failure():
     poison = _PoisonCollection()
     vector_store = _StubVectorStore({"contents": poison})
     ctx = MagicMock(spec=dg.AssetExecutionContext)
-    fake_openai, _ = _fake_openai_class()
+    fake_embedder, _ = _fake_embedder_class()
 
     # Force serial execution so we can reason about which call lands first.
     with (
-        patch.object(pvs_assets, "OpenAI", fake_openai),
+        patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder),
         patch.object(pvs_assets, "INGEST_CONCURRENCY", 1),
         pytest.raises(dg.Failure),
     ):

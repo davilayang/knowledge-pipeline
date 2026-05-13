@@ -1,25 +1,13 @@
 # Assets for populate_vector_store. See README.md for the DAG diagram and runbook.
 
-import os
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import islice
 
 import dagster as dg
 from domains.types import IngestItem
-from openai import (
-    APIConnectionError,
-    InternalServerError,
-    OpenAI,
-    RateLimitError,
-)
 from retrievers.chunking.registry import get_chunking_fn
 from retrievers.chunking.types import Chunk
-from tenacity import (
-    Retrying,
-    retry_if_exception_type,
-    stop_after_attempt,
-    wait_random_exponential,
-)
+from retrievers.embedding import OpenAIEmbedder
 
 from orchestrators.config import POPULATE_VECTOR_STORE_DAG_VERSION
 from orchestrators.defs.shared.resources import VectorStoreResource
@@ -41,8 +29,6 @@ from .def_config import (
 )
 from .resources import SourcesResource
 
-_TRANSIENT_OPENAI_ERRORS = (RateLimitError, APIConnectionError, InternalServerError)
-_MAX_TOKENS_PER_REQUEST = 250_000
 _CHROMA_IN_BATCH = 500
 _UPSERT_BATCH = 4000
 
@@ -63,47 +49,6 @@ def _chunked(seq, n: int):
 
 def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
-
-
-def _sub_batches(texts: list[str]) -> list[list[str]]:
-    batches: list[list[str]] = []
-    cur: list[str] = []
-    cur_tokens = 0
-    for t in texts:
-        est = _estimate_tokens(t)
-        if cur and cur_tokens + est > _MAX_TOKENS_PER_REQUEST:
-            batches.append(cur)
-            cur, cur_tokens = [], 0
-        cur.append(t)
-        cur_tokens += est
-    if cur:
-        batches.append(cur)
-    return batches
-
-
-def _embed_texts(
-    client: OpenAI,
-    texts: list[str],
-    model: str,
-    dims: int,
-) -> list[list[float]]:
-    """Embed ``texts`` with OpenAI, sub-batching under 250k tokens with
-    tenacity retry on transient errors. Mirrors ``evals.retrieval.embedder.OpenAIEmbedder``."""
-    if not texts:
-        return []
-    retry = Retrying(
-        wait=wait_random_exponential(multiplier=1, max=30),
-        stop=stop_after_attempt(6),
-        retry=retry_if_exception_type(_TRANSIENT_OPENAI_ERRORS),
-        reraise=True,
-    )
-    out: list[list[float]] = []
-    for sub in _sub_batches(texts):
-        for attempt in retry:
-            with attempt:
-                resp = client.embeddings.create(model=model, input=sub, dimensions=dims)
-        out.extend(list(d.embedding) for d in resp.data)
-    return out
 
 
 def _metadata_common(item: IngestItem, chunk_index: int, model: str, dims: int) -> dict:
@@ -131,7 +76,7 @@ def _metadata_common(item: IngestItem, chunk_index: int, model: str, dims: int) 
 def _process_item(
     item: IngestItem,
     chunker,
-    openai_client: OpenAI,
+    embedder: OpenAIEmbedder,
     collection,
     model: str,
     dims: int,
@@ -146,7 +91,7 @@ def _process_item(
         return (0, 0)
 
     texts = [c.text for c in chunks]
-    embeddings = _embed_texts(openai_client, texts, model, dims)
+    embeddings = embedder.embed_batch(texts)
     ids = [f"{item.item_id}::chunk-{i}" for i in range(len(chunks))]
     metadatas = [_metadata_common(item, i, model, dims) for i in range(len(chunks))]
 
@@ -225,11 +170,7 @@ def _run_ingest(
     model = EMBEDDING_MODEL_DEFAULT
     dims = EMBEDDING_DIMS_DEFAULT
     collection = vector_store.get_collection(collection_name)
-    openai_client = (
-        OpenAI(api_key=os.environ.get("OPENAI_API_KEY"))
-        if os.environ.get("OPENAI_API_KEY")
-        else OpenAI()
-    )
+    embedder = OpenAIEmbedder(model=model, dims=dims)
 
     items: list[IngestItem] = []
     missing: list[str] = []
@@ -246,7 +187,7 @@ def _run_ingest(
 
     def _work(it: IngestItem) -> tuple[str, int, int, Exception | None]:
         try:
-            cw, tk = _process_item(it, chunker, openai_client, collection, model, dims)
+            cw, tk = _process_item(it, chunker, embedder, collection, model, dims)
         except Exception as e:
             return (it.item_id, 0, 0, e)
         return (it.item_id, cw, tk, None)
