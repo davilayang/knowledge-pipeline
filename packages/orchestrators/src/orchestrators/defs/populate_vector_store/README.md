@@ -49,7 +49,7 @@ vector_store/notes                vector_store/research_documents
 |---|---|---|
 | `BACKUP_SOURCE_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `research.db`, and `notes/`. Bound to `SourcesResource.backup_source_dir`. |
 | `OPENAI_API_KEY` | yes | OpenAI embeddings calls. |
-| `CHROMA_HOST` | yes | Chroma HTTP host (e.g. `localhost` for local smoke, `chroma` in compose). |
+| `CHROMA_HOST` | yes | Chroma HTTP host — `chroma` in compose; `localhost` for local `poe dagster-dev` against an external `chroma run`. |
 | `CHROMA_PORT` | yes | Chroma HTTP port (8000 default). |
 | `OPENAI_EMBEDDING_MODEL` | no | Default `text-embedding-3-small`. |
 | `OPENAI_EMBEDDING_DIMS` | no | Default `1536`. Matches the eval-winning baseline. |
@@ -57,25 +57,43 @@ vector_store/notes                vector_store/research_documents
 
 ## Operations
 
-### Manual launch (Phase D — schedule paused)
+### Manual launch (deployed — Phase E onwards)
 
-Local Chroma:
+Chroma runs as a sibling service in docker compose; dagster-code reaches it
+at `chroma:8000` via the compose network. The schedule is paused; trigger a
+single partition manually from the Dagster UI or via the CLI:
 
 ```bash
-chroma run --path /tmp/chroma_pvs --port 8000 &
+docker compose exec dagster-code \
+  dg launch -m orchestrators.definitions --job populate_vector_store \
+    --partition "$(date -u +%Y-%m-%d-%H:00)"
+```
+
+### Manual launch (local `poe dagster-dev`)
+
+Start the compose `chroma` service (loopback-only port 8000), then run the
+local Dagster against it:
+
+```bash
+docker compose --profile data up -d   # starts postgres + chroma
 set -a; source .env; set +a
 
-uv run dg launch \
-  --job populate_vector_store \
+uv run dg launch -m orchestrators.definitions --job populate_vector_store \
   --partition "$(date -u +%Y-%m-%d-%H:00)"
 ```
+
+Data persists in the `chroma_data` named volume — wipe with
+`docker compose down -v` to reset.
 
 Verify the four collections:
 
 ```bash
 uv run python -c "
-import chromadb
-c = chromadb.HttpClient(host='localhost', port=8000)
+import os, chromadb
+c = chromadb.HttpClient(
+    host=os.environ.get('CHROMA_HOST', 'localhost'),
+    port=int(os.environ.get('CHROMA_PORT', 8000)),
+)
 for name in ('contents','conversations','notes','research_documents'):
     print(name, c.get_or_create_collection(name, embedding_function=None).count())
 "
@@ -98,8 +116,11 @@ The per-source `MAX_PER_TICK_DEFAULT=50` cap with a 30-min schedule drains
 # Manually delete its chunks; the next tick will re-pick it up via the
 # pending discovery.
 uv run python -c "
-import chromadb
-c = chromadb.HttpClient(host='localhost', port=8000)
+import os, chromadb
+c = chromadb.HttpClient(
+    host=os.environ.get('CHROMA_HOST', 'localhost'),
+    port=int(os.environ.get('CHROMA_PORT', 8000)),
+)
 col = c.get_or_create_collection('contents', embedding_function=None)
 col.delete(where={'content_id': '<item_id>'})
 "
@@ -115,15 +136,17 @@ relevant collection first:
 
 ```bash
 uv run python -c "
-import chromadb
-c = chromadb.HttpClient(host='localhost', port=8000)
+import os, chromadb
+c = chromadb.HttpClient(
+    host=os.environ.get('CHROMA_HOST', 'localhost'),
+    port=int(os.environ.get('CHROMA_PORT', 8000)),
+)
 c.delete_collection('contents')
 "
 ```
 
 ## Out of scope (deferred)
 
-- Phase E: `chroma` service in shared docker compose.
 - Phase F: consumer-side cutover (HttpClient, query-side OpenAI EF on
   `VectorStoreResource`, 4-fan-out recall).
 - Phase G: drop POC volume, raised `MAX_PER_TICK` backfill, enable schedule.

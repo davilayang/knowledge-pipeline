@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.2] — 2026-05-14
+
+### Added
+
+- **Chroma service in docker-compose** as `chroma` (image `chromadb/chroma:1.5.5`, loopback-bound port `127.0.0.1:8000`, named `chroma_data` volume). The `populate_vector_store` pipeline now has a server to point at on the deployed host; `dagster-code`'s `environment:` overrides `CHROMA_HOST=chroma` so the compose-internal network name takes precedence over `.env`. Pipeline schedule remains paused — turning it on is the next phase.
+
+- **Compose profiles for local-dev split.** Services are now grouped into `data` (postgres + chroma) and `app` (dagster-code + dagster-webserver + dagster-daemon). Data services hold both profiles so `--profile app` resolves `depends_on` links and `--profile data` starts them standalone. `poe dagster-dev` now owns the data-services lifecycle: it brings postgres + chroma up at start and tears them down on exit (Ctrl+C, crash, normal end) via a bash EXIT/INT/TERM trap. Production deploy script (`scripts/deploy-hcloud.sh`) now invokes `docker compose --profile app`. **Bare `docker compose up` now starts nothing** — every service is profile-gated; use `--profile app` (full stack) or `--profile data` (deps only).
+
+---
+
 ## [0.11.1] — 2026-05-14
 
 ### Changed

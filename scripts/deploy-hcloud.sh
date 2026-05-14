@@ -80,7 +80,10 @@ run_deploy_sudo() {
 }
 
 compose_cmd() {
-    echo "docker compose"
+    # `--profile app` activates the dagster services; postgres + chroma get
+    # pulled in automatically via depends_on. Without a profile, nothing runs
+    # since every service in compose is profile-gated.
+    echo "docker compose --profile app"
 }
 
 # ==============================================================================

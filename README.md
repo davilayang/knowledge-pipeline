@@ -51,7 +51,7 @@ uv run poe dev
 For a persistent deployment with PostgreSQL-backed storage:
 
 ```bash
-docker compose up
+docker compose --profile app up --build       # full stack (app + auto-pulls postgres + chroma)
 
 # After code changes, rebuild + restart the code server (webserver/daemon stay up)
 docker compose restart dagster-code
@@ -59,6 +59,10 @@ docker compose restart dagster-code
 # Tear down
 docker compose down --volumes
 ```
+
+For local Dagster dev (auto-reload, no Docker for the Dagster stack), use
+`uv run poe dagster-dev` — it owns the postgres + chroma lifecycle and tears
+them down on exit.
 
 - Dagster UI: http://localhost:3030/dags (the Docker webserver runs with `--path-prefix=/dags` for reverse-proxy mounting)
 
