@@ -49,13 +49,17 @@ def _estimate_tokens(text: str) -> int:
     return max(1, len(text) // 4)
 
 
-def _metadata_common(item: IngestItem, chunk_index: int, model: str, dims: int) -> dict:
+def _metadata_common(
+    item: IngestItem, chunk: Chunk, chunk_index: int, model: str, dims: int
+) -> dict:
     md: dict = {
         "content_id": item.item_id,
         "chunk_index": chunk_index,
         "_embedding_model": model,
         "_embedding_dims": dims,
     }
+    if chunk.heading:
+        md["heading_path"] = chunk.heading
     if item.title:
         md["title"] = item.title
     if item.author:
@@ -78,31 +82,40 @@ def _process_item(
     collection,
     model: str,
     dims: int,
+    heading_in_embed: bool,
 ) -> tuple[int, int]:
     """Chunk + embed + delete-then-upsert a single item.
 
     Returns ``(chunks_written, tokens_embedded_estimate)``.
+
+    When ``heading_in_embed`` is True, the chunk's heading breadcrumb is
+    prepended to the embedded text (not the stored ``document`` field) so the
+    vector encodes section context. The stored Chroma ``documents`` stay
+    clean for downstream consumers.
     """
     chunks: list[Chunk] = chunker(item.text or "")
     if not chunks:
         collection.delete(where={"content_id": item.item_id})
         return (0, 0)
 
-    texts = [c.text for c in chunks]
-    embeddings = embedder.embed_batch(texts)
+    embed_texts = [
+        f"{c.heading}\n\n{c.text}" if (heading_in_embed and c.heading) else c.text for c in chunks
+    ]
+    store_texts = [c.text for c in chunks]
+    embeddings = embedder.embed_batch(embed_texts)
     ids = [f"{item.item_id}::chunk-{i}" for i in range(len(chunks))]
-    metadatas = [_metadata_common(item, i, model, dims) for i in range(len(chunks))]
+    metadatas = [_metadata_common(item, c, i, model, dims) for i, c in enumerate(chunks)]
 
     collection.delete(where={"content_id": item.item_id})
     for sl in _chunked(range(len(chunks)), _UPSERT_BATCH):
         lo, hi = sl[0], sl[-1] + 1
         collection.upsert(
             ids=ids[lo:hi],
-            documents=texts[lo:hi],
+            documents=store_texts[lo:hi],
             embeddings=embeddings[lo:hi],
             metadatas=metadatas[lo:hi],
         )
-    tokens = sum(_estimate_tokens(t) for t in texts)
+    tokens = sum(_estimate_tokens(t) for t in embed_texts)
     return (len(chunks), tokens)
 
 
@@ -164,7 +177,12 @@ def _run_ingest(
         return dg.MaterializeResult(metadata={"summary": dg.MetadataValue.md("_no pending_")})
 
     source = getattr(sources, source_name)()
-    chunker = get_chunking_fn(CHUNKER_BY_SOURCE[source_name], CHUNK_SIZE, CHUNK_OVERLAP)
+    chunker_name = CHUNKER_BY_SOURCE[source_name]
+    chunker = get_chunking_fn(chunker_name, CHUNK_SIZE, CHUNK_OVERLAP)
+    # Prepend the heading breadcrumb to embedded text for markdown chunkers
+    # (semantic section path); skip for turn_grouping where the heading is a
+    # time-range that would pollute the vector.
+    heading_in_embed = chunker_name == "markdown"
     model = EMBEDDING_MODEL_DEFAULT
     dims = EMBEDDING_DIMS_DEFAULT
     collection = vector_store.get_collection(collection_name)
@@ -196,7 +214,9 @@ def _run_ingest(
     for i, item in enumerate(items, 1):
         context.log.info("[%d/%d] ingesting %s", i, len(items), item.item_id)
         try:
-            cw, tk = _process_item(item, chunker, embedder, collection, model, dims)
+            cw, tk = _process_item(
+                item, chunker, embedder, collection, model, dims, heading_in_embed
+            )
         except Exception as e:
             context.log.exception("ingest failed for %s", item.item_id)
             errors.append((item.item_id, repr(e)))

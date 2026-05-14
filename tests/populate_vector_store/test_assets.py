@@ -15,6 +15,7 @@ from orchestrators.defs.populate_vector_store import assets as pvs_assets
 from orchestrators.defs.populate_vector_store.assets import (
     SOURCE_TO_COLLECTION,
     contents,
+    conversations,
     pending,
 )
 
@@ -111,6 +112,38 @@ def _item(iid: str, text: str = "hello world", source_type: str = "raw_store") -
         source_type=source_type,
         source_ref=f"{source_type}:{iid}",
     )
+
+
+_MARKDOWN_BODY = """# Doc Title
+
+## Section One
+
+Body of section one.
+
+## Section Two
+
+Body of section two.
+"""
+
+
+def _markdown_item(iid: str, text: str = _MARKDOWN_BODY) -> IngestItem:
+    """Item whose text is real markdown — exercises the production markdown
+    chunker so `Chunk.heading` is populated with a breadcrumb."""
+    return _item(iid, text=text, source_type="raw_store")
+
+
+def _sessions_item(iid: str) -> IngestItem:
+    """Item shaped like a session transcript (marker-delimited turns) so the
+    turn_grouping chunker emits its time-range heading."""
+    from domains.sessions.sources import TURN_MARKER_PREFIX
+
+    body = (
+        f"{TURN_MARKER_PREFIX} role=user ts=2026-04-01T14:00:00>>>\n"
+        "hello there\n"
+        f"{TURN_MARKER_PREFIX} role=assistant ts=2026-04-01T14:01:00>>>\n"
+        "world reply"
+    )
+    return _item(iid, text=body, source_type="sessions")
 
 
 # ------------------------------------------------------------------
@@ -315,3 +348,78 @@ def test_ingest_raises_on_per_item_failure():
 
 def test_source_to_collection_covers_all_four_sources():
     assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions", "research"}
+
+
+# ------------------------------------------------------------------
+# heading wiring (Chunk.heading → Chroma metadata + embed-text prefix)
+# ------------------------------------------------------------------
+
+
+def test_ingest_writes_heading_path_metadata():
+    """Markdown-chunked item lands `heading_path` in Chroma metadata per chunk."""
+    sources = _StubSources(raw_store=_StubSource([_markdown_item("a")]))
+    raw_collection = _StubCollection()
+    vector_store = _StubVectorStore({"contents": raw_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        contents.op.compute_fn.decorated_fn(
+            ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
+        )
+
+    metadatas = raw_collection.upsert_calls[0]["metadatas"]
+    heading_paths = [m.get("heading_path") for m in metadatas]
+    assert "Doc Title > Section One" in heading_paths
+    assert "Doc Title > Section Two" in heading_paths
+
+
+def test_ingest_embeds_heading_prefix_for_markdown_source():
+    """Markdown source: embed_batch is called with heading-prefixed text;
+    the stored `documents` field stays clean (no prefix)."""
+    sources = _StubSources(raw_store=_StubSource([_markdown_item("a")]))
+    raw_collection = _StubCollection()
+    vector_store = _StubVectorStore({"contents": raw_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, embed_batch = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        contents.op.compute_fn.decorated_fn(
+            ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
+        )
+
+    # Embedded text: heading prefix present.
+    embed_args = embed_batch.call_args.args[0]
+    assert all(t.startswith("Doc Title > Section ") for t in embed_args)
+    assert all("\n\n" in t for t in embed_args)
+
+    # Stored documents: prefix absent.
+    stored = raw_collection.upsert_calls[0]["documents"]
+    for doc in stored:
+        assert not doc.startswith("Doc Title > Section ")
+        # Sanity — the chunk body content is still there.
+        assert "Body of section" in doc
+
+
+def test_ingest_does_not_embed_heading_prefix_for_turn_grouping():
+    """Sessions source uses turn_grouping whose heading is a time-range, not
+    semantic — it must not be prepended to embedded text."""
+    sources = _StubSources(sessions=_StubSource([_sessions_item("s1")]))
+    sess_collection = _StubCollection()
+    vector_store = _StubVectorStore({"conversations": sess_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, embed_batch = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        conversations.op.compute_fn.decorated_fn(
+            ctx, pending={"sessions": ["s1"]}, sources=sources, vector_store=vector_store
+        )
+
+    embed_args = embed_batch.call_args.args[0]
+    # The time-range heading must NOT have been prepended to any embedded text.
+    for t in embed_args:
+        assert not t.startswith("turns ")
+
+    # Heading metadata still lands on the stored chunks (for filterability).
+    metadatas = sess_collection.upsert_calls[0]["metadatas"]
+    assert any(m.get("heading_path", "").startswith("turns ") for m in metadatas)

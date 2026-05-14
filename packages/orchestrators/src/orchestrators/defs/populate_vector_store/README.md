@@ -27,7 +27,9 @@ vector_store/notes                vector_store/research_documents
   │  sequential per-item loop:
   │    - source.get_item(id) → IngestItem
   │    - chunker(item.text) per CHUNKER_BY_SOURCE
-  │    - embed via OpenAIEmbedder (one OpenAI call per item)
+  │    - embed via OpenAIEmbedder (one OpenAI call per item); for markdown
+  │      chunkers the chunk's heading breadcrumb is prepended to the embedded
+  │      text (the stored `document` field stays clean)
   │    - collection.delete(where={"content_id": id}) then upsert in 4000-id batches
   │  deterministic chunk ids: f"{item_id}::chunk-{i}"  → idempotent re-runs
 ```
@@ -42,6 +44,30 @@ vector_store/notes                vector_store/research_documents
 - **Producer writes pre-computed embeddings.** The collections are accessed
   via `VectorStoreResource`; the resource's embedding-fn path is unused on
   write. Query-side OpenAI EF wiring is deferred to Phase F.
+- **Heading-aware embeddings for markdown chunkers.** For sources whose
+  chunker is `markdown` (raw_store, notes, research), the chunk's heading
+  breadcrumb is prepended to the text before embedding (e.g.
+  `"Introduction > Setup\n\n<chunk body>"`) to improve retrieval ranking
+  within document sections. The stored Chroma `document` field stays
+  unchanged — only the embedded vector encodes the breadcrumb.
+
+## Chunk metadata schema
+
+Every upserted chunk carries this metadata:
+
+| Field | Always present | Description |
+|---|---|---|
+| `content_id` | yes | Upstream item id. Used by `delete(where=...)` for idempotent re-ingest. |
+| `chunk_index` | yes | Position of this chunk in the item's chunk sequence. |
+| `_embedding_model` | yes | Model id baked into the vector (e.g. `text-embedding-3-small`). |
+| `_embedding_dims` | yes | Vector dimension (e.g. `1536`). |
+| `heading_path` | optional | Hierarchical heading breadcrumb joined by ` > ` for markdown-chunked items (e.g. `"Doc Title > Section One"`); time-range string for `turn_grouping` chunks (sessions); absent for items without markdown structure. |
+| `title` | optional | Upstream item title. |
+| `author` | optional | Upstream item author. |
+| `content_date` | optional | ISO-formatted `IngestItem.date`. |
+| `url` | optional | Upstream URL. |
+| `started_at` | optional | ISO-formatted `IngestItem.started_at` (sessions). |
+| `source_ref` | optional | Source-specific reference (e.g. `raw_store:<id>`). |
 
 ## Environment variables
 
