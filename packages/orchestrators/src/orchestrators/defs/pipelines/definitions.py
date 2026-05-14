@@ -5,10 +5,11 @@
 
 import dagster as dg
 
-from . import backup_readings, synthesize_wiki, upstream_sources
+from . import backup_readings, populate_vector_store, synthesize_wiki, upstream_sources
 
 defs = dg.Definitions.merge(
     upstream_sources.defs,
     backup_readings.defs,
     synthesize_wiki.defs,
+    populate_vector_store.defs,
 )
