@@ -101,6 +101,96 @@ class TestParseLlmPageOutput:
         )
         assert page.page_type == "concept"
 
+    def test_parse_extracts_summary_field(self):
+        raw = (
+            "---\n"
+            "entity_id: concept__rag\n"
+            "title: RAG\n"
+            "page_type: concept\n"
+            "summary: RAG augments LLM generation with retrieval over a corpus.\n"
+            "---\n"
+            "# RAG\n\nBody."
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="concept__rag",
+            title="RAG",
+            page_type="concept",
+            related=[],
+            source_id="c1",
+        )
+        assert page.summary == "RAG augments LLM generation with retrieval over a corpus."
+
+    def test_parse_ignores_llm_supplied_aliases_and_num_sources(self):
+        """Whitelist: only `summary` is accepted from the LLM. `aliases` and
+        `num_sources` are producer-supplied at write time and ignored on parse."""
+        raw = (
+            "---\n"
+            "entity_id: concept__rag\n"
+            "title: RAG\n"
+            "page_type: concept\n"
+            "summary: RAG augments LLM generation.\n"
+            "aliases: [HallucinatedAlias]\n"
+            "num_sources: 99\n"
+            "---\n"
+            "# RAG\n\nBody."
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="concept__rag",
+            title="RAG",
+            page_type="concept",
+            related=[],
+            source_id="c1",
+        )
+        # The WikiPage type has no aliases/num_sources fields — they're write-time
+        # parameters on write_page. So the assertion is: parse succeeded, summary
+        # was extracted, and no spurious attribute leaked through.
+        assert page.summary == "RAG augments LLM generation."
+        assert not hasattr(page, "aliases")
+        assert not hasattr(page, "num_sources")
+
+    def test_parse_falls_back_to_first_sentence_when_summary_missing(self, caplog):
+        raw = (
+            "---\n"
+            "entity_id: concept__rag\n"
+            "title: RAG\n"
+            "page_type: concept\n"
+            "---\n"
+            "# RAG\n\nRAG is a technique for grounding LLMs in retrieved context. "
+            "It has two phases."
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="concept__rag",
+            title="RAG",
+            page_type="concept",
+            related=[],
+            source_id="c1",
+        )
+        assert page.summary == "RAG is a technique for grounding LLMs in retrieved context."
+        assert "usable summary" in caplog.text
+
+    def test_parse_falls_back_when_summary_empty_string(self):
+        raw = (
+            "---\n"
+            "entity_id: concept__rag\n"
+            "title: RAG\n"
+            "page_type: concept\n"
+            "summary: ''\n"
+            "---\n"
+            "RAG augments generation. Other stuff."
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="concept__rag",
+            title="RAG",
+            page_type="concept",
+            related=[],
+            source_id="c1",
+        )
+        assert page.summary == "RAG augments generation."
+
 
 class TestCheckH2Preservation:
     def test_warns_on_dropped_section(self, tmp_path: Path, caplog):

@@ -7,6 +7,8 @@ connection to a temp Postgres with the wiki schema loaded.
 from datetime import date
 
 from domains.wiki.state import (
+    count_sources_for_entity,
+    get_aliases_for_entity,
     get_all_pages,
     get_failed,
     get_page,
@@ -172,3 +174,42 @@ def test_insert_aliases_idempotent_no_entries_is_noop(wiki_pg):
     insert_aliases_idempotent(wiki_pg, [])
     wiki_pg.commit()
     assert wiki_pg.execute("SELECT count(*) FROM wiki.aliases").fetchone()[0] == 0
+
+
+# --- bridge helpers: get_aliases_for_entity / count_sources_for_entity ---
+
+
+def test_get_aliases_for_entity_returns_sorted_list(wiki_pg):
+    insert_aliases_idempotent(
+        wiki_pg,
+        [("concept__rag", "RAG", ["Retrieval-Augmented Generation", "Retrieval Augmented"])],
+    )
+    wiki_pg.commit()
+    aliases = get_aliases_for_entity(wiki_pg, "concept__rag")
+    assert aliases == sorted(aliases)
+    assert set(aliases) == {"RAG", "Retrieval Augmented", "Retrieval-Augmented Generation"}
+
+
+def test_get_aliases_for_entity_unknown_returns_empty(wiki_pg):
+    assert get_aliases_for_entity(wiki_pg, "concept__missing") == []
+
+
+def test_count_sources_for_entity_counts_distinct_items(wiki_pg):
+    """Joins wiki.pages.sources (jsonb) with wiki.processed status='ok'.
+    Duplicates inside the sources array collapse; status!='ok' rows excluded."""
+    page = _make_page(sources=["content_a", "content_b", "content_a"])
+    upsert_page(wiki_pg, page=page, file_path="concept/rag.md", source_types=["raw_store"])
+    insert_processed(wiki_pg, item_id="content_a", source_type="raw_store", status="ok")
+    insert_processed(wiki_pg, item_id="content_b", source_type="raw_store", status="ok")
+    # Same item_id, different source_type, status='ok' — still one distinct item.
+    insert_processed(wiki_pg, item_id="content_a", source_type="local_file", status="ok")
+    # An errored item should NOT count.
+    insert_processed(wiki_pg, item_id="content_c", source_type="raw_store", status="error")
+    wiki_pg.commit()
+
+    # Only content_a and content_b are in the sources array AND status='ok'.
+    assert count_sources_for_entity(wiki_pg, "concept__rag") == 2
+
+
+def test_count_sources_for_entity_unknown_returns_zero(wiki_pg):
+    assert count_sources_for_entity(wiki_pg, "concept__missing") == 0

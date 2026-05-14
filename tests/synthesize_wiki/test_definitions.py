@@ -17,6 +17,7 @@ def test_definitions_load_with_expected_shape():
         "wiki/pending",
         "wiki/synthesized",
         "wiki/index",
+        "wiki/aliases_index",
     }
     assert sorted(s.name for s in defs.schedules) == ["run_daily_synthesize_wiki"]
     assert sorted(j.name for j in defs.jobs) == ["synthesize_wiki"]

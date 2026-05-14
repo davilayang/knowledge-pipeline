@@ -17,6 +17,7 @@ def read_page(path: Path) -> WikiPage:
         entity_id=meta["entity_id"],
         title=meta["title"],
         page_type=meta["page_type"],
+        summary=meta.get("summary", ""),
         related=meta.get("related", []),
         sources=meta.get("sources", []),
         updated_at=(
@@ -28,26 +29,42 @@ def read_page(path: Path) -> WikiPage:
     )
 
 
-def write_page(path: Path, page: WikiPage) -> None:
+def write_page(
+    path: Path,
+    page: WikiPage,
+    *,
+    aliases: list[str],
+    num_sources: int,
+) -> None:
     """Write a wiki page to a markdown file with YAML frontmatter.
+
+    `aliases` and `num_sources` are producer-authoritative (sourced from
+    Postgres at write time), not LLM-supplied. The frontmatter key order is
+    stable for diff-readability:
+
+        entity_id, title, page_type, summary, aliases, related, sources,
+        num_sources, updated_at
 
     Uses atomic write: writes to a .tmp file first, then os.replace.
     """
     path.parent.mkdir(parents=True, exist_ok=True)
     tmp_path = path.with_suffix(".tmp")
 
-    frontmatter = {
-        "entity_id": page.entity_id,
-        "title": page.title,
-        "page_type": page.page_type,
-        "related": page.related,
-        "sources": page.sources,
-        "updated_at": page.updated_at.isoformat(),
-    }
+    frontmatter_lines = [
+        f"entity_id: {_yaml_scalar(page.entity_id)}",
+        f"title: {_yaml_scalar(page.title)}",
+        f"page_type: {_yaml_scalar(page.page_type)}",
+        f"summary: {_yaml_scalar(page.summary)}",
+        f"aliases: {_yaml_inline_list(aliases)}",
+        f"related: {_yaml_inline_list(page.related)}",
+        f"sources: {_yaml_inline_list(page.sources)}",
+        f"num_sources: {int(num_sources)}",
+        f"updated_at: {page.updated_at.isoformat()}",
+    ]
 
     lines = [
         _FRONTMATTER_DELIMITER,
-        yaml.dump(frontmatter, default_flow_style=False, sort_keys=False).rstrip(),
+        "\n".join(frontmatter_lines),
         _FRONTMATTER_DELIMITER,
         "",
         page.content,
@@ -58,6 +75,22 @@ def write_page(path: Path, page: WikiPage) -> None:
 
     tmp_path.write_text(output, encoding="utf-8")
     os.replace(tmp_path, path)
+
+
+def _yaml_scalar(value: str) -> str:
+    """Format a scalar string for inline YAML emission.
+
+    Round-trips through yaml.dump for a single-key mapping so we get correct
+    quoting/escaping (including the empty-string case) without re-implementing
+    YAML's escape rules.
+    """
+    dumped = yaml.dump({"_": value}, default_flow_style=False, sort_keys=False).rstrip()
+    return dumped[len("_: ") :]
+
+
+def _yaml_inline_list(items: list[str]) -> str:
+    """Format a list of strings in inline `[a, b]` form for frontmatter."""
+    return yaml.dump(items, default_flow_style=True, sort_keys=False).rstrip()
 
 
 def _split_frontmatter(text: str) -> tuple[dict, str]:

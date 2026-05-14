@@ -1,5 +1,7 @@
 # Wiki synthesis pipeline. See README.md for the DAG diagram and runbook.
 
+import json
+import os
 import time
 
 import dagster as dg
@@ -267,4 +269,88 @@ def regenerate_toc(
     )
 
 
-all_assets = [pending, synthesized, regenerate_toc]
+@dg.asset(
+    key=["wiki", "aliases_index"],
+    group_name="wiki",
+    kinds={"postgres", "json"},
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
+    partitions_def=wiki_daily_partition_def,
+    deps=[dg.AssetDep(["wiki", "synthesized"])],
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Flat alias→entity_id map at data/wiki/_index/aliases.json for the "
+        "consumer agent's O(1) entity resolution. Includes both wiki.aliases "
+        "rows and each page title.lower() so case-insensitive lookups via "
+        "canonical title resolve the same as via aliases. Atomic write + "
+        "byte-equality skip — re-running on a partition with no DB changes "
+        "leaves the file untouched."
+    ),
+)
+def aliases_index(
+    context: dg.AssetExecutionContext,
+    wiki: WikiResource,
+) -> dg.MaterializeResult:
+    with psycopg.connect(wiki.database_url) as conn:
+        alias_rows = conn.execute("SELECT alias, entity_id FROM wiki.aliases").fetchall()
+        title_rows = conn.execute("SELECT entity_id, file_path FROM wiki.pages").fetchall()
+        page_title_rows = conn.execute(
+            """
+            SELECT entity_id, canonical_name
+            FROM wiki.aliases
+            GROUP BY entity_id, canonical_name
+            """
+        ).fetchall()
+
+    flat: dict[str, str] = {}
+
+    def _set(key: str, entity_id: str) -> None:
+        lowered = key.lower()
+        existing = flat.get(lowered)
+        if existing is not None and existing != entity_id:
+            raise dg.Failure(
+                description=(
+                    f"Alias collision: '{lowered}' maps to both '{existing}' " f"and '{entity_id}'."
+                ),
+                metadata={
+                    "alias": dg.MetadataValue.text(lowered),
+                    "entity_a": dg.MetadataValue.text(existing),
+                    "entity_b": dg.MetadataValue.text(entity_id),
+                },
+            )
+        flat[lowered] = entity_id
+
+    for alias, entity_id in alias_rows:
+        _set(alias, entity_id)
+    for entity_id, canonical in page_title_rows:
+        _set(canonical, entity_id)
+
+    entities_total = len({entity_id for _, entity_id in alias_rows} | {r[0] for r in title_rows})
+
+    serialized = json.dumps(flat, sort_keys=True, indent=2, ensure_ascii=False) + "\n"
+    payload = serialized.encode("utf-8")
+
+    index_dir = wiki.get_wiki_dir() / "_index"
+    index_dir.mkdir(parents=True, exist_ok=True)
+    output_path = index_dir / "aliases.json"
+
+    unchanged = output_path.exists() and output_path.read_bytes() == payload
+    if not unchanged:
+        tmp = output_path.with_suffix(".json.tmp")
+        tmp.write_bytes(payload)
+        os.replace(tmp, output_path)
+
+    summary_md = f"**{len(flat)} aliases** across {entities_total} entities" + (
+        " — unchanged" if unchanged else " — written"
+    )
+    return dg.MaterializeResult(
+        metadata={
+            "summary": dg.MetadataValue.md(summary_md),
+            "aliases_total": dg.MetadataValue.int(len(flat)),
+            "entities_total": dg.MetadataValue.int(entities_total),
+            "unchanged": dg.MetadataValue.bool(unchanged),
+            "output_path": dg.MetadataValue.path(str(output_path)),
+        }
+    )
+
+
+all_assets = [pending, synthesized, regenerate_toc, aliases_index]

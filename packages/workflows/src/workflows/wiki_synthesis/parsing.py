@@ -17,6 +17,28 @@ from domains.wiki.types import WikiPage
 logger = logging.getLogger(__name__)
 
 
+_LLM_ACCEPTED_FIELDS = frozenset(
+    {"entity_id", "title", "page_type", "related", "sources", "summary"}
+)
+
+
+def _first_sentence(text: str) -> str:
+    """Return the first sentence of `text`, stripped of markdown headings."""
+    cleaned_lines: list[str] = []
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        cleaned_lines.append(stripped)
+    if not cleaned_lines:
+        return ""
+    flat = " ".join(cleaned_lines)
+    for i, ch in enumerate(flat):
+        if ch in ".!?":
+            return flat[: i + 1].strip()
+    return flat.strip()
+
+
 def parse_llm_page_output(
     *,
     raw: str,
@@ -30,6 +52,11 @@ def parse_llm_page_output(
 
     LLMs sometimes hallucinate a different entity_id or page_type — we always
     overwrite those with what the caller asked for to keep the page index stable.
+
+    Only fields in `_LLM_ACCEPTED_FIELDS` are consumed from the LLM frontmatter.
+    Producer-supplied fields (aliases, num_sources) are intentionally ignored
+    even if the LLM emits them — they're authoritative from Postgres at write
+    time, not from the LLM.
     """
     raw = raw.strip()
 
@@ -49,10 +76,29 @@ def parse_llm_page_output(
                             llm_entity_id,
                             entity_id,
                         )
+                    rejected = sorted(set(meta) - _LLM_ACCEPTED_FIELDS)
+                    if rejected:
+                        logger.warning(
+                            "LLM emitted non-accepted frontmatter fields for %s: %s",
+                            entity_id,
+                            rejected,
+                        )
+                    summary = meta.get("summary", "")
+                    if not isinstance(summary, str):
+                        summary = ""
+                    summary = summary.strip()
+                    if not summary:
+                        summary = _first_sentence(content)
+                        logger.warning(
+                            "LLM did not emit a usable summary for %s; "
+                            "falling back to first sentence",
+                            entity_id,
+                        )
                     return WikiPage(
                         entity_id=entity_id,
                         title=meta.get("title", title),
                         page_type=page_type,
+                        summary=summary,
                         related=meta.get("related", related),
                         sources=meta.get("sources", [source_id]),
                         updated_at=date.today(),
@@ -65,6 +111,7 @@ def parse_llm_page_output(
         entity_id=entity_id,
         title=title,
         page_type=page_type,
+        summary=_first_sentence(raw),
         related=related,
         sources=[source_id],
         updated_at=date.today(),

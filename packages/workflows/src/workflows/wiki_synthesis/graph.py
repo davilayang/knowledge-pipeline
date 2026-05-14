@@ -62,6 +62,7 @@ def fan_out(state: WikiSynthesisState) -> str | list[Send]:
                     e.entity_id for e in entities if e.entity_id != entity.entity_id
                 ],
                 "wiki_dir": state["wiki_dir"],
+                "db_url": state["db_url"],
             },
         )
         for entity in entities

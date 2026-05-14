@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.0] — 2026-05-14
+
+### Added
+
+- **Three new YAML frontmatter fields on every wiki page** — `summary` (one-sentence LLM-generated description, shape-word-free), `aliases` (list of alternate entity names sourced from `wiki.aliases` in Postgres, not from the LLM), and `num_sources` (integer count of distinct source content_ids). Downstream consumers (e.g. newsletter-assistant) can now "peek before fetch" without loading the full page body. Fields written in `domains/wiki/io.py`; aliases + source count fetched via two new helpers in `domains/wiki/state.py`.
+
+- **Alias index sidecar at `data/wiki/_index/aliases.json`** — flat `{lowercased_alias_or_canonical_title → entity_id}` map rebuilt at the end of every `synthesize_wiki` tick by the new `wiki/aliases_index` Dagster asset. Atomic write (tmp + rename); skipped when byte-identical; raises on collision. Enables O(1) entity resolution for sibling agents.
+
+### Changed
+
+- **LLM page-output parsing is now whitelist-only** — only documented fields are accepted; hallucinated `aliases` / `num_sources` from the model are silently dropped. Falls back to first sentence of body when `summary` is missing or empty. Logic lives in `workflows/wiki_synthesis/parsing.py`.
+
+- **`SYNTHESIZE_WIKI_DAG_VERSION` bumped 3 → 4** — new `wiki/aliases_index` asset changes DAG topology.
+
+---
+
 ## [0.11.3] — 2026-05-14
 
 ### Changed

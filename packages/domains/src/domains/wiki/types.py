@@ -12,6 +12,10 @@ class WikiPage(BaseModel):
     entity_id: str = Field(description="Stable ID in format: {page_type}__{slug}")
     title: str = Field(description="Human-readable page title")
     page_type: PageType = Field(description="Page category")
+    summary: str = Field(
+        default="",
+        description="One-sentence document-shape summary; names the entity directly.",
+    )
     related: list[str] = Field(default_factory=list, description="Entity IDs of related pages")
     sources: list[str] = Field(default_factory=list, description="Content IDs of source articles")
     updated_at: date = Field(description="Last update date")
