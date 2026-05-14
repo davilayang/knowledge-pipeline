@@ -62,15 +62,18 @@ code_location_name = "orchestrators"
 ## Dagster ##
 
 [tool.poe.tasks.dagster-dev]
-cmd = """
-  dagster dev --port 3030
-    -m orchestrators.definitions
+# trap on EXIT/INT/TERM stops the data services when `dagster dev` exits
+# (Ctrl+C, crash, normal end) — single-command lifecycle for local dev.
+shell = """
+trap 'docker compose --profile data down' EXIT INT TERM
+docker compose --profile data up -d
+dagster dev --port 3030 -m orchestrators.definitions
 """
-help = "Launch Dagster UI at localhost:3030 with the pipelines code location"
+help = "Start postgres + chroma, launch Dagster UI at localhost:3030; tear down data services on exit"
 
 [tool.poe.tasks.dev-deps-up]
 cmd = "docker compose --profile data up -d"
-help = "Start postgres + chroma in the background (compose `data` profile) for `poe dagster-dev`"
+help = "Start postgres + chroma standalone (compose `data` profile) — for sessions that outlive a single `poe dagster-dev` run"
 
 [tool.poe.tasks.dev-deps-down]
 cmd = "docker compose --profile data down"
