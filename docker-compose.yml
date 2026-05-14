@@ -35,6 +35,22 @@ services:
       - dagster_network
     restart: unless-stopped
 
+  chroma:
+    image: chromadb/chroma:1.5.5
+    # No host port — accessed by dagster-code via the compose network at chroma:8000.
+    # Uncomment to expose for local probing: ports: ["127.0.0.1:8000:8000"].
+    volumes:
+      - chroma_data:/data
+    networks:
+      - dagster_network
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v2/heartbeat || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+      start_period: 10s
+    restart: unless-stopped
+
   dagster-code:
     image: ${DOCKER_USER:-local}/kp-dagster-code
     build:
@@ -45,11 +61,16 @@ services:
         # without any chown. Defaults to 1001 if not set in .env.
         APP_UID: ${APP_UID:-1001}
         APP_GID: ${APP_GID:-1001}
+    depends_on:
+      chroma:
+        condition: service_healthy
     env_file: .env
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
       BACKUP_SOURCE_DIR: /app/source # Used by app in container
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
@@ -144,3 +165,4 @@ networks:
 
 volumes:
   postgres_data:
+  chroma_data:

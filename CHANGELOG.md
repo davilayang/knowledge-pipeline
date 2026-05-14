@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.2] — 2026-05-14
+
+### Added
+
+- **Chroma service in docker-compose** as `chroma` (image `chromadb/chroma:1.5.5`, internal port 8000, named `chroma_data` volume). The `populate_vector_store` pipeline now has a server to point at on the deployed host; `dagster-code`'s `environment:` overrides `CHROMA_HOST=chroma` so the compose-internal network name takes precedence over `.env`. Pipeline schedule remains paused — turning it on is the next phase.
+
+---
+
 ## [0.11.1] — 2026-05-14
 
 ### Changed
