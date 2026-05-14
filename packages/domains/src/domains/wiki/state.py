@@ -203,6 +203,38 @@ def insert_aliases_idempotent(
     )
 
 
+def get_aliases_for_entity(conn: Connection, entity_id: str) -> list[str]:
+    """Return every alias for `entity_id`, sorted ascending for determinism."""
+    rows = conn.execute(
+        "SELECT alias FROM wiki.aliases WHERE entity_id = %s ORDER BY alias",
+        (entity_id,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def count_sources_for_entity(conn: Connection, entity_id: str) -> int:
+    """Return the count of distinct item_ids in wiki.processed that have
+    contributed (status='ok') to a page for this entity.
+
+    Note: wiki.processed today is keyed by (item_id, source_type) with no
+    entity_id column — this helper joins via wiki.pages.sources jsonb array,
+    which is the authoritative producer-side record of which item_ids landed
+    in which page.
+    """
+    row = conn.execute(
+        """
+        SELECT count(DISTINCT proc.item_id)
+        FROM wiki.pages p
+        CROSS JOIN LATERAL jsonb_array_elements_text(p.sources) AS src(item_id)
+        JOIN wiki.processed proc
+          ON proc.item_id = src.item_id AND proc.status = 'ok'
+        WHERE p.entity_id = %s
+        """,
+        (entity_id,),
+    ).fetchone()
+    return int(row[0]) if row and row[0] is not None else 0
+
+
 def snapshot_aliases(conn: Connection) -> AliasStore:
     """Read every alias row into an in-memory AliasStore for prompt use."""
     rows = conn.execute(

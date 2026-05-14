@@ -25,8 +25,10 @@ import operator
 from pathlib import Path
 from typing import Annotated, ReadOnly, Required, TypedDict
 
+import psycopg
 from domains.types import IngestItem
 from domains.wiki.io import write_page
+from domains.wiki.state import count_sources_for_entity, get_aliases_for_entity
 from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 
@@ -53,6 +55,7 @@ class EntityWorkflowState(TypedDict, total=False):
     entity: Required[ReadOnly[ExtractedEntity]]
     sibling_entity_ids: Required[ReadOnly[list[str]]]
     wiki_dir: Required[ReadOnly[str]]
+    db_url: Required[ReadOnly[str]]
 
     # Output: these lists are concatenated into the parent's matching keys
     # via the parent state's operator.add reducer
@@ -84,6 +87,7 @@ def process_entity(state: EntityWorkflowState) -> dict:
     item = state["item"]
     sibling_ids = state["sibling_entity_ids"]
     wiki_dir = Path(state["wiki_dir"])
+    db_url = state["db_url"]
     # Track LLM calls outside the try block so a downstream raise (parse,
     # H2 check, write) doesn't drop tokens we already paid for.
     llm_calls: list[LLMCall] = []
@@ -130,7 +134,13 @@ def process_entity(state: EntityWorkflowState) -> dict:
         if is_update:
             check_h2_preservation(page_path, new_page.content)
 
-        write_page(page_path, new_page)
+        with psycopg.connect(db_url) as conn:
+            aliases = get_aliases_for_entity(conn, entity.entity_id)
+            num_sources = count_sources_for_entity(conn, entity.entity_id)
+        if item.item_id not in new_page.sources:
+            num_sources += 1
+
+        write_page(page_path, new_page, aliases=aliases, num_sources=num_sources)
 
         return {
             "entity_results": [
