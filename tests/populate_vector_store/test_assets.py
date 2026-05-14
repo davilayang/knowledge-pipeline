@@ -1,7 +1,7 @@
 """Behavioural tests for populate_vector_store assets.
 
 Mocks at the import boundary: ``OpenAIEmbedder`` and Chroma collections are
-stubbed at ``orchestrators.defs.pipelines.populate_vector_store.assets``. No
+stubbed at ``orchestrators.defs.populate_vector_store.assets``. No
 live calls.
 """
 
@@ -11,8 +11,8 @@ from unittest.mock import MagicMock, patch
 import dagster as dg
 import pytest
 from domains.types import IngestItem
-from orchestrators.defs.pipelines.populate_vector_store import assets as pvs_assets
-from orchestrators.defs.pipelines.populate_vector_store.assets import (
+from orchestrators.defs.populate_vector_store import assets as pvs_assets
+from orchestrators.defs.populate_vector_store.assets import (
     SOURCE_TO_COLLECTION,
     contents,
     pending,

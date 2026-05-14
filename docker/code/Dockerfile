@@ -66,4 +66,4 @@ HEALTHCHECK --timeout=5s --start-period=30s --interval=5s --retries=5 \
 # ~13 s to startup.
 CMD ["/app/.venv/bin/dagster", "code-server", "start", \
      "-h", "0.0.0.0", "-p", "4000", \
-     "-m", "orchestrators.defs.pipelines.definitions"]
+     "-m", "orchestrators.definitions"]

@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.1] — 2026-05-14
+
+### Changed
+
+- **Code-location module path shortened.** Pipelines now live directly under `orchestrators.defs.<name>` (was `orchestrators.defs.pipelines.<name>`); the production Docker CMD and `poe` tasks load `orchestrators.definitions` as the single code-location entry point (was `orchestrators.defs.pipelines.definitions`). Pure module-path refactor — asset names, partitioning, schedules, and resources unchanged.
+
+---
+
 ## [0.11.0] — 2026-05-13
 
 ### Added

@@ -5,7 +5,7 @@ Mirrors backup_readings / synthesize_wiki — asset-graph regressions
 than at the first manual launch.
 """
 
-from orchestrators.defs.pipelines.populate_vector_store import defs
+from orchestrators.defs.populate_vector_store import defs
 
 
 def test_definitions_load_with_expected_shape():

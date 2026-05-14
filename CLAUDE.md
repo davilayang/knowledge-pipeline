@@ -79,12 +79,11 @@ packages/
     datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
-      shared/           # Shared resources (raw_store, chroma, etc.)
-      pipelines/        # Scheduled production pipelines
-        backup_readings/
-        populate_vector_store/
-        synthesize_wiki/
-        upstream_sources.py
+      shared/                  # Shared resources (raw_store, chroma, etc.)
+      backup_readings/
+      synthesize_wiki/
+      populate_vector_store/
+      upstream_sources.py
 
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
@@ -100,13 +99,12 @@ ai-plannings/      # Implementation plans written by Claude Code sessions
 ```
 
 **Key entry points:**
-- `orchestrators.definitions:defs` — full code location for `dagster dev`
-- `orchestrators.defs.pipelines.definitions:defs` — pipelines-only (production)
+- `orchestrators.definitions:defs` — Dagster code location (loaded by `dagster dev` and the production gRPC server)
 
 ## Testing Strategy
 
 - Unit tests in `tests/` with mocked LLMs and `wiki_pg` Postgres fixture for state tests.
-- Sandbox materializations for Dagster assets — see `packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md` ("Layer 2").
+- Sandbox materializations for Dagster assets — see `packages/orchestrators/src/orchestrators/defs/backup_readings/README.md` ("Layer 2").
 - LLM calls in tests **must** be mocked (use `unittest.mock.patch` at the **import** location, not the source location).
 - Postgres tests use `pytest-postgresql` with the `wiki_pg` fixture (fresh psycopg connection to a temp DB with `wiki.sql` loaded).
 
@@ -123,6 +121,6 @@ Three Dagster containers + Postgres:
 
 ## Backup Pipeline (`backup_readings`)
 
-Daily-partitioned. See `packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md` for the DAG diagram and full runbook (rclone setup, healthchecks.io, restore).
+Daily-partitioned. See `packages/orchestrators/src/orchestrators/defs/backup_readings/README.md` for the DAG diagram and full runbook (rclone setup, healthchecks.io, restore).
 
 Per-host config is env-driven via required `dg.EnvVar` (`BACKUP_SOURCE_DIR`, `BACKUP_DIR`, `DRIVE_REMOTE`, `DRIVE_BACKUP_ROOT`, `HEALTHCHECK_PING_URL`) — unset → run init fails fast. Set in deploy `.env` or shell profile. In Docker Compose, `BACKUP_SOURCE_DIR` is the host path; compose bind-mounts it to `/app/source` and overrides the in-container env var to that fixed path.

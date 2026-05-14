@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.11.0"
+version = "0.11.1"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -64,12 +64,12 @@ code_location_name = "orchestrators"
 [tool.poe.tasks.dagster-dev]
 cmd = """
   dagster dev --port 3030
-    -m orchestrators.defs.pipelines.definitions
+    -m orchestrators.definitions
 """
 help = "Launch Dagster UI at localhost:3030 with the pipelines code location"
 
 [tool.poe.tasks.backup]
-cmd = "dg launch -m orchestrators.defs.pipelines.definitions --job backup_readings"
+cmd = "dg launch -m orchestrators.definitions --job backup_readings"
 help = "Run readings backup job once from CLI"
 
 ## Deploy ##

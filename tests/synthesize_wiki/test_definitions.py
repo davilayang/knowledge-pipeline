@@ -5,7 +5,7 @@ asset-graph regressions (broken imports, asset-key drift, dep-graph
 mistakes, dropped schedule) fail in CI rather than at 06:00 UTC.
 """
 
-from orchestrators.defs.pipelines.synthesize_wiki import defs
+from orchestrators.defs.synthesize_wiki import defs
 
 
 def test_definitions_load_with_expected_shape():

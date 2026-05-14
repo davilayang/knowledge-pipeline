@@ -4,7 +4,7 @@ These run on every commit so asset-graph regressions (broken imports,
 asset-key drift, dep-graph mistakes) fail in CI rather than at 03:00 UTC.
 """
 
-from orchestrators.defs.pipelines.backup_readings import defs
+from orchestrators.defs.backup_readings import defs
 
 
 def test_definitions_load_with_expected_shape():

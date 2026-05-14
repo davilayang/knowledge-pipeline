@@ -1,7 +1,7 @@
 # Dagster Pipeline Style Guide
 
 Conventions for building Dagster pipelines in this repo. Synthesised from
-`packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/`
+`packages/orchestrators/src/orchestrators/defs/backup_readings/`
 (the canonical reference), cross-checked against
 [dagster-open-platform](https://github.com/dagster-io/dagster-open-platform)
 (DOP). Use this when revamping existing DAGs, scaffolding new ones, or
@@ -39,7 +39,7 @@ The same name applies to:
 ### Files
 
 One pipeline = one folder under
-`packages/orchestrators/src/orchestrators/defs/pipelines/<name>/`. Eight files:
+`packages/orchestrators/src/orchestrators/defs/<name>/`. Eight files:
 
 ```
 <pipeline>/
@@ -511,7 +511,7 @@ When refactoring an existing DAG, look for and fix:
 ## Checklist for a new DAG
 
 - [ ] Folder named `verb_object` (e.g. `backup_readings`, `synthesize_wiki`).
-- [ ] Folder under `packages/orchestrators/src/orchestrators/defs/pipelines/<name>/`.
+- [ ] Folder under `packages/orchestrators/src/orchestrators/defs/<name>/`.
 - [ ] `<NAME>_DAG_VERSION = "1"` constant added to `orchestrators/config.py`.
 - [ ] Eight files (drop `checks.py` / `sensors.py` only if genuinely empty).
 - [ ] All assets share one `group_name`, one `partitions_def`, one
