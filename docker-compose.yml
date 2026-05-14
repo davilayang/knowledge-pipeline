@@ -59,7 +59,11 @@ services:
     networks:
       - dagster_network
     healthcheck:
-      test: ["CMD-SHELL", "curl -fsS http://localhost:8000/api/v2/heartbeat || exit 1"]
+      # chromadb/chroma:1.5.5 ships no curl/wget/python — only bash. Use bash's
+      # /dev/tcp builtin: the `:` no-op exits 0 iff the port is open. Chroma's
+      # FastAPI/Uvicorn binds the port only after init is complete, so
+      # port-open is a sound proxy for "ready".
+      test: ["CMD", "bash", "-c", ": </dev/tcp/localhost/8000"]
       interval: 10s
       timeout: 3s
       retries: 5
