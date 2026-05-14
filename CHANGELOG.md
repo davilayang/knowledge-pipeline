@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.11.3] — 2026-05-14
+
+### Changed
+
+- **Heading-aware embeddings for markdown content.** Markdown-chunked items (raw_store, notes, research) now embed with their heading breadcrumb prepended (e.g. `"Introduction > Setup\n\nactual chunk text..."`), so retrieval better ranks chunks within their containing section. The stored `document` field in Chroma stays unchanged — only the embedded vector encodes the breadcrumb. Heading metadata also lands in Chroma as `heading_path` for all sources, including time-range strings for `turn_grouping` (sessions). No re-embed needed for downstream consumers; existing chunks remain searchable, new ingests include the new field.
+
+---
+
 ## [0.11.2] — 2026-05-14
 
 ### Added
