@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.2] — 2026-05-14
+
+### Changed
+
+- **`dagster-code` image now creates `/opt/dagster/home/storage` with `dagster` ownership at build time.** Pipelines failed in production with `PermissionError: [Errno 13] Permission denied: '/opt/dagster'` because the daemon/webserver send their `DAGSTER_HOME`-derived fs_io_manager path over gRPC to dagster-code, whose image never created `/opt/dagster`. The path now exists in the user-code image with the right owner; asset outputs persist successfully. Container-layer storage (not a volume) — IO outputs are re-materializable on rebuild, matching default fs_io_manager semantics.
+
+- **`.env.example` no longer hard-codes `APP_UID=1001` / `APP_GID=1001`.** The previous comment claimed `1001` was "fine for first-time setup," but Hetzner / stock Ubuntu hosts have their first non-root user at uid 1000, causing bind-mount ownership mismatches at deploy time. New placeholder is `1000` and the comment is now a MUST-do instruction to verify with `id -u` / `id -g` on the deploy host before the first `docker compose --profile app build`.
+
+---
+
 ## [0.12.1] — 2026-05-14
 
 ### Changed
