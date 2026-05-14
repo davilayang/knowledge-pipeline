@@ -37,8 +37,10 @@ services:
 
   chroma:
     image: chromadb/chroma:1.5.5
-    # No host port — accessed by dagster-code via the compose network at chroma:8000.
-    # Uncomment to expose for local probing: ports: ["127.0.0.1:8000:8000"].
+    ports:
+      # Loopback-only bind so `poe dagster-dev` (running on the host) can
+      # reach compose's chroma at localhost:8000 — same pattern as postgres.
+      - "127.0.0.1:8000:8000"
     volumes:
       - chroma_data:/data
     networks:

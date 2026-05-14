@@ -71,15 +71,19 @@ docker compose exec dagster-code \
 
 ### Manual launch (local `poe dagster-dev`)
 
-Run Chroma in a separate terminal:
+Start the compose `chroma` service (loopback-only port 8000), then run the
+local Dagster against it:
 
 ```bash
-chroma run --path /tmp/chroma_pvs --port 8000 &
+docker compose up -d chroma
 set -a; source .env; set +a
 
 uv run dg launch -m orchestrators.definitions --job populate_vector_store \
   --partition "$(date -u +%Y-%m-%d-%H:00)"
 ```
+
+Data persists in the `chroma_data` named volume — wipe with
+`docker compose down -v` to reset.
 
 Verify the four collections:
 
