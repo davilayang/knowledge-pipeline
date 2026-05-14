@@ -101,6 +101,26 @@ def test_aliases_index_atomic_write_with_byte_equality_skip(tmp_path: Path, wiki
     assert not output_path.with_suffix(".json.tmp").exists()
 
 
+def test_aliases_index_self_maps_entities_with_no_alias_rows(tmp_path: Path, wiki_pg, wiki_pg_url):
+    """An entity with zero rows in wiki.aliases must still be resolvable by its
+    own entity_id — otherwise the consumer agent silently falls through to
+    vector recall and the wiki page is unreachable."""
+    _seed_page(wiki_pg, entity_id="concept__loneliness", page_type="concept", title="Loneliness")
+    wiki_pg.commit()
+
+    wiki = WikiResource(
+        wiki_dir=str(tmp_path / "wiki"),
+        backup_dir=str(tmp_path / "backup"),
+        database_url=wiki_pg_url,
+    )
+    result = aliases_index.op.compute_fn.decorated_fn(_ctx(), wiki=wiki)
+
+    flat = json.loads((tmp_path / "wiki" / "_index" / "aliases.json").read_text(encoding="utf-8"))
+    assert flat == {"concept__loneliness": "concept__loneliness"}
+    assert result.metadata["aliases_total"].value == 1
+    assert result.metadata["entities_total"].value == 1
+
+
 def test_aliases_index_raises_on_collision(tmp_path: Path, wiki_pg, wiki_pg_url):
     """Two entities sharing a lowercased alias → dg.Failure with the offending pair."""
     _seed_page(wiki_pg, entity_id="tool__chroma_a", page_type="tool", title="Chroma A")

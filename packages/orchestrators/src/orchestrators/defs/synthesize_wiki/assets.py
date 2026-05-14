@@ -319,6 +319,11 @@ def aliases_index(
             )
         flat[lowered] = entity_id
 
+    # Self-map every page entity_id first so entities with zero alias rows
+    # still resolve (consumer agent's get_entity_profile(entity_id) must
+    # never silently miss because the producer forgot to write an alias).
+    for entity_id, _ in title_rows:
+        _set(entity_id, entity_id)
     for alias, entity_id in alias_rows:
         _set(alias, entity_id)
     for entity_id, canonical in page_title_rows:
