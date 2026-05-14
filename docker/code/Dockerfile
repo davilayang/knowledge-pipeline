@@ -49,10 +49,15 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 # etc.) have a writable target without falling back to "/".
 ARG APP_UID=1001
 ARG APP_GID=1001
+# /opt/dagster/home/storage is the fs_io_manager target — the path lives in
+# the daemon/webserver's DAGSTER_HOME and is sent to dagster-code over gRPC
+# when assets persist their outputs. dagster-code's image doesn't define
+# DAGSTER_HOME, so we just create the path with the right owner so the
+# pickle write at runtime succeeds.
 RUN groupadd --gid ${APP_GID} dagster \
     && useradd --uid ${APP_UID} --gid ${APP_GID} --no-create-home --home-dir /home/dagster --shell /usr/sbin/nologin dagster \
-    && mkdir -p /home/dagster \
-    && chown -R dagster:dagster /app /home/dagster
+    && mkdir -p /home/dagster /opt/dagster/home/storage \
+    && chown -R dagster:dagster /app /home/dagster /opt/dagster
 ENV HOME=/home/dagster
 USER dagster
 
