@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.1] — 2026-05-14
+
+### Changed
+
+- **`wiki/aliases_index` now self-maps every page entity_id**, even for entities with zero rows in `wiki.aliases`. Previously such entities were absent from `data/wiki/_index/aliases.json` — the consumer agent's lookup would silently return `None` and fall through to vector recall, masking the wiki page. Fix: a new loop over `wiki.pages` registers `entity_id → entity_id` before the alias and canonical-name loops; idempotent under the existing collision check.
+
+---
+
 ## [0.12.0] — 2026-05-14
 
 ### Added
