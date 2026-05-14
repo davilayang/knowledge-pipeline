@@ -24,10 +24,10 @@ vector_store/pending   (hourly partition)
   ▼
 vector_store/contents             vector_store/conversations
 vector_store/notes                vector_store/research_documents
-  │  parallel fan-out (ThreadPoolExecutor, INGEST_CONCURRENCY=4):
+  │  sequential per-item loop:
   │    - source.get_item(id) → IngestItem
   │    - chunker(item.text) per CHUNKER_BY_SOURCE
-  │    - embed via OpenAI (250k-token sub-batches, tenacity retry on transient)
+  │    - embed via OpenAIEmbedder (one OpenAI call per item)
   │    - collection.delete(where={"content_id": id}) then upsert in 4000-id batches
   │  deterministic chunk ids: f"{item_id}::chunk-{i}"  → idempotent re-runs
 ```
@@ -54,7 +54,6 @@ vector_store/notes                vector_store/research_documents
 | `OPENAI_EMBEDDING_MODEL` | no | Default `text-embedding-3-small`. |
 | `OPENAI_EMBEDDING_DIMS` | no | Default `1536`. Matches the eval-winning baseline. |
 | `VECTOR_STORE_MAX_PER_TICK` | no | Per-source cap (default 50). Raise for backfill. |
-| `VECTOR_STORE_INGEST_CONCURRENCY` | no | Threads per ingest asset (default 4). |
 
 ## Operations
 
@@ -130,3 +129,28 @@ c.delete_collection('contents')
 - Phase G: drop POC volume, raised `MAX_PER_TICK` backfill, enable schedule.
 - Orphan GC for chunks whose upstream items were deleted.
 - Sensor-based discovery to replace the cron schedule.
+
+## Future optimizations
+
+These aren't needed at the current `VECTOR_STORE_MAX_PER_TICK=50` and 30-min
+cadence (each tick is well under a minute). If per-tick latency ever becomes
+a constraint, the highest-leverage change is **cross-item embedding batching**:
+today each ingest asset makes one OpenAI request per item (so up to 50
+per-source-per-tick); collapsing those into a single
+`OpenAIEmbedder.embed_batch(all_texts_across_items)` call (which sub-batches at
+250k tokens internally) would cut request count 10-50x without changing the
+per-item idempotent contract — the embedding phase becomes a single fan-out,
+then a sequential delete-then-upsert loop writes one item at a time using its
+pre-computed slice of the result.
+
+This matches the pattern dagster-open-platform uses across all their
+external-API assets (fetch → serial loop → batch-write at the end). The
+deferred reason is simple: throughput hasn't been a constraint yet, and
+adding it early would buy nothing observable.
+
+Anti-patterns to skip:
+- `ThreadPoolExecutor` inside the asset — non-idiomatic for both this repo
+  (see `synthesize_wiki/assets.py`) and DOP. Plain Python, not Dagster-native.
+- `DynamicOutput` / graph-backed asset for fan-out — ~100 LOC plus 1-2s/op
+  Dagster orchestration overhead per item; only worth it when per-item work
+  is genuinely heavy (minutes, not seconds).

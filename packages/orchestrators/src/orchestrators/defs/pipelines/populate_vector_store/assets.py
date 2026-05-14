@@ -1,6 +1,5 @@
 # Assets for populate_vector_store. See README.md for the DAG diagram and runbook.
 
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from itertools import islice
 
 import dagster as dg
@@ -22,7 +21,6 @@ from .def_config import (
     COLLECTION_RESEARCH,
     EMBEDDING_DIMS_DEFAULT,
     EMBEDDING_MODEL_DEFAULT,
-    INGEST_CONCURRENCY,
     MAX_PER_TICK_DEFAULT,
     PIPELINE_TAG,
     vector_store_hourly_partition_def,
@@ -184,24 +182,27 @@ def _run_ingest(
     errors: list[tuple[str, str]] = []
     chunks_written = 0
     tokens_embedded = 0
-
-    def _work(it: IngestItem) -> tuple[str, int, int, Exception | None]:
+    # Throughput-optimisation options if per-tick latency becomes a constraint:
+    #   - Cross-item embedding batch — collapse N OpenAIEmbedder.embed_batch
+    #     calls into one (sub-batched at 250k tokens internally). 10-50x
+    #     fewer OpenAI requests; chunking + delete-then-upsert stay per-item
+    #     for the idempotent contract. See README "Future optimizations".
+    #   - ThreadPoolExecutor inside this loop — ~4x for I/O-bound embed
+    #     calls; plain Python, not Dagster-native. Both this repo and
+    #     dagster-open-platform avoid this idiom.
+    #   - Graph-backed asset with DynamicOutput — real Dagster fan-out
+    #     across ops, multiprocess executor parallelises; ~100 LOC plus
+    #     ~1-2s/op orchestration overhead per item.
+    for i, item in enumerate(items, 1):
+        context.log.info("[%d/%d] ingesting %s", i, len(items), item.item_id)
         try:
-            cw, tk = _process_item(it, chunker, embedder, collection, model, dims)
+            cw, tk = _process_item(item, chunker, embedder, collection, model, dims)
         except Exception as e:
-            return (it.item_id, 0, 0, e)
-        return (it.item_id, cw, tk, None)
-
-    with ThreadPoolExecutor(max_workers=INGEST_CONCURRENCY) as pool:
-        futures = [pool.submit(_work, it) for it in items]
-        for fut in as_completed(futures):
-            iid, cw, tk, err = fut.result()
-            if err is not None:
-                context.log.exception("ingest failed for %s: %r", iid, err)
-                errors.append((iid, repr(err)))
-            else:
-                chunks_written += cw
-                tokens_embedded += tk
+            context.log.exception("ingest failed for %s", item.item_id)
+            errors.append((item.item_id, repr(e)))
+        else:
+            chunks_written += cw
+            tokens_embedded += tk
 
     metadata: dict[str, dg.MetadataValue] = {
         "summary": dg.MetadataValue.md(

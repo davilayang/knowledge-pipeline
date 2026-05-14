@@ -292,10 +292,8 @@ def test_ingest_raises_on_per_item_failure():
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     fake_embedder, _ = _fake_embedder_class()
 
-    # Force serial execution so we can reason about which call lands first.
     with (
         patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder),
-        patch.object(pvs_assets, "INGEST_CONCURRENCY", 1),
         pytest.raises(dg.Failure),
     ):
         contents.op.compute_fn.decorated_fn(
