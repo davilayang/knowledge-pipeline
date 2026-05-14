@@ -79,7 +79,7 @@ uv run poe rag-eval         # Run RAG evaluation harness with Ragas metrics
 
 ### Pipelines
 
-- **`backup_readings`** — daily-partitioned snapshot of newsletter-assistant SQLite DBs, with optional Drive offload via `rclone` and a healthchecks.io ping. See [`packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md`](packages/orchestrators/src/orchestrators/defs/pipelines/backup_readings/README.md) for env vars, rclone setup, and runbook.
+- **`backup_readings`** — daily-partitioned snapshot of newsletter-assistant SQLite DBs, with optional Drive offload via `rclone` and a healthchecks.io ping. See [`packages/orchestrators/src/orchestrators/defs/backup_readings/README.md`](packages/orchestrators/src/orchestrators/defs/backup_readings/README.md) for env vars, rclone setup, and runbook.
 
 - **`idx_*`** — four index strategies (markdown × MiniLM/BGE, recursive × MiniLM, semantic × MiniLM). Run them to compare chunking/embedding combinations against the eval dataset.
 

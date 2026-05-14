@@ -6,7 +6,7 @@ that wraps it (`pipelines/synthesize_wiki/assets.py:synthesized`) runs one
 invocation per pending item in a scheduled tick.
 
 For operations (how to launch, retry, debug), see the asset's runbook:
-`packages/orchestrators/src/orchestrators/defs/pipelines/synthesize_wiki/README.md`.
+`packages/orchestrators/src/orchestrators/defs/synthesize_wiki/README.md`.
 This document is for engineers modifying the workflow.
 
 ## What the workflow does

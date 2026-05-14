@@ -4,7 +4,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import dagster as dg
-from orchestrators.defs.pipelines.populate_vector_store.schedules import (
+from orchestrators.defs.populate_vector_store.schedules import (
     run_populate_vector_store,
 )
 

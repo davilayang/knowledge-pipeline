@@ -79,7 +79,7 @@ required — `wiki/pending` discovers its own work order.
 CLI:
 
 ```bash
-dg launch --job synthesize_wiki -m orchestrators.defs.pipelines.definitions \
+dg launch --job synthesize_wiki -m orchestrators.defs.definitions \
   --partition $(date +%Y-%m-%d)
 ```
 

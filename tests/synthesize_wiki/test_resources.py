@@ -6,7 +6,7 @@ filename or partition layout doesn't silently break the asset graph.
 
 from pathlib import Path
 
-from orchestrators.defs.pipelines.synthesize_wiki.resources import WikiResource
+from orchestrators.defs.synthesize_wiki.resources import WikiResource
 
 
 def test_snapshot_path_for_derives_from_partition_key(tmp_path: Path):

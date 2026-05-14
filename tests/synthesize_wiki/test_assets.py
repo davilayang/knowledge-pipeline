@@ -9,8 +9,8 @@ regression would silently change a Dagster materialization's metadata.
 from unittest.mock import MagicMock
 
 import dagster as dg
-from orchestrators.defs.pipelines.synthesize_wiki.assets import _cost_metadata, synthesized
-from orchestrators.defs.pipelines.synthesize_wiki.resources import WikiResource
+from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, synthesized
+from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
 
 

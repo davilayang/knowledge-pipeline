@@ -10,7 +10,7 @@ from datetime import UTC, datetime
 from unittest.mock import MagicMock
 
 import dagster as dg
-from orchestrators.defs.pipelines.synthesize_wiki.schedules import run_daily_synthesize_wiki
+from orchestrators.defs.synthesize_wiki.schedules import run_daily_synthesize_wiki
 
 
 def test_schedule_emits_d_minus_1_partition_key():
