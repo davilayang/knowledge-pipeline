@@ -75,7 +75,7 @@ Start the compose `chroma` service (loopback-only port 8000), then run the
 local Dagster against it:
 
 ```bash
-docker compose up -d chroma
+poe dev-deps-up   # starts postgres + chroma (compose `data` profile)
 set -a; source .env; set +a
 
 uv run dg launch -m orchestrators.definitions --job populate_vector_store \

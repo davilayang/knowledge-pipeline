@@ -246,7 +246,7 @@ apply manually once:
 psql -d knowledge_pipeline -f packages/domains/src/domains/wiki/schema/wiki.sql
 ```
 
-Schema CHANGE: `docker compose down -v && docker compose up -d postgres`
+Schema CHANGE: `docker compose down -v && docker compose --profile data up -d postgres`
 re-runs the init scripts on a fresh volume (per the rebuild-don't-migrate
 decision). The same Postgres instance hosts LangGraph checkpoints
 (separate tables managed by `langgraph-checkpoint-postgres`); no extra

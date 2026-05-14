@@ -8,7 +8,7 @@
 #
 # Schema CHANGE workflow (per the rebuild-don't-migrate decision):
 #   docker compose down -v   # destroys postgres_data volume
-#   docker compose up -d postgres   # init scripts re-run on fresh volume
+#   docker compose --profile data up -d postgres   # init scripts re-run on fresh volume
 
 set -euo pipefail
 

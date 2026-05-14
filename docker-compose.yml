@@ -1,17 +1,27 @@
 # Dagster server infrastructure for knowledge-pipeline.
 #
+# Profiles:
+#   data — postgres + chroma (the local-dev backing services)
+#   app  — dagster-code + dagster-webserver + dagster-daemon (the Dagster stack)
+#
 # Usage:
-#   docker compose up --build
+#   docker compose --profile app up --build       # full stack (app + auto-pulls data via depends_on)
+#   docker compose --profile data up -d           # data services only — for `poe dagster-dev` on host
 #   docker compose down --volumes
+#   `poe dev-deps-up` / `poe dev-deps-down` wrap the `--profile data` commands.
 #
 # UI:  http://localhost:3030/dags  (webserver runs with --path-prefix=/dags
 #                                   for reverse-proxy mounting; see Caddyfile in newsletter-assistant)
-# For local dev, skip Docker and use `uv run poe dagster-dev` which auto-reloads.
+# For local dev, skip Docker for the Dagster stack and use `uv run poe dagster-dev`
+# which auto-reloads — but you still need the data services up (`poe dev-deps-up`).
 
 services:
   # Configured with 2 databases: dagster & knowledge-pipeline
   postgres:
     image: postgres:16
+    # Tagged with both profiles so `--profile data` starts postgres standalone
+    # and `--profile app` resolves dagster-webserver/daemon's depends_on links.
+    profiles: [data, app]
     command: ["postgres", "-c", "max_connections=50", "-c", "shared_buffers=256MB"]
     environment:
       POSTGRES_USER: ${DAGSTER_PG_USERNAME}
@@ -37,6 +47,9 @@ services:
 
   chroma:
     image: chromadb/chroma:1.5.5
+    # See postgres above — dual-profile so dagster-code's depends_on resolves
+    # under --profile app, and `poe dev-deps-up` (--profile data) works alone.
+    profiles: [data, app]
     ports:
       # Loopback-only bind so `poe dagster-dev` (running on the host) can
       # reach compose's chroma at localhost:8000 — same pattern as postgres.
@@ -55,6 +68,7 @@ services:
 
   dagster-code:
     image: ${DOCKER_USER:-local}/kp-dagster-code
+    profiles: [app]
     build:
       context: .
       dockerfile: docker/code/Dockerfile
@@ -86,6 +100,7 @@ services:
 
   dagster-webserver:
     image: ${DOCKER_USER:-local}/kp-dagster-webserver
+    profiles: [app]
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile
@@ -131,6 +146,7 @@ services:
 
   dagster-daemon:
     image: ${DOCKER_USER:-local}/kp-dagster-daemon
+    profiles: [app]
     build:
       context: .
       dockerfile: docker/dagster/Dockerfile

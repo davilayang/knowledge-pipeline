@@ -68,6 +68,14 @@ cmd = """
 """
 help = "Launch Dagster UI at localhost:3030 with the pipelines code location"
 
+[tool.poe.tasks.dev-deps-up]
+cmd = "docker compose --profile data up -d"
+help = "Start postgres + chroma in the background (compose `data` profile) for `poe dagster-dev`"
+
+[tool.poe.tasks.dev-deps-down]
+cmd = "docker compose --profile data down"
+help = "Stop postgres + chroma (compose `data` profile); add `-v` to wipe their volumes"
+
 [tool.poe.tasks.backup]
 cmd = "dg launch -m orchestrators.definitions --job backup_readings"
 help = "Run readings backup job once from CLI"

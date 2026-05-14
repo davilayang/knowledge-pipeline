@@ -51,7 +51,8 @@ uv run poe dev
 For a persistent deployment with PostgreSQL-backed storage:
 
 ```bash
-docker compose up
+docker compose --profile app up --build       # full stack (app + auto-pulls postgres + chroma)
+poe dev-deps-up                                # data-services-only shortcut for `poe dagster-dev`
 
 # After code changes, rebuild + restart the code server (webserver/daemon stay up)
 docker compose restart dagster-code
