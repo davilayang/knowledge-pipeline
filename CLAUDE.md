@@ -83,6 +83,8 @@ packages/
       backup_readings/
       synthesize_wiki/
       populate_vector_store/
+      pipelines/               # Pipeline-level definitions (backup_readings, synthesize_wiki)
+      workbench/               # Retrieval strategy variants for eval (idx_*, evaluate)
       upstream_sources.py
 
 configs/           # Dagster config — dagster.yaml, workspace.yaml
