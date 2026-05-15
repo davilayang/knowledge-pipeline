@@ -4,14 +4,16 @@ import os
 
 import dagster as dg
 
-# Hourly partition; schedule emits the current-hour key. start_date set to
+# 30-min partition; schedule emits the current half-hour key. start set to
 # pipeline land date so backfills don't accidentally enumerate empty history.
-vector_store_hourly_partition_def = dg.HourlyPartitionsDefinition(
-    start_date="2026-05-11-00:00",
+SCHEDULE_CRON = "*/30 * * * *"
+PARTITION_FMT = "%Y-%m-%d-%H:%M"
+vector_store_partition_def = dg.TimeWindowPartitionsDefinition(
+    start="2026-05-11-00:00",
+    fmt=PARTITION_FMT,
+    cron_schedule=SCHEDULE_CRON,
     end_offset=1,
 )
-
-SCHEDULE_CRON = "*/30 * * * *"
 
 MAX_PER_TICK_DEFAULT = int(os.getenv("VECTOR_STORE_MAX_PER_TICK", "50"))
 

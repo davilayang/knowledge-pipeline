@@ -12,9 +12,9 @@ smoke until Phase G turns the schedule on.
 
 ```
 schedule run_populate_vector_store   (cron */30 * * * *, STOPPED)
-  │  fires the current hour's partition (YYYY-MM-DD-HH:MM)
+  │  fires the current half-hour's partition (YYYY-MM-DD-HH:MM)
   ▼
-vector_store/pending   (hourly partition)
+vector_store/pending   (30-min partition)
   │  for each of {raw_store, notes, sessions, research}:
   │    - source.get_item_ids()
   │    - collection.get(where={"content_id": {"$in": ...}}) in 500-id batches

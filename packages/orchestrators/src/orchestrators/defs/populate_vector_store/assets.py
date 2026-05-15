@@ -23,7 +23,7 @@ from .def_config import (
     EMBEDDING_MODEL_DEFAULT,
     MAX_PER_TICK_DEFAULT,
     PIPELINE_TAG,
-    vector_store_hourly_partition_def,
+    vector_store_partition_def,
 )
 from .resources import SourcesResource
 
@@ -122,7 +122,7 @@ def _process_item(
 @dg.asset(
     key=["vector_store", "pending"],
     group_name="vector_store",
-    partitions_def=vector_store_hourly_partition_def,
+    partitions_def=vector_store_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
     kinds={"python"},
@@ -249,7 +249,7 @@ def _run_ingest(
 @dg.asset(
     key=["vector_store", "contents"],
     group_name="vector_store",
-    partitions_def=vector_store_hourly_partition_def,
+    partitions_def=vector_store_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
     kinds={"chromadb", "openai"},
@@ -267,7 +267,7 @@ def contents(
 @dg.asset(
     key=["vector_store", "conversations"],
     group_name="vector_store",
-    partitions_def=vector_store_hourly_partition_def,
+    partitions_def=vector_store_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
     kinds={"chromadb", "openai"},
@@ -287,7 +287,7 @@ def conversations(
 @dg.asset(
     key=["vector_store", "notes"],
     group_name="vector_store",
-    partitions_def=vector_store_hourly_partition_def,
+    partitions_def=vector_store_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
     kinds={"chromadb", "openai"},
@@ -305,7 +305,7 @@ def notes(
 @dg.asset(
     key=["vector_store", "research_documents"],
     group_name="vector_store",
-    partitions_def=vector_store_hourly_partition_def,
+    partitions_def=vector_store_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
     kinds={"chromadb", "openai"},
