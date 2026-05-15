@@ -4,7 +4,7 @@
 import dagster as dg
 
 from .assets import all_assets
-from .def_config import PIPELINE_TAG, SCHEDULE_CRON
+from .def_config import PARTITION_FMT, PIPELINE_TAG, SCHEDULE_CRON
 
 populate_vector_store_job = dg.define_asset_job(
     name="populate_vector_store",
@@ -23,7 +23,7 @@ populate_vector_store_job = dg.define_asset_job(
     default_status=dg.DefaultScheduleStatus.STOPPED,
 )
 def run_populate_vector_store(context: dg.ScheduleEvaluationContext) -> dg.RunRequest:
-    partition = context.scheduled_execution_time.strftime("%Y-%m-%d-%H:%M")
+    partition = context.scheduled_execution_time.strftime(PARTITION_FMT)
     return dg.RunRequest(run_key=partition, partition_key=partition)
 
 

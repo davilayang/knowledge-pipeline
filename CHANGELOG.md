@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.12.3] — 2026-05-15
+
+### Changed
+
+- **`populate_vector_store` schedule now fires successfully on HH:30 ticks.** Cron is `*/30 * * * *` but assets were partitioned hourly — HH:30 ticks died with `DagsterUnknownPartitionError`. Partitions are now a 30-min `TimeWindowPartitionsDefinition` aligned to the cron (`def_config.py`); `POPULATE_VECTOR_STORE_DAG_VERSION` → `"2"`.
+
+---
+
 ## [0.12.2] — 2026-05-14
 
 ### Changed

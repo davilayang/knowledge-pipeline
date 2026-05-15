@@ -28,7 +28,7 @@ BACKUP_READINGS_DAG_VERSION = "4"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNTHESIZE_WIKI_DAG_VERSION = "4"
-POPULATE_VECTOR_STORE_DAG_VERSION = "1"
+POPULATE_VECTOR_STORE_DAG_VERSION = "2"
 
 
 # Backup settings
