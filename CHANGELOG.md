@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **OS-wide framing `@`-imported into `CLAUDE.md`** (`~/GitHub/data-context-builder/documents/personal-knowledge-os/framing.md`). Previously only the local trajectory was imported — sessions now see the canonical exit-ramps + decision rubric alongside this repo's trajectory.
+
+### Changed
+
+- **Per-repo trajectory `@`-import now points at the personal-knowledge-OS hub** (`~/GitHub/data-context-builder/documents/personal-knowledge-os/trajectories/knowledge-pipeline.md`) rather than the local `docs/concept/personal-knowledge-os.md`, which has been removed. Both the OS-wide framing and this repo's trajectory now live in the hub. Trajectory updates land as hub PRs, derived from this `CHANGELOG.md`.
+
 ---
 
 ## [0.12.3] — 2026-05-15
