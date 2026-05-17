@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.12.4] — 2026-05-17
+
 ### Added
 
 - **OS-wide framing `@`-imported into `CLAUDE.md`** (`~/GitHub/data-context-builder/documents/personal-knowledge-os/framing.md`). Previously only the local trajectory was imported — sessions now see the canonical exit-ramps + decision rubric alongside this repo's trajectory.
