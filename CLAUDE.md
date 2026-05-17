@@ -32,6 +32,17 @@ Work that doesn't pass any of these probably isn't worth doing right now.
 Work that strengthens an underbuilt or in-flight piece (per the trajectory
 above) beats work that polishes the already-working layer.
 
+## Second opinions on non-trivial decisions
+
+Before locking in an architecture choice, pipeline / DAG topology change, schema migration, embedding-model or chunking-strategy swap, or refactor with non-obvious tradeoffs, invoke an advisor agent — don't ship the recommendation on a single model's read.
+
+- Use **`codex-advisor`** for bounded critique of a specific design, snippet, or plan (Codex runs in a read-only sandbox and returns one tight judgment).
+- Use **`gemini-advisor`** for open-ended exploration or when current web context matters ("is X still considered best practice?", "what are people doing with Y now?").
+
+Pass absolute file paths in the prompt — both agents read files themselves; no need to paste contents. Surface the response verbatim to the user before acting on it; do **not** filter or paraphrase the second opinion away.
+
+Both agents live under `.claude/agents/` and are symlinked from `~/GitHub/data-context-builder/claude-agents/`.
+
 ## Git Workflow
 
 Main is **protected**. All changes go through feature branches and pull requests.
