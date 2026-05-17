@@ -4,11 +4,27 @@ Guidance for Claude Code working in this repo.
 
 ## Project Overview
 
-@docs/concept/personal-knowledge-os.md
+@/Users/cyyang/GitHub/data-context-builder/documents/personal-knowledge-os/framing.md
 
-The framing above is auto-imported (via Claude Code's `@-import`) so every
-session sees it. Edit `docs/concept/personal-knowledge-os.md` to update; do
-not duplicate the content here.
+@/Users/cyyang/GitHub/data-context-builder/documents/personal-knowledge-os/trajectories/knowledge-pipeline.md
+
+Two `@`-imports above (both into the personal-knowledge-OS hub):
+
+- **OS-wide framing (canonical):** `~/GitHub/data-context-builder/documents/personal-knowledge-os/framing.md`
+  — system overview, exit ramps, thinking-partner front door, decision
+  rubric. Shared across both repos in the personal-knowledge-OS. Edit
+  there when the OS-wide concept evolves.
+- **This repo's per-repo trajectory:** `~/GitHub/data-context-builder/documents/personal-knowledge-os/trajectories/knowledge-pipeline.md`
+  — knowledge-pipeline's role, what this repo produces over time,
+  current journey state, cross-repo split. Edit there when this repo's
+  status changes — trajectory PRs land in the hub, derived from this
+  repo's `CHANGELOG.md`.
+
+For the OS-wide system architecture (data flow, cross-repo split,
+depth-signal taxonomy, architectural rules, compounding loop, wave
+sequencing across repos): see
+`~/GitHub/data-context-builder/documents/personal-knowledge-os/architecture.md`.
+Loaded on demand, not auto-imported.
 
 ## Decision rubric for future work
 
