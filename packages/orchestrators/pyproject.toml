@@ -12,6 +12,10 @@ dependencies = [
     "dagster-postgres",
     "dagster-webserver",
     "poethepoet",
+    "notion-client>=2.2,<3.0",
+    "curl-cffi>=0.7,<0.13",
+    "trafilatura>=2.0,<3.0",
+    "anthropic>=0.40,<1.0",
 ]
 
 [build-system]
