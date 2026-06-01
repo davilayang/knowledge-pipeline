@@ -6,29 +6,32 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Changed
+---
 
-- **Pipeline split — `triage_queued_items` + `extract_complex_contents`** (`packages/orchestrators/src/orchestrators/defs/{triage_queued_items,extract_complex_contents}/`). Single `extract_queued_items` pipeline split into two coordinated DAGs. Triage classifies URL → Notion `Content Type` SELECT, canonicalizes the URL, fast-tracks Tier B (`Article`, `Other`) to `Status=Ready`. Extract filters on `Status=Fetching AND Content Type IN {YouTube, arXiv}` and runs type-aware fetch + extraction. Coordination via Notion's `Status` + `Content Type` ("Notion-as-bus") — no Dagster-internal asset deps between DAGs. Shared `DynamicPartitionsDefinition(name="queue_items")` in `defs/shared/partitions.py`. `PDF` / `Podcast` follow when those URL types land in the Notion schema.
-- **Triage: single `triaged` asset** (`defs/triage_queued_items/assets.py`). Replaces the earlier `classified` + `routed` split. One run per Notion row classifies, canonicalizes, then commits to local store + Notion. Notion-set Content Type wins over URL classifier when present + valid (empty / typo → URL classifier fallback). Name is metadata-only — triage never writes it; downstream extract LLM (Tier A) or NA-at-engagement (Tier B) fills it.
-- **Extract: three assets — `fetched` → `extracted` → `published`** (`defs/extract_complex_contents/assets.py`). Replaces the earlier six-asset branched topology (router + per-type fetcher + per-type topic_card + convergent sink). Per-type dispatch lives in `FetcherResource` / `ExtractorRegistry`, not the asset graph. Notion update isolated in `published` so a Notion API hiccup can retry without re-spending an OpenAI extraction.
-- **Assets use typed `dg.Config` for inputs** (was stringly-typed run tags). Sensors populate via `dg.RunConfig`; manual UI launches go through the Launchpad config form with Pydantic validation at launch time. Affects triage's `TriageInput` and extract's downstream config wiring.
-- **`queue_items` schema — single `extraction_payload` JSON column** (`packages/domains/src/domains/raw_store/queue.py`). Replaces 7 per-field Topic Card columns so per-content-type heterogeneity needs zero schema migration as prompts iterate. Adds `canonical_url` + `content_type` columns. `get_queue_extraction()` consumer API preserved. `create_schema()` runs idempotent ALTER TABLE statements so existing DBs upgrade cleanly.
-- **Extraction uses OpenAI via a strategy registry** (`defs/extract_complex_contents/extractors/`). `ExtractorRegistry` maps `content_type → ExtractorProtocol` impl. v1 ships `SingleShotOpenAIExtractor` (same provider as `synthesize_wiki`). Strategies live in their own subfolder mirroring `fetchers/`; future per-type swaps (e.g. LangGraph for arXiv) land as a new file + one line in `_strategy_for`. `anthropic` dep dropped; `openai>=1.0,<2.0` added.
-- **arXiv PDF rendering uses LlamaParse** (`fetchers/arxiv.py`, `agentic_plus` tier). Hard-fails on any LlamaParse failure — no pymupdf4llm fallback. kp is async ingestion; latency for quality is the right tradeoff (NA's equivalent fetcher stays on pymupdf4llm). New env `LLAMA_CLOUD_API_KEY`; `llama_cloud_base_url` + `llama_parse_tier_arxiv` carry sensible defaults.
-- **Sensor names — symmetric `poll_notion_for_<stage>` + `mark_notion_failed_on_<stage>`** across both pipelines. Extends cleanly when future stages land.
+## [0.14.0] — 2026-06-01
 
 ### Added
 
-- **Asset metadata: head + tail content previews** on `fetched` + `extracted` (first 500 + last 500 chars; ellipsis marker for the middle). At-a-glance verification in the Dagster UI without flooding the page on multi-KB content.
-- **YouTube transcript fetcher** at `defs/extract_complex_contents/fetchers/youtube.py`. Ported from newsletter-assistant's `youtube_api.py`. Optional `YOUTUBE_PROXY_URL` env for SOCKS proxy routing.
-- **arXiv fetcher** at `defs/extract_complex_contents/fetchers/arxiv.py`. Metadata via the `arxiv` PyPI client (semaphore + tenacity retry); PDF rendering via LlamaParse.
-- **Per-type prompt files** — `v5_article_kp_copy_2026_05_31`, `v5_youtube_kp_copy_2026_06_01`, `v5_arxiv_kp_copy_2026_06_01` (initially byte-identical; per-type tuning is a follow-up). New envs `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` replace the singular `EXTRACT_QUEUE_PROMPT_LABEL`.
-- **Per-pipeline run-failure sensors** — `mark_notion_failed_on_triage` and `mark_notion_failed_on_extract` write `Status=Failed` + `Error` back to the Notion row on any asset failure.
+- **YouTube transcript fetcher** — `youtube-transcript-api` + oEmbed; optional `YOUTUBE_PROXY_URL` for IP-blocked hosts.
+- **arXiv fetcher** — `arxiv` PyPI + LlamaParse on `agentic_plus` tier (hard-fail). New env `LLAMA_CLOUD_API_KEY`.
+- **Per-type prompt labels** — `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` replace singular `EXTRACT_QUEUE_PROMPT_LABEL`.
+- **Head + tail content previews** on `fetched` + `extracted` (500+500 chars) in MaterializeResult metadata.
+- **Per-pipeline run-failure sensors** — `mark_notion_failed_on_{triage,extract}` write `Status=Failed` + error to Notion.
+
+### Changed
+
+- **Pipeline split** — single `extract_queued_items` → `triage_queued_items` + `extract_complex_contents` coordinated via Notion `Status` + `Content Type` ("Notion-as-bus"). Shared `queue_items` dynamic partition in `defs/shared/partitions.py`.
+- **Triage: single `triaged` asset** (was `classified` + `routed`). Notion-set `Content Type` overrides URL classifier; typo/empty → classifier fallback. `Name` passthrough as metadata; triage never writes it.
+- **Extract: 6 branched assets → 3** (`fetched` → `extracted` → `published`). Per-type dispatch in `FetcherResource` + `ExtractorRegistry`; `published` isolates Notion write so a Notion hiccup doesn't re-spend OpenAI.
+- **Typed `dg.Config` for asset inputs** (was stringly-typed tags). Pydantic validates at launch; manual UI launches use the Launchpad config form.
+- **`queue_items` schema** — single `extraction_payload` JSON column + `canonical_url` + `content_type`. Idempotent `ALTER TABLE` upgrade for existing DBs. `get_queue_extraction()` consumer API preserved.
+- **Extraction via OpenAI + `ExtractorRegistry` strategy** (`extractors/` subfolder mirrors `fetchers/`). v1: `SingleShotOpenAIExtractor`; future per-type swaps drop in as one file + one registry line. `anthropic` dep dropped, `openai` added.
+- **Sensor names symmetric** — `poll_notion_for_<stage>` + `mark_notion_failed_on_<stage>` across both pipelines.
 
 ### Removed
 
-- **`TitleFetcherResource`** from triage. Downstream extract LLM (Tier A) or NA at engagement (Tier B) fills Notion's Name from real content; the racing HTTP fetch of `<title>` was producing low-quality SEO junk on most sites.
-- **`pymupdf4llm`** dependency — kp's arxiv fetcher now uses LlamaParse exclusively.
+- **`TitleFetcherResource`** — `<title>` tag was SEO junk on most sites; downstream extract LLM / NA-at-engagement fills `Name` from real content.
+- **`pymupdf4llm`** dep — arXiv uses LlamaParse exclusively.
 
 ---
 

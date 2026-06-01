@@ -106,9 +106,12 @@ packages/
     datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
-      shared/                  # Shared resources (raw_store, chroma, etc.)
+      shared/                  # Shared resources (raw_store, chroma, etc.) + partitions.py
       backup_readings/
-      extract_queued_items/
+      triage_queued_items/
+      extract_complex_contents/
+        extractors/            # Extractor strategies (mirrors fetchers/)
+        fetchers/
       synthesize_wiki/
       populate_vector_store/
       pipelines/               # Pipeline-level definitions (backup_readings, synthesize_wiki)
