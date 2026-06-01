@@ -3,24 +3,33 @@
 from unittest.mock import MagicMock
 
 import dagster as dg
-from orchestrators.defs.extract_queued_items.def_config import (
-    queue_items_partition_def,
+from orchestrators.defs.extract_complex_contents.def_config import (
+    MAX_TO_EXTRACT_PER_TICK,
+    SUPPORTED_CONTENT_TYPES,
 )
-from orchestrators.defs.extract_queued_items.sensors import (
+from orchestrators.defs.extract_complex_contents.sensors import (
     _handle_run_failure,
     poll_notion_queue,
 )
 
 
-def _notion_row(page_id: str, url: str, last_edited: str = "2026-05-31T10:00:00.000Z") -> dict:
+def _notion_row(
+    page_id: str,
+    url: str,
+    last_edited: str = "2026-05-31T10:00:00.000Z",
+    content_type: str = "YouTube",
+) -> dict:
     return {
         "id": page_id,
         "last_edited_time": last_edited,
-        "properties": {"URL": {"url": url}},
+        "properties": {
+            "URL": {"url": url},
+            "Content Type": {"select": {"name": content_type}},
+        },
     }
 
 
-def test_poll_notion_queue_emits_one_run_request_per_queued_row():
+def test_poll_notion_queue_emits_one_run_request_per_fetching_row():
     notion = MagicMock()
     notion.query_queue.return_value = [
         _notion_row("p-1", "https://example.com/a"),
@@ -30,45 +39,64 @@ def test_poll_notion_queue_emits_one_run_request_per_queued_row():
     result = poll_notion_queue(context, notion=notion)
     assert isinstance(result, dg.SensorResult)
     assert {req.partition_key for req in result.run_requests} == {"p-1", "p-2"}
-    notion.query_queue.assert_called_once_with(status="Queued", page_size=5)
+    notion.query_queue.assert_called_once_with(
+        page_size=MAX_TO_EXTRACT_PER_TICK,
+        supported_content_types=SUPPORTED_CONTENT_TYPES,
+    )
 
 
 def test_poll_notion_queue_skips_rows_with_empty_url():
     notion = MagicMock()
     notion.query_queue.return_value = [
         _notion_row("p-1", "https://example.com/a"),
-        {"id": "p-2", "last_edited_time": "x", "properties": {"URL": {"url": None}}},
+        {
+            "id": "p-2",
+            "last_edited_time": "x",
+            "properties": {
+                "URL": {"url": None},
+                "Content Type": {"select": {"name": "YouTube"}},
+            },
+        },
     ]
     result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
     assert [req.partition_key for req in result.run_requests] == ["p-1"]
 
 
-def test_poll_notion_queue_passes_url_in_run_tag():
+def test_poll_notion_queue_skips_rows_with_missing_content_type():
     notion = MagicMock()
-    notion.query_queue.return_value = [_notion_row("p-1", "https://example.com/a")]
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+        {
+            "id": "p-2",
+            "last_edited_time": "x",
+            "properties": {
+                "URL": {"url": "https://example.com/b"},
+                "Content Type": {"select": None},
+            },
+        },
+    ]
+    result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
+    assert [req.partition_key for req in result.run_requests] == ["p-1"]
+
+
+def test_poll_notion_queue_passes_url_and_content_type_in_run_tag():
+    notion = MagicMock()
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://example.com/a", content_type="YouTube")
+    ]
     result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
     assert result.run_requests[0].tags == {
         "notion_page_id": "p-1",
         "url": "https://example.com/a",
+        "content_type": "YouTube",
     }
 
 
-def test_poll_notion_queue_builds_dynamic_partitions_request_for_new_page_ids():
-    notion = MagicMock()
-    notion.query_queue.return_value = [_notion_row("p-1", "https://example.com/a")]
-    result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
-    assert len(result.dynamic_partitions_requests) == 1
-    add_req = result.dynamic_partitions_requests[0]
-    assert add_req.partitions_def_name == queue_items_partition_def.name
-    assert add_req.partition_keys == ["p-1"]
-
-
-def test_poll_notion_queue_returns_empty_dynamic_request_when_no_rows():
+def test_poll_notion_queue_returns_empty_when_no_rows():
     notion = MagicMock()
     notion.query_queue.return_value = []
     result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
     assert result.run_requests == []
-    assert result.dynamic_partitions_requests == []
 
 
 def test_poll_notion_queue_run_key_includes_last_edited_for_re_runnability():
@@ -78,6 +106,22 @@ def test_poll_notion_queue_run_key_includes_last_edited_for_re_runnability():
     ]
     result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
     assert result.run_requests[0].run_key == "queue-p-1-2026-05-31T10:00:00.000Z"
+
+
+def test_sensor_does_not_register_dynamic_partitions():
+    notion = MagicMock()
+    notion.query_queue.return_value = [_notion_row("p-1", "https://example.com/a")]
+    result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
+    assert result.dynamic_partitions_requests == []
+
+
+def test_sensor_run_request_carries_content_type_tag():
+    notion = MagicMock()
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://youtube.com/watch?v=abc", content_type="YouTube")
+    ]
+    result = poll_notion_queue(dg.build_sensor_context(), notion=notion)
+    assert result.run_requests[0].tags["content_type"] == "YouTube"
 
 
 def test_handle_run_failure_writes_to_notion_with_run_tag_page_id():

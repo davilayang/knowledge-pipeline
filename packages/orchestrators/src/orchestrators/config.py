@@ -30,7 +30,9 @@ BACKUP_READINGS_DAG_VERSION = "4"
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNTHESIZE_WIKI_DAG_VERSION = "4"
 POPULATE_VECTOR_STORE_DAG_VERSION = "2"
-EXTRACT_QUEUED_ITEMS_DAG_VERSION = "1"
+EXTRACT_COMPLEX_CONTENTS_DAG_VERSION = "1"
+# EXTRACT_QUEUED_ITEMS_DAG_VERSION = "1"  # deprecated 2026-06-01 — kept as
+# breadcrumb until defs/extract_queued_items/ is fully removed in a follow-up.
 
 
 # Backup settings

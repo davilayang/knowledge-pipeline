@@ -1,4 +1,4 @@
-"""Tests for extract_queued_items resources.
+"""Tests for extract_complex_contents resources.
 
 Mocks the external SDKs (notion-client, anthropic, requests, curl-cffi) at
 the import location in resources.py. Covers what the asset bodies depend on:
@@ -11,7 +11,7 @@ the import location in resources.py. Covers what the asset bodies depend on:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from orchestrators.defs.extract_queued_items.resources import (
+from orchestrators.defs.extract_complex_contents.resources import (
     ExtractionUsage,
     ExtractorResource,
     ExtractQueueStore,
@@ -76,7 +76,7 @@ def _make_notion_with_mocked_client() -> tuple[NotionResource, MagicMock]:
     return resource, mock_client
 
 
-def test_notion_query_queue_filters_by_status():
+def test_notion_query_queue_filters_by_fetching_and_content_type():
     resource = NotionResource(
         integration_token="secret_x",
         queue_db_id="db-123",
@@ -85,18 +85,38 @@ def test_notion_query_queue_filters_by_status():
     fake_client = MagicMock()
     fake_client.data_sources.query.return_value = {"results": [{"id": "p-1"}]}
     with patch.object(NotionResource, "_client", return_value=fake_client):
-        rows = resource.query_queue(status="Queued", page_size=5)
+        rows = resource.query_queue(page_size=2, supported_content_types=("YouTube", "arXiv"))
     fake_client.data_sources.query.assert_called_once_with(
         data_source_id="ds-456",
         filter={
-            "or": [
-                {"property": "Status", "select": {"equals": "Queued"}},
-                {"property": "Status", "select": {"is_empty": True}},
+            "and": [
+                {"property": "Status", "select": {"equals": "Fetching"}},
+                {
+                    "or": [
+                        {"property": "Content Type", "select": {"equals": "YouTube"}},
+                        {"property": "Content Type", "select": {"equals": "arXiv"}},
+                    ]
+                },
             ]
         },
-        page_size=5,
+        page_size=2,
     )
     assert rows == [{"id": "p-1"}]
+
+
+def test_notion_query_queue_single_type_uses_flat_clause():
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    fake_client.data_sources.query.return_value = {"results": []}
+    with patch.object(NotionResource, "_client", return_value=fake_client):
+        resource.query_queue(page_size=1, supported_content_types=("YouTube",))
+    call_filter = fake_client.data_sources.query.call_args.kwargs["filter"]
+    type_clause = call_filter["and"][1]
+    assert type_clause == {"property": "Content Type", "select": {"equals": "YouTube"}}
 
 
 def test_notion_update_status_writes_select_property():
@@ -168,10 +188,12 @@ def test_fetcher_returns_jina_when_above_floor():
     )
     with (
         patch(
-            "orchestrators.defs.extract_queued_items.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
             return_value=("a" * 200, 200, None),
         ) as jina_mock,
-        patch("orchestrators.defs.extract_queued_items.resources._curl_cffi_fetch") as curl_mock,
+        patch(
+            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch"
+        ) as curl_mock,
     ):
         result = resource.fetch("https://example.com/x")
     jina_mock.assert_called_once()
@@ -190,15 +212,15 @@ def test_fetcher_falls_through_to_curl_cffi_when_jina_short():
     )
     with (
         patch(
-            "orchestrators.defs.extract_queued_items.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
             return_value=("short", 200, None),
         ),
         patch(
-            "orchestrators.defs.extract_queued_items.resources._curl_cffi_fetch",
+            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch",
             return_value=("<html><body>real article body</body></html>", 200, None),
         ),
         patch(
-            "orchestrators.defs.extract_queued_items.resources._trafilatura_extract",
+            "orchestrators.defs.extract_complex_contents.resources._trafilatura_extract",
             return_value="extracted markdown body, multiple paragraphs.",
         ),
     ):
@@ -216,15 +238,15 @@ def test_fetcher_tier_log_records_errors_from_both_tiers():
     )
     with (
         patch(
-            "orchestrators.defs.extract_queued_items.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
             return_value=("", None, "ConnectionError"),
         ),
         patch(
-            "orchestrators.defs.extract_queued_items.resources._curl_cffi_fetch",
+            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch",
             return_value=("", 403, None),
         ),
         patch(
-            "orchestrators.defs.extract_queued_items.resources._trafilatura_extract",
+            "orchestrators.defs.extract_complex_contents.resources._trafilatura_extract",
             return_value="",
         ),
     ):
@@ -242,7 +264,7 @@ def test_extractor_loads_prompt_from_file_with_label(tmp_path: Path, monkeypatch
     fake_dir.mkdir()
     (fake_dir / "v9_test.md").write_text("THIS IS THE PROMPT BODY")
     monkeypatch.setattr(
-        "orchestrators.defs.extract_queued_items.resources._PROMPTS_DIR",
+        "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
         fake_dir,
     )
     resource = ExtractorResource(
@@ -270,7 +292,7 @@ def test_extractor_extract_sends_prompt_and_parses_json(tmp_path: Path, monkeypa
     fake_dir.mkdir()
     (fake_dir / "v_test.md").write_text("system prompt here")
     monkeypatch.setattr(
-        "orchestrators.defs.extract_queued_items.resources._PROMPTS_DIR",
+        "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
         fake_dir,
     )
     resource = ExtractorResource(
@@ -286,7 +308,7 @@ def test_extractor_extract_sends_prompt_and_parses_json(tmp_path: Path, monkeypa
     fake_client.messages.create.return_value = fake_response
 
     with patch(
-        "orchestrators.defs.extract_queued_items.resources.Anthropic",
+        "orchestrators.defs.extract_complex_contents.resources.Anthropic",
         return_value=fake_client,
     ):
         extraction, usage = resource.extract("source article body")

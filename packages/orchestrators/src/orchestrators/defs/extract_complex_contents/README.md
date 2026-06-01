@@ -1,15 +1,20 @@
-# extract_queued_items
+# extract_complex_contents
 
 Sensor-driven pipeline that turns Notion-captured URLs into extracted Topic
 Cards stored locally for newsletter-assistant to retrieve on engagement.
+
+Picks up rows after triage_queued_items has classified them: sensor filter is
+Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv}).
+Triage also registers the dynamic partition; this pipeline only runs the job.
 
 ## DAG (per partition)
 
 ```
 poll_notion_queue (sensor, every 15min)
-        │  per Status=Queued row, MAX_QUEUED_PER_TICK cap
+        │  per Status=Fetching + Content Type ∈ SUPPORTED_CONTENT_TYPES row,
+        │  MAX_TO_EXTRACT_PER_TICK cap; triage_queued_items registers partition
         ▼
-extract_queued_items_job  (partition_key = notion_page_id)
+extract_complex_contents_job  (partition_key = notion_page_id)
         │
         ▼
 fetched_content ──► topic_card ──► persisted
@@ -31,15 +36,15 @@ Topic Card, provenance) lives in the local store.
 
 ```bash
 # Manually trigger a partition (e.g. after a fetcher fix).
-dg launch --job extract_queued_items --partition <notion_page_id>
+dg launch --job extract_complex_contents --partition <notion_page_id>
 
-# Backfill all currently Queued rows.
-dg launch --job extract_queued_items \
+# Backfill all currently Fetching rows.
+dg launch --job extract_complex_contents \
           --partition-range <first_id>...<last_id>
 
 # Re-extract a page with a bumped prompt label (overwrites prior extraction).
 EXTRACT_QUEUE_PROMPT_LABEL=v6_kp_copy_<date> \
-  dg launch --job extract_queued_items --partition <notion_page_id>
+  dg launch --job extract_complex_contents --partition <notion_page_id>
 
 # Recovery — stuck in Fetching:
 # Check the local store; if extraction row exists, manually flip Notion Status=Ready.
@@ -55,7 +60,8 @@ EXTRACT_QUEUE_PROMPT_LABEL=v6_kp_copy_<date> \
 - **Notion DB schema** — see `.env.example` for the required envs; the DB
   must have a `Status` select property with options
   `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`,
-  a `URL` url property, and an `Error` rich-text property.
+  a `URL` url property, a `Content Type` select property (YouTube, arXiv, …),
+  and an `Error` rich-text property.
 - **Pi SOCKS5 proxy** — `PI_SOCKS5_URL` reachable from the Dagster host;
   used as the curl-cffi fallback when Jina is blocked.
 - **Notion AI training opt-out** — `Notion Workspace Settings → Notion AI

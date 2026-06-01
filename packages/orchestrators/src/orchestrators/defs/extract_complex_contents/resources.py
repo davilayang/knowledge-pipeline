@@ -1,4 +1,4 @@
-"""Resources for the extract_queued_items pipeline.
+"""Resources for the extract_complex_contents pipeline.
 
 - NotionResource — lifecycle-only writes to the Knowledge OS Queue DB.
 - FetcherResource — Jina then curl-cffi + Pi SOCKS5 cascade with trafilatura.
@@ -56,23 +56,26 @@ class NotionResource(dg.ConfigurableResource):
     def _client(self) -> NotionClient:
         return NotionClient(auth=self.integration_token)
 
-    def query_queue(self, *, status: str, page_size: int) -> list[dict[str, Any]]:
-        # notion-client 2.x moved query() from databases to data_sources —
-        # Notion now models databases as containers for one or more data
-        # sources, and queries run against a data source. queue_db_id is kept
-        # for documentation + future write paths; the query path uses ds_id.
-        #
-        # The Status=empty branch absorbs the Notion free-tier limitation
-        # that the mobile Share Sheet (and Web Clipper) bypasses database
-        # templates — rows land with Name+URL filled and every other
-        # property empty. fetched_content flips Status=Fetching on pickup,
-        # so the empty-Status state is short-lived.
+    def query_queue(
+        self,
+        *,
+        page_size: int,
+        supported_content_types: tuple[str, ...],
+    ) -> list[dict[str, Any]]:
+        """Query Notion data source for rows ready for complex-content extraction:
+        Status=Fetching AND Content Type ∈ supported_content_types. Triage handles
+        classification and flips Status to Fetching before this pipeline picks up.
+        """
+        type_filters = [
+            {"property": "Content Type", "select": {"equals": t}} for t in supported_content_types
+        ]
+        type_clause = {"or": type_filters} if len(type_filters) > 1 else type_filters[0]
         resp = self._client().data_sources.query(
             data_source_id=self.queue_data_source_id,
             filter={
-                "or": [
-                    {"property": "Status", "select": {"equals": status}},
-                    {"property": "Status", "select": {"is_empty": True}},
+                "and": [
+                    {"property": "Status", "select": {"equals": "Fetching"}},
+                    type_clause,
                 ]
             },
             page_size=page_size,

@@ -2,7 +2,7 @@ import hashlib
 
 import dagster as dg
 
-from orchestrators.config import EXTRACT_QUEUED_ITEMS_DAG_VERSION
+from orchestrators.config import EXTRACT_COMPLEX_CONTENTS_DAG_VERSION
 
 from .def_config import (
     FETCHED_CONTENT_MIN_CHARS,
@@ -11,14 +11,14 @@ from .def_config import (
 )
 from .resources import ExtractorResource, ExtractQueueStore, FetcherResource, NotionResource
 
-GROUP_NAME = "extract_queued_items"
+GROUP_NAME = "extract_complex_contents"
 
 
 @dg.asset(
-    key=["extract_queued_items", "fetched_content"],
+    key=["extract_complex_contents", "fetched_content"],
     group_name=GROUP_NAME,
     compute_kind="python",
-    code_version=EXTRACT_QUEUED_ITEMS_DAG_VERSION,
+    code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
@@ -96,17 +96,17 @@ def fetched_content(
 
 
 @dg.asset(
-    key=["extract_queued_items", "topic_card"],
+    key=["extract_complex_contents", "topic_card"],
     group_name=GROUP_NAME,
     compute_kind="anthropic",
-    code_version=EXTRACT_QUEUED_ITEMS_DAG_VERSION,
+    code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["extract_queued_items", "fetched_content"])],
+    deps=[dg.AssetDep(["extract_complex_contents", "fetched_content"])],
     check_specs=[
         dg.AssetCheckSpec(
             name="topic_card_has_required_fields",
-            asset=dg.AssetKey(["extract_queued_items", "topic_card"]),
+            asset=dg.AssetKey(["extract_complex_contents", "topic_card"]),
             blocking=True,
             description=(
                 "extracted_title set AND at least one of "
@@ -178,13 +178,13 @@ def topic_card(
 
 
 @dg.asset(
-    key=["extract_queued_items", "persisted"],
+    key=["extract_complex_contents", "persisted"],
     group_name=GROUP_NAME,
     compute_kind="python",
-    code_version=EXTRACT_QUEUED_ITEMS_DAG_VERSION,
+    code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["extract_queued_items", "topic_card"])],
+    deps=[dg.AssetDep(["extract_complex_contents", "topic_card"])],
     description=(
         "Flips the Notion lifecycle row to Ready. Topic Card is already in the "
         "local store; this asset is the lifecycle-write boundary so a Notion "

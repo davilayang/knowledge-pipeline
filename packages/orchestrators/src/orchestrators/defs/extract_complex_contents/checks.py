@@ -5,7 +5,7 @@ from .resources import ExtractQueueStore, NotionResource
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["extract_queued_items", "persisted"]),
+    asset=dg.AssetKey(["extract_complex_contents", "persisted"]),
     name="notion_lifecycle_in_sync",
     blocking=False,
     description=(

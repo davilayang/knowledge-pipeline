@@ -1,4 +1,4 @@
-"""Tests for extract_queued_items assets.
+"""Tests for extract_complex_contents assets.
 
 Materializes individual assets in memory with mock resources and a real
 SQLite store (tmp_path). Verifies the asset-level invariants that aren't
@@ -11,15 +11,15 @@ from unittest.mock import MagicMock
 
 import dagster as dg
 import pytest
-from orchestrators.defs.extract_queued_items.assets import (
+from orchestrators.defs.extract_complex_contents.assets import (
     fetched_content,
     persisted,
     topic_card,
 )
-from orchestrators.defs.extract_queued_items.def_config import (
+from orchestrators.defs.extract_complex_contents.def_config import (
     queue_items_partition_def,
 )
-from orchestrators.defs.extract_queued_items.resources import (
+from orchestrators.defs.extract_complex_contents.resources import (
     ExtractionUsage,
     ExtractQueueStore,
     FetchResult,
