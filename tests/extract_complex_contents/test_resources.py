@@ -13,14 +13,16 @@ import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from orchestrators.defs.extract_complex_contents.extractors import ExtractionUsage
+from orchestrators.defs.extract_complex_contents.extractors.openai_single_shot import (
+    _parse_topic_card,
+)
 from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
 from orchestrators.defs.extract_complex_contents.resources import (
-    ExtractionUsage,
     ExtractorRegistry,
     ExtractQueueStore,
     FetcherResource,
     NotionResource,
-    _parse_topic_card,
 )
 
 # -------- _parse_topic_card --------
@@ -327,7 +329,7 @@ def test_extract_invokes_openai_with_per_type_prompt(tmp_path: Path, monkeypatch
     fake_client = MagicMock(chat=fake_chat)
 
     with patch(
-        "orchestrators.defs.extract_complex_contents.resources.openai.OpenAI",
+        "orchestrators.defs.extract_complex_contents.extractors.openai_single_shot.openai.OpenAI",
         return_value=fake_client,
     ):
         extraction, usage = registry.extract("paper body", content_type="arXiv")

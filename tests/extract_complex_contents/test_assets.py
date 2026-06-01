@@ -20,8 +20,8 @@ from orchestrators.defs.extract_complex_contents.assets import (
 from orchestrators.defs.extract_complex_contents.def_config import (
     queue_items_partition_def,
 )
+from orchestrators.defs.extract_complex_contents.extractors import ExtractionUsage
 from orchestrators.defs.extract_complex_contents.resources import (
-    ExtractionUsage,
     ExtractQueueStore,
     FetchResult,
 )

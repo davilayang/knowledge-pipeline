@@ -4,43 +4,25 @@
 - FetcherResource — per-type dispatch (YouTube, arXiv, article cascade).
 - ExtractorRegistry — strategy registry: maps content_type → ExtractorProtocol.
 - ExtractQueueStore — thin wrapper over domains.raw_store.queue.
+
+Per-type strategies live in `fetchers/` and `extractors/`; this module
+holds the Dagster ConfigurableResource boundaries that orchestrate them.
 """
 
 import hashlib
-import json
-import re
-from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Any
 
 import dagster as dg
-import openai
 from domains.raw_store import queue as queue_db
 from notion_client import Client as NotionClient
 
 from orchestrators.config import LOCAL_QUEUE_DB
 
+from .extractors import ExtractionUsage, ExtractorProtocol, SingleShotOpenAIExtractor
 from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-
-_JSON_BLOCK_RE = re.compile(r"```(?:json)?\s*(\{.*?\})\s*```", re.DOTALL)
-
-_TOPIC_CARD_KEYS = (
-    "extracted_title",
-    "core_mechanism",
-    "best_example",
-    "second_example",
-    "transferable_pattern",
-    "main_tension",
-    "candidate_tie_backs",
-)
-
-
-@dataclass
-class ExtractionUsage:
-    input_tokens: int
-    output_tokens: int
 
 
 class NotionResource(dg.ConfigurableResource):
@@ -131,52 +113,14 @@ class FetcherResource(dg.ConfigurableResource):
         return self.fetch_for_type(url, content_type="Article")
 
 
-class ExtractorProtocol(Protocol):
-    def extract(
-        self, content: str, *, content_type: str
-    ) -> tuple[dict[str, Any], "ExtractionUsage"]: ...
-
-
-class SingleShotOpenAIExtractor:
-    """v1 default — one OpenAI Chat Completions call with the per-type prompt.
-
-    Same provider as synthesize_wiki. The v5 prompt was originally tuned
-    against Claude in PR #65; the v1 OpenAI port may need light re-tuning
-    if Topic Card quality regresses — track in plan's Section N follow-ups.
-    """
-
-    def __init__(self, *, api_key: str, model: str, prompt_text: str, max_tokens: int = 2048):
-        self._client = openai.OpenAI(api_key=api_key)
-        self._model = model
-        self._prompt_text = prompt_text
-        self._max_tokens = max_tokens
-
-    def extract(self, content: str, *, content_type: str) -> tuple[dict[str, Any], ExtractionUsage]:
-        resp = self._client.chat.completions.create(
-            model=self._model,
-            max_tokens=self._max_tokens,
-            messages=[
-                {"role": "system", "content": self._prompt_text},
-                {"role": "user", "content": content},
-            ],
-            response_format={"type": "json_object"},
-        )
-        body_text = resp.choices[0].message.content or ""
-        extraction = _parse_topic_card(body_text)
-        usage = ExtractionUsage(
-            input_tokens=resp.usage.prompt_tokens,
-            output_tokens=resp.usage.completion_tokens,
-        )
-        return extraction, usage
-
-
 class ExtractorRegistry(dg.ConfigurableResource):
     """Strategy registry — maps content_type → ExtractorProtocol impl.
 
     v1: same SingleShotOpenAIExtractor backend for every type, only the
     prompt differs. Future: adopting LangGraph for arXiv means writing
-    one class LangGraphArxivExtractor(ExtractorProtocol) and changing
-    `_strategy_for("arXiv")` to return it — no asset edits required.
+    a class in `extractors/langgraph_arxiv.py` implementing
+    ExtractorProtocol and changing `_strategy_for("arXiv")` to return
+    it — no asset edits required.
     """
 
     openai_api_key: str
@@ -285,20 +229,6 @@ class ExtractQueueStore(dg.ConfigurableResource):
         return queue_db.list_with_stale_extraction(
             db_path=self._path(), min_age_minutes=min_age_minutes
         )
-
-
-def _parse_topic_card(text: str) -> dict[str, Any]:
-    """Parse the JSON block emitted by the v5 extraction prompt.
-
-    Maps the prompt's `title` field to our schema's `extracted_title`. Drops
-    any extra keys; passes through known Topic Card fields. Raises ValueError
-    if no JSON object can be located — the asset turns that into dg.Failure."""
-    match = _JSON_BLOCK_RE.search(text)
-    payload = match.group(1) if match else text.strip()
-    data = json.loads(payload)
-    if "title" in data and "extracted_title" not in data:
-        data["extracted_title"] = data.pop("title")
-    return {k: data.get(k) for k in _TOPIC_CARD_KEYS}
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
