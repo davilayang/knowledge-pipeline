@@ -18,6 +18,8 @@ from .schedules import extract_complex_contents_job
 def poll_notion_for_extract(
     context: dg.SensorEvaluationContext, notion: NotionResource
 ) -> dg.SensorResult:
+
+    # Return rows ready to be fetched
     rows = notion.query_queue(
         page_size=MAX_TO_EXTRACT_PER_TICK,
         supported_content_types=SUPPORTED_CONTENT_TYPES,
