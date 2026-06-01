@@ -1,9 +1,10 @@
 """Tests for extract_complex_contents resources.
 
 Mocks the external SDKs (notion-client, anthropic, requests, curl-cffi) at
-the import location in resources.py. Covers what the asset bodies depend on:
+the import location in their respective modules. Covers what the asset bodies
+depend on:
 - Notion query/get/update payload shapes
-- Fetcher cascade (Jina-first / curl-cffi-fallback)
+- Fetcher dispatch (YouTube, arXiv, article cascade)
 - Extractor prompt loading + JSON parsing
 - Store thin delegation
 """
@@ -11,6 +12,7 @@ the import location in resources.py. Covers what the asset bodies depend on:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
 from orchestrators.defs.extract_complex_contents.resources import (
     ExtractionUsage,
     ExtractorResource,
@@ -188,11 +190,11 @@ def test_fetcher_returns_jina_when_above_floor():
     )
     with (
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
             return_value=("a" * 200, 200, None),
         ) as jina_mock,
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch"
+            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch"
         ) as curl_mock,
     ):
         result = resource.fetch("https://example.com/x")
@@ -212,15 +214,15 @@ def test_fetcher_falls_through_to_curl_cffi_when_jina_short():
     )
     with (
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
             return_value=("short", 200, None),
         ),
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch",
             return_value=("<html><body>real article body</body></html>", 200, None),
         ),
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._trafilatura_extract",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._trafilatura_extract",
             return_value="extracted markdown body, multiple paragraphs.",
         ),
     ):
@@ -238,15 +240,15 @@ def test_fetcher_tier_log_records_errors_from_both_tiers():
     )
     with (
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._jina_fetch",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
             return_value=("", None, "ConnectionError"),
         ),
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._curl_cffi_fetch",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch",
             return_value=("", 403, None),
         ),
         patch(
-            "orchestrators.defs.extract_complex_contents.resources._trafilatura_extract",
+            "orchestrators.defs.extract_complex_contents.fetchers.article._trafilatura_extract",
             return_value="",
         ),
     ):
@@ -343,6 +345,35 @@ def test_store_roundtrip_via_real_sqlite(tmp_path: Path):
     )
     row = store.get_row("p-1")
     assert row is not None and row["url"] == "https://example.com/x"
+
+
+# -------- FetcherResource dispatch --------
+
+
+def test_fetcher_dispatch_youtube_calls_youtube_module():
+    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
+    sentinel = MagicMock(return_value=MagicMock())
+    with patch.object(youtube, "fetch", sentinel):
+        resource.fetch_for_type("https://youtu.be/abcdefghijk", content_type="YouTube")
+    sentinel.assert_called_once_with("https://youtu.be/abcdefghijk", proxy_url=None)
+
+
+def test_fetcher_dispatch_arxiv_calls_arxiv_module():
+    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
+    sentinel = MagicMock(return_value=MagicMock())
+    with patch.object(arxiv, "fetch", sentinel):
+        resource.fetch_for_type("https://arxiv.org/abs/2310.06770", content_type="arXiv")
+    sentinel.assert_called_once_with("https://arxiv.org/abs/2310.06770")
+
+
+def test_fetcher_dispatch_unknown_type_falls_back_to_article():
+    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
+    sentinel = MagicMock(return_value=MagicMock())
+    with patch.object(article, "fetch", sentinel):
+        resource.fetch_for_type("https://example.com/post", content_type="Article")
+    sentinel.assert_called_once()
+    call_url = sentinel.call_args.args[0]
+    assert call_url == "https://example.com/post"
 
 
 # -------- helpers --------

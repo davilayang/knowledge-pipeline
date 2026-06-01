@@ -1,7 +1,7 @@
 """Resources for the extract_complex_contents pipeline.
 
 - NotionResource — lifecycle-only writes to the Knowledge OS Queue DB.
-- FetcherResource — Jina then curl-cffi + Pi SOCKS5 cascade with trafilatura.
+- FetcherResource — per-type dispatch (YouTube, arXiv, article cascade).
 - ExtractorResource — Anthropic SDK; loads the kp-local prompt copy once.
 - ExtractQueueStore — thin wrapper over domains.raw_store.queue.
 """
@@ -9,7 +9,7 @@
 import hashlib
 import json
 import re
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -19,6 +19,8 @@ from domains.raw_store import queue as queue_db
 from notion_client import Client as NotionClient
 
 from orchestrators.config import LOCAL_QUEUE_DB
+
+from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
 
@@ -33,13 +35,6 @@ _TOPIC_CARD_KEYS = (
     "main_tension",
     "candidate_tie_backs",
 )
-
-
-@dataclass
-class FetchResult:
-    content: str
-    tier: str
-    tier_log: list[dict[str, Any]] = field(default_factory=list)
 
 
 @dataclass
@@ -109,38 +104,31 @@ class FetcherResource(dg.ConfigurableResource):
     impersonate_profile: str = "safari17_0"
     jina_floor_chars: int = 2000
     timeout_s: int = 30
+    youtube_proxy_url: str = ""
 
-    def fetch(self, url: str) -> FetchResult:
-        tier_log: list[dict[str, Any]] = []
+    def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
+        """Dispatch to per-type fetcher. Defensive fallback to article cascade
+        for unknown types — should only trigger when triage misclassifies."""
+        if content_type == "YouTube":
+            from .fetchers import youtube
 
-        jina_content, jina_status, jina_error = _jina_fetch(url, timeout_s=self.timeout_s)
-        tier_log.append(
-            {
-                "tier": "jina",
-                "status": jina_status,
-                "chars": len(jina_content),
-                "error": jina_error,
-            }
-        )
-        if jina_content and len(jina_content) >= self.jina_floor_chars:
-            return FetchResult(content=jina_content, tier="jina", tier_log=tier_log)
+            return youtube.fetch(url, proxy_url=self.youtube_proxy_url or None)
+        if content_type == "arXiv":
+            from .fetchers import arxiv as arxiv_fetcher
 
-        html, curl_status, curl_error = _curl_cffi_fetch(
+            return arxiv_fetcher.fetch(url)
+        from .fetchers import article
+
+        return article.fetch(
             url,
-            proxy=self.pi_socks5_url,
-            impersonate=self.impersonate_profile,
+            pi_socks5_url=self.pi_socks5_url,
+            impersonate_profile=self.impersonate_profile,
+            jina_floor_chars=self.jina_floor_chars,
             timeout_s=self.timeout_s,
         )
-        markdown = _trafilatura_extract(html) if html else ""
-        tier_log.append(
-            {
-                "tier": "curl_cffi",
-                "status": curl_status,
-                "chars": len(markdown),
-                "error": curl_error,
-            }
-        )
-        return FetchResult(content=markdown, tier="curl_cffi", tier_log=tier_log)
+
+    def fetch(self, url: str) -> FetchResult:
+        return self.fetch_for_type(url, content_type="Article")
 
 
 class ExtractorResource(dg.ConfigurableResource):
@@ -247,49 +235,6 @@ class ExtractQueueStore(dg.ConfigurableResource):
         )
 
 
-def _jina_fetch(url: str, *, timeout_s: int) -> tuple[str, int | None, str | None]:
-    """Pull markdown via r.jina.ai. Returns (content, http_status, error)."""
-    import requests
-
-    try:
-        resp = requests.get(f"https://r.jina.ai/{url}", timeout=timeout_s)
-        return resp.text or "", resp.status_code, None
-    except Exception as exc:  # pragma: no cover — exercised via monkeypatch in tests
-        return "", None, str(exc)
-
-
-def _curl_cffi_fetch(
-    url: str, *, proxy: str, impersonate: str, timeout_s: int
-) -> tuple[str, int | None, str | None]:
-    """Fetch through Pi SOCKS5 with browser-impersonating TLS fingerprint."""
-    from curl_cffi import requests as curl_requests
-
-    try:
-        resp = curl_requests.get(
-            url,
-            impersonate=impersonate,
-            proxies={"http": proxy, "https": proxy},
-            timeout=timeout_s,
-        )
-        return resp.text or "", resp.status_code, None
-    except Exception as exc:  # pragma: no cover — exercised via monkeypatch in tests
-        return "", None, str(exc)
-
-
-def _trafilatura_extract(html: str) -> str:
-    import trafilatura
-
-    return (
-        trafilatura.extract(
-            html,
-            output_format="markdown",
-            include_links=True,
-            include_tables=True,
-        )
-        or ""
-    )
-
-
 def _parse_topic_card(text: str) -> dict[str, Any]:
     """Parse the JSON block emitted by the v5 extraction prompt.
 
@@ -314,6 +259,7 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         "fetcher": FetcherResource(
             pi_socks5_url=dg.EnvVar("PI_SOCKS5_URL"),
             impersonate_profile=dg.EnvVar("EXTRACT_QUEUE_IMPERSONATE_PROFILE"),
+            youtube_proxy_url=dg.EnvVar("YOUTUBE_PROXY_URL").get_value(""),
         ),
         "extractor": ExtractorResource(
             anthropic_api_key=dg.EnvVar("ANTHROPIC_API_KEY"),
