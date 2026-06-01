@@ -95,7 +95,7 @@ def test_routed_writes_status_fetching_for_tier_a(tmp_path: Path):
     result = _materialize(
         routed,
         partition_key="p-1",
-        resources={"notion": notion, "store": store, "title_fetcher": title_fetcher},
+        resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
         tags={"url": "https://youtube.com/watch?v=xx12345abcd", "notion_name": "Test Video"},
     )
     assert result.success
@@ -114,7 +114,7 @@ def test_routed_writes_status_ready_for_tier_b(tmp_path: Path):
     result = _materialize(
         routed,
         partition_key="p-1",
-        resources={"notion": notion, "store": store, "title_fetcher": title_fetcher},
+        resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
         tags={"url": "https://blog.example.com/post", "notion_name": "Some Article"},
     )
     assert result.success
@@ -135,7 +135,7 @@ def test_routed_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
     result = _materialize(
         routed,
         partition_key="p-1",
-        resources={"notion": notion, "store": store, "title_fetcher": title_fetcher},
+        resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
         tags={"url": dirty_url, "notion_name": "Article"},
     )
     assert result.success

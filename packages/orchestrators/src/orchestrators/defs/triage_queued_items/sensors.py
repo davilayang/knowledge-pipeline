@@ -16,9 +16,9 @@ from .schedules import triage_queued_items_job
     ),
 )
 def poll_notion_for_triage(
-    context: dg.SensorEvaluationContext, notion: TriageNotionResource
+    context: dg.SensorEvaluationContext, triage_notion: TriageNotionResource
 ) -> dg.SensorResult:
-    rows = notion.query_queue(page_size=MAX_QUEUED_PER_TICK)
+    rows = triage_notion.query_queue(page_size=MAX_QUEUED_PER_TICK)
     run_requests: list[dg.RunRequest] = []
     page_ids: list[str] = []
     for row in rows:
@@ -60,12 +60,15 @@ def poll_notion_for_triage(
 
 
 def _handle_run_failure(
-    *, run_tags: dict[str, str], failure_message: str | None, notion: TriageNotionResource
+    *,
+    run_tags: dict[str, str],
+    failure_message: str | None,
+    triage_notion: TriageNotionResource,
 ) -> None:
     page_id = run_tags.get("notion_page_id")
     if not page_id:
         return
-    notion.update_status_failed(page_id, failure_message or "triage run failed")
+    triage_notion.update_status_failed(page_id, failure_message or "triage run failed")
 
 
 @dg.run_failure_sensor(
@@ -77,12 +80,12 @@ def _handle_run_failure(
     ),
 )
 def mark_notion_failed_on_triage_failure(
-    context: dg.RunFailureSensorContext, notion: TriageNotionResource
+    context: dg.RunFailureSensorContext, triage_notion: TriageNotionResource
 ) -> None:
     _handle_run_failure(
         run_tags=dict(context.dagster_run.tags),
         failure_message=context.failure_event.message,
-        notion=notion,
+        triage_notion=triage_notion,
     )
 
 

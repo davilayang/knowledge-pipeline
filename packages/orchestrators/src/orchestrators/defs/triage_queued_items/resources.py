@@ -134,11 +134,11 @@ class TitleFetcherResource(dg.ConfigurableResource):
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "notion": TriageNotionResource(
+        "triage_notion": TriageNotionResource(
             integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
             queue_db_id=dg.EnvVar("NOTION_QUEUE_DB_ID"),
             queue_data_source_id=dg.EnvVar("NOTION_QUEUE_DATA_SOURCE_ID"),
         ),
-        "store": TriageQueueStore(),
+        "triage_store": TriageQueueStore(),
         "title_fetcher": TitleFetcherResource(),
     }

@@ -33,7 +33,7 @@ def test_sensor_emits_run_request_per_row():
         _notion_row("p-2", "https://example.com/b"),
         _notion_row("p-3", "https://youtube.com/watch?v=xyz"),
     ]
-    result = poll_notion_for_triage(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert isinstance(result, dg.SensorResult)
     assert {req.partition_key for req in result.run_requests} == {"p-1", "p-2", "p-3"}
 
@@ -48,7 +48,7 @@ def test_sensor_skips_rows_with_empty_url():
             "properties": {"URL": {"url": None}, "Name": {"title": []}},
         },
     ]
-    result = poll_notion_for_triage(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert [req.partition_key for req in result.run_requests] == ["p-1"]
 
 
@@ -58,7 +58,7 @@ def test_sensor_registers_dynamic_partition_per_row():
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
     ]
-    result = poll_notion_for_triage(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert len(result.dynamic_partitions_requests) == 1
     add_req = result.dynamic_partitions_requests[0]
     assert set(add_req.partition_keys) == {"p-1", "p-2"}
@@ -69,7 +69,7 @@ def test_sensor_carries_notion_name_when_non_empty():
     notion.query_queue.return_value = [
         _notion_row("p-1", "https://example.com/a", notion_name="My Article"),
     ]
-    result = poll_notion_for_triage(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert result.run_requests[0].tags.get("notion_name") == "My Article"
 
 
@@ -78,6 +78,6 @@ def test_run_failure_helper_writes_notion_failed():
     _handle_run_failure(
         run_tags={"notion_page_id": "p-1"},
         failure_message="classification error",
-        notion=notion,
+        triage_notion=notion,
     )
     notion.update_status_failed.assert_called_once_with("p-1", "classification error")

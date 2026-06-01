@@ -77,8 +77,8 @@ def classified(
 )
 def routed(
     context: dg.AssetExecutionContext,
-    notion: TriageNotionResource,
-    store: TriageQueueStore,
+    triage_notion: TriageNotionResource,
+    triage_store: TriageQueueStore,
     title_fetcher: TitleFetcherResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
@@ -96,15 +96,15 @@ def routed(
         if fetched:
             name_for_notion = fetched
 
-    store.ensure_schema()
-    store.upsert_triaged(
+    triage_store.ensure_schema()
+    triage_store.upsert_triaged(
         notion_page_id=page_id,
         url=url,
         canonical_url=canonical,
         content_type=content_type,
     )
     status_after = "Fetching" if is_tier_a(content_type) else "Ready"
-    notion.write_triaged(
+    triage_notion.write_triaged(
         page_id=page_id,
         content_type=content_type,
         name_if_empty=name_for_notion,

@@ -32,8 +32,8 @@ Status=Failed + Error back to the Notion row.
 
 | Resource | Class | Purpose |
 |---|---|---|
-| `notion` | `TriageNotionResource` | Reads Queue data source (Status=Queued / empty); writes Content Type + optional Name + Status |
-| `store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.raw_store.queue` |
+| `triage_notion` | `TriageNotionResource` | Reads Queue data source (Status=Queued / empty); writes Content Type + optional Name + Status. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `notion`. |
+| `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.raw_store.queue`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
 | `title_fetcher` | `TitleFetcherResource` | Best-effort GET of `<title>` tag when Notion's Name is empty |
 
 ## Env vars
