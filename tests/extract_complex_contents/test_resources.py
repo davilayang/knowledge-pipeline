@@ -1,21 +1,22 @@
 """Tests for extract_complex_contents resources.
 
-Mocks the external SDKs (notion-client, anthropic, requests, curl-cffi) at
+Mocks the external SDKs (notion-client, openai, requests, curl-cffi) at
 the import location in their respective modules. Covers what the asset bodies
 depend on:
 - Notion query/get/update payload shapes
 - Fetcher dispatch (YouTube, arXiv, article cascade)
-- Extractor prompt loading + JSON parsing
+- ExtractorRegistry prompt routing + JSON parsing
 - Store thin delegation
 """
 
+import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
 from orchestrators.defs.extract_complex_contents.resources import (
     ExtractionUsage,
-    ExtractorResource,
+    ExtractorRegistry,
     ExtractQueueStore,
     FetcherResource,
     NotionResource,
@@ -258,73 +259,124 @@ def test_fetcher_tier_log_records_errors_from_both_tiers():
     assert result.content == ""
 
 
-# -------- ExtractorResource --------
+# -------- ExtractorRegistry --------
 
 
-def test_extractor_loads_prompt_from_file_with_label(tmp_path: Path, monkeypatch):
+def _make_registry(
+    tmp_path: Path,
+    monkeypatch,
+    *,
+    pa: str = "article prompt",
+    py: str = "youtube prompt",
+    pax: str = "arxiv prompt",
+) -> "ExtractorRegistry":
     fake_dir = tmp_path / "prompts"
-    fake_dir.mkdir()
-    (fake_dir / "v9_test.md").write_text("THIS IS THE PROMPT BODY")
+    fake_dir.mkdir(exist_ok=True)
+    (fake_dir / "pa.md").write_text(pa)
+    (fake_dir / "py.md").write_text(py)
+    (fake_dir / "pax.md").write_text(pax)
     monkeypatch.setattr(
         "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
         fake_dir,
     )
-    resource = ExtractorResource(
-        anthropic_api_key="k",
-        model="anthropic/claude-opus-4-7",
-        prompt_label="v9_test",
-    )
-    assert resource.prompt_text == "THIS IS THE PROMPT BODY"
-    assert resource.prompt_sha256 == _sha256_hex("THIS IS THE PROMPT BODY")
-
-
-def test_extractor_uses_real_v5_prompt_label():
-    """v5_kp_copy_2026_05_31.md exists in the package — extractor can load it."""
-    resource = ExtractorResource(
-        anthropic_api_key="k",
-        model="anthropic/claude-opus-4-7",
-        prompt_label="v5_kp_copy_2026_05_31",
-    )
-    assert "Topic Card" in resource.prompt_text
-    assert len(resource.prompt_sha256) == 64
-
-
-def test_extractor_extract_sends_prompt_and_parses_json(tmp_path: Path, monkeypatch):
-    fake_dir = tmp_path / "prompts"
-    fake_dir.mkdir()
-    (fake_dir / "v_test.md").write_text("system prompt here")
-    monkeypatch.setattr(
-        "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
-        fake_dir,
-    )
-    resource = ExtractorResource(
-        anthropic_api_key="k",
-        model="anthropic/claude-opus-4-7",
-        prompt_label="v_test",
+    return ExtractorRegistry(
+        openai_api_key="k",
+        model="gpt-4o-mini",
+        prompt_label_article="pa",
+        prompt_label_youtube="py",
+        prompt_label_arxiv="pax",
     )
 
-    fake_response = MagicMock()
-    fake_response.content = [MagicMock(text='```json\n{"title": "T", "core_mechanism": "M"}\n```')]
-    fake_response.usage = MagicMock(input_tokens=4000, output_tokens=600)
-    fake_client = MagicMock()
-    fake_client.messages.create.return_value = fake_response
+
+def test_strategy_for_article_uses_article_prompt(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+    assert registry.prompt_label("Article") == "pa"
+    assert registry.prompt_sha256("Article") == _sha256_hex("article prompt")
+
+
+def test_strategy_for_youtube_uses_youtube_prompt(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+    assert registry.prompt_label("YouTube") == "py"
+    assert registry.prompt_sha256("YouTube") == _sha256_hex("youtube prompt")
+
+
+def test_strategy_for_arxiv_uses_arxiv_prompt(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+    assert registry.prompt_label("arXiv") == "pax"
+    assert registry.prompt_sha256("arXiv") == _sha256_hex("arxiv prompt")
+
+
+def test_strategy_for_unknown_type_falls_back_to_article(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+    assert registry.prompt_label("UnknownType") == "pa"
+    assert registry.prompt_sha256("UnknownType") == _sha256_hex("article prompt")
+
+
+def test_extract_invokes_openai_with_per_type_prompt(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+
+    fake_usage = MagicMock(prompt_tokens=500, completion_tokens=100)
+    fake_message = MagicMock(
+        content='```json\n{"title": "arXiv Paper", "core_mechanism": "CM"}\n```'
+    )
+    fake_choice = MagicMock(message=fake_message)
+    fake_response = MagicMock(choices=[fake_choice], usage=fake_usage)
+    fake_completions = MagicMock()
+    fake_completions.create.return_value = fake_response
+    fake_chat = MagicMock(completions=fake_completions)
+    fake_client = MagicMock(chat=fake_chat)
 
     with patch(
-        "orchestrators.defs.extract_complex_contents.resources.Anthropic",
+        "orchestrators.defs.extract_complex_contents.resources.openai.OpenAI",
         return_value=fake_client,
     ):
-        extraction, usage = resource.extract("source article body")
+        extraction, usage = registry.extract("paper body", content_type="arXiv")
 
-    assert extraction["extracted_title"] == "T"
-    assert extraction["core_mechanism"] == "M"
-    assert isinstance(usage, ExtractionUsage)
-    assert usage.input_tokens == 4000
-    assert usage.output_tokens == 600
+    assert extraction["extracted_title"] == "arXiv Paper"
+    assert extraction["core_mechanism"] == "CM"
+    assert usage.input_tokens == 500
+    assert usage.output_tokens == 100
 
-    create_call = fake_client.messages.create.call_args.kwargs
-    assert create_call["model"] == "anthropic/claude-opus-4-7"
-    assert create_call["system"] == "system prompt here"
-    assert create_call["messages"] == [{"role": "user", "content": "source article body"}]
+    create_kwargs = fake_completions.create.call_args.kwargs
+    system_msg = next(m for m in create_kwargs["messages"] if m["role"] == "system")
+    assert system_msg["content"] == "arxiv prompt"
+
+
+def test_protocol_swap(tmp_path: Path, monkeypatch):
+    """Replacing _strategy_for returns the sentinel extraction — asset path is protocol-bound."""
+    registry = _make_registry(tmp_path, monkeypatch)
+    sentinel_extraction = {
+        "extracted_title": "SENTINEL",
+        "core_mechanism": None,
+        "best_example": None,
+        "second_example": None,
+        "transferable_pattern": None,
+        "main_tension": None,
+        "candidate_tie_backs": [],
+    }
+    sentinel_usage = ExtractionUsage(input_tokens=1, output_tokens=1)
+
+    class FakeExtractor:
+        def extract(self, content: str, *, content_type: str) -> tuple[dict, ExtractionUsage]:
+            return sentinel_extraction, sentinel_usage
+
+    monkeypatch.setattr(registry, "_strategy_for", lambda ct: FakeExtractor())
+    extraction, usage = registry.extract("x", content_type="YouTube")
+    assert extraction["extracted_title"] == "SENTINEL"
+    assert usage.input_tokens == 1
+
+
+def test_extractor_uses_real_v5_article_prompt_label():
+    """v5_article_kp_copy_2026_05_31.md exists in the package — registry can load it."""
+    registry = ExtractorRegistry(
+        openai_api_key="k",
+        model="gpt-4o-mini",
+        prompt_label_article="v5_article_kp_copy_2026_05_31",
+        prompt_label_youtube="v5_youtube_kp_copy_2026_06_01",
+        prompt_label_arxiv="v5_arxiv_kp_copy_2026_06_01",
+    )
+    assert "Topic Card" in registry._prompt_text("Article")
+    assert len(registry.prompt_sha256("Article")) == 64
 
 
 # -------- ExtractQueueStore --------
@@ -380,6 +432,5 @@ def test_fetcher_dispatch_unknown_type_falls_back_to_article():
 
 
 def _sha256_hex(s: str) -> str:
-    import hashlib
 
     return hashlib.sha256(s.encode()).hexdigest()

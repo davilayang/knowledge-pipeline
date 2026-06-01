@@ -2,7 +2,7 @@
 
 - NotionResource — lifecycle-only writes to the Knowledge OS Queue DB.
 - FetcherResource — per-type dispatch (YouTube, arXiv, article cascade).
-- ExtractorResource — Anthropic SDK; loads the kp-local prompt copy once.
+- ExtractorRegistry — strategy registry: maps content_type → ExtractorProtocol.
 - ExtractQueueStore — thin wrapper over domains.raw_store.queue.
 """
 
@@ -11,10 +11,10 @@ import json
 import re
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 import dagster as dg
-from anthropic import Anthropic
+import openai
 from domains.raw_store import queue as queue_db
 from notion_client import Client as NotionClient
 
@@ -131,38 +131,90 @@ class FetcherResource(dg.ConfigurableResource):
         return self.fetch_for_type(url, content_type="Article")
 
 
-class ExtractorResource(dg.ConfigurableResource):
-    anthropic_api_key: str
-    model: str
-    prompt_label: str
-    max_tokens: int = 2048
+class ExtractorProtocol(Protocol):
+    def extract(
+        self, content: str, *, content_type: str
+    ) -> tuple[dict[str, Any], "ExtractionUsage"]: ...
 
-    def _prompt_path(self) -> Path:
-        return _PROMPTS_DIR / f"{self.prompt_label}.md"
 
-    @property
-    def prompt_text(self) -> str:
-        return self._prompt_path().read_text()
+class SingleShotOpenAIExtractor:
+    """v1 default — one OpenAI Chat Completions call with the per-type prompt.
 
-    @property
-    def prompt_sha256(self) -> str:
-        return hashlib.sha256(self.prompt_text.encode()).hexdigest()
+    Same provider as synthesize_wiki. The v5 prompt was originally tuned
+    against Claude in PR #65; the v1 OpenAI port may need light re-tuning
+    if Topic Card quality regresses — track in plan's Section N follow-ups.
+    """
 
-    def extract(self, content: str) -> tuple[dict[str, Any], ExtractionUsage]:
-        client = Anthropic(api_key=self.anthropic_api_key)
-        response = client.messages.create(
-            model=self.model,
-            max_tokens=self.max_tokens,
-            system=self.prompt_text,
-            messages=[{"role": "user", "content": content}],
+    def __init__(self, *, api_key: str, model: str, prompt_text: str, max_tokens: int = 2048):
+        self._client = openai.OpenAI(api_key=api_key)
+        self._model = model
+        self._prompt_text = prompt_text
+        self._max_tokens = max_tokens
+
+    def extract(self, content: str, *, content_type: str) -> tuple[dict[str, Any], ExtractionUsage]:
+        resp = self._client.chat.completions.create(
+            model=self._model,
+            max_tokens=self._max_tokens,
+            messages=[
+                {"role": "system", "content": self._prompt_text},
+                {"role": "user", "content": content},
+            ],
+            response_format={"type": "json_object"},
         )
-        body_text = "".join(getattr(b, "text", "") for b in response.content)
+        body_text = resp.choices[0].message.content or ""
         extraction = _parse_topic_card(body_text)
         usage = ExtractionUsage(
-            input_tokens=response.usage.input_tokens,
-            output_tokens=response.usage.output_tokens,
+            input_tokens=resp.usage.prompt_tokens,
+            output_tokens=resp.usage.completion_tokens,
         )
         return extraction, usage
+
+
+class ExtractorRegistry(dg.ConfigurableResource):
+    """Strategy registry — maps content_type → ExtractorProtocol impl.
+
+    v1: same SingleShotOpenAIExtractor backend for every type, only the
+    prompt differs. Future: adopting LangGraph for arXiv means writing
+    one class LangGraphArxivExtractor(ExtractorProtocol) and changing
+    `_strategy_for("arXiv")` to return it — no asset edits required.
+    """
+
+    openai_api_key: str
+    model: str
+    prompt_label_article: str
+    prompt_label_youtube: str
+    prompt_label_arxiv: str
+    max_tokens: int = 2048
+
+    def _label_for(self, content_type: str) -> str:
+        return {
+            "YouTube": self.prompt_label_youtube,
+            "arXiv": self.prompt_label_arxiv,
+            "Article": self.prompt_label_article,
+        }.get(content_type, self.prompt_label_article)
+
+    def _prompt_path(self, content_type: str) -> Path:
+        return _PROMPTS_DIR / f"{self._label_for(content_type)}.md"
+
+    def _prompt_text(self, content_type: str) -> str:
+        return self._prompt_path(content_type).read_text()
+
+    def prompt_label(self, content_type: str) -> str:
+        return self._label_for(content_type)
+
+    def prompt_sha256(self, content_type: str) -> str:
+        return hashlib.sha256(self._prompt_text(content_type).encode()).hexdigest()
+
+    def _strategy_for(self, content_type: str) -> ExtractorProtocol:
+        return SingleShotOpenAIExtractor(
+            api_key=self.openai_api_key,
+            model=self.model,
+            prompt_text=self._prompt_text(content_type),
+            max_tokens=self.max_tokens,
+        )
+
+    def extract(self, content: str, *, content_type: str) -> tuple[dict[str, Any], ExtractionUsage]:
+        return self._strategy_for(content_type).extract(content, content_type=content_type)
 
 
 class ExtractQueueStore(dg.ConfigurableResource):
@@ -261,10 +313,12 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             impersonate_profile=dg.EnvVar("EXTRACT_QUEUE_IMPERSONATE_PROFILE"),
             youtube_proxy_url=dg.EnvVar("YOUTUBE_PROXY_URL").get_value(""),
         ),
-        "extractor": ExtractorResource(
-            anthropic_api_key=dg.EnvVar("ANTHROPIC_API_KEY"),
+        "extractor": ExtractorRegistry(
+            openai_api_key=dg.EnvVar("OPENAI_API_KEY"),
             model=dg.EnvVar("EXTRACT_QUEUE_MODEL"),
-            prompt_label=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL"),
+            prompt_label_article=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_ARTICLE"),
+            prompt_label_youtube=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE"),
+            prompt_label_arxiv=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_ARXIV"),
         ),
         "store": ExtractQueueStore(),
     }

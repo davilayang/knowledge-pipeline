@@ -141,9 +141,9 @@ def test_topic_card_writes_extraction_and_passes_check(tmp_path: Path):
         content_hash="h",
     )
     extractor = MagicMock()
-    extractor.prompt_label = "v5_kp_copy_2026_05_31"
-    extractor.prompt_sha256 = "a" * 64
-    extractor.model = "anthropic/claude-opus-4-7"
+    extractor.prompt_label.return_value = "v5_article_kp_copy_2026_05_31"
+    extractor.prompt_sha256.return_value = "a" * 64
+    extractor.model = "gpt-4o-mini"
     extractor.extract.return_value = (
         {
             "extracted_title": "T",
@@ -185,9 +185,9 @@ def test_topic_card_check_fails_when_extracted_title_missing(tmp_path: Path):
         content_hash="h",
     )
     extractor = MagicMock()
-    extractor.prompt_label = "v5"
-    extractor.prompt_sha256 = "a"
-    extractor.model = "m"
+    extractor.prompt_label.return_value = "v5_article_kp_copy_2026_05_31"
+    extractor.prompt_sha256.return_value = "a" * 64
+    extractor.model = "gpt-4o-mini"
     extractor.extract.return_value = (
         {
             "extracted_title": None,

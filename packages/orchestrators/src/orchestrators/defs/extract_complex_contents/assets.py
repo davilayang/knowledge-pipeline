@@ -9,7 +9,7 @@ from .def_config import (
     PIPELINE_TAG,
     queue_items_partition_def,
 )
-from .resources import ExtractorResource, ExtractQueueStore, FetcherResource, NotionResource
+from .resources import ExtractorRegistry, ExtractQueueStore, FetcherResource, NotionResource
 
 GROUP_NAME = "extract_complex_contents"
 
@@ -98,7 +98,7 @@ def fetched_content(
 @dg.asset(
     key=["extract_complex_contents", "topic_card"],
     group_name=GROUP_NAME,
-    compute_kind="anthropic",
+    compute_kind="openai",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -115,14 +115,14 @@ def fetched_content(
         ),
     ],
     description=(
-        "Extracts the Topic Card via Anthropic. Reads raw_content from the "
+        "Extracts the Topic Card via OpenAI. Reads raw_content from the "
         "queue_items row written by fetched_content. UPDATE-on-re-extract: a "
         "fresh prompt label overwrites the prior extraction in place."
     ),
 )
 def topic_card(
     context: dg.AssetExecutionContext,
-    extractor: ExtractorResource,
+    extractor: ExtractorRegistry,
     store: ExtractQueueStore,
 ):
     page_id = context.partition_key
@@ -132,12 +132,12 @@ def topic_card(
             description=f"No raw_content for page_id={page_id}; fetched_content must run first.",
         )
 
-    extraction, usage = extractor.extract(content=row["raw_content"])
+    extraction, usage = extractor.extract(content=row["raw_content"], content_type="Article")
     store.update_extracted(
         notion_page_id=page_id,
         extraction=extraction,
-        prompt_label=extractor.prompt_label,
-        prompt_sha256=extractor.prompt_sha256,
+        prompt_label=extractor.prompt_label("Article"),
+        prompt_sha256=extractor.prompt_sha256("Article"),
         model=extractor.model,
         tokens_in=usage.input_tokens,
         tokens_out=usage.output_tokens,
@@ -150,9 +150,9 @@ def topic_card(
 
     yield dg.MaterializeResult(
         metadata={
-            "extraction_prompt_label": dg.MetadataValue.text(extractor.prompt_label),
+            "extraction_prompt_label": dg.MetadataValue.text(extractor.prompt_label("Article")),
             "extraction_model": dg.MetadataValue.text(extractor.model),
-            "prompt_sha256_short": dg.MetadataValue.text(extractor.prompt_sha256[:12]),
+            "prompt_sha256_short": dg.MetadataValue.text(extractor.prompt_sha256("Article")[:12]),
             "tokens_in": dg.MetadataValue.int(usage.input_tokens),
             "tokens_out": dg.MetadataValue.int(usage.output_tokens),
             "extracted_title": dg.MetadataValue.text(extraction.get("extracted_title") or ""),
