@@ -37,6 +37,20 @@ Local store: `data/queue.db` (SQLite). Lifecycle status (Queued / Fetching /
 Ready / Failed) lives in Notion; everything else (raw_content, extracted
 Topic Card, provenance) lives in the local store.
 
+## arXiv PDF rendering — LlamaParse (kp) vs pymupdf4llm (NA)
+
+kp uses LlamaParse (LlamaCloud, `agentic_plus` tier) for arXiv PDF →
+markdown. Hard-fails on any LlamaParse failure — no pymupdf4llm fallback.
+Latency is acceptable here because kp is the async ingestion layer; the
+agent (`newsletter-assistant`) doesn't wait on extraction.
+
+NA's equivalent fetcher uses pymupdf4llm (faster, lower quality) because
+the agent layer is user-facing.
+
+Required env: `LLAMA_CLOUD_API_KEY` (LlamaCloud API key). Defaults for
+`llama_cloud_base_url` (`https://api.cloud.eu.llamaindex.ai`) and
+`llama_parse_tier_arxiv` (`agentic_plus`) live on `FetcherResource`.
+
 ## Runbook
 
 ```bash

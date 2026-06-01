@@ -413,11 +413,19 @@ def test_fetcher_dispatch_youtube_calls_youtube_module():
 
 
 def test_fetcher_dispatch_arxiv_calls_arxiv_module():
-    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
+    resource = FetcherResource(
+        pi_socks5_url="socks5://pi:1080",
+        llama_cloud_api_key="llama-key",
+    )
     sentinel = MagicMock(return_value=MagicMock())
     with patch.object(arxiv, "fetch", sentinel):
         resource.fetch_for_type("https://arxiv.org/abs/2310.06770", content_type="arXiv")
-    sentinel.assert_called_once_with("https://arxiv.org/abs/2310.06770")
+    sentinel.assert_called_once_with(
+        "https://arxiv.org/abs/2310.06770",
+        llama_cloud_api_key="llama-key",
+        llama_cloud_base_url="https://api.cloud.eu.llamaindex.ai",
+        llama_parse_tier="agentic_plus",
+    )
 
 
 def test_fetcher_dispatch_unknown_type_falls_back_to_article():

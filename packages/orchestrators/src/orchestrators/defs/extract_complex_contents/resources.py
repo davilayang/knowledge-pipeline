@@ -87,6 +87,12 @@ class FetcherResource(dg.ConfigurableResource):
     jina_floor_chars: int = 2000
     timeout_s: int = 30
     youtube_proxy_url: str = ""
+    # LlamaParse (LlamaCloud) for arxiv PDF rendering. kp uses agentic_plus —
+    # the highest-quality tier — because the async ingestion layer accepts
+    # the ~60s/26-page latency cost in exchange for cleaner Topic Cards.
+    llama_cloud_api_key: str = ""
+    llama_cloud_base_url: str = "https://api.cloud.eu.llamaindex.ai"
+    llama_parse_tier_arxiv: str = "agentic_plus"
 
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
         """Dispatch to per-type fetcher. Defensive fallback to article cascade
@@ -98,7 +104,12 @@ class FetcherResource(dg.ConfigurableResource):
         if content_type == "arXiv":
             from .fetchers import arxiv as arxiv_fetcher
 
-            return arxiv_fetcher.fetch(url)
+            return arxiv_fetcher.fetch(
+                url,
+                llama_cloud_api_key=self.llama_cloud_api_key,
+                llama_cloud_base_url=self.llama_cloud_base_url,
+                llama_parse_tier=self.llama_parse_tier_arxiv,
+            )
         from .fetchers import article
 
         return article.fetch(
@@ -242,6 +253,7 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             pi_socks5_url=dg.EnvVar("PI_SOCKS5_URL"),
             impersonate_profile=dg.EnvVar("EXTRACT_QUEUE_IMPERSONATE_PROFILE"),
             youtube_proxy_url=dg.EnvVar("YOUTUBE_PROXY_URL").get_value(""),
+            llama_cloud_api_key=dg.EnvVar("LLAMA_CLOUD_API_KEY"),
         ),
         "extractor": ExtractorRegistry(
             openai_api_key=dg.EnvVar("OPENAI_API_KEY"),

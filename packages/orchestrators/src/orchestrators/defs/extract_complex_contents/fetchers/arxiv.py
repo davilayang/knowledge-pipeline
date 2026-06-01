@@ -1,4 +1,9 @@
-"""arXiv fetcher — metadata via the `arxiv` PyPI client, PDF → markdown via pymupdf4llm.
+"""arXiv fetcher — metadata via the `arxiv` PyPI client, PDF → markdown via LlamaParse.
+
+kp uses LlamaParse (LlamaCloud) on the `agentic_plus` tier for arxiv PDF
+rendering. The async ingestion layer accepts the ~60s/26-page latency
+cost in exchange for higher-quality markdown than pymupdf4llm produces.
+NA's equivalent fetcher uses pymupdf4llm (latency matters there).
 
 Module named `arxiv` here (not `arxiv_fetcher`) because kp imports it as
 `from .fetchers import arxiv as arxiv_fetcher` to avoid shadowing the PyPI package
@@ -7,7 +12,6 @@ at call sites.
 
 import logging
 import re
-import tempfile
 import threading
 import time
 from urllib.parse import urlparse
@@ -44,6 +48,13 @@ _NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
 _OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
 
 _REQUEST_TIMEOUT_S = 60.0
+
+# LlamaParse poll cadence + ceiling. NA's `pdf_extract.py` constants —
+# 2s poll matches the typical ~3–4s `cost_effective` completion; 180s
+# total handles a 26-page paper on `agentic_plus` with headroom. kp uses
+# `agentic_plus` for arxiv (quality > speed; no real-time user waiting).
+_LLAMAPARSE_POLL_INTERVAL_S = 2.0
+_LLAMAPARSE_POLL_TIMEOUT_S = 180.0
 
 
 class _NoArxivRecord(Exception):
@@ -125,35 +136,106 @@ def _format_content(
     )
 
 
-def _pymupdf4llm_to_markdown(pdf_url: str) -> str:
-    """Download PDF and render to markdown via pymupdf4llm. Returns "" on any failure."""
-    try:
-        resp = httpx.get(pdf_url, follow_redirects=True, timeout=_REQUEST_TIMEOUT_S)
+def _poll_llamaparse_job(
+    client: httpx.Client,
+    job_id: str,
+    *,
+    base_url: str,
+    api_key: str,
+    max_seconds: float,
+    interval: float,
+) -> str:
+    """Poll a LlamaParse job until COMPLETED. Raises on FAILED / CANCELLED /
+    HTTP error / timeout. Returns the markdown_full string on success."""
+    url = f"{base_url}/api/v2/parse/{job_id}"
+    headers = {"Authorization": f"Bearer {api_key}"}
+    deadline = time.monotonic() + max_seconds
+    while time.monotonic() < deadline:
+        resp = client.get(url, params={"expand": "markdown_full"}, headers=headers)
         if resp.status_code >= 400:
-            logger.warning("pymupdf4llm: HTTP %d for %s", resp.status_code, pdf_url)
-            return ""
-        import pymupdf4llm
+            raise ValueError(f"LlamaParse poll HTTP {resp.status_code} for job {job_id}")
+        payload = resp.json()
+        status = (payload.get("job") or {}).get("status")
+        if status == "COMPLETED":
+            md = payload.get("markdown_full") or ""
+            if not isinstance(md, str) or not md:
+                raise ValueError(f"LlamaParse job {job_id} completed with empty markdown")
+            return md
+        if status in ("FAILED", "CANCELLED"):
+            err = (payload.get("job") or {}).get("error_message", "")
+            raise ValueError(f"LlamaParse job {job_id} {status}: {err}")
+        time.sleep(interval)
+    raise ValueError(f"LlamaParse polling timed out for job {job_id} after {max_seconds}s")
 
-        with tempfile.NamedTemporaryFile(suffix=".pdf", delete=True) as tmp:
-            tmp.write(resp.content)
-            tmp.flush()
-            md = pymupdf4llm.to_markdown(tmp.name)
-        return md or ""
-    except Exception as exc:
-        logger.warning("pymupdf4llm: error for %s — %s", pdf_url, exc)
-        return ""
+
+def _llamaparse_to_markdown(
+    pdf_url: str,
+    *,
+    api_key: str,
+    base_url: str,
+    tier: str,
+) -> str:
+    """Submit a LlamaParse job for the PDF URL, poll until COMPLETED, return
+    markdown. Hard-fail: raises ValueError on any failure (no fallback to
+    pymupdf4llm). kp accepts the latency cost in exchange for quality — the
+    async ingestion layer is not user-facing."""
+    if not api_key:
+        raise ValueError("LlamaParse api_key is unset; cannot render arxiv PDFs")
+    headers = {"Authorization": f"Bearer {api_key}"}
+    with httpx.Client(timeout=_REQUEST_TIMEOUT_S) as client:
+        resp = client.post(
+            f"{base_url}/api/v2/parse",
+            headers=headers,
+            json={"source_url": pdf_url, "tier": tier, "version": "latest"},
+        )
+        if resp.status_code >= 400:
+            raise ValueError(f"LlamaParse submit HTTP {resp.status_code}: {resp.text[:200]}")
+        job_id = (resp.json() or {}).get("id")
+        if not job_id:
+            raise ValueError("LlamaParse submit returned no job id")
+        return _poll_llamaparse_job(
+            client,
+            job_id,
+            base_url=base_url,
+            api_key=api_key,
+            max_seconds=_LLAMAPARSE_POLL_TIMEOUT_S,
+            interval=_LLAMAPARSE_POLL_INTERVAL_S,
+        )
 
 
-def fetch(url: str) -> FetchResult:
-    """Fetch arXiv paper as markdown (metadata header + full PDF body).
+def fetch(
+    url: str,
+    *,
+    llama_cloud_api_key: str,
+    llama_cloud_base_url: str,
+    llama_parse_tier: str,
+) -> FetchResult:
+    """Fetch arXiv paper as markdown (metadata header + LlamaParse-rendered
+    PDF body).
 
     The arxiv-rate-limited metadata call is serialised process-wide via
-    ``_ARXIV_SEMAPHORE``; the PDF render runs outside the semaphore.
+    ``_ARXIV_SEMAPHORE``; LlamaParse runs outside the semaphore.
+
+    Hard-fails on any LlamaParse failure (no pymupdf4llm fallback). kp's
+    arxiv path prioritises quality over latency since the agent layer
+    (newsletter-assistant) doesn't wait on extraction — the row sits in
+    Notion Status=Fetching until extract completes.
     """
-    return _fetch_inner(url)
+    return _fetch_inner(
+        url,
+        llama_cloud_api_key=llama_cloud_api_key,
+        llama_cloud_base_url=llama_cloud_base_url,
+        llama_parse_tier=llama_parse_tier,
+    )
 
 
-def _fetch_inner(url: str) -> FetchResult:
+def _fetch_inner(
+    url: str,
+    *,
+    llama_cloud_api_key: str,
+    llama_cloud_base_url: str,
+    llama_parse_tier: str,
+) -> FetchResult:
     attempts = 0
 
     try:
@@ -216,10 +298,13 @@ def _fetch_inner(url: str) -> FetchResult:
         return FetchResult(error=f"no pdf_url for {arxiv_id}")
 
     try:
-        body_md = _pymupdf4llm_to_markdown(pdf_url)
-        if not body_md:
-            raise ValueError("pymupdf4llm returned empty markdown")
-    except ValueError as exc:
+        body_md = _llamaparse_to_markdown(
+            pdf_url,
+            api_key=llama_cloud_api_key,
+            base_url=llama_cloud_base_url,
+            tier=llama_parse_tier,
+        )
+    except (ValueError, httpx.HTTPError) as exc:
         return FetchResult(error=f"{type(exc).__name__}: {exc}"[:300])
 
     content = _format_content(
@@ -235,7 +320,15 @@ def _fetch_inner(url: str) -> FetchResult:
     return FetchResult(
         content=content,
         tier="arxiv",
-        tier_log=[{"tier": "arxiv", "status": "ok", "chars": len(content)}],
+        tier_log=[
+            {
+                "tier": "arxiv",
+                "status": "ok",
+                "chars": len(content),
+                "llamaparse_tier": llama_parse_tier,
+                "renderer": "llamaparse",
+            }
+        ],
         title=title,
         author=", ".join(authors),
         extras={
