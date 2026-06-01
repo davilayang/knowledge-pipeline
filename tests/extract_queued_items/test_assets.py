@@ -5,6 +5,7 @@ SQLite store (tmp_path). Verifies the asset-level invariants that aren't
 captured at the resource layer: re-fetch skip, under-floor failure, topic
 card check pass/fail, persist-touches-only-notion."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
@@ -162,7 +163,7 @@ def test_topic_card_writes_extraction_and_passes_check(tmp_path: Path):
     )
     assert result.success
     row = store.get_row("p-1")
-    assert row["extracted_title"] == "T"
+    assert json.loads(row["extraction_payload"])["extracted_title"] == "T"
     assert row["tokens_in"] == 1000
     check_results = [
         evt for evt in result.all_events if evt.event_type_value == "ASSET_CHECK_EVALUATION"
