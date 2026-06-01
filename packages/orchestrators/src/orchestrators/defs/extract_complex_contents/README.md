@@ -17,15 +17,20 @@ poll_notion_for_extract (sensor, every 15min)
 extract_complex_contents_job  (partition_key = notion_page_id)
         │
         ▼
-fetched_content ──► topic_card ──► persisted
-      │                 │              │
-      │                 │              └──► Notion: Status=Ready
-      │                 │
-      │                 └─ on failure (LLM error / required-fields check):
-      │                    run_failure_sensor → Notion: Status=Failed + Error
-      │
-      └─ on failure (Jina+curl_cffi cascade exhausted / under floor):
-         run_failure_sensor → Notion: Status=Failed + Error
+fetched ──► extracted ──► published
+   │           │              │
+   │           │              └──► Notion: Status=Ready
+   │           │
+   │           └─ on failure (LLM error / required-fields check):
+   │              run_failure_sensor → Notion: Status=Failed + Error
+   │
+   └─ on failure (per-type fetcher cascade exhausted / under floor):
+      run_failure_sensor → Notion: Status=Failed + Error
+
+Each asset dispatches to per-type strategies (FetcherResource for fetched,
+ExtractorRegistry for extracted) — no branching in the asset graph itself.
+fetched + extracted include `content_preview` / `extraction_preview`
+metadata (head + tail of the content) for at-a-glance verification.
 ```
 
 Local store: `data/queue.db` (SQLite). Lifecycle status (Queued / Fetching /

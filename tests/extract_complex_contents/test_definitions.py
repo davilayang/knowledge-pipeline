@@ -9,12 +9,9 @@ from orchestrators.defs.extract_complex_contents import defs
 def test_pipeline_defs_loads():
     asset_keys = {k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
-        "extract_complex_contents/routed_for_extraction",
-        "extract_complex_contents/youtube_transcript",
-        "extract_complex_contents/youtube_topic_card",
-        "extract_complex_contents/arxiv_pdf_text",
-        "extract_complex_contents/arxiv_topic_card",
-        "extract_complex_contents/persisted",
+        "extract_complex_contents/fetched",
+        "extract_complex_contents/extracted",
+        "extract_complex_contents/published",
     }
 
 
