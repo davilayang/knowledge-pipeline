@@ -1,0 +1,89 @@
+import dagster as dg
+
+from .def_config import MAX_QUEUED_PER_TICK, SENSOR_MIN_INTERVAL_S, queue_items_partition_def
+from .resources import TriageNotionResource
+from .schedules import triage_queued_items_job
+
+
+@dg.sensor(
+    job=triage_queued_items_job,
+    minimum_interval_seconds=SENSOR_MIN_INTERVAL_S,
+    description=(
+        "Polls Notion Knowledge OS Queue for Status=Queued OR Status is empty "
+        "rows (mobile-share template bypass absorbed). Registers each row's "
+        "notion_page_id as a dynamic partition and triggers triage_queued_items. "
+        "Bounded by MAX_QUEUED_PER_TICK."
+    ),
+)
+def poll_notion_for_triage(
+    context: dg.SensorEvaluationContext, notion: TriageNotionResource
+) -> dg.SensorResult:
+    rows = notion.query_queue(page_size=MAX_QUEUED_PER_TICK)
+    run_requests: list[dg.RunRequest] = []
+    page_ids: list[str] = []
+    for row in rows:
+        page_id = row.get("id")
+        if not page_id:
+            continue
+        url_prop = row.get("properties", {}).get("URL", {})
+        url = url_prop.get("url")
+        if not url:
+            context.log.warning("Skipping page_id=%s with empty URL", page_id)
+            continue
+        # Pre-read Notion's Name property — non-empty means we keep it and
+        # skip the title-fetch in the asset body. (Empty Title = empty
+        # `title` array on Notion's response.)
+        name_prop = row.get("properties", {}).get("Name", {})
+        existing_name = ""
+        for chunk in name_prop.get("title", []) or []:
+            existing_name += chunk.get("plain_text") or ""
+        existing_name = existing_name.strip()
+
+        last_edited = row.get("last_edited_time") or ""
+        page_ids.append(page_id)
+        tags = {"notion_page_id": page_id, "url": url}
+        if existing_name:
+            tags["notion_name"] = existing_name
+        run_requests.append(
+            dg.RunRequest(
+                run_key=f"triage-{page_id}-{last_edited}",
+                partition_key=page_id,
+                tags=tags,
+            )
+        )
+
+    dynamic_requests = [queue_items_partition_def.build_add_request(page_ids)] if page_ids else []
+    return dg.SensorResult(
+        run_requests=run_requests,
+        dynamic_partitions_requests=dynamic_requests,
+    )
+
+
+def _handle_run_failure(
+    *, run_tags: dict[str, str], failure_message: str | None, notion: TriageNotionResource
+) -> None:
+    page_id = run_tags.get("notion_page_id")
+    if not page_id:
+        return
+    notion.update_status_failed(page_id, failure_message or "triage run failed")
+
+
+@dg.run_failure_sensor(
+    monitored_jobs=[triage_queued_items_job],
+    minimum_interval_seconds=60,
+    description=(
+        "On any triage_queued_items partition failure, write Status=Failed + "
+        "Error back to the Notion row."
+    ),
+)
+def mark_notion_failed_on_triage_failure(
+    context: dg.RunFailureSensorContext, notion: TriageNotionResource
+) -> None:
+    _handle_run_failure(
+        run_tags=dict(context.dagster_run.tags),
+        failure_message=context.failure_event.message,
+        notion=notion,
+    )
+
+
+all_sensors = [poll_notion_for_triage, mark_notion_failed_on_triage_failure]
