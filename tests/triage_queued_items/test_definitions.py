@@ -18,7 +18,7 @@ def test_defs_includes_all_assets():
 def test_defs_includes_sensors():
     sensor_names = {s.name for s in defs.sensors}
     assert "poll_notion_for_triage" in sensor_names
-    assert "mark_notion_failed_on_triage_failure" in sensor_names
+    assert "mark_notion_failed_on_triage" in sensor_names
 
 
 def test_defs_includes_job():

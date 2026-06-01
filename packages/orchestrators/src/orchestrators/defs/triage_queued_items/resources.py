@@ -15,10 +15,12 @@ from .def_config import TITLE_FETCH_TIMEOUT_S
 
 
 class TriageNotionResource(dg.ConfigurableResource):
-    """Notion reads + writes used only by triage. Reads the Queue data source
-    for rows that need classification (Status=Queued OR Status is empty —
-    the latter absorbs mobile-share template bypass). Writes content_type
-    + optional Name + flipped Status back to the row.
+    """Notion reads + writes used only by triage.
+
+    Reads the Queue data source for rows that need classification
+    (Status=Queued OR Status is empty — the latter absorbs mobile-share
+    template bypass).
+    Writes content_type + optional Name + flipped Status back to the row.
     """
 
     integration_token: str
@@ -29,8 +31,12 @@ class TriageNotionResource(dg.ConfigurableResource):
         return NotionClient(auth=self.integration_token)
 
     def query_queue(self, *, page_size: int) -> list[dict[str, Any]]:
-        """Status=Queued OR Status is empty. The mobile Share Sheet bypasses
-        Notion templates so freshly-captured rows arrive with empty Status."""
+        """Return rows with Status=Queued OR Status is empty.
+
+        NOTE: Mobile Share Sheet bypasses Notion templates so freshly-captured
+        rows arrive with empty Status (only Name and URL are populated)
+        """
+
         resp = self._client().data_sources.query(
             data_source_id=self.queue_data_source_id,
             filter={
@@ -51,10 +57,14 @@ class TriageNotionResource(dg.ConfigurableResource):
         name_if_empty: str | None = None,
         status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
     ) -> None:
-        """Two-step write: metadata first, then Status as the monotonic last
-        write. If Status flipped first and the metadata write then failed,
-        a subsequent sensor tick would re-pick the row up at the new Status
-        without classification persisted to Notion."""
+        """Execute Two-step write on a row:
+        Write metadata fields first, then Status as the monotonic last write.
+
+        If Status flipped first and the metadata write then failed, a subsequent
+        sensor tick would re-pick the row up at the new Status
+        without classification persisted to Notion.
+        """
+
         props: dict = {"Content Type": {"select": {"name": content_type}}}
         if name_if_empty:
             props["Name"] = {"title": [{"text": {"content": name_if_empty[:200]}}]}
@@ -67,6 +77,7 @@ class TriageNotionResource(dg.ConfigurableResource):
         )
 
     def update_status_failed(self, page_id: str, error: str) -> None:
+        """Write Status field if Failed to handle a row"""
         self._client().pages.update(
             page_id=page_id,
             properties={

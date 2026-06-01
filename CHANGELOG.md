@@ -17,7 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **YouTube transcript fetcher** at `packages/orchestrators/.../extract_complex_contents/fetchers/youtube.py`. Ported from newsletter-assistant's `youtube_api.py`. Optional `YOUTUBE_PROXY_URL` env for SOCKS proxy routing.
 - **arXiv fetcher** at `packages/orchestrators/.../extract_complex_contents/fetchers/arxiv.py`. Metadata via the `arxiv` PyPI client (with semaphore + tenacity retry); PDF text via `pymupdf4llm`. Drops NA's LlamaParse REST chain — arXiv extraction is pymupdf4llm-only.
 - **Per-type prompt files** — `v5_article_kp_copy_2026_05_31`, `v5_youtube_kp_copy_2026_06_01`, `v5_arxiv_kp_copy_2026_06_01` (initially byte-identical; per-type tuning is a follow-up). New envs `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` replace the singular `EXTRACT_QUEUE_PROMPT_LABEL`.
-- **Triage failure → Notion `Status=Failed`** propagation via new `mark_notion_failed_on_triage_failure` run-failure sensor.
+- **Triage failure → Notion `Status=Failed`** propagation via new `mark_notion_failed_on_triage` run-failure sensor.
 
 ---
 

@@ -25,7 +25,7 @@ triage_queued_items_job  (partition_key = notion_page_id)
                      NA fetches on user engagement
 ```
 
-On any run failure `mark_notion_failed_on_triage_failure` writes
+On any run failure `mark_notion_failed_on_triage` writes
 Status=Failed + Error back to the Notion row.
 
 ## Resources
@@ -67,7 +67,7 @@ Most likely a `Status` Notion option mismatch — the DB doesn't have a
 (`...` → Edit database → Status property) and add the missing option.
 
 **Row ends at Status=Failed:**
-`mark_notion_failed_on_triage_failure` fired. Check the Notion row's `Error`
+`mark_notion_failed_on_triage` fired. Check the Notion row's `Error`
 rich-text property for the failure message, then check the Dagster run logs for
 the full traceback (`dagster job logs --run-id <id>`).
 

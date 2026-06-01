@@ -10,7 +10,7 @@ Triage also registers the dynamic partition; this pipeline only runs the job.
 ## DAG (per partition)
 
 ```
-poll_notion_queue (sensor, every 15min)
+poll_notion_for_extract (sensor, every 15min)
         │  per Status=Fetching + Content Type ∈ SUPPORTED_CONTENT_TYPES row,
         │  MAX_TO_EXTRACT_PER_TICK cap; triage_queued_items registers partition
         ▼

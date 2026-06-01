@@ -25,7 +25,7 @@ def test_pipeline_has_one_job_named_extract_complex_contents():
 
 def test_pipeline_exposes_poll_and_failure_sensors():
     sensor_names = {s.name for s in defs.sensors}
-    assert sensor_names == {"poll_notion_queue", "mark_notion_failed_on_run_failure"}
+    assert sensor_names == {"poll_notion_for_extract", "mark_notion_failed_on_extract"}
 
 
 def test_pipeline_registers_notion_lifecycle_check():

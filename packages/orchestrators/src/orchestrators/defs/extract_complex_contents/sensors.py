@@ -15,7 +15,7 @@ from .schedules import extract_complex_contents_job
         "partition before this pipeline picks up."
     ),
 )
-def poll_notion_queue(
+def poll_notion_for_extract(
     context: dg.SensorEvaluationContext, notion: NotionResource
 ) -> dg.SensorResult:
     rows = notion.query_queue(
@@ -67,7 +67,7 @@ def _handle_run_failure(
         "needing to open Dagster."
     ),
 )
-def mark_notion_failed_on_run_failure(
+def mark_notion_failed_on_extract(
     context: dg.RunFailureSensorContext, notion: NotionResource
 ) -> None:
     _handle_run_failure(
@@ -77,4 +77,4 @@ def mark_notion_failed_on_run_failure(
     )
 
 
-all_sensors = [poll_notion_queue, mark_notion_failed_on_run_failure]
+all_sensors = [poll_notion_for_extract, mark_notion_failed_on_extract]

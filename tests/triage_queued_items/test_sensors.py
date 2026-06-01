@@ -1,4 +1,4 @@
-"""Tests for poll_notion_for_triage + mark_notion_failed_on_triage_failure."""
+"""Tests for poll_notion_for_triage + mark_notion_failed_on_triage."""
 
 from unittest.mock import MagicMock
 

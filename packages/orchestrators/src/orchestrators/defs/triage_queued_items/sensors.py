@@ -18,7 +18,9 @@ from .schedules import triage_queued_items_job
 def poll_notion_for_triage(
     context: dg.SensorEvaluationContext, triage_notion: TriageNotionResource
 ) -> dg.SensorResult:
+    # Rows with either Empty or Queued status
     rows = triage_notion.query_queue(page_size=MAX_QUEUED_PER_TICK)
+
     run_requests: list[dg.RunRequest] = []
     page_ids: list[str] = []
     for row in rows:
@@ -52,7 +54,10 @@ def poll_notion_for_triage(
             )
         )
 
-    dynamic_requests = [queue_items_partition_def.build_add_request(page_ids)] if page_ids else []
+    dynamic_requests = (
+        [queue_items_partition_def.build_add_request(page_ids)]
+        if page_ids else []
+    )
     return dg.SensorResult(
         run_requests=run_requests,
         dynamic_partitions_requests=dynamic_requests,
@@ -79,7 +84,7 @@ def _handle_run_failure(
         "Error back to the Notion row."
     ),
 )
-def mark_notion_failed_on_triage_failure(
+def mark_notion_failed_on_triage(
     context: dg.RunFailureSensorContext, triage_notion: TriageNotionResource
 ) -> None:
     _handle_run_failure(
@@ -89,4 +94,4 @@ def mark_notion_failed_on_triage_failure(
     )
 
 
-all_sensors = [poll_notion_for_triage, mark_notion_failed_on_triage_failure]
+all_sensors = [poll_notion_for_triage, mark_notion_failed_on_triage]
