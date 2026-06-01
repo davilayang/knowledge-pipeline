@@ -5,8 +5,10 @@ owns the writes (upsert_fetched + update_extracted); newsletter-assistant
 reads via get_queue_extraction against the same SQLite file in mode=ro.
 
 UPDATE-on-re-extract is intentional policy. Bumping the extraction prompt
-label overwrites the prior extraction. To preserve history, migrate to a
-two-table split — see ai-plannings (Section B's migration trigger).
+label overwrites the prior extraction. The Topic Card shape is owned by the
+prompt and stored as JSON in `extraction_payload` — per-content-type
+heterogeneity (YouTube/arXiv/Article) needs zero schema migration as prompts
+iterate.
 """
 
 import json
@@ -19,7 +21,10 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS queue_items (
     notion_page_id              TEXT PRIMARY KEY,
     url                         TEXT NOT NULL,
+    canonical_url               TEXT,
+    content_type                TEXT,
 
+    -- fetch
     raw_content                 TEXT,
     fetched_at                  TEXT,
     fetch_tier                  TEXT,
@@ -27,39 +32,29 @@ CREATE TABLE IF NOT EXISTS queue_items (
     fetched_content_char_count  INTEGER,
     content_hash                TEXT,
 
-    extracted_title             TEXT,
-    core_mechanism              TEXT,
-    best_example                TEXT,
-    second_example              TEXT,
-    transferable_pattern        TEXT,
-    main_tension                TEXT,
-    candidate_tie_backs         TEXT,
-
+    -- extraction provenance (operational; indexed)
+    extracted_at                TEXT,
     extraction_prompt_label     TEXT,
     extraction_model            TEXT,
     prompt_sha256               TEXT,
     tokens_in                   INTEGER,
     tokens_out                  INTEGER,
-    extracted_at                TEXT,
+
+    -- Topic Card content (shape owned by the prompt; per-content-type heterogeneous)
+    extraction_payload          TEXT,
 
     error_text                  TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_queue_items_url
     ON queue_items(url);
+CREATE INDEX IF NOT EXISTS idx_queue_items_content_type
+    ON queue_items(content_type);
 CREATE INDEX IF NOT EXISTS idx_queue_items_prompt_label
     ON queue_items(extraction_prompt_label);
+CREATE INDEX IF NOT EXISTS idx_queue_items_extracted_at
+    ON queue_items(extracted_at);
 """
-
-
-_TOPIC_CARD_FIELDS = (
-    "extracted_title",
-    "core_mechanism",
-    "best_example",
-    "second_example",
-    "transferable_pattern",
-    "main_tension",
-)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -77,7 +72,46 @@ def _now_iso() -> str:
 def create_schema(*, db_path: Path) -> None:
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
+        # Run idempotent column additions before executescript so the indexes
+        # that reference those columns (e.g. content_type) don't fail on
+        # pre-existing DBs that lack the column.
+        for ddl in (
+            "ALTER TABLE queue_items ADD COLUMN canonical_url TEXT",
+            "ALTER TABLE queue_items ADD COLUMN content_type TEXT",
+            "ALTER TABLE queue_items ADD COLUMN extraction_payload TEXT",
+        ):
+            try:
+                conn.execute(ddl)
+            except sqlite3.OperationalError as exc:
+                # SQLite ≥3.x guarantees these exact message strings — stable across versions.
+                if "duplicate column name" not in str(exc).lower():
+                    # Table doesn't exist yet — fine, executescript will create it.
+                    if "no such table" not in str(exc).lower():
+                        raise
         conn.executescript(_SCHEMA)
+
+
+def upsert_triaged(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    url: str,
+    canonical_url: str,
+    content_type: str,
+) -> None:
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO queue_items (notion_page_id, url, canonical_url, content_type)
+            VALUES (?, ?, ?, ?)
+            ON CONFLICT(notion_page_id) DO UPDATE SET
+                url = excluded.url,
+                canonical_url = excluded.canonical_url,
+                content_type = excluded.content_type,
+                error_text = NULL
+            """,
+            (notion_page_id, url, canonical_url, content_type),
+        )
 
 
 def upsert_fetched(
@@ -137,13 +171,7 @@ def update_extracted(
         conn.execute(
             """
             UPDATE queue_items SET
-                extracted_title = ?,
-                core_mechanism = ?,
-                best_example = ?,
-                second_example = ?,
-                transferable_pattern = ?,
-                main_tension = ?,
-                candidate_tie_backs = ?,
+                extraction_payload = ?,
                 extraction_prompt_label = ?,
                 extraction_model = ?,
                 prompt_sha256 = ?,
@@ -154,13 +182,7 @@ def update_extracted(
             WHERE notion_page_id = ?
             """,
             (
-                extraction.get("extracted_title"),
-                extraction.get("core_mechanism"),
-                extraction.get("best_example"),
-                extraction.get("second_example"),
-                extraction.get("transferable_pattern"),
-                extraction.get("main_tension"),
-                json.dumps(extraction.get("candidate_tie_backs") or []),
+                json.dumps(extraction),
                 prompt_label,
                 model,
                 prompt_sha256,
@@ -216,16 +238,15 @@ def list_with_stale_extraction(*, db_path: Path, min_age_minutes: int) -> list[d
 def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any] | None:
     """Public consumer API. Same-machine read path for newsletter-assistant.
 
-    Returns the Topic Card shape or None when the page hasn't been extracted
-    yet. Excludes raw_content — consumers wanting the underlying body should
-    re-fetch from the URL rather than depending on the kp store layout."""
+    Returns the flattened extraction payload merged with provenance fields, or
+    None when the page hasn't been extracted yet. Excludes raw_content —
+    consumers wanting the underlying body should re-fetch from the URL rather
+    than depending on the kp store layout."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
-            SELECT url, extracted_title, core_mechanism, best_example,
-                   second_example, transferable_pattern, main_tension,
-                   candidate_tie_backs, extraction_prompt_label,
-                   extraction_model, extracted_at, content_hash
+            SELECT url, canonical_url, content_type, extraction_payload,
+                   extraction_prompt_label, extraction_model, extracted_at, content_hash
             FROM queue_items
             WHERE notion_page_id = ? AND extracted_at IS NOT NULL
             """,
@@ -233,15 +254,12 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
         ).fetchone()
     if row is None:
         return None
+    payload = json.loads(row["extraction_payload"] or "{}")
     return {
         "url": row["url"],
-        "extracted_title": row["extracted_title"],
-        "core_mechanism": row["core_mechanism"],
-        "best_example": row["best_example"],
-        "second_example": row["second_example"],
-        "transferable_pattern": row["transferable_pattern"],
-        "main_tension": row["main_tension"],
-        "candidate_tie_backs": json.loads(row["candidate_tie_backs"] or "[]"),
+        "canonical_url": row["canonical_url"],
+        "content_type": row["content_type"],
+        **payload,
         "extraction_prompt_label": row["extraction_prompt_label"],
         "extraction_model": row["extraction_model"],
         "extracted_at": row["extracted_at"],

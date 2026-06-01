@@ -8,6 +8,33 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.0] — 2026-06-01
+
+### Added
+
+- **YouTube transcript fetcher** — `youtube-transcript-api` + oEmbed; optional `YOUTUBE_PROXY_URL` for IP-blocked hosts.
+- **arXiv fetcher** — `arxiv` PyPI + LlamaParse on `agentic_plus` tier (hard-fail). New env `LLAMA_CLOUD_API_KEY`.
+- **Per-type prompt labels** — `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` replace singular `EXTRACT_QUEUE_PROMPT_LABEL`.
+- **Head + tail content previews** on `fetched` + `extracted` (500+500 chars) in MaterializeResult metadata.
+- **Per-pipeline run-failure sensors** — `mark_notion_failed_on_{triage,extract}` write `Status=Failed` + error to Notion.
+
+### Changed
+
+- **Pipeline split** — single `extract_queued_items` → `triage_queued_items` + `extract_complex_contents` coordinated via Notion `Status` + `Content Type` ("Notion-as-bus"). Shared `queue_items` dynamic partition in `defs/shared/partitions.py`.
+- **Triage: single `triaged` asset** (was `classified` + `routed`). Notion-set `Content Type` overrides URL classifier; typo/empty → classifier fallback. `Name` passthrough as metadata; triage never writes it.
+- **Extract: 6 branched assets → 3** (`fetched` → `extracted` → `published`). Per-type dispatch in `FetcherResource` + `ExtractorRegistry`; `published` isolates Notion write so a Notion hiccup doesn't re-spend OpenAI.
+- **Typed `dg.Config` for asset inputs** (was stringly-typed tags). Pydantic validates at launch; manual UI launches use the Launchpad config form.
+- **`queue_items` schema** — single `extraction_payload` JSON column + `canonical_url` + `content_type`. Idempotent `ALTER TABLE` upgrade for existing DBs. `get_queue_extraction()` consumer API preserved.
+- **Extraction via OpenAI + `ExtractorRegistry` strategy** (`extractors/` subfolder mirrors `fetchers/`). v1: `SingleShotOpenAIExtractor`; future per-type swaps drop in as one file + one registry line. `anthropic` dep dropped, `openai` added.
+- **Sensor names symmetric** — `poll_notion_for_<stage>` + `mark_notion_failed_on_<stage>` across both pipelines.
+
+### Removed
+
+- **`TitleFetcherResource`** — `<title>` tag was SEO junk on most sites; downstream extract LLM / NA-at-engagement fills `Name` from real content.
+- **`pymupdf4llm`** dep — arXiv uses LlamaParse exclusively.
+
+---
+
 ## [0.13.0] — 2026-06-01
 
 ### Added
