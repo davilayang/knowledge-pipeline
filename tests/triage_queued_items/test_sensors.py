@@ -64,13 +64,26 @@ def test_sensor_registers_dynamic_partition_per_row():
     assert set(add_req.partition_keys) == {"p-1", "p-2"}
 
 
-def test_sensor_carries_notion_name_when_non_empty():
+def test_sensor_carries_url_and_notion_name_in_run_config():
     notion = MagicMock()
     notion.query_queue.return_value = [
         _notion_row("p-1", "https://example.com/a", notion_name="My Article"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
-    assert result.run_requests[0].tags.get("notion_name") == "My Article"
+    ops_config = result.run_requests[0].run_config["ops"]
+    classified_cfg = ops_config["triage_queued_items__classified"]["config"]
+    routed_cfg = ops_config["triage_queued_items__routed"]["config"]
+    assert classified_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
+    assert routed_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
+
+
+def test_sensor_tags_carry_only_notion_page_id():
+    notion = MagicMock()
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://example.com/a", notion_name="X"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    assert result.run_requests[0].tags == {"notion_page_id": "p-1"}
 
 
 def test_run_failure_helper_writes_notion_failed():

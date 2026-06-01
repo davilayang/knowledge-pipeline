@@ -1,5 +1,6 @@
 import dagster as dg
 
+from .assets import TriageInput
 from .def_config import MAX_QUEUED_PER_TICK, SENSOR_MIN_INTERVAL_S, queue_items_partition_def
 from .resources import TriageNotionResource
 from .schedules import triage_queued_items_job
@@ -43,21 +44,22 @@ def poll_notion_for_triage(
 
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
-        tags = {"notion_page_id": page_id, "url": url}
-        if existing_name:
-            tags["notion_name"] = existing_name
+        triage_input = TriageInput(url=url, notion_name=existing_name)
         run_requests.append(
             dg.RunRequest(
                 run_key=f"triage-{page_id}-{last_edited}",
                 partition_key=page_id,
-                tags=tags,
+                tags={"notion_page_id": page_id},
+                run_config=dg.RunConfig(
+                    ops={
+                        "triage_queued_items__classified": triage_input,
+                        "triage_queued_items__routed": triage_input,
+                    }
+                ),
             )
         )
 
-    dynamic_requests = (
-        [queue_items_partition_def.build_add_request(page_ids)]
-        if page_ids else []
-    )
+    dynamic_requests = [queue_items_partition_def.build_add_request(page_ids)] if page_ids else []
     return dg.SensorResult(
         run_requests=run_requests,
         dynamic_partitions_requests=dynamic_requests,

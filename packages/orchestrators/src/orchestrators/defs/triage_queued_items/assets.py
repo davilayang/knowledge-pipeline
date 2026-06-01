@@ -9,6 +9,14 @@ from .resources import TitleFetcherResource, TriageNotionResource, TriageQueueSt
 GROUP_NAME = "triage_queued_items"
 
 
+class TriageInput(dg.Config):
+    """Typed input for the triage assets. Sensor populates from Notion;
+    manual UI launches must supply via the Launchpad config form."""
+
+    url: str
+    notion_name: str = ""
+
+
 @dg.asset(
     key=["triage_queued_items", "classified"],
     group_name=GROUP_NAME,
@@ -25,19 +33,14 @@ GROUP_NAME = "triage_queued_items"
 )
 def classified(
     context: dg.AssetExecutionContext,
+    config: TriageInput,
     title_fetcher: TitleFetcherResource,
 ) -> dg.MaterializeResult:
-    page_id = context.partition_key
-    url = context.run.tags.get("url")
-    if not url:
-        raise dg.Failure(description=f"Missing 'url' run tag for page_id={page_id}")
-
-    canonical = canonicalize_url(url)
+    canonical = canonicalize_url(config.url)
     content_type = classify_content_type(canonical)
-    notion_name = context.run.tags.get("notion_name", "")
-    if notion_name:
+    if config.notion_name:
         name_source = "notion"
-        name = notion_name
+        name = config.notion_name
     else:
         fetched_title = title_fetcher.fetch_title(canonical)
         name = fetched_title or ""
@@ -47,7 +50,7 @@ def classified(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
             "canonical_url": dg.MetadataValue.url(canonical),
-            "original_url": dg.MetadataValue.url(url),
+            "original_url": dg.MetadataValue.url(config.url),
             "name_source": dg.MetadataValue.text(name_source),
             "name": dg.MetadataValue.text(name),
             "tier": dg.MetadataValue.text("A" if is_tier_a(content_type) else "B"),
@@ -77,21 +80,17 @@ def classified(
 )
 def routed(
     context: dg.AssetExecutionContext,
+    config: TriageInput,
     triage_notion: TriageNotionResource,
     triage_store: TriageQueueStore,
     title_fetcher: TitleFetcherResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
-    url = context.run.tags.get("url")
-    if not url:
-        raise dg.Failure(description=f"Missing 'url' run tag for page_id={page_id}")
-
-    canonical = canonicalize_url(url)
+    canonical = canonicalize_url(config.url)
     content_type = classify_content_type(canonical)
 
-    notion_name = context.run.tags.get("notion_name", "")
     name_for_notion: str | None = None
-    if not notion_name:
+    if not config.notion_name:
         fetched = title_fetcher.fetch_title(canonical)
         if fetched:
             name_for_notion = fetched
@@ -99,7 +98,7 @@ def routed(
     triage_store.ensure_schema()
     triage_store.upsert_triaged(
         notion_page_id=page_id,
-        url=url,
+        url=config.url,
         canonical_url=canonical,
         content_type=content_type,
     )

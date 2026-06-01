@@ -15,17 +15,25 @@ def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
     return instance
 
 
-def _materialize(asset, *, partition_key: str, resources: dict, tags: dict | None = None):
+def _materialize(
+    asset,
+    *,
+    partition_key: str,
+    resources: dict,
+    url: str,
+    notion_name: str = "",
+):
     instance = _instance_with_partition(partition_key)
-    run_tags = {"notion_page_id": partition_key}
-    if tags:
-        run_tags.update(tags)
+    op_name = "__".join(asset.key.path)
     return dg.materialize(
         [asset],
         partition_key=partition_key,
         resources=resources,
         instance=instance,
-        tags=run_tags,
+        tags={"notion_page_id": partition_key},
+        run_config={
+            "ops": {op_name: {"config": {"url": url, "notion_name": notion_name}}},
+        },
     )
 
 
@@ -45,7 +53,7 @@ def test_classified_returns_youtube_for_youtube_url():
         classified,
         partition_key="p-1",
         resources={"title_fetcher": title_fetcher},
-        tags={"url": "https://youtube.com/watch?v=xx12345abcd"},
+        url="https://youtube.com/watch?v=xx12345abcd",
     )
     assert result.success
     metadata = _get_metadata(result)
@@ -59,7 +67,8 @@ def test_classified_uses_notion_name_when_provided():
         classified,
         partition_key="p-1",
         resources={"title_fetcher": title_fetcher},
-        tags={"url": "https://example.com/post", "notion_name": "Hello"},
+        url="https://example.com/post",
+        notion_name="Hello",
     )
     assert result.success
     metadata = _get_metadata(result)
@@ -75,7 +84,7 @@ def test_classified_falls_back_to_title_fetch_when_notion_name_empty():
         classified,
         partition_key="p-1",
         resources={"title_fetcher": title_fetcher},
-        tags={"url": "https://example.com/post"},
+        url="https://example.com/post",
     )
     assert result.success
     metadata = _get_metadata(result)
@@ -96,7 +105,8 @@ def test_routed_writes_status_fetching_for_tier_a(tmp_path: Path):
         routed,
         partition_key="p-1",
         resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
-        tags={"url": "https://youtube.com/watch?v=xx12345abcd", "notion_name": "Test Video"},
+        url="https://youtube.com/watch?v=xx12345abcd",
+        notion_name="Test Video",
     )
     assert result.success
     notion.write_triaged.assert_called_once()
@@ -115,7 +125,8 @@ def test_routed_writes_status_ready_for_tier_b(tmp_path: Path):
         routed,
         partition_key="p-1",
         resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
-        tags={"url": "https://blog.example.com/post", "notion_name": "Some Article"},
+        url="https://blog.example.com/post",
+        notion_name="Some Article",
     )
     assert result.success
     call_kwargs = notion.write_triaged.call_args.kwargs
@@ -136,7 +147,8 @@ def test_routed_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
         routed,
         partition_key="p-1",
         resources={"triage_notion": notion, "triage_store": store, "title_fetcher": title_fetcher},
-        tags={"url": dirty_url, "notion_name": "Article"},
+        url=dirty_url,
+        notion_name="Article",
     )
     assert result.success
     from domains.raw_store import queue as queue_db
