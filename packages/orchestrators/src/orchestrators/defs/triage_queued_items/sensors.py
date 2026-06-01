@@ -33,14 +33,6 @@ def poll_notion_for_triage(
         if not url:
             context.log.warning("Skipping page_id=%s with empty URL", page_id)
             continue
-        # Pre-read Notion's Name property — non-empty means we keep it and
-        # skip the title-fetch in the asset body. (Empty Title = empty
-        # `title` array on Notion's response.)
-        name_prop = row.get("properties", {}).get("Name", {})
-        existing_name = ""
-        for chunk in name_prop.get("title", []) or []:
-            existing_name += chunk.get("plain_text") or ""
-        existing_name = existing_name.strip()
 
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
@@ -51,9 +43,7 @@ def poll_notion_for_triage(
                 tags={"notion_page_id": page_id},
                 run_config=dg.RunConfig(
                     ops={
-                        "triage_queued_items__triaged": TriageInput(
-                            url=url, notion_name=existing_name
-                        ),
+                        "triage_queued_items__triaged": TriageInput(url=url),
                     }
                 ),
             )

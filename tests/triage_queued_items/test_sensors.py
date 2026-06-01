@@ -13,16 +13,11 @@ def _notion_row(
     page_id: str,
     url: str,
     last_edited: str = "2026-06-01T10:00:00.000Z",
-    notion_name: str = "",
 ) -> dict:
-    title_chunks = [{"plain_text": notion_name}] if notion_name else []
     return {
         "id": page_id,
         "last_edited_time": last_edited,
-        "properties": {
-            "URL": {"url": url},
-            "Name": {"title": title_chunks},
-        },
+        "properties": {"URL": {"url": url}},
     }
 
 
@@ -64,21 +59,21 @@ def test_sensor_registers_dynamic_partition_per_row():
     assert set(add_req.partition_keys) == {"p-1", "p-2"}
 
 
-def test_sensor_carries_url_and_notion_name_in_run_config():
+def test_sensor_carries_url_in_run_config():
     notion = MagicMock()
     notion.query_queue.return_value = [
-        _notion_row("p-1", "https://example.com/a", notion_name="My Article"),
+        _notion_row("p-1", "https://example.com/a"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     ops_config = result.run_requests[0].run_config["ops"]
     triaged_cfg = ops_config["triage_queued_items__triaged"]["config"]
-    assert triaged_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
+    assert triaged_cfg == {"url": "https://example.com/a"}
 
 
 def test_sensor_tags_carry_only_notion_page_id():
     notion = MagicMock()
     notion.query_queue.return_value = [
-        _notion_row("p-1", "https://example.com/a", notion_name="X"),
+        _notion_row("p-1", "https://example.com/a"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert result.run_requests[0].tags == {"notion_page_id": "p-1"}
