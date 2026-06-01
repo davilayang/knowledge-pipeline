@@ -16,6 +16,7 @@ DATA_DIR = PROJECT_DIR / "data"
 
 # Local paths
 LOCAL_RAW_STORE = DATA_DIR / "raw_store.db"
+LOCAL_QUEUE_DB = DATA_DIR / "queue.db"
 
 
 # DAG versions — one per Dagster pipeline, all colocated here for tracking.
@@ -29,6 +30,7 @@ BACKUP_READINGS_DAG_VERSION = "4"
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNTHESIZE_WIKI_DAG_VERSION = "4"
 POPULATE_VECTOR_STORE_DAG_VERSION = "2"
+EXTRACT_QUEUED_ITEMS_DAG_VERSION = "1"
 
 
 # Backup settings

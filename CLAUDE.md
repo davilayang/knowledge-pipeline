@@ -108,6 +108,7 @@ packages/
     defs/
       shared/                  # Shared resources (raw_store, chroma, etc.)
       backup_readings/
+      extract_queued_items/
       synthesize_wiki/
       populate_vector_store/
       pipelines/               # Pipeline-level definitions (backup_readings, synthesize_wiki)

@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.13.0] — 2026-06-01
+
+### Added
+
+- **`extract_queued_items` pipeline** — turns Notion-captured URLs into extracted Topic Cards. Sensor polls Notion queue every 15 min (matches `Status=Queued` and rows with empty Status — mobile Share Sheet bypasses Notion templates on the free tier); per URL: Jina → curl-cffi/Pi SOCKS5 fallback → Anthropic Topic Card → flips Notion `Status=Ready`. Failures mirror back as `Status=Failed`. New `orchestrators` deps: `notion-client`, `curl-cffi`, `trafilatura`, `anthropic`. See `packages/orchestrators/src/orchestrators/defs/extract_queued_items/README.md` for envs + DB setup.
+
+- **`queue_items` SQLite table + `get_queue_extraction()` consumer API** (`data/queue.db`, `domains.raw_store.queue`). Notion holds lifecycle status + URL only; all extracted content stays kp-local per the 2026-05-27 privacy decision. `get_queue_extraction(notion_page_id=...)` is the cross-repo read path newsletter-assistant uses on engagement.
+
+---
+
 ## [0.12.4] — 2026-05-17
 
 ### Added

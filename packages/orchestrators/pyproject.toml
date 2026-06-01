@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-orchestrators"
-version = "0.12.4"
+version = "0.13.0"
 description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
 requires-python = ">=3.13"
 dependencies = [
@@ -12,6 +12,10 @@ dependencies = [
     "dagster-postgres",
     "dagster-webserver",
     "poethepoet",
+    "notion-client>=2.2,<3.0",
+    "curl-cffi>=0.7,<0.13",
+    "trafilatura>=2.0,<3.0",
+    "anthropic>=0.40,<1.0",
 ]
 
 [build-system]
