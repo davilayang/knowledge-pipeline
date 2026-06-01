@@ -9,6 +9,7 @@ from orchestrators.defs import (
     populate_vector_store,
     shared,
     synthesize_wiki,
+    triage_queued_items,
     upstream_sources,
 )
 
@@ -18,5 +19,6 @@ defs = dg.Definitions.merge(
     backup_readings.defs,
     synthesize_wiki.defs,
     populate_vector_store.defs,
+    triage_queued_items.defs,
     extract_complex_contents.defs,
 )

@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Pipeline split — `triage_queued_items` + `extract_complex_contents`** (`packages/orchestrators/src/orchestrators/defs/{triage_queued_items,extract_complex_contents}/`). Refactored single `extract_queued_items` pipeline into two coordinated DAGs. `triage_queued_items` classifies URL → Notion `Content Type` SELECT, canonicalizes the URL, fast-tracks Tier B types (`Article`, `Other`) to `Status=Ready`. `extract_complex_contents` filters on `Status=Fetching AND Content Type IN {YouTube, arXiv}` and runs type-aware fetch + extraction via a router → per-type branch → convergent persist asset graph. Coordination via Notion's `Status` + `Content Type` fields ("Notion-as-bus") — no Dagster-internal asset deps between DAGs. Shared `DynamicPartitionsDefinition(name="queue_items")` in `defs/shared/partitions.py`. `PDF` / `Podcast` fetchers follow when those URL types land.
+- **`queue_items` schema — single `extraction_payload` JSON column** (`packages/domains/src/domains/raw_store/queue.py`). Replaces 7 per-field Topic Card columns so per-content-type heterogeneity (Article vs YouTube vs arXiv) needs zero schema migration as prompts iterate. Adds `canonical_url` + `content_type` columns. `get_queue_extraction()` consumer API preserved — returns the same flat dict shape, sourced from the JSON payload + provenance columns. `create_schema()` runs idempotent ALTER TABLE statements so existing PR #65 DBs upgrade cleanly.
+- **Extraction now uses OpenAI** (`packages/orchestrators/.../extract_complex_contents/resources.py`). `ExtractorResource` becomes `ExtractorRegistry` — a strategy registry mapping `content_type → ExtractorProtocol` impl. v1 ships `SingleShotOpenAIExtractor` (same provider as `synthesize_wiki`). Future LangGraph adoption per type (e.g. arXiv) is a swap-in-place. `anthropic` dep dropped; `openai>=1.0,<2.0` added.
+
+### Added
+
+- **YouTube transcript fetcher** at `packages/orchestrators/.../extract_complex_contents/fetchers/youtube.py`. Ported from newsletter-assistant's `youtube_api.py`. Optional `YOUTUBE_PROXY_URL` env for SOCKS proxy routing.
+- **arXiv fetcher** at `packages/orchestrators/.../extract_complex_contents/fetchers/arxiv.py`. Metadata via the `arxiv` PyPI client (with semaphore + tenacity retry); PDF text via `pymupdf4llm`. Drops NA's LlamaParse REST chain — arXiv extraction is pymupdf4llm-only.
+- **Per-type prompt files** — `v5_article_kp_copy_2026_05_31`, `v5_youtube_kp_copy_2026_06_01`, `v5_arxiv_kp_copy_2026_06_01` (initially byte-identical; per-type tuning is a follow-up). New envs `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` replace the singular `EXTRACT_QUEUE_PROMPT_LABEL`.
+- **Triage failure → Notion `Status=Failed`** propagation via new `mark_notion_failed_on_triage_failure` run-failure sensor.
+
 ---
 
 ## [0.13.0] — 2026-06-01
