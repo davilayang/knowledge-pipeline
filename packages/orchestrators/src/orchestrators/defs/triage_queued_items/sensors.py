@@ -34,6 +34,15 @@ def poll_notion_for_triage(
             context.log.warning("Skipping page_id=%s with empty URL", page_id)
             continue
 
+        # User-set Content Type SELECT (None if unset); asset validates +
+        # falls back to URL classifier on typos.
+        ct_prop = row.get("properties", {}).get("Content Type", {}).get("select")
+        existing_ct = ct_prop.get("name") if ct_prop else None
+
+        # User-set Name (None if unset); metadata-only passthrough.
+        name_chunks = row.get("properties", {}).get("Name", {}).get("title") or []
+        existing_name = "".join(c.get("plain_text") or "" for c in name_chunks).strip() or None
+
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
         run_requests.append(
@@ -43,7 +52,11 @@ def poll_notion_for_triage(
                 tags={"notion_page_id": page_id},
                 run_config=dg.RunConfig(
                     ops={
-                        "triage_queued_items__triaged": TriageInput(url=url),
+                        "triage_queued_items__triaged": TriageInput(
+                            url=url,
+                            content_type=existing_ct,
+                            name=existing_name,
+                        ),
                     }
                 ),
             )

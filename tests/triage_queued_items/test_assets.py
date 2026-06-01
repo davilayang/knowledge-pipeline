@@ -15,19 +15,27 @@ def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
     return instance
 
 
-def _materialize(*, partition_key: str, resources: dict, url: str):
+def _materialize(
+    *,
+    partition_key: str,
+    resources: dict,
+    url: str,
+    content_type: str | None = None,
+    name: str | None = None,
+):
     instance = _instance_with_partition(partition_key)
+    op_config: dict = {"url": url}
+    if content_type is not None:
+        op_config["content_type"] = content_type
+    if name is not None:
+        op_config["name"] = name
     return dg.materialize(
         [triaged],
         partition_key=partition_key,
         resources=resources,
         instance=instance,
         tags={"notion_page_id": partition_key},
-        run_config={
-            "ops": {
-                "triage_queued_items__triaged": {"config": {"url": url}},
-            },
-        },
+        run_config={"ops": {"triage_queued_items__triaged": {"config": op_config}}},
     )
 
 
@@ -116,6 +124,72 @@ def test_triaged_does_not_write_name_to_notion(tmp_path: Path):
     kwargs = notion.write_triaged.call_args.kwargs
     assert "name_if_empty" not in kwargs
     assert "name" not in kwargs
+
+
+# -------- user override --------
+
+
+def test_triaged_respects_user_set_content_type(tmp_path: Path):
+    """A blog-looking URL with content_type=YouTube override → treated as YouTube."""
+    resources, notion = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://blog.example.com/post",
+        content_type="YouTube",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "YouTube"
+    assert metadata["content_type_source"].text == "notion"
+    assert metadata["tier"].text == "A"  # YouTube is Tier A
+    assert notion.write_triaged.call_args.kwargs["status_after"] == "Fetching"
+
+
+def test_triaged_falls_back_to_classifier_on_typo_content_type(tmp_path: Path):
+    """User typo'd content_type → classifier wins, source = 'classified'."""
+    resources, _ = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://youtube.com/watch?v=abc",
+        content_type="Youtub",  # typo
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "YouTube"  # classifier from URL
+    assert metadata["content_type_source"].text == "classified"
+
+
+def test_triaged_falls_back_to_classifier_on_empty_content_type(tmp_path: Path):
+    """No content_type override → classify from URL."""
+    resources, _ = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://arxiv.org/abs/2401.12345",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "arXiv"
+    assert metadata["content_type_source"].text == "classified"
+
+
+def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
+    """name is metadata-only — appears on the run, doesn't touch Notion."""
+    resources, notion = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/post",
+        name="A great article",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["name"].text == "A great article"
+    # Sanity: Notion.write_triaged still does not receive a name
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert "name" not in kwargs and "name_if_empty" not in kwargs
 
 
 def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):

@@ -14,8 +14,8 @@ poll_notion_for_triage (sensor, every 15min)
         ▼
 triage_queued_items_job  (partition_key = notion_page_id)
         │
-        └──► triaged  (classify URL + canonicalize + resolve name, then commit
-                       to local store + Notion in one atomic asset)
+        └──► triaged  (resolve Content Type (Notion override > URL classifier),
+                       canonicalize URL, commit to local store + Notion)
                 │
                 ├──► Tier A (YouTube / arXiv): Notion Status=Fetching
                 │    extract_complex_contents sensor picks up next tick
@@ -35,6 +35,18 @@ Status=Failed + Error back to the Notion row.
 | `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.raw_store.queue`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
 
 Triage never writes Notion's `Name` property — downstream `extract_complex_contents` (Tier A, from LLM extraction) or NA-at-engagement (Tier B) fills it from real content. Empty Name rows in Notion display URL-only until then.
+
+## User overrides
+
+The sensor reads three fields from each Notion row and passes them as typed config to the asset:
+
+| Field | Behavior |
+|---|---|
+| `URL` | Required input. Asset fails fast if missing. |
+| `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`Article`/`YouTube`/`arXiv`/`PDF`/`Podcast`/`Other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
+| `Name` (title) | Metadata-only passthrough. Asset surfaces it in the run materialization for observability but does not write it back to Notion or persist it to the local store. |
+
+`Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
 
 ## Env vars
 

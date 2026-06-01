@@ -12,12 +12,20 @@ from orchestrators.defs.triage_queued_items.sensors import (
 def _notion_row(
     page_id: str,
     url: str,
+    *,
     last_edited: str = "2026-06-01T10:00:00.000Z",
+    content_type: str | None = None,
+    name: str = "",
 ) -> dict:
+    props: dict = {"URL": {"url": url}}
+    if content_type is not None:
+        props["Content Type"] = {"select": {"name": content_type}}
+    if name:
+        props["Name"] = {"title": [{"plain_text": name}]}
     return {
         "id": page_id,
         "last_edited_time": last_edited,
-        "properties": {"URL": {"url": url}},
+        "properties": props,
     }
 
 
@@ -67,7 +75,30 @@ def test_sensor_carries_url_in_run_config():
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     ops_config = result.run_requests[0].run_config["ops"]
     triaged_cfg = ops_config["triage_queued_items__triaged"]["config"]
-    assert triaged_cfg == {"url": "https://example.com/a"}
+    assert triaged_cfg["url"] == "https://example.com/a"
+    # Unset overrides serialize as either absent or None — both mean "use fallback"
+    assert triaged_cfg.get("content_type") is None
+    assert triaged_cfg.get("name") is None
+
+
+def test_sensor_reads_user_set_content_type():
+    notion = MagicMock()
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://example.com/a", content_type="Podcast"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg["content_type"] == "Podcast"
+
+
+def test_sensor_reads_user_set_name():
+    notion = MagicMock()
+    notion.query_queue.return_value = [
+        _notion_row("p-1", "https://example.com/a", name="My Article"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg["name"] == "My Article"
 
 
 def test_sensor_tags_carry_only_notion_page_id():
