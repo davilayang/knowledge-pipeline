@@ -51,14 +51,30 @@ class ExtractionUsage:
 class NotionResource(dg.ConfigurableResource):
     integration_token: str
     queue_db_id: str
+    queue_data_source_id: str
 
     def _client(self) -> NotionClient:
         return NotionClient(auth=self.integration_token)
 
     def query_queue(self, *, status: str, page_size: int) -> list[dict[str, Any]]:
-        resp = self._client().databases.query(
-            database_id=self.queue_db_id,
-            filter={"property": "Status", "select": {"equals": status}},
+        # notion-client 2.x moved query() from databases to data_sources —
+        # Notion now models databases as containers for one or more data
+        # sources, and queries run against a data source. queue_db_id is kept
+        # for documentation + future write paths; the query path uses ds_id.
+        #
+        # The Status=empty branch absorbs the Notion free-tier limitation
+        # that the mobile Share Sheet (and Web Clipper) bypasses database
+        # templates — rows land with Name+URL filled and every other
+        # property empty. fetched_content flips Status=Fetching on pickup,
+        # so the empty-Status state is short-lived.
+        resp = self._client().data_sources.query(
+            data_source_id=self.queue_data_source_id,
+            filter={
+                "or": [
+                    {"property": "Status", "select": {"equals": status}},
+                    {"property": "Status", "select": {"is_empty": True}},
+                ]
+            },
             page_size=page_size,
         )
         return list(resp.get("results", []))
@@ -290,6 +306,7 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         "notion": NotionResource(
             integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
             queue_db_id=dg.EnvVar("NOTION_QUEUE_DB_ID"),
+            queue_data_source_id=dg.EnvVar("NOTION_QUEUE_DATA_SOURCE_ID"),
         ),
         "fetcher": FetcherResource(
             pi_socks5_url=dg.EnvVar("PI_SOCKS5_URL"),

@@ -64,7 +64,11 @@ def test_parse_topic_card_omits_unknown_keys():
 
 
 def _make_notion_with_mocked_client() -> tuple[NotionResource, MagicMock]:
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     mock_client = MagicMock()
     with patch.object(NotionResource, "_client", return_value=mock_client):
         pass
@@ -73,21 +77,34 @@ def _make_notion_with_mocked_client() -> tuple[NotionResource, MagicMock]:
 
 
 def test_notion_query_queue_filters_by_status():
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     fake_client = MagicMock()
-    fake_client.databases.query.return_value = {"results": [{"id": "p-1"}]}
+    fake_client.data_sources.query.return_value = {"results": [{"id": "p-1"}]}
     with patch.object(NotionResource, "_client", return_value=fake_client):
         rows = resource.query_queue(status="Queued", page_size=5)
-    fake_client.databases.query.assert_called_once_with(
-        database_id="db-123",
-        filter={"property": "Status", "select": {"equals": "Queued"}},
+    fake_client.data_sources.query.assert_called_once_with(
+        data_source_id="ds-456",
+        filter={
+            "or": [
+                {"property": "Status", "select": {"equals": "Queued"}},
+                {"property": "Status", "select": {"is_empty": True}},
+            ]
+        },
         page_size=5,
     )
     assert rows == [{"id": "p-1"}]
 
 
 def test_notion_update_status_writes_select_property():
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     fake_client = MagicMock()
     with patch.object(NotionResource, "_client", return_value=fake_client):
         resource.update_status("page-id", "Ready")
@@ -98,7 +115,11 @@ def test_notion_update_status_writes_select_property():
 
 
 def test_notion_update_status_failed_writes_status_and_error():
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     fake_client = MagicMock()
     with patch.object(NotionResource, "_client", return_value=fake_client):
         resource.update_status_failed("page-id", "fetch returned 403")
@@ -110,7 +131,11 @@ def test_notion_update_status_failed_writes_status_and_error():
 
 
 def test_notion_update_status_failed_truncates_long_errors():
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     fake_client = MagicMock()
     with patch.object(NotionResource, "_client", return_value=fake_client):
         resource.update_status_failed("page-id", "x" * 5000)
@@ -119,7 +144,11 @@ def test_notion_update_status_failed_truncates_long_errors():
 
 
 def test_notion_get_status_reads_select_name():
-    resource = NotionResource(integration_token="secret_x", queue_db_id="db-123")
+    resource = NotionResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
     fake_client = MagicMock()
     fake_client.pages.retrieve.return_value = {
         "properties": {"Status": {"select": {"name": "Ready"}}}
