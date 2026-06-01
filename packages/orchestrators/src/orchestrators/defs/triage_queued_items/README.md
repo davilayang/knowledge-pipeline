@@ -14,9 +14,8 @@ poll_notion_for_triage (sensor, every 15min)
         ▼
 triage_queued_items_job  (partition_key = notion_page_id)
         │
-        ├──► classified  (pure measurement — URL → content_type, canonical_url, optional title)
-        │
-        └──► routed  (side-effect boundary — writes kp local store + Notion)
+        └──► triaged  (classify URL + canonicalize + resolve name, then commit
+                       to local store + Notion in one atomic asset)
                 │
                 ├──► Tier A (YouTube / arXiv): Notion Status=Fetching
                 │    extract_complex_contents sensor picks up next tick

@@ -71,10 +71,8 @@ def test_sensor_carries_url_and_notion_name_in_run_config():
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     ops_config = result.run_requests[0].run_config["ops"]
-    classified_cfg = ops_config["triage_queued_items__classified"]["config"]
-    routed_cfg = ops_config["triage_queued_items__routed"]["config"]
-    assert classified_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
-    assert routed_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
+    triaged_cfg = ops_config["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg == {"url": "https://example.com/a", "notion_name": "My Article"}
 
 
 def test_sensor_tags_carry_only_notion_page_id():
