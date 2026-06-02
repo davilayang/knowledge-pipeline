@@ -1,12 +1,36 @@
 """Tests for the triaged asset."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import dagster as dg
+import pytest
 from orchestrators.defs.triage_queued_items.assets import triaged
 from orchestrators.defs.triage_queued_items.def_config import queue_items_partition_def
 from orchestrators.defs.triage_queued_items.resources import TriageQueueStore
+from orchestrators.defs.triage_queued_items.url_meta import UrlMeta
+
+
+@pytest.fixture(autouse=True)
+def _no_network():
+    """Default: url_meta returns empty UrlMeta with final_url = input. Tests
+    that want a specific UrlMeta should override via _patch_fetch."""
+
+    def _empty(url: str, **kwargs):
+        return UrlMeta(final_url=url, title=None, description=None)
+
+    with patch(
+        "orchestrators.defs.triage_queued_items.assets.fetch_url_meta",
+        side_effect=_empty,
+    ) as fake:
+        yield fake
+
+
+def _patch_fetch(meta: UrlMeta):
+    return patch(
+        "orchestrators.defs.triage_queued_items.assets.fetch_url_meta",
+        return_value=meta,
+    )
 
 
 def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
@@ -110,10 +134,66 @@ def test_triaged_writes_status_ready_for_tier_b(tmp_path: Path):
     assert call_kwargs["content_type"] == "Article"
 
 
-def test_triaged_does_not_write_name_to_notion(tmp_path: Path):
-    """We no longer fetch or write titles — Notion's Name property is left
-    untouched. Downstream extract (Tier A) or NA-at-engagement (Tier B)
-    fills it from real content."""
+def test_triaged_writes_fetched_title_to_notion_when_config_name_empty(tmp_path: Path):
+    """config.name unset + fetched title present → triage seeds Name in Notion."""
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        final_url="https://blog.example.com/post",
+        title="Fetched Title",
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") == "Fetched Title"
+
+
+def test_triaged_does_not_overwrite_existing_name(tmp_path: Path):
+    """config.name set → triage leaves Notion's Name alone, regardless of fetch."""
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        final_url="https://blog.example.com/post",
+        title="Fetched Title",
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+            name="User-set Name",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") is None
+
+
+def test_triaged_writes_fetched_description_to_notion(tmp_path: Path):
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        final_url="https://blog.example.com/post",
+        title=None,
+        description="A short blurb of the post.",
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("description") == "A short blurb of the post."
+
+
+def test_triaged_succeeds_with_empty_meta_on_fetch_failure(tmp_path: Path):
+    """fetch_url_meta returning empty meta (network error, non-html, etc.) →
+    triage classifies + writes Status normally, just without name/description."""
     resources, notion = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",
@@ -122,8 +202,31 @@ def test_triaged_does_not_write_name_to_notion(tmp_path: Path):
     )
     assert result.success
     kwargs = notion.write_triaged.call_args.kwargs
-    assert "name_if_empty" not in kwargs
-    assert "name" not in kwargs
+    assert kwargs.get("name") is None
+    assert kwargs.get("description") is None
+    assert kwargs["status_after"] == "Ready"
+
+
+def test_triaged_uses_final_url_for_classification_after_redirect(tmp_path: Path):
+    """A click-tracker URL that redirects to youtube.com → classified as YouTube,
+    not Article. The redirect resolution happens in url_meta; triage consumes
+    final_url for downstream classification + canonicalization."""
+    resources, _ = _resources(tmp_path)
+    meta = UrlMeta(
+        final_url="https://youtube.com/watch?v=abc123",
+        title=None,
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://t.co/shortened",
+        )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "YouTube"
+    assert metadata["tier"].text == "A"
 
 
 # -------- user override --------
@@ -176,7 +279,8 @@ def test_triaged_falls_back_to_classifier_on_empty_content_type(tmp_path: Path):
 
 
 def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
-    """name is metadata-only — appears on the run, doesn't touch Notion."""
+    """name is metadata-only — appears on the run; Notion's Name is not
+    overwritten when config.name is set."""
     resources, notion = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",
@@ -187,9 +291,8 @@ def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["name"].text == "A great article"
-    # Sanity: Notion.write_triaged still does not receive a name
     kwargs = notion.write_triaged.call_args.kwargs
-    assert "name" not in kwargs and "name_if_empty" not in kwargs
+    assert kwargs.get("name") is None
 
 
 def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):

@@ -10,14 +10,16 @@ from notion_client import Client as NotionClient
 from orchestrators.config import LOCAL_QUEUE_DB
 
 
+# TODO: move to shared/resources
 class TriageNotionResource(dg.ConfigurableResource):
     """Notion reads + writes used only by triage.
 
     Reads the Queue data source for rows that need classification
     (Status=Queued OR Status is empty — the latter absorbs mobile-share
     template bypass).
-    Writes Content Type + flipped Status back to the row. Name is left
-    untouched — downstream extract / NA fills it from real content.
+    Writes Content Type, Status, and (optionally) Name + Description back to
+    the row. Name is only written when the user left it blank — extract /
+    NA can still overwrite it later from real content.
     """
 
     integration_token: str
@@ -52,16 +54,25 @@ class TriageNotionResource(dg.ConfigurableResource):
         page_id: str,
         content_type: str,
         status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
+        name: str | None = None,
+        description: str | None = None,
     ) -> None:
-        """Two-step write: Content Type first, then Status as the monotonic last
-        write. If Status flipped first and the Content Type write then failed,
-        the extract sensor would pick the row up without classification
-        persisted to Notion."""
+        """Two-step write: everything-non-Status first, then Status as the
+        monotonic last write. If Status flipped first and the prior write then
+        failed, the extract sensor would pick the row up without classification
+        persisted to Notion.
+
+        `name` and `description` are optional Notion-enrichment fields. `name`
+        is the page Title; pass it only when Notion's existing Name is empty
+        (caller decides — TriageInput.name passthrough). `description` is a
+        rich_text blurb; safe to always overwrite."""
+        properties: dict[str, dict] = {"Content Type": {"select": {"name": content_type}}}
+        if name is not None:
+            properties["Name"] = {"title": [{"text": {"content": name}}]}
+        if description is not None:
+            properties["Description"] = {"rich_text": [{"text": {"content": description}}]}
         client = self._client()
-        client.pages.update(
-            page_id=page_id,
-            properties={"Content Type": {"select": {"name": content_type}}},
-        )
+        client.pages.update(page_id=page_id, properties=properties)
         client.pages.update(
             page_id=page_id,
             properties={"Status": {"select": {"name": status_after}}},
@@ -77,7 +88,7 @@ class TriageNotionResource(dg.ConfigurableResource):
             },
         )
 
-
+# TODO: move to shared/queue_store.py
 class TriageQueueStore(dg.ConfigurableResource):
     """Thin wrapper around domains.raw_store.queue for the triage path."""
 
