@@ -31,7 +31,7 @@ def _notion_row(
 
 def test_sensor_emits_run_request_per_row():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
         _notion_row("p-3", "https://youtube.com/watch?v=xyz"),
@@ -43,7 +43,7 @@ def test_sensor_emits_run_request_per_row():
 
 def test_sensor_skips_rows_with_empty_url():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         {
             "id": "p-2",
@@ -57,7 +57,7 @@ def test_sensor_skips_rows_with_empty_url():
 
 def test_sensor_registers_dynamic_partition_per_row():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
     ]
@@ -69,7 +69,7 @@ def test_sensor_registers_dynamic_partition_per_row():
 
 def test_sensor_carries_url_in_run_config():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
@@ -83,7 +83,7 @@ def test_sensor_carries_url_in_run_config():
 
 def test_sensor_reads_user_set_content_type():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a", content_type="Podcast"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
@@ -93,7 +93,7 @@ def test_sensor_reads_user_set_content_type():
 
 def test_sensor_reads_user_set_name():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a", name="My Article"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
@@ -103,7 +103,7 @@ def test_sensor_reads_user_set_name():
 
 def test_sensor_tags_carry_only_notion_page_id():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_triage.return_value = [
         _notion_row("p-1", "https://example.com/a"),
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)

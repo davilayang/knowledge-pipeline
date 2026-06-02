@@ -4,13 +4,14 @@ import json
 import dagster as dg
 
 from orchestrators.config import EXTRACT_COMPLEX_CONTENTS_DAG_VERSION
+from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 from .def_config import (
     FETCHED_CONTENT_MIN_CHARS,
     PIPELINE_TAG,
     queue_items_partition_def,
 )
-from .resources import ExtractorRegistry, ExtractQueueStore, FetcherResource, NotionResource
+from .resources import ExtractorRegistry, FetcherResource
 
 GROUP_NAME = "extract_complex_contents"
 
@@ -47,7 +48,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 def fetched(
     context: dg.AssetExecutionContext,
     fetcher: FetcherResource,
-    store: ExtractQueueStore,
+    store: QueueStoreResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
     store.ensure_schema()
@@ -172,7 +173,7 @@ def fetched(
 def extracted(
     context: dg.AssetExecutionContext,
     extractor: ExtractorRegistry,
-    store: ExtractQueueStore,
+    store: QueueStoreResource,
 ):
     page_id = context.partition_key
     row = store.get_row(page_id)
@@ -246,8 +247,8 @@ def extracted(
 )
 def published(
     context: dg.AssetExecutionContext,
-    notion: NotionResource,
-    store: ExtractQueueStore,
+    notion: NotionQueueResource,
+    store: QueueStoreResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
     row = store.get_row(page_id)

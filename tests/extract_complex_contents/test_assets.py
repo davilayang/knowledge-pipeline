@@ -21,10 +21,8 @@ from orchestrators.defs.extract_complex_contents.def_config import (
     queue_items_partition_def,
 )
 from orchestrators.defs.extract_complex_contents.extractors import ExtractionUsage
-from orchestrators.defs.extract_complex_contents.resources import (
-    ExtractQueueStore,
-    FetchResult,
-)
+from orchestrators.defs.extract_complex_contents.resources import FetchResult
+from orchestrators.defs.shared.queue_resources import QueueStoreResource
 
 
 def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
@@ -110,7 +108,7 @@ def _mock_extractor(title: str | None = "Test Title") -> MagicMock:
 
 
 def test_fetched_fails_when_row_missing(tmp_path: Path):
-    store = ExtractQueueStore(db_path=str(tmp_path / "q.db"))
+    store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     fetcher = MagicMock()
     with pytest.raises(Exception, match="No queue_items row"):
@@ -134,7 +132,7 @@ def test_fetched_fails_when_content_type_null(tmp_path: Path):
         fetched_content_char_count=4,
         content_hash="h",
     )
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     with pytest.raises(Exception, match="no content_type"):
         _materialize(
@@ -147,7 +145,7 @@ def test_fetched_fails_when_content_type_null(tmp_path: Path):
 def test_fetched_skips_when_raw_content_cached(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     result = _materialize(
         fetched,
@@ -163,7 +161,7 @@ def test_fetched_skips_when_raw_content_cached(tmp_path: Path):
 def test_fetched_dispatches_youtube(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     body = "y" * 5000
     fetcher.fetch_for_type.return_value = FetchResult(
@@ -188,7 +186,7 @@ def test_fetched_dispatches_youtube(tmp_path: Path):
 def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "arXiv", url="https://arxiv.org/abs/2401.00001")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     body = "a" * 5000
     fetcher.fetch_for_type.return_value = FetchResult(
@@ -216,7 +214,7 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
 def test_fetched_fails_when_below_floor(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     fetcher.fetch_for_type.return_value = FetchResult(content="short", tier="youtube", tier_log=[])
     with pytest.raises(Exception, match="below floor"):
@@ -231,7 +229,7 @@ def test_fetched_fails_when_below_floor(tmp_path: Path):
 def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     body = "HEAD" + ("x" * 5000) + "TAIL"
     fetcher.fetch_for_type.return_value = FetchResult(content=body, tier="youtube", tier_log=[])
@@ -255,7 +253,7 @@ def test_fetched_metadata_includes_content_preview(tmp_path: Path):
 def test_extracted_persists_and_passes_check(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="JEPA talk")
     result = _materialize(
         extracted,
@@ -275,7 +273,7 @@ def test_extracted_persists_and_passes_check(tmp_path: Path):
 def test_extracted_check_fails_when_title_missing(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title=None)
     with pytest.raises(Exception):
         _materialize(
@@ -288,7 +286,7 @@ def test_extracted_check_fails_when_title_missing(tmp_path: Path):
 def test_extracted_fails_when_no_raw_content(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     extractor = MagicMock()
     with pytest.raises(Exception, match="No raw_content"):
         _materialize(
@@ -301,7 +299,7 @@ def test_extracted_fails_when_no_raw_content(tmp_path: Path):
 def test_extracted_dispatches_by_content_type(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "arXiv", "a" * 5000)
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="Paper")
     _materialize(
         extracted,
@@ -315,7 +313,7 @@ def test_extracted_dispatches_by_content_type(tmp_path: Path):
 def test_extracted_metadata_includes_extraction_preview(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="Visible Title")
     result = _materialize(
         extracted,
@@ -344,7 +342,7 @@ def test_published_flips_notion_when_extraction_complete(tmp_path: Path):
         tokens_in=100,
         tokens_out=50,
     )
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()
     result = _materialize(
         published,
@@ -358,7 +356,7 @@ def test_published_flips_notion_when_extraction_complete(tmp_path: Path):
 def test_published_fails_when_no_extraction(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube")
-    store = ExtractQueueStore(db_path=str(db_path))
+    store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()
     with pytest.raises(Exception, match="No extraction completed"):
         _materialize(
@@ -370,7 +368,7 @@ def test_published_fails_when_no_extraction(tmp_path: Path):
 
 
 def test_published_fails_when_no_row(tmp_path: Path):
-    store = ExtractQueueStore(db_path=str(tmp_path / "q.db"))
+    store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     notion = MagicMock()
     with pytest.raises(Exception, match="No extraction completed"):

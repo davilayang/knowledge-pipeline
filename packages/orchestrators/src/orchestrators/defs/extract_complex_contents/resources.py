@@ -1,9 +1,12 @@
 """Resources for the extract_complex_contents pipeline.
 
-- NotionResource — lifecycle-only writes to the Knowledge OS Queue DB.
 - FetcherResource — per-type dispatch (YouTube, arXiv, article cascade).
 - ExtractorRegistry — strategy registry: maps content_type → ExtractorProtocol.
-- ExtractQueueStore — thin wrapper over domains.raw_store.queue.
+
+Notion access and the queue.db wrapper live in
+`orchestrators.defs.shared.queue_resources` since both are shared with the
+triage pipeline. This module wires the extract-specific resources and
+binds shared classes to local keys in `build_resources`.
 
 Per-type strategies live in `fetchers/` and `extractors/`; this module
 holds the Dagster ConfigurableResource boundaries that orchestrate them.
@@ -14,71 +17,16 @@ from pathlib import Path
 from typing import Any
 
 import dagster as dg
-from domains.raw_store import queue as queue_db
-from notion_client import Client as NotionClient
 
-from orchestrators.config import LOCAL_QUEUE_DB
+from orchestrators.defs.shared.queue_resources import (
+    NotionQueueResource,
+    QueueStoreResource,
+)
 
 from .extractors import ExtractionUsage, ExtractorProtocol, SingleShotOpenAIExtractor
 from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
-
-
-class NotionResource(dg.ConfigurableResource):
-    integration_token: str
-    queue_db_id: str
-    queue_data_source_id: str
-
-    def _client(self) -> NotionClient:
-        return NotionClient(auth=self.integration_token)
-
-    def query_queue(
-        self,
-        *,
-        page_size: int,
-        supported_content_types: tuple[str, ...],
-    ) -> list[dict[str, Any]]:
-        """Query Notion data source for rows ready for complex-content extraction:
-        Status=Fetching AND Content Type ∈ supported_content_types. Triage handles
-        classification and flips Status to Fetching before this pipeline picks up.
-        """
-        type_filters = [
-            {"property": "Content Type", "select": {"equals": t}} for t in supported_content_types
-        ]
-        type_clause = {"or": type_filters} if len(type_filters) > 1 else type_filters[0]
-        resp = self._client().data_sources.query(
-            data_source_id=self.queue_data_source_id,
-            filter={
-                "and": [
-                    {"property": "Status", "select": {"equals": "Fetching"}},
-                    type_clause,
-                ]
-            },
-            page_size=page_size,
-        )
-        return list(resp.get("results", []))
-
-    def get_status(self, page_id: str) -> str | None:
-        page = self._client().pages.retrieve(page_id=page_id)
-        status_prop = page.get("properties", {}).get("Status", {})
-        select = status_prop.get("select")
-        return select.get("name") if select else None
-
-    def update_status(self, page_id: str, status: str) -> None:
-        self._client().pages.update(
-            page_id=page_id,
-            properties={"Status": {"select": {"name": status}}},
-        )
-
-    def update_status_failed(self, page_id: str, error: str) -> None:
-        self._client().pages.update(
-            page_id=page_id,
-            properties={
-                "Status": {"select": {"name": "Failed"}},
-                "Error": {"rich_text": [{"text": {"content": error[:1900]}}]},
-            },
-        )
 
 
 class FetcherResource(dg.ConfigurableResource):
@@ -172,79 +120,9 @@ class ExtractorRegistry(dg.ConfigurableResource):
         return self._strategy_for(content_type).extract(content, content_type=content_type)
 
 
-class ExtractQueueStore(dg.ConfigurableResource):
-    db_path: str = str(LOCAL_QUEUE_DB)
-
-    def _path(self) -> Path:
-        return Path(self.db_path)
-
-    def ensure_schema(self) -> None:
-        queue_db.create_schema(db_path=self._path())
-
-    def upsert_fetched(
-        self,
-        *,
-        notion_page_id: str,
-        url: str,
-        raw_content: str,
-        fetch_tier: str,
-        fetch_tier_log: list[dict[str, Any]],
-        fetched_content_char_count: int,
-        content_hash: str,
-    ) -> None:
-        queue_db.upsert_fetched(
-            db_path=self._path(),
-            notion_page_id=notion_page_id,
-            url=url,
-            raw_content=raw_content,
-            fetch_tier=fetch_tier,
-            fetch_tier_log=fetch_tier_log,
-            fetched_content_char_count=fetched_content_char_count,
-            content_hash=content_hash,
-        )
-
-    def update_extracted(
-        self,
-        *,
-        notion_page_id: str,
-        extraction: dict[str, Any],
-        prompt_label: str,
-        prompt_sha256: str,
-        model: str,
-        tokens_in: int,
-        tokens_out: int,
-    ) -> None:
-        queue_db.update_extracted(
-            db_path=self._path(),
-            notion_page_id=notion_page_id,
-            extraction=extraction,
-            prompt_label=prompt_label,
-            prompt_sha256=prompt_sha256,
-            model=model,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-        )
-
-    def mark_failed(self, *, notion_page_id: str, error_text: str, url: str | None = None) -> None:
-        queue_db.mark_failed(
-            db_path=self._path(),
-            notion_page_id=notion_page_id,
-            error_text=error_text,
-            url=url,
-        )
-
-    def get_row(self, notion_page_id: str) -> dict[str, Any] | None:
-        return queue_db.get_row(db_path=self._path(), notion_page_id=notion_page_id)
-
-    def list_with_stale_extraction(self, min_age_minutes: int) -> list[dict[str, Any]]:
-        return queue_db.list_with_stale_extraction(
-            db_path=self._path(), min_age_minutes=min_age_minutes
-        )
-
-
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "notion": NotionResource(
+        "notion": NotionQueueResource(
             integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
             queue_db_id=dg.EnvVar("NOTION_QUEUE_DB_ID"),
             queue_data_source_id=dg.EnvVar("NOTION_QUEUE_DATA_SOURCE_ID"),
@@ -262,5 +140,5 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             prompt_label_youtube=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE"),
             prompt_label_arxiv=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_ARXIV"),
         ),
-        "store": ExtractQueueStore(),
+        "store": QueueStoreResource(),
     }

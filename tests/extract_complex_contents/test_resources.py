@@ -20,10 +20,9 @@ from orchestrators.defs.extract_complex_contents.extractors.openai_single_shot i
 from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
 from orchestrators.defs.extract_complex_contents.resources import (
     ExtractorRegistry,
-    ExtractQueueStore,
     FetcherResource,
-    NotionResource,
 )
+from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 # -------- _parse_topic_card --------
 
@@ -65,37 +64,37 @@ def test_parse_topic_card_omits_unknown_keys():
     assert "extra_field" not in out
 
 
-# -------- NotionResource --------
+# -------- NotionQueueResource --------
 
 
-def _make_notion_with_mocked_client() -> tuple[NotionResource, MagicMock]:
-    resource = NotionResource(
+def _make_notion_with_mocked_client() -> tuple[NotionQueueResource, MagicMock]:
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     mock_client = MagicMock()
-    with patch.object(NotionResource, "_client", return_value=mock_client):
+    with patch.object(NotionQueueResource, "_client", return_value=mock_client):
         pass
     # Re-patch for actual use — caller wraps with patch.object too.
     return resource, mock_client
 
 
-def test_notion_query_queue_filters_by_fetching_and_content_type():
-    resource = NotionResource(
+def test_notion_query_for_extract_filters_by_fetching_and_content_type():
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
     fake_client.data_sources.query.return_value = {"results": [{"id": "p-1"}]}
-    with patch.object(NotionResource, "_client", return_value=fake_client):
-        rows = resource.query_queue(page_size=2, supported_content_types=("YouTube", "arXiv"))
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        rows = resource.query_for_extract(page_size=2, supported_content_types=("YouTube", "arXiv"))
     fake_client.data_sources.query.assert_called_once_with(
         data_source_id="ds-456",
         filter={
             "and": [
-                {"property": "Status", "select": {"equals": "Fetching"}},
+                {"property": "Status", "status": {"equals": "Fetching"}},
                 {
                     "or": [
                         {"property": "Content Type", "select": {"equals": "YouTube"}},
@@ -109,76 +108,76 @@ def test_notion_query_queue_filters_by_fetching_and_content_type():
     assert rows == [{"id": "p-1"}]
 
 
-def test_notion_query_queue_single_type_uses_flat_clause():
-    resource = NotionResource(
+def test_notion_query_for_extract_single_type_uses_flat_clause():
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
     fake_client.data_sources.query.return_value = {"results": []}
-    with patch.object(NotionResource, "_client", return_value=fake_client):
-        resource.query_queue(page_size=1, supported_content_types=("YouTube",))
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.query_for_extract(page_size=1, supported_content_types=("YouTube",))
     call_filter = fake_client.data_sources.query.call_args.kwargs["filter"]
     type_clause = call_filter["and"][1]
     assert type_clause == {"property": "Content Type", "select": {"equals": "YouTube"}}
 
 
-def test_notion_update_status_writes_select_property():
-    resource = NotionResource(
+def test_notion_update_status_writes_native_status_property():
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
-    with patch.object(NotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.update_status("page-id", "Ready")
     fake_client.pages.update.assert_called_once_with(
         page_id="page-id",
-        properties={"Status": {"select": {"name": "Ready"}}},
+        properties={"Status": {"status": {"name": "Ready"}}},
     )
 
 
 def test_notion_update_status_failed_writes_status_and_error():
-    resource = NotionResource(
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
-    with patch.object(NotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.update_status_failed("page-id", "fetch returned 403")
     args, kwargs = fake_client.pages.update.call_args
     assert kwargs["page_id"] == "page-id"
     props = kwargs["properties"]
-    assert props["Status"] == {"select": {"name": "Failed"}}
+    assert props["Status"] == {"status": {"name": "Failed"}}
     assert props["Error"]["rich_text"][0]["text"]["content"] == "fetch returned 403"
 
 
 def test_notion_update_status_failed_truncates_long_errors():
-    resource = NotionResource(
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
-    with patch.object(NotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.update_status_failed("page-id", "x" * 5000)
     props = fake_client.pages.update.call_args.kwargs["properties"]
     assert len(props["Error"]["rich_text"][0]["text"]["content"]) == 1900
 
 
-def test_notion_get_status_reads_select_name():
-    resource = NotionResource(
+def test_notion_get_status_reads_native_status_name():
+    resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
     )
     fake_client = MagicMock()
     fake_client.pages.retrieve.return_value = {
-        "properties": {"Status": {"select": {"name": "Ready"}}}
+        "properties": {"Status": {"status": {"name": "Ready"}}}
     }
-    with patch.object(NotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         assert resource.get_status("p-1") == "Ready"
 
 
@@ -381,12 +380,12 @@ def test_extractor_uses_real_v5_article_prompt_label():
     assert len(registry.prompt_sha256("Article")) == 64
 
 
-# -------- ExtractQueueStore --------
+# -------- QueueStoreResource --------
 
 
 def test_store_roundtrip_via_real_sqlite(tmp_path: Path):
     """Smoke test — store delegates to domains.raw_store.queue; one path through."""
-    store = ExtractQueueStore(db_path=str(tmp_path / "q.db"))
+    store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     store.upsert_fetched(
         notion_page_id="p-1",

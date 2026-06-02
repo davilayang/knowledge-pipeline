@@ -3,10 +3,13 @@ import textwrap
 import dagster as dg
 
 from orchestrators.config import TRIAGE_QUEUED_ITEMS_DAG_VERSION
+from orchestrators.defs.shared.queue_resources import (
+    NotionQueueResource,
+    QueueStoreResource,
+)
 
 from .classify import ALL_CONTENT_TYPES, canonicalize_url, classify_content_type, is_tier_a
 from .def_config import PIPELINE_TAG, queue_items_partition_def
-from .resources import TriageNotionResource, TriageQueueStore
 from .url_meta import fetch_url_meta
 
 GROUP_NAME = "triage_queued_items"
@@ -59,8 +62,8 @@ class TriageInput(dg.Config):
 def triaged(
     context: dg.AssetExecutionContext,
     config: TriageInput,
-    triage_notion: TriageNotionResource,
-    triage_store: TriageQueueStore,
+    triage_notion: NotionQueueResource,
+    triage_store: QueueStoreResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
 
