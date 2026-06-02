@@ -43,13 +43,14 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
     assert fake_client.pages.update.call_count == 2
     first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
     second_call_props = fake_client.pages.update.call_args_list[1].kwargs["properties"]
-    assert list(first_call_props.keys()) == ["Content Type"]
+    assert "Content Type" in first_call_props
+    assert "Status" not in first_call_props
     assert list(second_call_props.keys()) == ["Status"]
     assert second_call_props["Status"]["select"]["name"] == "Fetching"
 
 
-def test_triage_notion_write_triaged_never_touches_name():
-    """Triage never writes Name — extract/NA fills it from real content."""
+def test_triage_notion_write_triaged_omits_name_when_not_provided():
+    """name=None → no Name write. Preserves existing user-set value."""
     resource = _make_notion()
     fake_client = MagicMock()
     with patch.object(TriageNotionResource, "_client", return_value=fake_client):
@@ -57,9 +58,57 @@ def test_triage_notion_write_triaged_never_touches_name():
             page_id="p-1",
             content_type="Article",
             status_after="Ready",
+            name=None,
         )
     for call in fake_client.pages.update.call_args_list:
         assert "Name" not in call.kwargs["properties"]
+
+
+def test_triage_notion_write_triaged_writes_name_when_provided():
+    """name=<str> → batched into the same Notion call as Content Type."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            name="Hello World",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert "Name" in first_call_props
+    title_chunks = first_call_props["Name"]["title"]
+    assert title_chunks[0]["text"]["content"] == "Hello World"
+
+
+def test_triage_notion_write_triaged_writes_description_when_provided():
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            description="A short blurb.",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert "Description" in first_call_props
+    rich_text = first_call_props["Description"]["rich_text"]
+    assert rich_text[0]["text"]["content"] == "A short blurb."
+
+
+def test_triage_notion_write_triaged_omits_description_when_not_provided():
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            description=None,
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Description" not in call.kwargs["properties"]
 
 
 # -------- TriageQueueStore --------

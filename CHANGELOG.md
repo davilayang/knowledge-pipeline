@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.1] — 2026-06-02
+
+### Added
+
+- **URL enrichment at triage** — `triaged` now follows redirects and extracts page title + short description (≤ 200 chars) from HTML head before classifying. Notion's `Name` is seeded from the fetched title when the user left it blank; `Description` is always written when one was found. Implementation: `triage_queued_items/url_meta.py` (`fetch_url_meta`, backed by `httpx` + `trafilatura`; never raises — empty meta on any network or parse failure).
+
+### Changed
+
+- **Triage Notion write now includes `Name` + `Description` fields** — `TriageNotionResource.write_triaged` accepts optional `name` and `description`; name is skipped when the user already set one, description is always overwritten. `final_url`, `fetched_title`, and `fetched_description` added to asset materialization metadata.
+
+---
+
 ## [0.14.0] — 2026-06-01
 
 ### Added
