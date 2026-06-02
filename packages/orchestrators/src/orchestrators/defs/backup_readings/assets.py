@@ -172,6 +172,24 @@ def snapshot_research(
     return _snapshot_one_db(context, backup, "research.db")
 
 
+@dg.asset(
+    key=["snapshots", "queue"],
+    group_name="backup",
+    compute_kind="sqlite",
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Consistent SQLite snapshot of queue.db (kp's triage + extract queue) "
+        "for the partition's date."
+    ),
+)
+def snapshot_queue(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    return _snapshot_one_db(context, backup, "queue.db")
+
+
 # ---------- Drive capacity observation ----------
 
 
@@ -186,6 +204,7 @@ def snapshot_research(
         dg.AssetDep(["snapshots", "sessions"]),
         dg.AssetDep(["snapshots", "notes"]),
         dg.AssetDep(["snapshots", "research"]),
+        dg.AssetDep(["snapshots", "queue"]),
     ],
     check_specs=[
         dg.AssetCheckSpec(
@@ -410,6 +429,7 @@ all_assets = [
     snapshot_sessions,
     snapshot_notes,
     snapshot_research,
+    snapshot_queue,
     storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,

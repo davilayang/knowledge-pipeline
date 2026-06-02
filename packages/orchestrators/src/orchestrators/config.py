@@ -25,7 +25,7 @@ LOCAL_QUEUE_DB = DATA_DIR / "queue.db"
 # downstream assets as stale until re-materialized. Decoupled from package
 # versions on purpose (the version-bump skill rolls package versions on every
 # release, which would otherwise mark every asset stale on every release).
-BACKUP_READINGS_DAG_VERSION = "4"
+BACKUP_READINGS_DAG_VERSION = "5"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNTHESIZE_WIKI_DAG_VERSION = "4"
@@ -37,7 +37,7 @@ TRIAGE_QUEUED_ITEMS_DAG_VERSION = "1"
 
 
 # Backup settings
-DB_FILES = ["raw_store.db", "sessions.db", "research.db"]
+DB_FILES = ["raw_store.db", "sessions.db", "research.db", "queue.db"]
 
 # Per-partition tarballs of flat-file directories under BACKUP_SOURCE_DIR.
 # Each entry: (source subdir name, archive file name).
