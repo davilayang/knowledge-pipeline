@@ -11,7 +11,7 @@ from pathlib import Path
 
 import dagster as dg
 
-from orchestrators.config import BACKUP_READINGS_DAG_VERSION
+from orchestrators.config import BACKUP_READINGS_DAG_VERSION, LOCAL_QUEUE_DB
 
 from .def_config import (
     DRIVE_USAGE_THRESHOLD,
@@ -48,16 +48,21 @@ def _sha256(path: Path) -> str:
 def _snapshot_one_db(
     context: dg.AssetExecutionContext,
     backup: BackupResource,
-    db_name: str,
+    source: Path,
 ) -> dg.MaterializeResult:
-    source = backup.get_source_dir() / db_name
+    """Snapshot the SQLite file at `source` into the partition's backup dir.
+
+    Most kp backup assets read from `BACKUP_SOURCE_DIR` (newsletter-assistant's
+    data directory, bind-mounted in compose). queue.db is the exception —
+    it's owned by this repo, lives in kp's own data dir, and is passed in
+    directly via `LOCAL_QUEUE_DB`."""
     if not source.exists():
         raise dg.Failure(
             description=f"Source DB missing: {source}",
             metadata={"source_path": dg.MetadataValue.path(str(source))},
         )
 
-    dest = backup.get_partition_dir(context.partition_key) / db_name
+    dest = backup.get_partition_dir(context.partition_key) / source.name
     _sqlite_backup(source, dest)
     size = dest.stat().st_size
     digest = _sha256(dest)
@@ -123,7 +128,7 @@ def _snapshot_one_dir(
 def snapshot_raw_store(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_db(context, backup, "raw_store.db")
+    return _snapshot_one_db(context, backup, backup.get_source_dir() / "raw_store.db")
 
 
 @dg.asset(
@@ -139,7 +144,7 @@ def snapshot_raw_store(
 def snapshot_sessions(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_db(context, backup, "sessions.db")
+    return _snapshot_one_db(context, backup, backup.get_source_dir() / "sessions.db")
 
 
 @dg.asset(
@@ -169,7 +174,28 @@ def snapshot_notes(
 def snapshot_research(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_db(context, backup, "research.db")
+    return _snapshot_one_db(context, backup, backup.get_source_dir() / "research.db")
+
+
+@dg.asset(
+    key=["snapshots", "queue"],
+    group_name="backup",
+    compute_kind="sqlite",
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Consistent SQLite snapshot of queue.db (kp's triage + extract queue) "
+        "for the partition's date."
+    ),
+)
+def snapshot_queue(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    # queue.db is owned by kp (written by triage/extract). Read from kp's
+    # own data dir, NOT BACKUP_SOURCE_DIR which points at NA's data dir on
+    # prod.
+    return _snapshot_one_db(context, backup, LOCAL_QUEUE_DB)
 
 
 # ---------- Drive capacity observation ----------
@@ -186,6 +212,7 @@ def snapshot_research(
         dg.AssetDep(["snapshots", "sessions"]),
         dg.AssetDep(["snapshots", "notes"]),
         dg.AssetDep(["snapshots", "research"]),
+        dg.AssetDep(["snapshots", "queue"]),
     ],
     check_specs=[
         dg.AssetCheckSpec(
@@ -410,6 +437,7 @@ all_assets = [
     snapshot_sessions,
     snapshot_notes,
     snapshot_research,
+    snapshot_queue,
     storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,

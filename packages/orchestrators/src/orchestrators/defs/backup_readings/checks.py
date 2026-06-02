@@ -166,9 +166,22 @@ def verify_snapshot_research(
     return _verify_one(context, backup, "research.db")
 
 
+@dg.asset_check(
+    asset=dg.AssetKey(["snapshots", "queue"]),
+    name="verify_snapshot_queue",
+    blocking=True,
+    description="queue.db opens, integrity_check passes, has tables.",
+)
+def verify_snapshot_queue(
+    context: dg.AssetCheckExecutionContext, backup: BackupResource
+) -> dg.AssetCheckResult:
+    return _verify_one(context, backup, "queue.db")
+
+
 all_checks = [
     verify_snapshot_raw_store,
     verify_snapshot_sessions,
     verify_snapshot_notes,
     verify_snapshot_research,
+    verify_snapshot_queue,
 ]
