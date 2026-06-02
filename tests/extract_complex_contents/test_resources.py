@@ -94,7 +94,7 @@ def test_notion_query_for_extract_filters_by_fetching_and_content_type():
         data_source_id="ds-456",
         filter={
             "and": [
-                {"property": "Status", "select": {"equals": "Fetching"}},
+                {"property": "Status", "status": {"equals": "Fetching"}},
                 {
                     "or": [
                         {"property": "Content Type", "select": {"equals": "YouTube"}},
@@ -123,7 +123,7 @@ def test_notion_query_for_extract_single_type_uses_flat_clause():
     assert type_clause == {"property": "Content Type", "select": {"equals": "YouTube"}}
 
 
-def test_notion_update_status_writes_select_property():
+def test_notion_update_status_writes_native_status_property():
     resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
@@ -134,7 +134,7 @@ def test_notion_update_status_writes_select_property():
         resource.update_status("page-id", "Ready")
     fake_client.pages.update.assert_called_once_with(
         page_id="page-id",
-        properties={"Status": {"select": {"name": "Ready"}}},
+        properties={"Status": {"status": {"name": "Ready"}}},
     )
 
 
@@ -150,7 +150,7 @@ def test_notion_update_status_failed_writes_status_and_error():
     args, kwargs = fake_client.pages.update.call_args
     assert kwargs["page_id"] == "page-id"
     props = kwargs["properties"]
-    assert props["Status"] == {"select": {"name": "Failed"}}
+    assert props["Status"] == {"status": {"name": "Failed"}}
     assert props["Error"]["rich_text"][0]["text"]["content"] == "fetch returned 403"
 
 
@@ -167,7 +167,7 @@ def test_notion_update_status_failed_truncates_long_errors():
     assert len(props["Error"]["rich_text"][0]["text"]["content"]) == 1900
 
 
-def test_notion_get_status_reads_select_name():
+def test_notion_get_status_reads_native_status_name():
     resource = NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
@@ -175,7 +175,7 @@ def test_notion_get_status_reads_select_name():
     )
     fake_client = MagicMock()
     fake_client.pages.retrieve.return_value = {
-        "properties": {"Status": {"select": {"name": "Ready"}}}
+        "properties": {"Status": {"status": {"name": "Ready"}}}
     }
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         assert resource.get_status("p-1") == "Ready"

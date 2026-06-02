@@ -106,7 +106,7 @@ packages/
     datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
-      shared/                  # Shared resources (raw_store, chroma, etc.) + partitions.py
+      shared/                  # Shared resources (raw_store, chroma, Notion Queue + queue.db, etc.) + partitions.py
       backup_readings/
       triage_queued_items/
         classify.py            # Pure URL → Content Type / canonicalize (no I/O)
