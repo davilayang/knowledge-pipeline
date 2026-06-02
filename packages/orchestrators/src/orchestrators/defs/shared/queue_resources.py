@@ -120,11 +120,25 @@ class NotionQueueResource(dg.ConfigurableResource):
             properties={"Status": {"status": {"name": status_after}}},
         )
 
-    def update_status(self, page_id: str, status: str) -> None:
-        self._client().pages.update(
-            page_id=page_id,
-            properties={"Status": {"status": {"name": status}}},
-        )
+    def update_status(
+        self,
+        page_id: str,
+        status: str,
+        *,
+        description: str | None = None,
+    ) -> None:
+        """Lifecycle Status flip used by extract `published`. Optional
+        `description` overwrites Notion's Description property in the same
+        call — kept optional so the failure-handling path can call this
+        without touching Description. Strips both ends; an empty string after
+        strip is treated as "don't write" so a no-op extraction never blanks
+        a description previously seeded by triage."""
+        properties: dict[str, dict] = {"Status": {"status": {"name": status}}}
+        if description is not None:
+            clean = description.strip()
+            if clean:
+                properties["Description"] = {"rich_text": [{"text": {"content": clean}}]}
+        self._client().pages.update(page_id=page_id, properties=properties)
 
     def update_status_failed(self, page_id: str, error: str) -> None:
         self._client().pages.update(

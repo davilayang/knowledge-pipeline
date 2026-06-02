@@ -329,13 +329,16 @@ def test_extracted_metadata_includes_extraction_preview(tmp_path: Path):
 # -------- published --------
 
 
-def test_published_flips_notion_when_extraction_complete(tmp_path: Path):
+def test_published_flips_notion_and_writes_core_mechanism_to_description(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     queue_db.update_extracted(
         db_path=db_path,
         notion_page_id="p-1",
-        extraction={"extracted_title": "T", "core_mechanism": "M"},
+        extraction={
+            "extracted_title": "T",
+            "core_mechanism": "Distilled mechanism summary.",
+        },
         prompt_label="v5_youtube",
         prompt_sha256="a" * 64,
         model="gpt-4o-mini",
@@ -350,7 +353,35 @@ def test_published_flips_notion_when_extraction_complete(tmp_path: Path):
         resources={"notion": notion, "store": store},
     )
     assert result.success
-    notion.update_status.assert_called_once_with("p-1", "Ready")
+    notion.update_status.assert_called_once_with(
+        "p-1", "Ready", description="Distilled mechanism summary."
+    )
+
+
+def test_published_skips_description_when_core_mechanism_missing(tmp_path: Path):
+    """No core_mechanism in extraction → don't overwrite the Description Notion
+    already has (likely the triage-seeded HTML meta)."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    queue_db.update_extracted(
+        db_path=db_path,
+        notion_page_id="p-1",
+        extraction={"extracted_title": "T", "core_mechanism": None},
+        prompt_label="v5_youtube",
+        prompt_sha256="a" * 64,
+        model="gpt-4o-mini",
+        tokens_in=100,
+        tokens_out=50,
+    )
+    store = QueueStoreResource(db_path=str(db_path))
+    notion = MagicMock()
+    result = _materialize(
+        published,
+        partition_key="p-1",
+        resources={"notion": notion, "store": store},
+    )
+    assert result.success
+    notion.update_status.assert_called_once_with("p-1", "Ready", description=None)
 
 
 def test_published_fails_when_no_extraction(tmp_path: Path):

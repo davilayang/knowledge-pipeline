@@ -239,10 +239,11 @@ def extracted(
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     deps=[dg.AssetDep(["extract_complex_contents", "extracted"])],
     description=(
-        "Flips Notion Status=Ready. Isolated from extraction so a Notion API "
-        "hiccup can be retried without re-spending an OpenAI extraction. "
-        "Verifies queue_items.extracted_at is set as a guard against bad "
-        "ordering."
+        "Flips Notion Status=Ready and overwrites Description with the "
+        "extracted core_mechanism (sharper than the triage-seeded HTML meta). "
+        "Isolated from extraction so a Notion API hiccup can be retried "
+        "without re-spending an OpenAI extraction. Verifies "
+        "queue_items.extracted_at is set as a guard against bad ordering."
     ),
 )
 def published(
@@ -261,12 +262,15 @@ def published(
                 "content_type": dg.MetadataValue.text((row or {}).get("content_type") or "(none)"),
             },
         )
-    notion.update_status(page_id, "Ready")
+    extraction = json.loads(row.get("extraction_payload") or "{}")
+    core_mechanism = extraction.get("core_mechanism")
+    notion.update_status(page_id, "Ready", description=core_mechanism)
     return dg.MaterializeResult(
         metadata={
             "notion_page_id": dg.MetadataValue.text(page_id),
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
             "extracted_at": dg.MetadataValue.text(row.get("extracted_at") or ""),
+            "core_mechanism": dg.MetadataValue.text(core_mechanism or ""),
             "summary": dg.MetadataValue.md("Notion → Ready"),
         }
     )
