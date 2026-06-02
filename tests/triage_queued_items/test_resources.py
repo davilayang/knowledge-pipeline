@@ -23,15 +23,16 @@ def _make_notion() -> NotionQueueResource:
     )
 
 
-def test_triage_notion_query_queue_includes_empty_status_filter():
+def test_triage_notion_query_for_triage_filters_status_queued():
+    """Native status type defaults new rows to Queued, so the filter is a
+    single Status=Queued equality — no is_empty OR-branch needed."""
     resource = _make_notion()
     fake_client = MagicMock()
     fake_client.data_sources.query.return_value = {"results": []}
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.query_for_triage(page_size=5)
     call_filter = fake_client.data_sources.query.call_args.kwargs["filter"]
-    assert call_filter["or"][0] == {"property": "Status", "select": {"equals": "Queued"}}
-    assert call_filter["or"][1] == {"property": "Status", "select": {"is_empty": True}}
+    assert call_filter == {"property": "Status", "status": {"equals": "Queued"}}
 
 
 def test_triage_notion_write_triaged_writes_content_type_then_status():
@@ -49,7 +50,7 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
     assert "Content Type" in first_call_props
     assert "Status" not in first_call_props
     assert list(second_call_props.keys()) == ["Status"]
-    assert second_call_props["Status"]["select"]["name"] == "Fetching"
+    assert second_call_props["Status"]["status"]["name"] == "Fetching"
 
 
 def test_triage_notion_write_triaged_omits_name_when_not_provided():

@@ -42,16 +42,12 @@ class NotionQueueResource(dg.ConfigurableResource):
     # -------- reads --------
 
     def query_for_triage(self, *, page_size: int) -> list[dict[str, Any]]:
-        """Status=Queued OR Status is empty. Empty absorbs mobile-share
-        captures that bypass the Notion template (only Name + URL populated)."""
+        """Status=Queued. Native status defaults to Queued on row creation,
+        so mobile-share captures land here automatically — no empty branch
+        needed."""
         resp = self._client().data_sources.query(
             data_source_id=self.queue_data_source_id,
-            filter={
-                "or": [
-                    {"property": "Status", "select": {"equals": "Queued"}},
-                    {"property": "Status", "select": {"is_empty": True}},
-                ]
-            },
+            filter={"property": "Status", "status": {"equals": "Queued"}},
             page_size=page_size,
         )
         return list(resp.get("results", []))
@@ -73,7 +69,7 @@ class NotionQueueResource(dg.ConfigurableResource):
             data_source_id=self.queue_data_source_id,
             filter={
                 "and": [
-                    {"property": "Status", "select": {"equals": "Fetching"}},
+                    {"property": "Status", "status": {"equals": "Fetching"}},
                     type_clause,
                 ]
             },
@@ -84,8 +80,8 @@ class NotionQueueResource(dg.ConfigurableResource):
     def get_status(self, page_id: str) -> str | None:
         page = self._client().pages.retrieve(page_id=page_id)
         status_prop = page.get("properties", {}).get("Status", {})
-        select = status_prop.get("select")
-        return select.get("name") if select else None
+        status = status_prop.get("status")
+        return status.get("name") if status else None
 
     # -------- writes --------
 
@@ -121,20 +117,20 @@ class NotionQueueResource(dg.ConfigurableResource):
         client.pages.update(page_id=page_id, properties=properties)
         client.pages.update(
             page_id=page_id,
-            properties={"Status": {"select": {"name": status_after}}},
+            properties={"Status": {"status": {"name": status_after}}},
         )
 
     def update_status(self, page_id: str, status: str) -> None:
         self._client().pages.update(
             page_id=page_id,
-            properties={"Status": {"select": {"name": status}}},
+            properties={"Status": {"status": {"name": status}}},
         )
 
     def update_status_failed(self, page_id: str, error: str) -> None:
         self._client().pages.update(
             page_id=page_id,
             properties={
-                "Status": {"select": {"name": "Failed"}},
+                "Status": {"status": {"name": "Failed"}},
                 "Error": {"rich_text": [{"text": {"content": error[:1900]}}]},
             },
         )
