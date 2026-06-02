@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.5] — 2026-06-02
+
+### Changed
+
+- **YouTube transcript fetcher now accepts `socks5://` proxy URLs** — `pysocks` added to `knowledge-orchestrators` deps (`packages/orchestrators/pyproject.toml`). Previously, setting `YOUTUBE_PROXY_URL=socks5://…` raised `InvalidSchema: Missing dependencies for SOCKS support` in `requests`; now it routes correctly. (`curl_cffi`-based article fetcher is unaffected — libcurl bundles its own SOCKS support.)
+
+---
+
 ## [0.14.4] — 2026-06-02
 
 ### Added

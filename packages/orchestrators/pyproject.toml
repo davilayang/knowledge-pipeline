@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-orchestrators"
-version = "0.14.4"
+version = "0.14.5"
 description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
 requires-python = ">=3.13"
 dependencies = [
@@ -17,6 +17,7 @@ dependencies = [
     "trafilatura>=2.0,<3.0",
     "openai>=1.0,<2.0",
     "youtube-transcript-api>=1.0,<2.0",
+    "pysocks>=1.7,<2.0",
     "arxiv>=2.1,<3.0",
     "tenacity>=9.0,<10.0",
     "httpx>=0.27,<1.0",
