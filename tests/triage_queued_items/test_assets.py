@@ -5,9 +5,9 @@ from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
+from orchestrators.defs.shared.queue_resources import QueueStoreResource
 from orchestrators.defs.triage_queued_items.assets import triaged
 from orchestrators.defs.triage_queued_items.def_config import queue_items_partition_def
-from orchestrators.defs.triage_queued_items.resources import TriageQueueStore
 from orchestrators.defs.triage_queued_items.url_meta import UrlMeta
 
 
@@ -70,7 +70,7 @@ def _get_metadata(result) -> dict:
 
 
 def _resources(tmp_path: Path):
-    store = TriageQueueStore(db_path=str(tmp_path / "q.db"))
+    store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     notion = MagicMock()
     return {"triage_notion": notion, "triage_store": store}, notion
 

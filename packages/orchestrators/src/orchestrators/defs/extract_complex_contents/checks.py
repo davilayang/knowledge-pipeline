@@ -1,7 +1,8 @@
 import dagster as dg
 
+from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
+
 from .def_config import LIFECYCLE_DRIFT_AGE_MINUTES
-from .resources import ExtractQueueStore, NotionResource
 
 
 @dg.asset_check(
@@ -16,8 +17,8 @@ from .resources import ExtractQueueStore, NotionResource
 )
 def notion_lifecycle_in_sync(
     context: dg.AssetCheckExecutionContext,
-    store: ExtractQueueStore,
-    notion: NotionResource,
+    store: QueueStoreResource,
+    notion: NotionQueueResource,
 ) -> dg.AssetCheckResult:
     stale_local = store.list_with_stale_extraction(min_age_minutes=LIFECYCLE_DRIFT_AGE_MINUTES)
     out_of_sync: list[str] = []

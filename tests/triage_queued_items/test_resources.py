@@ -1,19 +1,22 @@
-"""Tests for triage_queued_items resources."""
+"""Tests for triage_queued_items resources.
+
+The actual resource classes (`NotionQueueResource` and `QueueStoreResource`)
+live in `orchestrators.defs.shared.queue_resources`; triage's `resources.py`
+only binds them to per-pipeline keys. These tests assert the triage-relevant
+behaviour of the shared classes (query filter shape, write_triaged contract).
+"""
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from domains.raw_store import queue as queue_db
-from orchestrators.defs.triage_queued_items.resources import (
-    TriageNotionResource,
-    TriageQueueStore,
-)
+from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
-# -------- TriageNotionResource --------
+# -------- NotionQueueResource (triage surface) --------
 
 
-def _make_notion() -> TriageNotionResource:
-    return TriageNotionResource(
+def _make_notion() -> NotionQueueResource:
+    return NotionQueueResource(
         integration_token="secret_x",
         queue_db_id="db-123",
         queue_data_source_id="ds-456",
@@ -24,8 +27,8 @@ def test_triage_notion_query_queue_includes_empty_status_filter():
     resource = _make_notion()
     fake_client = MagicMock()
     fake_client.data_sources.query.return_value = {"results": []}
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
-        resource.query_queue(page_size=5)
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.query_for_triage(page_size=5)
     call_filter = fake_client.data_sources.query.call_args.kwargs["filter"]
     assert call_filter["or"][0] == {"property": "Status", "select": {"equals": "Queued"}}
     assert call_filter["or"][1] == {"property": "Status", "select": {"is_empty": True}}
@@ -34,7 +37,7 @@ def test_triage_notion_query_queue_includes_empty_status_filter():
 def test_triage_notion_write_triaged_writes_content_type_then_status():
     resource = _make_notion()
     fake_client = MagicMock()
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.write_triaged(
             page_id="p-1",
             content_type="YouTube",
@@ -53,7 +56,7 @@ def test_triage_notion_write_triaged_omits_name_when_not_provided():
     """name=None → no Name write. Preserves existing user-set value."""
     resource = _make_notion()
     fake_client = MagicMock()
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
@@ -68,7 +71,7 @@ def test_triage_notion_write_triaged_writes_name_when_provided():
     """name=<str> → batched into the same Notion call as Content Type."""
     resource = _make_notion()
     fake_client = MagicMock()
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
@@ -84,7 +87,7 @@ def test_triage_notion_write_triaged_writes_name_when_provided():
 def test_triage_notion_write_triaged_writes_description_when_provided():
     resource = _make_notion()
     fake_client = MagicMock()
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
@@ -100,7 +103,7 @@ def test_triage_notion_write_triaged_writes_description_when_provided():
 def test_triage_notion_write_triaged_omits_description_when_not_provided():
     resource = _make_notion()
     fake_client = MagicMock()
-    with patch.object(TriageNotionResource, "_client", return_value=fake_client):
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
@@ -111,11 +114,70 @@ def test_triage_notion_write_triaged_omits_description_when_not_provided():
         assert "Description" not in call.kwargs["properties"]
 
 
-# -------- TriageQueueStore --------
+def test_triage_notion_write_triaged_strips_name_whitespace_and_newlines():
+    """Name with leading/trailing whitespace + newlines → stripped before Notion."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            name="\n  Hello World  \n",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert first_call_props["Name"]["title"][0]["text"]["content"] == "Hello World"
+
+
+def test_triage_notion_write_triaged_strips_description_whitespace():
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            description="  \n A blurb. \n  ",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert first_call_props["Description"]["rich_text"][0]["text"]["content"] == "A blurb."
+
+
+def test_triage_notion_write_triaged_skips_name_when_strips_to_empty():
+    """Name that's only whitespace → don't write Name at all (would blank the
+    user's existing title)."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            name="   \n  ",
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Name" not in call.kwargs["properties"]
+
+
+def test_triage_notion_write_triaged_skips_description_when_strips_to_empty():
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            status_after="Ready",
+            description="\n\n  ",
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Description" not in call.kwargs["properties"]
+
+
+# -------- QueueStoreResource --------
 
 
 def test_triage_queue_store_upsert_triaged_round_trips(tmp_path: Path):
-    store = TriageQueueStore(db_path=str(tmp_path / "q.db"))
+    store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     store.upsert_triaged(
         notion_page_id="p-1",

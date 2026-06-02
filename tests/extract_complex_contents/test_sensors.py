@@ -31,7 +31,7 @@ def _notion_row(
 
 def test_poll_notion_for_extract_emits_one_run_request_per_fetching_row():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
     ]
@@ -39,7 +39,7 @@ def test_poll_notion_for_extract_emits_one_run_request_per_fetching_row():
     result = poll_notion_for_extract(context, notion=notion)
     assert isinstance(result, dg.SensorResult)
     assert {req.partition_key for req in result.run_requests} == {"p-1", "p-2"}
-    notion.query_queue.assert_called_once_with(
+    notion.query_for_extract.assert_called_once_with(
         page_size=MAX_TO_EXTRACT_PER_TICK,
         supported_content_types=SUPPORTED_CONTENT_TYPES,
     )
@@ -47,7 +47,7 @@ def test_poll_notion_for_extract_emits_one_run_request_per_fetching_row():
 
 def test_poll_notion_for_extract_skips_rows_with_empty_url():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         {
             "id": "p-2",
@@ -64,7 +64,7 @@ def test_poll_notion_for_extract_skips_rows_with_empty_url():
 
 def test_poll_notion_for_extract_skips_rows_with_missing_content_type():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a"),
         {
             "id": "p-2",
@@ -81,7 +81,7 @@ def test_poll_notion_for_extract_skips_rows_with_missing_content_type():
 
 def test_poll_notion_for_extract_passes_url_and_content_type_in_run_tag():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a", content_type="YouTube")
     ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
@@ -94,14 +94,14 @@ def test_poll_notion_for_extract_passes_url_and_content_type_in_run_tag():
 
 def test_poll_notion_for_extract_returns_empty_when_no_rows():
     notion = MagicMock()
-    notion.query_queue.return_value = []
+    notion.query_for_extract.return_value = []
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
     assert result.run_requests == []
 
 
 def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a", last_edited="2026-05-31T10:00:00.000Z"),
     ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
@@ -110,14 +110,14 @@ def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability
 
 def test_sensor_does_not_register_dynamic_partitions():
     notion = MagicMock()
-    notion.query_queue.return_value = [_notion_row("p-1", "https://example.com/a")]
+    notion.query_for_extract.return_value = [_notion_row("p-1", "https://example.com/a")]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
     assert result.dynamic_partitions_requests == []
 
 
 def test_sensor_run_request_carries_content_type_tag():
     notion = MagicMock()
-    notion.query_queue.return_value = [
+    notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://youtube.com/watch?v=abc", content_type="YouTube")
     ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)

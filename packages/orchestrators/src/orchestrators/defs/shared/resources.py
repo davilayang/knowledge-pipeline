@@ -1,5 +1,5 @@
 # Shared Dagster resources.
-# TODO: Notion Queue page should be moved here and reused by triage and extract DAGs
+# Notion Queue + queue.db live in `queue_resources.py` (shared by triage and extract).
 
 from pathlib import Path
 
