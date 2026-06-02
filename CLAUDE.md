@@ -100,6 +100,12 @@ Naming: `BACKUP_<DOMAIN>_DAG_VERSION` for backup pipelines (groups them alphabet
 ```
 packages/
   domains/         # Pure data layer (no LLM/Dagster deps)
+    raw_store/     # raw_store.db SQLite layer
+    queue_store/   # queue.db SQLite layer (sources.py)
+    sessions/
+    research/
+    notes/
+    wiki/
   workflows/       # LangGraph workflows + agents (wiki synthesis, research)
   retrievers/      # RAG infra — chunking, OpenAI embedding, Chroma HTTP client, retrieval protocols
   evals/           # Retrieval eval (active), generation + wiki eval (reserved)

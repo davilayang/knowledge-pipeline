@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.6] — 2026-06-02
+
+### Changed
+
+- queue.db access module moved from `domains.raw_store.queue` to `domains.queue_store.sources` — one storage backend per `domains/<store>/` module, matching the rest of the per-store layout. Public function signatures and the `queue.db` schema are unchanged.
+
+---
+
 ## [0.14.5] — 2026-06-02
 
 ### Changed
