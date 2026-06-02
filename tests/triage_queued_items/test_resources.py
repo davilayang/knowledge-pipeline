@@ -9,7 +9,7 @@ behaviour of the shared classes (query filter shape, write_triaged contract).
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from domains.raw_store import queue as queue_db
+from domains.queue_store import sources as queue_db
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 # -------- NotionQueueResource (triage surface) --------
