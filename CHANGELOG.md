@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.2] — 2026-06-02
+
+### Changed
+
+- **Notion `Status` property migrated from `select` → native `status` type** — queue reads and writes now use `{"status": {"name": …}}` instead of `{"select": {"name": …}}`, matching the Notion schema after its native-status migration. Without this, the pipeline would silently stop processing the queue (triage sensor finds zero rows, extract sensor finds zero rows). Both `query_for_triage` and `query_for_extract` filters updated; `write_triaged`, `update_status`, and `update_status_failed` all write the new type. (`shared/queue_resources.py`)
+- **Whitespace stripped from Notion title and description writes** — incoming HTML metadata may carry trailing newlines or padding; both fields are now `.strip()`-ed before writing to Notion. A value that strips to empty is treated as absent (no blank overwrite). (`NotionQueueResource.write_triaged`)
+
+---
+
 ## [0.14.1] — 2026-06-02
 
 ### Added
