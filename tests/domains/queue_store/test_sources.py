@@ -1,4 +1,4 @@
-"""Tests for domains.raw_store.queue — the queue_items SQLite layer.
+"""Tests for domains.queue_store.sources — the queue_items SQLite layer.
 
 Backs the deferred-learning queue pipeline (extract_queued_items). The schema
 + writes are owned by the orchestrator; NA reads via get_queue_extraction
@@ -11,7 +11,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
-from domains.raw_store.queue import (
+from domains.queue_store.sources import (
     create_schema,
     get_queue_extraction,
     get_row,

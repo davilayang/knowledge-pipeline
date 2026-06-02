@@ -32,7 +32,7 @@ Status=Failed + Error back to the Notion row.
 | Resource | Class | Purpose |
 |---|---|---|
 | `triage_notion` | `TriageNotionResource` | Reads Queue data source (Status=Queued / empty); writes Content Type + Status. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `notion`. |
-| `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.raw_store.queue`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
+| `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.queue_store.sources`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
 
 Triage never writes Notion's `Name` property — downstream `extract_complex_contents` (Tier A, from LLM extraction) or NA-at-engagement (Tier B) fills it from real content. Empty Name rows in Notion display URL-only until then.
 

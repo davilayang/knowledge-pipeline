@@ -11,7 +11,7 @@ from unittest.mock import MagicMock
 
 import dagster as dg
 import pytest
-from domains.raw_store import queue as queue_db
+from domains.queue_store import sources as queue_db
 from orchestrators.defs.extract_complex_contents.assets import (
     extracted,
     fetched,

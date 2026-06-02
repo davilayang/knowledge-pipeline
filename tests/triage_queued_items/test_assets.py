@@ -306,7 +306,7 @@ def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
         url=dirty_url,
     )
     assert result.success
-    from domains.raw_store import queue as queue_db
+    from domains.queue_store import sources as queue_db
 
     row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-1")
     assert row is not None

@@ -424,7 +424,7 @@ def test_extractor_uses_real_v5_article_prompt_label():
 
 
 def test_store_roundtrip_via_real_sqlite(tmp_path: Path):
-    """Smoke test — store delegates to domains.raw_store.queue; one path through."""
+    """Smoke test — store delegates to domains.queue_store.sources; one path through."""
     store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     store.upsert_fetched(

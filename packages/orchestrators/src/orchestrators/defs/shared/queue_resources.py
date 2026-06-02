@@ -9,7 +9,7 @@ class definition.
   query methods per pipeline (different filter shape) but the lifecycle
   writes (`write_triaged`, `update_status`, `update_status_failed`) are
   shared.
-- `QueueStoreResource` — thin wrapper over `domains.raw_store.queue` covering
+- `QueueStoreResource` — thin wrapper over `domains.queue_store.sources` covering
   both pipelines' write paths (`upsert_triaged`, `upsert_fetched`,
   `update_extracted`, `mark_failed`) and read helpers.
 """
@@ -18,7 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import dagster as dg
-from domains.raw_store import queue as queue_db
+from domains.queue_store import sources as queue_db
 from notion_client import Client as NotionClient
 
 from orchestrators.config import LOCAL_QUEUE_DB
@@ -151,7 +151,7 @@ class NotionQueueResource(dg.ConfigurableResource):
 
 
 class QueueStoreResource(dg.ConfigurableResource):
-    """Thin wrapper over domains.raw_store.queue covering both pipelines.
+    """Thin wrapper over domains.queue_store.sources covering both pipelines.
 
     Triage owns `upsert_triaged` (page_id + url + canonical + content_type).
     Extract owns `upsert_fetched` (raw_content + provenance) and
