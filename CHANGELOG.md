@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **YouTube proxy now supports `socks5://` URLs in deploy image** — added `pysocks` to `knowledge-orchestrators` deps. Without it, `YOUTUBE_PROXY_URL=socks5://...` raised `InvalidSchema: Missing dependencies for SOCKS support.` in `requests` (used by `youtube-transcript-api`). `curl_cffi` (article fetcher) was unaffected because libcurl ships its own SOCKS support.
+
 ---
 
 ## [0.14.4] — 2026-06-02
