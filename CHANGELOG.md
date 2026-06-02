@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.4] — 2026-06-02
+
+### Added
+
+- **Daily backup of `queue.db`** (kp's triage + extract queue) — disk loss no longer means re-classifying and re-extracting every queued item. `queue.db` is sourced from kp's own `data/` directory rather than `BACKUP_SOURCE_DIR`. (`backup_readings/assets.py`, `backup_readings/checks.py`)
+
+---
+
 ## [0.14.3] — 2026-06-02
 
 ### Changed
