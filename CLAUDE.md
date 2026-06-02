@@ -114,6 +114,7 @@ packages/
       extract_complex_contents/
         extractors/            # Extractor strategies (mirrors fetchers/)
         fetchers/
+        prompts/               # Versioned LLM prompt copies (markdown)
       synthesize_wiki/
       populate_vector_store/
       workbench/               # Retrieval strategy variants for eval (idx_*, evaluate)

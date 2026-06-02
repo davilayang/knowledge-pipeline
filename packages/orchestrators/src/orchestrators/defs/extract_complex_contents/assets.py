@@ -1,5 +1,6 @@
 import hashlib
 import json
+import textwrap
 
 import dagster as dg
 
@@ -17,6 +18,14 @@ GROUP_NAME = "extract_complex_contents"
 
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500
+
+
+def _oneline(s: str) -> str:
+    """Collapse a multi-line source string into a single-paragraph string.
+
+    Lets us write Dagster `description=` blocks as readable multi-line source
+    while the rendered string in the Dagster UI stays a single paragraph."""
+    return " ".join(textwrap.dedent(s).split())
 
 
 def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TAIL) -> str:
@@ -38,11 +47,13 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    description=(
-        "Dispatches to the per-type fetcher (YouTube transcript / arXiv PDF "
-        "text / article cascade) via FetcherResource, validates the content "
-        "is above the floor, and persists raw_content to queue_items. Cache: "
-        "skips the network fetch if raw_content is already set for this row."
+    description=_oneline(
+        """
+        Dispatches to the per-type fetcher (YouTube transcript / arXiv PDF
+        text / article cascade) via FetcherResource, validates the content
+        is above the floor, and persists raw_content to queue_items. Cache:
+        skips the network fetch if raw_content is already set for this row.
+        """
     ),
 )
 def fetched(
@@ -162,12 +173,14 @@ def fetched(
             ),
         ),
     ],
-    description=(
-        "Dispatches to the per-type extractor strategy via ExtractorRegistry "
-        "(v1: SingleShotOpenAIExtractor for every type, per-type prompt). "
-        "Persists the Topic Card fields + provenance to queue_items. The "
-        "registry pattern lets future per-type swaps (e.g. LangGraph for "
-        "arXiv) land without asset edits."
+    description=_oneline(
+        """
+        Dispatches to the per-type extractor strategy via ExtractorRegistry
+        (v1: SingleShotOpenAIExtractor for every type, per-type prompt).
+        Persists the Topic Card fields + provenance to queue_items. The
+        registry pattern lets future per-type swaps (e.g. LangGraph for
+        arXiv) land without asset edits.
+        """
     ),
 )
 def extracted(
@@ -238,11 +251,14 @@ def extracted(
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     deps=[dg.AssetDep(["extract_complex_contents", "extracted"])],
-    description=(
-        "Flips Notion Status=Ready. Isolated from extraction so a Notion API "
-        "hiccup can be retried without re-spending an OpenAI extraction. "
-        "Verifies queue_items.extracted_at is set as a guard against bad "
-        "ordering."
+    description=_oneline(
+        """
+        Flips Notion Status=Ready and overwrites Description with the
+        extracted core_mechanism (sharper than the triage-seeded HTML meta).
+        Isolated from extraction so a Notion API hiccup can be retried
+        without re-spending an OpenAI extraction. Verifies
+        queue_items.extracted_at is set as a guard against bad ordering.
+        """
     ),
 )
 def published(
@@ -261,12 +277,15 @@ def published(
                 "content_type": dg.MetadataValue.text((row or {}).get("content_type") or "(none)"),
             },
         )
-    notion.update_status(page_id, "Ready")
+    extraction = json.loads(row.get("extraction_payload") or "{}")
+    core_mechanism = extraction.get("core_mechanism")
+    notion.update_status(page_id, "Ready", description=core_mechanism)
     return dg.MaterializeResult(
         metadata={
             "notion_page_id": dg.MetadataValue.text(page_id),
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
             "extracted_at": dg.MetadataValue.text(row.get("extracted_at") or ""),
+            "core_mechanism": dg.MetadataValue.text(core_mechanism or ""),
             "summary": dg.MetadataValue.md("Notion → Ready"),
         }
     )
