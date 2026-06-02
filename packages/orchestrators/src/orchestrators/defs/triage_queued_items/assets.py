@@ -1,3 +1,5 @@
+import textwrap
+
 import dagster as dg
 
 from orchestrators.config import TRIAGE_QUEUED_ITEMS_DAG_VERSION
@@ -8,6 +10,14 @@ from .resources import TriageNotionResource, TriageQueueStore
 from .url_meta import fetch_url_meta
 
 GROUP_NAME = "triage_queued_items"
+
+
+def _oneline(s: str) -> str:
+    """Collapse a multi-line source string into a single-paragraph string.
+
+    Lets us write Dagster `description=` blocks as readable multi-line source
+    while the rendered string in the Dagster UI stays a single paragraph."""
+    return " ".join(textwrap.dedent(s).split())
 
 
 class TriageInput(dg.Config):
@@ -31,17 +41,19 @@ class TriageInput(dg.Config):
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    description=(
-        "One row → fetch URL meta (title + short description, redirects "
-        "followed) → classify URL, canonicalize, then commit to local store + "
-        "Notion. Tier B (Article/Other) → Notion Status=Ready (NA fetches at "
-        "engagement). Tier A (YouTube/arXiv/PDF/Podcast) → Notion "
-        "Status=Fetching (extract_complex_contents picks up). Notion Status "
-        "write is the last API call so partially-triaged states can't be "
-        "picked up by the extract sensor. Name is seeded from the fetched "
-        "page title when the user left it blank; extract (Tier A) can still "
-        "overwrite later with the extracted_title. Description is always "
-        "written when the fetch produced one (extract overwrites for Tier A)."
+    description=_oneline(
+        """
+        One row → fetch URL meta (title + short description, redirects
+        followed) → classify URL, canonicalize, then commit to local store +
+        Notion. Tier B (Article/Other) → Notion Status=Ready (NA fetches at
+        engagement). Tier A (YouTube/arXiv/PDF/Podcast) → Notion
+        Status=Fetching (extract_complex_contents picks up). Notion Status
+        write is the last API call so partially-triaged states can't be
+        picked up by the extract sensor. Name is seeded from the fetched
+        page title when the user left it blank; extract (Tier A) can still
+        overwrite later with the extracted_title. Description is always
+        written when the fetch produced one (extract overwrites for Tier A).
+        """
     ),
 )
 def triaged(

@@ -88,6 +88,7 @@ class TriageNotionResource(dg.ConfigurableResource):
             },
         )
 
+
 # TODO: move to shared/queue_store.py
 class TriageQueueStore(dg.ConfigurableResource):
     """Thin wrapper around domains.raw_store.queue for the triage path."""
