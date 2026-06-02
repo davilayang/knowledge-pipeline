@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.3] — 2026-06-02
+
+### Changed
+
+- **Extract pipeline now writes `core_mechanism` to Notion's Description property for Tier A items** — after a successful extraction, the published asset overwrites the triage-time HTML meta with the model-extracted `core_mechanism` field. (`extract_complex_contents/assets.py`, `shared/queue_resources.py`)
+
+---
+
 ## [0.14.2] — 2026-06-02
 
 ### Changed
