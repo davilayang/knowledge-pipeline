@@ -109,12 +109,13 @@ packages/
       shared/                  # Shared resources (raw_store, chroma, etc.) + partitions.py
       backup_readings/
       triage_queued_items/
+        classify.py            # Pure URL → Content Type / canonicalize (no I/O)
+        url_meta.py            # Best-effort HTTP fetch → page title + description
       extract_complex_contents/
         extractors/            # Extractor strategies (mirrors fetchers/)
         fetchers/
       synthesize_wiki/
       populate_vector_store/
-      pipelines/               # Pipeline-level definitions (backup_readings, synthesize_wiki)
       workbench/               # Retrieval strategy variants for eval (idx_*, evaluate)
       upstream_sources.py
 
