@@ -107,6 +107,10 @@ def _connect(db_path: Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL;")
     conn.execute("PRAGMA busy_timeout=5000;")
+    # SQLite disables FK enforcement by default per-connection. Without this,
+    # the `ON DELETE CASCADE` on extraction_calls.notion_page_id is silently
+    # a no-op and orphaned call rows survive a queue_items delete.
+    conn.execute("PRAGMA foreign_keys = ON;")
     return conn
 
 
@@ -333,7 +337,7 @@ def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[s
                    duration_ms, extracted_at, node_metadata
               FROM extraction_calls
              WHERE notion_page_id = ?
-             ORDER BY call_kind, extracted_at DESC
+             ORDER BY call_kind, extracted_at DESC, id DESC
             """,
             (notion_page_id,),
         ).fetchall()

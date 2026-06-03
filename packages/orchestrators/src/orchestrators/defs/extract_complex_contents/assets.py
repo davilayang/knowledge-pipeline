@@ -196,17 +196,35 @@ def extracted(
         )
     content_type = row["content_type"]
 
-    payload, calls = extractor.extract(content=row["raw_content"], content_type=content_type)
+    # Build the extractor ONCE per materialization. It owns an AsyncOpenAI
+    # client closed at the end of `.extract()`; calling `build()` again
+    # would leak a fresh httpx pool. Reads of `bundle_label` /
+    # `bundle_sha256` / `model` below are property accesses on this
+    # instance — no extra client construction.
+    ex = extractor.build()
+    payload, calls = ex.extract(content=row["raw_content"], content_type=content_type)
 
     tokens_in_total = sum(c.tokens_in for c in calls)
     tokens_out_total = sum(c.tokens_out for c in calls)
-    total_duration_ms = sum(c.duration_ms for c in calls if c.duration_ms is not None)
+    by_kind = {c.call_kind: c for c in calls}
+
+    # Two perspectives on the cohort time:
+    #   - total_model_time_ms: sum of per-call durations (what you pay for)
+    #   - wall_clock_ms: narrative ran first (sequential), then topic_card
+    #     and followups in parallel inside asyncio.gather — so user-visible
+    #     latency is narrative + max(topic_card, followups), not the sum.
+    durations = {k: (v.duration_ms or 0) for k, v in by_kind.items()}
+    total_model_time_ms = int(sum(durations.values()))
+    wall_clock_ms = int(
+        durations.get("narrative", 0)
+        + max(durations.get("topic_card", 0), durations.get("followups", 0))
+    )
 
     store.record_extraction_calls(
         notion_page_id=page_id,
-        extractor_label=extractor.bundle_label(),
-        extractor_sha256=extractor.bundle_sha256(),
-        model=extractor.model,
+        extractor_label=ex.bundle_label,
+        extractor_sha256=ex.bundle_sha256,
+        model=ex.model,
         calls=calls,
         tokens_in_total=tokens_in_total,
         tokens_out_total=tokens_out_total,
@@ -220,20 +238,19 @@ def extracted(
         and len(followups.questions) >= 4
     )
 
-    by_kind = {c.call_kind: c for c in calls}
-
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
-            "extractor_label": dg.MetadataValue.text(extractor.bundle_label()),
-            "extractor_sha256_short": dg.MetadataValue.text(extractor.bundle_sha256()[:12]),
-            "extraction_model": dg.MetadataValue.text(extractor.model),
+            "extractor_label": dg.MetadataValue.text(ex.bundle_label),
+            "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256[:12]),
+            "extraction_model": dg.MetadataValue.text(ex.model),
             "extracted_title": dg.MetadataValue.text(topic_card.extracted_title),
             "narrative_chars": dg.MetadataValue.int(len(payload.narrative_md)),
             "followups_count": dg.MetadataValue.int(len(followups.questions)),
             "tokens_in_total": dg.MetadataValue.int(tokens_in_total),
             "tokens_out_total": dg.MetadataValue.int(tokens_out_total),
-            "total_duration_ms": dg.MetadataValue.int(int(total_duration_ms)),
+            "total_model_time_ms": dg.MetadataValue.int(total_model_time_ms),
+            "wall_clock_ms": dg.MetadataValue.int(wall_clock_ms),
             "prompt_sha_short_narrative": dg.MetadataValue.text(
                 by_kind["narrative"].prompt_sha256[:12]
             ),
@@ -249,7 +266,8 @@ def extracted(
             ),
             "summary": dg.MetadataValue.md(
                 f"**{topic_card.extracted_title}** — 3-call extraction, "
-                f"{len(followups.questions)} chips, {total_duration_ms:.0f}ms"
+                f"{len(followups.questions)} chips, {wall_clock_ms}ms wall / "
+                f"{total_model_time_ms}ms model"
             ),
         }
     )

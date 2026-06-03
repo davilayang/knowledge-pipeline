@@ -117,18 +117,25 @@ def _make_call(call_kind: str, output: str, tokens_in: int = 100, tokens_out: in
 
 
 def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMock:
+    """Mock of `ExtractorRegistry` (the resource the asset receives). `.build()`
+    returns a mock extractor instance with the actual extract result + the
+    three properties the asset reads (bundle_label / bundle_sha256 / model).
+    Mirrors the build-once-per-run pattern fixed in this PR's review pass."""
     payload = _make_payload(title=title, followups_n=followups_n)
     calls = [
         _make_call("narrative", payload.narrative_md, 200, 100),
         _make_call("topic_card", payload.topic_card.model_dump_json(), 250, 80),
         _make_call("followups", payload.followups.model_dump_json(), 150, 60),
     ]
-    extractor = MagicMock()
-    extractor.model = "gpt-4o-mini"
-    extractor.bundle_label.return_value = "3call_v1"
-    extractor.bundle_sha256.return_value = "b" * 64
-    extractor.extract.return_value = (payload, calls)
-    return extractor
+    ex_instance = MagicMock()
+    ex_instance.model = "gpt-4o-mini"
+    ex_instance.bundle_label = "3call_v1"
+    ex_instance.bundle_sha256 = "b" * 64
+    ex_instance.extract.return_value = (payload, calls)
+
+    registry = MagicMock()
+    registry.build.return_value = ex_instance
+    return registry
 
 
 # -------- fetched --------
@@ -334,8 +341,27 @@ def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
-    extractor.extract.assert_called_once()
-    assert extractor.extract.call_args.kwargs["content_type"] == "arXiv"
+    extractor.build.assert_called_once()
+    ex_instance = extractor.build.return_value
+    ex_instance.extract.assert_called_once()
+    assert ex_instance.extract.call_args.kwargs["content_type"] == "arXiv"
+
+
+def test_extracted_builds_extractor_exactly_once_per_run(tmp_path: Path):
+    """Each call to ExtractorRegistry.build() constructs a fresh AsyncOpenAI
+    client. The asset must call build() ONCE per materialization and reuse
+    the returned instance — calling build() more than once leaks httpx pools.
+    Locks in the fix surfaced by the codex review on PR #79."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = _mock_extractor(title="JEPA")
+    _materialize(
+        extracted,
+        partition_key="p-1",
+        resources={"extractor": extractor, "store": store},
+    )
+    assert extractor.build.call_count == 1
 
 
 def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path: Path):
@@ -354,6 +380,12 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     assert "Visible Title" in metadata["topic_card_preview"].md_str
     assert metadata["followups_count"].value == 4
     assert metadata["extractor_label"].text == "3call_v1"
+    # Both timing perspectives present — total_model_time_ms is sum of per-call
+    # durations (what you pay), wall_clock_ms is narrative + max(topic,
+    # followups) since calls 2+3 run in parallel inside asyncio.gather.
+    assert "total_model_time_ms" in metadata
+    assert "wall_clock_ms" in metadata
+    assert metadata["wall_clock_ms"].value <= metadata["total_model_time_ms"].value
 
 
 # -------- published --------

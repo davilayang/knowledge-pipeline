@@ -15,8 +15,6 @@ holds the Dagster ConfigurableResource boundaries that orchestrate them.
 from pathlib import Path
 
 import dagster as dg
-from domains.extraction.records import ExtractionCallRecord
-from domains.extraction.schemas import ExtractionPayload
 
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
@@ -74,18 +72,20 @@ class FetcherResource(dg.ConfigurableResource):
 
 
 class ExtractorRegistry(dg.ConfigurableResource):
-    """Strategy registry — wraps the active ExtractorProtocol impl.
+    """Strategy registry — factory for the active ExtractorProtocol impl.
 
     v2: `ThreeCallOpenAIExtractor` is the only strategy; content-type
     routing now happens **inside** the prompts (each prompt's body branches
     on the `[content_type: ...]` tag the extractor prepends). Future LangGraph
-    swap is a one-class change: instantiate `LangGraphExtractor` instead of
-    `ThreeCallOpenAIExtractor`; the asset code and storage shape don't move.
+    swap is a one-class change: change `build()` to return `LangGraphExtractor`
+    instead — the asset code and storage shape don't move.
 
-    `extract(content, content_type=...)` returns
-    `(ExtractionPayload, list[ExtractionCallRecord])` — the in-memory payload
-    feeds the asset's check + metadata, the records feed
-    `QueueStoreResource.record_extraction_calls(...)`."""
+    Callers must `build()` ONCE per asset run and reuse the returned
+    extractor for `extract()` + reads of `bundle_label` / `bundle_sha256` /
+    `model`. Each build constructs a fresh AsyncOpenAI client that's closed
+    at the end of `extract()` (see ThreeCallOpenAIExtractor docstring) —
+    calling `build()` more than once per run wastes httpx pools and is what
+    we explicitly fixed in this commit."""
 
     openai_api_key: str
     model: str
@@ -97,7 +97,7 @@ class ExtractorRegistry(dg.ConfigurableResource):
     def _prompt_text(self, label: str) -> str:
         return (_PROMPTS_DIR / f"{label}.md").read_text()
 
-    def _build(self) -> ThreeCallOpenAIExtractor:
+    def build(self) -> ThreeCallOpenAIExtractor:
         return ThreeCallOpenAIExtractor(
             api_key=self.openai_api_key,
             model=self.model,
@@ -109,17 +109,6 @@ class ExtractorRegistry(dg.ConfigurableResource):
             followups_prompt_label=self.prompt_label_followups,
             max_tokens=self.max_tokens,
         )
-
-    def extract(
-        self, content: str, *, content_type: str
-    ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
-        return self._build().extract(content, content_type=content_type)
-
-    def bundle_label(self) -> str:
-        return self._build().bundle_label
-
-    def bundle_sha256(self) -> str:
-        return self._build().bundle_sha256
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:

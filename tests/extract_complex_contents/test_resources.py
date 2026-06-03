@@ -284,34 +284,19 @@ def _make_registry(
     )
 
 
-def test_registry_bundle_label_is_3call_v1(tmp_path: Path, monkeypatch):
+def test_registry_build_returns_extractor_with_3call_v1_bundle_label(tmp_path: Path, monkeypatch):
     registry = _make_registry(tmp_path, monkeypatch)
-    assert registry.bundle_label() == "3call_v1"
+    ex = registry.build()
+    assert ex.bundle_label == "3call_v1"
 
 
-def test_registry_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
-    """Bundle sha is over the three prompt texts — bumping any sub-prompt
+def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
+    """Bundle sha covers model + the three prompt texts — bumping any one
     flips the cohort-staleness signal written to queue_items.extractor_sha256."""
-    base = _make_registry(tmp_path, monkeypatch)
-    base_sha = base.bundle_sha256()
-    other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE")
-    assert other.bundle_sha256() != base_sha
-    assert len(base_sha) == 64
-
-
-def test_registry_extract_delegates_to_three_call_extractor(tmp_path: Path, monkeypatch):
-    """The registry instantiates ThreeCallOpenAIExtractor and forwards extract.
-    Patch the extractor's `extract` so the registry call returns a sentinel."""
-    registry = _make_registry(tmp_path, monkeypatch)
-    sentinel_payload = MagicMock()
-    sentinel_calls: list = []
-    with patch(
-        "orchestrators.defs.extract_complex_contents.resources.ThreeCallOpenAIExtractor.extract",
-        return_value=(sentinel_payload, sentinel_calls),
-    ):
-        payload, calls = registry.extract("body", content_type="Article")
-    assert payload is sentinel_payload
-    assert calls is sentinel_calls
+    base = _make_registry(tmp_path, monkeypatch).build()
+    other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE").build()
+    assert other.bundle_sha256 != base.bundle_sha256
+    assert len(base.bundle_sha256) == 64
 
 
 def test_extractor_uses_real_v1_prompt_labels():
@@ -327,7 +312,7 @@ def test_extractor_uses_real_v1_prompt_labels():
     assert "Core idea" in registry._prompt_text("narrative_v1")
     assert "PER-FIELD CONTRACTS" in registry._prompt_text("topic_card_v1")
     assert "follow-up questions" in registry._prompt_text("followups_v1")
-    assert len(registry.bundle_sha256()) == 64
+    assert len(registry.build().bundle_sha256) == 64
 
 
 # -------- QueueStoreResource --------

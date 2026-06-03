@@ -55,7 +55,14 @@ def _cached_tokens(usage: Any) -> int | None:
 
 class ThreeCallOpenAIExtractor:
     """v2 strategy. Three OpenAI calls per content item, asyncio.gather for the
-    structured pair. Returns (ExtractionPayload, list[ExtractionCallRecord])."""
+    structured pair. Returns (ExtractionPayload, list[ExtractionCallRecord]).
+
+    Single-use: `.extract()` closes the underlying AsyncOpenAI client at the
+    end of the call (same event loop that opened it, before asyncio.run
+    destroys it). Re-calling `.extract()` on the same instance will fail
+    against the closed httpx pool. ExtractorRegistry constructs a fresh
+    instance per asset materialization via `.build()` — that pattern keeps
+    socket lifecycles bounded to one Dagster op."""
 
     def __init__(
         self,
@@ -89,8 +96,20 @@ class ThreeCallOpenAIExtractor:
 
     @property
     def bundle_sha256(self) -> str:
-        """Hash across the three prompt texts — canonical staleness signal."""
-        return _sha(self._narrative[0] + "\n" + self._topic_card[0] + "\n" + self._followups[0])
+        """Hash across model + the three prompt texts — canonical staleness
+        signal. Model is included so a model bump (e.g. gpt-4o-mini →
+        gpt-4o) flips the cohort sha and a re-extract sensor catches stale
+        rows. Bump anything in this tuple and existing rows become stale."""
+        return _sha(
+            "\n".join(
+                (
+                    self._model,
+                    self._narrative[0],
+                    self._topic_card[0],
+                    self._followups[0],
+                )
+            )
+        )
 
     def extract(
         self, content: str, *, content_type: str
@@ -102,40 +121,48 @@ class ThreeCallOpenAIExtractor:
     async def _extract_async(
         self, *, content: str, content_type: str
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
-        narrative_record = await self._narrative_call(content, content_type)
+        try:
+            narrative_record = await self._narrative_call(content, content_type)
 
-        topic_result, followups_result = await asyncio.gather(
-            self._structured_call(
-                content,
-                content_type,
-                self._topic_card,
-                TopicCard,
-                "topic_card",
-            ),
-            self._structured_call(
-                content,
-                content_type,
-                self._followups,
-                Followups,
-                "followups",
-            ),
-            return_exceptions=True,
-        )
+            topic_result, followups_result = await asyncio.gather(
+                self._structured_call(
+                    content,
+                    content_type,
+                    self._topic_card,
+                    TopicCard,
+                    "topic_card",
+                ),
+                self._structured_call(
+                    content,
+                    content_type,
+                    self._followups,
+                    Followups,
+                    "followups",
+                ),
+                return_exceptions=True,
+            )
 
-        if isinstance(topic_result, BaseException):
-            raise topic_result
-        if isinstance(followups_result, BaseException):
-            raise followups_result
+            if isinstance(topic_result, BaseException):
+                raise topic_result
+            if isinstance(followups_result, BaseException):
+                raise followups_result
 
-        topic_card, topic_record = topic_result
-        followups, followups_record = followups_result
+            topic_card, topic_record = topic_result
+            followups, followups_record = followups_result
 
-        payload = ExtractionPayload(
-            narrative_md=narrative_record.output,
-            topic_card=topic_card,
-            followups=followups,
-        )
-        return payload, [narrative_record, topic_record, followups_record]
+            payload = ExtractionPayload(
+                narrative_md=narrative_record.output,
+                topic_card=topic_card,
+                followups=followups,
+            )
+            return payload, [narrative_record, topic_record, followups_record]
+        finally:
+            # Close the AsyncOpenAI client inside the same event loop that
+            # opened it. asyncio.run() destroys the loop on return; if we
+            # don't close here, the underlying httpx.AsyncClient sockets
+            # leak (Python's async-destructor can't fire on a dead loop).
+            # Extractor is single-use as a result — see class docstring.
+            await self._client.close()
 
     async def _narrative_call(self, content: str, content_type: str) -> ExtractionCallRecord:
         prompt_text, prompt_label, prompt_sha = self._narrative

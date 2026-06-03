@@ -57,9 +57,12 @@ def _parse_resp(parsed_obj):
 
 
 def _wire_client(create_text: str, topic_obj, followups_obj):
-    """Returns a mock AsyncOpenAI client wired with the right async surface."""
+    """Returns a mock AsyncOpenAI client wired with the right async surface.
+    `close()` is an AsyncMock — the extractor awaits it in `finally` for
+    httpx-pool cleanup (introduced in the PR #79 review-fix pass)."""
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=_create_resp(create_text))
+    client.close = AsyncMock()
 
     async def _parse(*, model, max_tokens, messages, response_format):
         if response_format is TopicCard:
@@ -158,6 +161,7 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
     re-raises so Dagster retries the asset (we don't ship partial extractions)."""
     client = MagicMock()
     client.chat.completions.create = AsyncMock(return_value=_create_resp("narrative"))
+    client.close = AsyncMock()
 
     async def _parse(*, model, max_tokens, messages, response_format):
         if response_format is TopicCard:
@@ -169,6 +173,54 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="topic_card OpenAI 500"):
             extractor.extract(content="raw", content_type="Article")
+
+
+def test_extract_closes_async_client_on_success(extractor):
+    """Client must be closed in the same event loop that opened it — the
+    asyncio.run loop dies on return, taking any unclosed httpx pool with it."""
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    with patch.object(extractor, "_client", client):
+        extractor.extract(content="raw", content_type="Article")
+    client.close.assert_awaited_once()
+
+
+def test_extract_closes_async_client_even_on_failure(extractor):
+    """Client close must fire in `finally`, not only on the success path."""
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(side_effect=RuntimeError("narrative 500"))
+    client.beta.chat.completions.parse = AsyncMock()
+    client.close = AsyncMock()
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError, match="narrative 500"):
+            extractor.extract(content="raw", content_type="Article")
+    client.close.assert_awaited_once()
+
+
+def test_bundle_sha256_changes_when_model_changes():
+    """A model bump must flip the cohort-staleness signal — without this,
+    upgrading EXTRACT_QUEUE_MODEL from gpt-4o-mini to gpt-4o would leave
+    existing rows looking fresh under the new model."""
+    base = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4o-mini",
+        narrative_prompt="N",
+        narrative_prompt_label="narrative_v1",
+        topic_card_prompt="T",
+        topic_card_prompt_label="topic_card_v1",
+        followups_prompt="F",
+        followups_prompt_label="followups_v1",
+    )
+    upgraded = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4o",  # only the model changed
+        narrative_prompt="N",
+        narrative_prompt_label="narrative_v1",
+        topic_card_prompt="T",
+        topic_card_prompt_label="topic_card_v1",
+        followups_prompt="F",
+        followups_prompt_label="followups_v1",
+    )
+    assert base.bundle_sha256 != upgraded.bundle_sha256
 
 
 def test_bundle_sha256_changes_when_any_prompt_changes():
