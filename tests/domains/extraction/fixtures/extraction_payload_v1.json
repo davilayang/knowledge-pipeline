@@ -1,0 +1,23 @@
+{
+  "narrative_md": "# Trust Factory\n\nKent Beck makes the case that pairwise trust is the substrate of engineering velocity. Without it, every interaction pays a verification tax. With it, work compounds.\n\n## What's new or non-obvious\n\nTrust is treated as a renewable resource that small reversible bets can grow.\n\n## Named concepts and entities\n\n- Kent Beck\n- Ron Jeffries (pair flow)\n- Linda Rising (retrospectives)\n",
+  "topic_card": {
+    "extracted_title": "Trust Factory",
+    "core_mechanism": "Pairwise trust accumulates through small reversible bets that survive feedback.",
+    "best_example": "Pair-programming where one developer trusts the other to refactor without review.",
+    "second_example": null,
+    "transferable_pattern": "Run a small reversible bet on a trust-extending move; repeat if it survives.",
+    "main_tension": "Trust takes weeks to build and seconds to destroy.",
+    "candidate_tie_backs": [
+      "Ron Jeffries on pair flow",
+      "Linda Rising on retrospective trust"
+    ]
+  },
+  "followups": {
+    "questions": [
+      "What's the smallest reversible bet that builds trust?",
+      "How does Beck distinguish trust from verification overhead?",
+      "Where does the trust model break down in remote teams?",
+      "What rituals signal trust-building vs trust-eroding?"
+    ]
+  }
+}
