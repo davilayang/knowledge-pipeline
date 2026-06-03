@@ -6,13 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.15.0] — 2026-06-03
+
 ### Changed
 
-- **Three-call extraction: one OpenAI call → three focused calls.** `extract_complex_contents.extracted` now runs **narrative** (unstructured markdown) + **topic_card** (pydantic-structured `TopicCard`) + **followups** (pydantic-structured `Followups`) per content item. Calls 2+3 fire in parallel via `asyncio.gather` inside the same Dagster op — both hit OpenAI's prefix cache within sub-seconds of call 1. The per-content-type prompt set (`v5_*_kp_copy_*.md`) collapses to one set of three prompts (`narrative_v1.md`, `topic_card_v1.md`, `followups_v1.md`); content-type routing happens inside each prompt's body. (`extractors/three_call_openai.py`, `resources.py`, `assets.py`, `prompts/*_v1.md`)
-- **Storage: `extraction_calls` table holds one row per LLM call** (mirrors NA's `core_llm_calls` shape) with output + prompt_label + tokens side-by-side. `queue_items` gains cohort summary columns (`extractor_label`, `extractor_sha256`, `tokens_in_total`, `tokens_out_total`, `langfuse_trace_id`). Legacy single-shot columns (`extraction_payload`, `extraction_prompt_label`, `prompt_sha256`, `tokens_in`, `tokens_out`) and the `idx_queue_items_prompt_label` index are **dropped** — `get_queue_extraction` now composes the flat NA-reader view from the latest `topic_card` row, so NA's path keeps working without code change. (`domains/queue_store/sources.py`, `domains/extraction/schemas.py`, `domains/extraction/records.py`)
-- **Prompt labels live in code, not env.** `PROMPT_LABEL_NARRATIVE` / `PROMPT_LABEL_TOPIC_CARD` / `PROMPT_LABEL_FOLLOWUPS` are now module constants in `extract_complex_contents/def_config.py` (bumped manually on a prompt-shape change, same pattern as the `_DAG_VERSION` constants). The per-content-type `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` env vars are **removed** — dev/prod ship the same prompt until somebody bumps the version, so env was the wrong knob. **Deploy action:** remove those three env vars from `.env` / `.env.deploy` (no replacement needed). (`extract_complex_contents/def_config.py`, `extract_complex_contents/resources.py`, `.env.example`)
-- **Deploy action required (post-deploy):** run `scripts/migrate_extraction_to_calls_table.py` on the prod queue.db. The script drops legacy columns + the legacy index and adds the cohort columns + `extraction_calls` table. The ~7 already-extracted rows lose their old single-shot blob in the column drop; re-trigger Dagster `extract_complex_contents/extracted` on those partitions after the migration so they get the three-call shape. ~$0.20–0.50 in OpenAI spend.
-- `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bump 1 → 2.
+- **Extraction is now three focused LLM calls per item** (narrative markdown + structured `TopicCard` + structured `Followups`) replacing the single monolithic call. Calls 2+3 fire in parallel and hit OpenAI's prefix cache within sub-seconds of call 1. Storage moves to an `extraction_calls` table (one row per call, mirrors NA's `core_llm_calls` shape); the legacy single-shot columns are dropped.
+- **Prompt labels moved from env vars to code constants** — `EXTRACT_QUEUE_PROMPT_LABEL_{ARTICLE,YOUTUBE,ARXIV}` removed; no replacement env vars needed. **Deploy:** remove those three vars from `.env` / `.env.deploy`, run `scripts/migrate_extraction_to_calls_table.py` on prod `queue.db`, then re-trigger `extract_complex_contents/extracted` on the ~7 already-extracted partitions (~$0.20–0.50 OpenAI spend).
 
 ---
 
