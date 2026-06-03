@@ -1,14 +1,22 @@
 """SQLite layer for the deferred-learning queue.
 
-One table: `queue_items`. The orchestrator's extract_queued_items pipeline
-owns the writes (upsert_fetched + update_extracted); newsletter-assistant
-reads via get_queue_extraction against the same SQLite file in mode=ro.
+Two tables:
 
-UPDATE-on-re-extract is intentional policy. Bumping the extraction prompt
-label overwrites the prior extraction. The Topic Card shape is owned by the
-prompt and stored as JSON in `extraction_payload` — per-content-type
-heterogeneity (YouTube/arXiv/Article) needs zero schema migration as prompts
-iterate.
+- `queue_items` — one row per Notion Queue page (cohort identity, fetch
+  provenance, extraction-cohort summary fields).
+- `extraction_calls` — one row per LLM call (output + provenance). Multiple
+  rows per (notion_page_id, call_kind) are allowed for LangGraph refinement
+  loops; readers take the most-recent via `extracted_at DESC`.
+
+The orchestrator's extract_complex_contents pipeline owns the writes
+(`upsert_fetched` + `record_extraction_calls`); newsletter-assistant reads
+via `get_queue_extraction` (legacy single-blob shape) or directly against
+`extraction_calls` (three-call shape) on the same SQLite file in mode=ro.
+
+The legacy single-blob columns on `queue_items` (`extraction_payload`,
+`extraction_prompt_label`, `prompt_sha256`, `tokens_in`, `tokens_out`) are
+RETAINED in this release cycle for cheap rollback. They will be dropped in
+a follow-up once three-call quality is confirmed in prod.
 """
 
 import json
@@ -16,6 +24,8 @@ import sqlite3
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
+
+from domains.extraction.records import ExtractionCallRecord
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS queue_items (
@@ -34,14 +44,21 @@ CREATE TABLE IF NOT EXISTS queue_items (
 
     -- extraction provenance (operational; indexed)
     extracted_at                TEXT,
-    extraction_prompt_label     TEXT,
+    extraction_prompt_label     TEXT,    -- legacy single-shot path; retained for rollback
     extraction_model            TEXT,
-    prompt_sha256               TEXT,
-    tokens_in                   INTEGER,
-    tokens_out                  INTEGER,
+    prompt_sha256               TEXT,    -- legacy single-shot path; retained for rollback
+    tokens_in                   INTEGER, -- legacy single-shot path; retained for rollback
+    tokens_out                  INTEGER, -- legacy single-shot path; retained for rollback
 
-    -- Topic Card content (shape owned by the prompt; per-content-type heterogeneous)
+    -- legacy Topic Card content (output now lives in extraction_calls; retained for rollback)
     extraction_payload          TEXT,
+
+    -- three-call cohort summary (per-call detail lives in extraction_calls)
+    extractor_label             TEXT,    -- "3call_v1" today; "graph_v3" later
+    extractor_sha256            TEXT,    -- bundle hash across the three sub-prompts
+    tokens_in_total             INTEGER, -- denormalised sum across extraction_calls rows
+    tokens_out_total            INTEGER,
+    langfuse_trace_id           TEXT,    -- nullable; deep-trace pointer (LangGraph era)
 
     error_text                  TEXT
 );
@@ -54,6 +71,34 @@ CREATE INDEX IF NOT EXISTS idx_queue_items_prompt_label
     ON queue_items(extraction_prompt_label);
 CREATE INDEX IF NOT EXISTS idx_queue_items_extracted_at
     ON queue_items(extracted_at);
+CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
+    ON queue_items(extractor_label);
+
+CREATE TABLE IF NOT EXISTS extraction_calls (
+    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+    notion_page_id      TEXT NOT NULL REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
+    call_kind           TEXT NOT NULL,        -- narrative | topic_card | followups
+    prompt_label        TEXT NOT NULL,
+    prompt_sha256       TEXT NOT NULL,
+    schema_name         TEXT,                 -- "TopicCard" | "Followups" | NULL for narrative
+    model               TEXT NOT NULL,
+    output              TEXT NOT NULL,        -- markdown narrative; pydantic-JSON for structured
+    tokens_in           INTEGER NOT NULL,
+    tokens_out          INTEGER NOT NULL,
+    cached_tokens       INTEGER,
+    duration_ms         REAL,
+    extracted_at        TEXT NOT NULL,
+    node_metadata       TEXT                  -- nullable JSON; LangGraph node extras
+);
+
+CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
+    ON extraction_calls(notion_page_id);
+CREATE INDEX IF NOT EXISTS idx_extraction_calls_call_kind
+    ON extraction_calls(call_kind);
+CREATE INDEX IF NOT EXISTS idx_extraction_calls_prompt_label
+    ON extraction_calls(call_kind, prompt_label);
+CREATE INDEX IF NOT EXISTS idx_extraction_calls_extracted_at
+    ON extraction_calls(notion_page_id, extracted_at DESC);
 """
 
 
@@ -79,6 +124,11 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN canonical_url TEXT",
             "ALTER TABLE queue_items ADD COLUMN content_type TEXT",
             "ALTER TABLE queue_items ADD COLUMN extraction_payload TEXT",
+            "ALTER TABLE queue_items ADD COLUMN extractor_label TEXT",
+            "ALTER TABLE queue_items ADD COLUMN extractor_sha256 TEXT",
+            "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
+            "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
+            "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
         ):
             try:
                 conn.execute(ddl)
@@ -192,6 +242,106 @@ def update_extracted(
                 notion_page_id,
             ),
         )
+
+
+def record_extraction_calls(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    extractor_label: str,
+    extractor_sha256: str,
+    model: str,
+    calls: list[ExtractionCallRecord],
+    tokens_in_total: int,
+    tokens_out_total: int,
+    langfuse_trace_id: str | None = None,
+) -> None:
+    """Three-call write path. Inserts one row per call into `extraction_calls`
+    and updates `queue_items` cohort fields, both inside a single transaction.
+
+    INSERT (not UPSERT): the AUTOINCREMENT id allows multiple rows per
+    (notion_page_id, call_kind) so LangGraph refinement loops accumulate
+    history naturally. Readers take the most-recent via `extracted_at DESC`.
+
+    `queue_items.extracted_at` is the max across the supplied calls — cohort
+    completion timestamp."""
+    extracted_at = max(c.extracted_at for c in calls)
+    with _connect(db_path) as conn:
+        for c in calls:
+            conn.execute(
+                """
+                INSERT INTO extraction_calls (
+                    notion_page_id, call_kind, prompt_label, prompt_sha256,
+                    schema_name, model, output, tokens_in, tokens_out,
+                    cached_tokens, duration_ms, extracted_at, node_metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    notion_page_id,
+                    c.call_kind,
+                    c.prompt_label,
+                    c.prompt_sha256,
+                    c.schema_name,
+                    model,
+                    c.output,
+                    c.tokens_in,
+                    c.tokens_out,
+                    c.cached_tokens,
+                    c.duration_ms,
+                    c.extracted_at,
+                    json.dumps(c.node_metadata) if c.node_metadata else None,
+                ),
+            )
+        conn.execute(
+            """
+            UPDATE queue_items SET
+                extracted_at = ?,
+                extractor_label = ?,
+                extractor_sha256 = ?,
+                extraction_model = ?,
+                tokens_in_total = ?,
+                tokens_out_total = ?,
+                langfuse_trace_id = ?,
+                error_text = NULL
+            WHERE notion_page_id = ?
+            """,
+            (
+                extracted_at,
+                extractor_label,
+                extractor_sha256,
+                model,
+                tokens_in_total,
+                tokens_out_total,
+                langfuse_trace_id,
+                notion_page_id,
+            ),
+        )
+
+
+def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[str, dict[str, Any]]:
+    """Returns `{call_kind: latest_row_dict}` — the most-recent row per
+    call_kind, handling LangGraph refinement loops where multiple rows exist
+    per call_kind.
+
+    Empty dict when the page has no extraction_calls rows (e.g. fresh row,
+    legacy single-shot row pre-migration)."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT call_kind, prompt_label, prompt_sha256, schema_name,
+                   model, output, tokens_in, tokens_out, cached_tokens,
+                   duration_ms, extracted_at, node_metadata
+              FROM extraction_calls
+             WHERE notion_page_id = ?
+             ORDER BY call_kind, extracted_at DESC
+            """,
+            (notion_page_id,),
+        ).fetchall()
+    latest: dict[str, dict[str, Any]] = {}
+    for row in rows:
+        if row["call_kind"] not in latest:
+            latest[row["call_kind"]] = dict(row)
+    return latest
 
 
 def mark_failed(
