@@ -6,11 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.14.8] — 2026-06-03
+
 ### Changed
 
-- **`canonical_url` now matches newsletter-assistant's `normalize_url`** — kp's `canonicalize_url` was producing a different shape than NA's lookup form, so NA's `kp_queue_cache` tier silently missed every row (YouTube `www.`/`youtu.be`/`si=` axes). NA falls through to slower live fetchers when this happens. Rewritten to mirror NA exactly: keep only `v=` on `youtube.com`/`m.`/`music.` hosts, strip entire query + fragment elsewhere (including `youtu.be`), preserve `www.` in output. Parametrized contract test pins 12 URL shapes. (`triage_queued_items/classify.py`)
-- **Triage now writes `Canonical URL` to Notion** — new URL-type property on the Knowledge OS — Queue DB, populated alongside `Content Type` in the first triage write (Status stays in the second write to preserve the monotonic-Status invariant). Surfaces kp's NA-aligned canonical form in the Notion UI; useful for spotting `kp_queue_cache` contract drift visually. (`shared/queue_resources.py`, `triage_queued_items/assets.py`)
-- **Deploy action required:** existing rows have a stale `canonical_url` from the old logic. Backfill commands in the PR body (kp queue.db + Notion).
+- **`canonical_url` matches newsletter-assistant's `normalize_url`** — kp was emitting a different shape than NA's lookup form, so NA's `kp_queue_cache` tier silently missed on the `www.` / `youtu.be` / `?si=` axes. Now mirrors NA: keep only `v=` on `youtube.com`/`m.`/`music.`; strip query+fragment everywhere else. (`triage_queued_items/classify.py`)
+- **Triage writes `Canonical URL` to Notion** — new URL-type property on the Queue DB, set in triage's first properties update. (`shared/queue_resources.py`, `triage_queued_items/assets.py`)
+- **Deploy action required:** backfill prod `queue.db` on Hetzner with the new canonical shape (commands in PR #75 body). Existing rows have stale `canonical_url`; new triage runs are correct without intervention.
 
 ---
 
