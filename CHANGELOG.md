@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Notion Queue property `Canonical URL` renamed to `URL (canonical)`** — Web Clipper / Save-to-Notion default-binds to the alphabetically-first URL-typed property; since PR #75 introduced `Canonical URL`, mobile captures were silently landing the page URL in the wrong field, leaving the row stuck at `Status=Queued`. Rename pushes `URL` back to first. **Deploy action required:** rename the property in the Notion Queue DB UI before merging. (`shared/queue_resources.py`)
+- **Triage backfills Notion `Added At` from `created_time` when missing** — mobile capture surfaces frequently omit Added At; sensor reads the page's `created_time` and writes it through `write_triaged` when the row has no Added At. Existing values are preserved untouched. (`triage_queued_items/sensors.py`, `triage_queued_items/assets.py`, `shared/queue_resources.py`)
+
 ---
 
 ## [0.14.8] — 2026-06-03

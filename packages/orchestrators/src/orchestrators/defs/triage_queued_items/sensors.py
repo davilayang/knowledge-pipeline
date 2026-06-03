@@ -44,6 +44,17 @@ def poll_notion_for_triage(
         name_chunks = row.get("properties", {}).get("Name", {}).get("title") or []
         existing_name = "".join(c.get("plain_text") or "" for c in name_chunks).strip() or None
 
+        # Mobile capture surfaces (iOS Share-to-Notion, Web Clipper) often skip
+        # the Added At property. Backfill from the page's created_time so the
+        # Queue's chronological view stays sorted; leave alone if the user (or
+        # capture) already set it.
+        added_at_iso: str | None = None
+        added_at_prop = row.get("properties", {}).get("Added At", {})
+        added_at_date = added_at_prop.get("date") if isinstance(added_at_prop, dict) else None
+        existing_added_at = added_at_date.get("start") if added_at_date else None
+        if not existing_added_at:
+            added_at_iso = row.get("created_time") or None
+
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
         run_requests.append(
@@ -57,6 +68,7 @@ def poll_notion_for_triage(
                             url=url,
                             content_type=existing_ct,
                             name=existing_name,
+                            added_at_iso=added_at_iso,
                         ),
                     }
                 ),

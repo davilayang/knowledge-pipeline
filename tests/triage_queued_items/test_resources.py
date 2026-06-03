@@ -55,7 +55,10 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
 
 
 def test_triage_notion_write_triaged_writes_canonical_url():
-    """Canonical URL is batched into the first (non-Status) call."""
+    """Canonical URL is batched into the first (non-Status) call. Notion-side
+    property is named `URL (canonical)` so the `URL` property sorts first
+    alphabetically — Web Clipper / Save-to-Notion default-bind to the
+    alphabetically-first URL field."""
     resource = _make_notion()
     fake_client = MagicMock()
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):
@@ -66,7 +69,40 @@ def test_triage_notion_write_triaged_writes_canonical_url():
             status_after="Fetching",
         )
     first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
-    assert first_call_props["Canonical URL"] == {"url": "https://youtu.be/abc"}
+    assert first_call_props["URL (canonical)"] == {"url": "https://youtu.be/abc"}
+
+
+def test_triage_notion_write_triaged_writes_added_at_when_provided():
+    """added_at_iso → batched into the first (non-Status) call as a Notion
+    date property."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            canonical_url="https://example.com",
+            status_after="Ready",
+            added_at_iso="2026-06-02T08:21:00.000Z",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert first_call_props["Added At"] == {"date": {"start": "2026-06-02T08:21:00.000Z"}}
+
+
+def test_triage_notion_write_triaged_omits_added_at_when_not_provided():
+    """added_at_iso=None → no Added At write. Preserves whatever Notion has."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            canonical_url="https://example.com",
+            status_after="Ready",
+            added_at_iso=None,
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Added At" not in call.kwargs["properties"]
 
 
 def test_triage_notion_write_triaged_omits_name_when_not_provided():

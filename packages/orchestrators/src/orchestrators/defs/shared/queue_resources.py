@@ -94,6 +94,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
         name: str | None = None,
         description: str | None = None,
+        added_at_iso: str | None = None,
     ) -> None:
         """Two-step write: everything-non-Status first, then Status as the
         monotonic last write. If Status flipped first and the prior write then
@@ -102,10 +103,18 @@ class NotionQueueResource(dg.ConfigurableResource):
 
         `name` and `description` are optional Notion-enrichment fields. `name`
         is the page Title; pass it only when Notion's existing Name is empty.
-        `description` is a rich_text blurb; safe to always overwrite."""
+        `description` is a rich_text blurb; safe to always overwrite.
+        `added_at_iso` backfills the Added At date when the row landed without
+        one (mobile capture surfaces frequently omit it); pass None to leave
+        Notion's Added At untouched.
+
+        Notion-side property name `URL (canonical)` is chosen so the Queue's
+        `URL` property sorts alphabetically before any other URL-typed field
+        — Web Clipper / Save-to-Notion default-bind to the alphabetically
+        first URL property when the user hasn't explicitly mapped one."""
         properties: dict[str, dict] = {
             "Content Type": {"select": {"name": content_type}},
-            "Canonical URL": {"url": canonical_url},
+            "URL (canonical)": {"url": canonical_url},
         }
         # Strip both ends — incoming title/description may include trailing
         # newlines from HTML metadata or padding from upstream writers. A value
@@ -117,6 +126,8 @@ class NotionQueueResource(dg.ConfigurableResource):
             properties["Name"] = {"title": [{"text": {"content": clean_name}}]}
         if clean_description:
             properties["Description"] = {"rich_text": [{"text": {"content": clean_description}}]}
+        if added_at_iso:
+            properties["Added At"] = {"date": {"start": added_at_iso}}
         client = self._client()
         client.pages.update(page_id=page_id, properties=properties)
         client.pages.update(
