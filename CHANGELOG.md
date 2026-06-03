@@ -6,10 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.14.9] — 2026-06-03
+
 ### Changed
 
-- **Notion Queue property `Canonical URL` flipped from URL-type to Text-type** — Web Clipper / Save-to-Notion auto-pick a URL-typed property when the user hasn't explicitly mapped one; since PR #75 introduced `Canonical URL` as a second URL property, mobile captures were silently landing the page URL there instead of `URL`, leaving rows stuck at `Status=Queued`. Flipping to text removes Canonical URL from the clipper's URL-property candidate pool entirely — only `URL` remains, so captures are unambiguous. kp's payload shape changes from `{"url": ...}` to `{"rich_text": [{"text": {"content": ...}}]}` accordingly. **Deploy action required:** change the property type in the Notion Queue DB UI (URL → Text) at the same moment the kp PR merges — existing URL strings convert losslessly. (`shared/queue_resources.py`)
-- **Triage backfills Notion `Added At` from `created_time` when missing** — mobile capture surfaces frequently omit Added At; sensor reads the page's `created_time` and writes it through `write_triaged` when the row has no Added At. Existing values are preserved untouched. (`triage_queued_items/sensors.py`, `triage_queued_items/assets.py`, `shared/queue_resources.py`)
+- **Notion Queue `Canonical URL` flipped URL-type → Text-type.** With two URL properties on the DB, Web Clipper / Save-to-Notion silently routed mobile captures to `Canonical URL` instead of `URL`, stranding rows at `Status=Queued`. Text-typing leaves only one URL-type property → unambiguous capture. **Deploy:** flip property type in Notion UI at merge. (`shared/queue_resources.py`)
+- **Triage backfills `Added At` from `created_time` when missing.** Mobile captures often omit it; sensor now writes `created_time` through; existing values preserved. (`triage_queued_items/sensors.py`, `assets.py`)
 
 ---
 
