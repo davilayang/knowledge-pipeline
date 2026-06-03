@@ -1,5 +1,4 @@
 import hashlib
-import json
 import textwrap
 
 import dagster as dg
@@ -168,18 +167,19 @@ def fetched(
             asset=dg.AssetKey(["extract_complex_contents", "extracted"]),
             blocking=True,
             description=(
-                "extracted_title set AND at least one of core_mechanism / "
-                "best_example populated."
+                "Topic Card has extracted_title + core_mechanism, AND Followups "
+                "has at least 4 questions."
             ),
         ),
     ],
     description=_oneline(
         """
-        Dispatches to the per-type extractor strategy via ExtractorRegistry
-        (v1: SingleShotOpenAIExtractor for every type, per-type prompt).
-        Persists the Topic Card fields + provenance to queue_items. The
-        registry pattern lets future per-type swaps (e.g. LangGraph for
-        arXiv) land without asset edits.
+        Runs the three-call extractor via ExtractorRegistry (v2:
+        ThreeCallOpenAIExtractor — narrative + topic_card + followups in
+        one Dagster op, calls 2+3 in parallel via asyncio.gather). Persists
+        one row per call into extraction_calls + updates queue_items cohort
+        fields atomically. Future LangGraph swap is a one-class change
+        inside the registry; no asset edits required.
         """
     ),
 )
@@ -196,39 +196,78 @@ def extracted(
         )
     content_type = row["content_type"]
 
-    extraction, usage = extractor.extract(content=row["raw_content"], content_type=content_type)
-    store.update_extracted(
-        notion_page_id=page_id,
-        extraction=extraction,
-        prompt_label=extractor.prompt_label(content_type),
-        prompt_sha256=extractor.prompt_sha256(content_type),
-        model=extractor.model,
-        tokens_in=usage.input_tokens,
-        tokens_out=usage.output_tokens,
+    # Build the extractor ONCE per materialization. It owns an AsyncOpenAI
+    # client closed at the end of `.extract()`; calling `build()` again
+    # would leak a fresh httpx pool. Reads of `bundle_label` /
+    # `bundle_sha256` / `model` below are property accesses on this
+    # instance — no extra client construction.
+    ex = extractor.build()
+    payload, calls = ex.extract(content=row["raw_content"], content_type=content_type)
+
+    tokens_in_total = sum(c.tokens_in for c in calls)
+    tokens_out_total = sum(c.tokens_out for c in calls)
+    by_kind = {c.call_kind: c for c in calls}
+
+    # Two perspectives on the cohort time:
+    #   - total_model_time_ms: sum of per-call durations (what you pay for)
+    #   - wall_clock_ms: narrative ran first (sequential), then topic_card
+    #     and followups in parallel inside asyncio.gather — so user-visible
+    #     latency is narrative + max(topic_card, followups), not the sum.
+    durations = {k: (v.duration_ms or 0) for k, v in by_kind.items()}
+    total_model_time_ms = int(sum(durations.values()))
+    wall_clock_ms = int(
+        durations.get("narrative", 0)
+        + max(durations.get("topic_card", 0), durations.get("followups", 0))
     )
 
-    field_count = sum(1 for v in extraction.values() if v)
-    passed = bool(extraction.get("extracted_title")) and bool(
-        extraction.get("core_mechanism") or extraction.get("best_example")
+    store.record_extraction_calls(
+        notion_page_id=page_id,
+        extractor_label=ex.bundle_label,
+        extractor_sha256=ex.bundle_sha256,
+        model=ex.model,
+        calls=calls,
+        tokens_in_total=tokens_in_total,
+        tokens_out_total=tokens_out_total,
     )
-    extraction_json = json.dumps(extraction, indent=2, ensure_ascii=False)
+
+    topic_card = payload.topic_card
+    followups = payload.followups
+    passed = (
+        bool(topic_card.extracted_title)
+        and bool(topic_card.core_mechanism)
+        and len(followups.questions) >= 4
+    )
 
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
-            "extraction_prompt_label": dg.MetadataValue.text(extractor.prompt_label(content_type)),
-            "extraction_model": dg.MetadataValue.text(extractor.model),
-            "prompt_sha256_short": dg.MetadataValue.text(
-                extractor.prompt_sha256(content_type)[:12]
+            "extractor_label": dg.MetadataValue.text(ex.bundle_label),
+            "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256[:12]),
+            "extraction_model": dg.MetadataValue.text(ex.model),
+            "extracted_title": dg.MetadataValue.text(topic_card.extracted_title),
+            "narrative_chars": dg.MetadataValue.int(len(payload.narrative_md)),
+            "followups_count": dg.MetadataValue.int(len(followups.questions)),
+            "tokens_in_total": dg.MetadataValue.int(tokens_in_total),
+            "tokens_out_total": dg.MetadataValue.int(tokens_out_total),
+            "total_model_time_ms": dg.MetadataValue.int(total_model_time_ms),
+            "wall_clock_ms": dg.MetadataValue.int(wall_clock_ms),
+            "prompt_sha_short_narrative": dg.MetadataValue.text(
+                by_kind["narrative"].prompt_sha256[:12]
             ),
-            "tokens_in": dg.MetadataValue.int(usage.input_tokens),
-            "tokens_out": dg.MetadataValue.int(usage.output_tokens),
-            "extracted_title": dg.MetadataValue.text(extraction.get("extracted_title") or ""),
-            "field_count": dg.MetadataValue.int(field_count),
-            "extraction_preview": dg.MetadataValue.md(f"```json\n{_preview(extraction_json)}\n```"),
+            "prompt_sha_short_topic_card": dg.MetadataValue.text(
+                by_kind["topic_card"].prompt_sha256[:12]
+            ),
+            "prompt_sha_short_followups": dg.MetadataValue.text(
+                by_kind["followups"].prompt_sha256[:12]
+            ),
+            "narrative_preview": dg.MetadataValue.md(f"```\n{_preview(payload.narrative_md)}\n```"),
+            "topic_card_preview": dg.MetadataValue.md(
+                f"```json\n{_preview(topic_card.model_dump_json(indent=2))}\n```"
+            ),
             "summary": dg.MetadataValue.md(
-                f"**{extraction.get('extracted_title') or '(no title)'}** — "
-                f"{field_count}/7 fields populated"
+                f"**{topic_card.extracted_title}** — 3-call extraction, "
+                f"{len(followups.questions)} chips, {wall_clock_ms}ms wall / "
+                f"{total_model_time_ms}ms model"
             ),
         }
     )
@@ -237,8 +276,8 @@ def extracted(
         passed=passed,
         severity=dg.AssetCheckSeverity.ERROR,
         metadata={
-            "extracted_title": dg.MetadataValue.text(extraction.get("extracted_title") or ""),
-            "field_count": dg.MetadataValue.int(field_count),
+            "extracted_title": dg.MetadataValue.text(topic_card.extracted_title),
+            "followups_count": dg.MetadataValue.int(len(followups.questions)),
         },
     )
 
@@ -277,8 +316,8 @@ def published(
                 "content_type": dg.MetadataValue.text((row or {}).get("content_type") or "(none)"),
             },
         )
-    extraction = json.loads(row.get("extraction_payload") or "{}")
-    core_mechanism = extraction.get("core_mechanism")
+    topic_card = store.get_latest_topic_card(page_id)
+    core_mechanism = topic_card.core_mechanism if topic_card else None
     notion.update_status(page_id, "Ready", description=core_mechanism)
     return dg.MaterializeResult(
         metadata={

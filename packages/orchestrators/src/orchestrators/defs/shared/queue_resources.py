@@ -172,7 +172,8 @@ class QueueStoreResource(dg.ConfigurableResource):
 
     Triage owns `upsert_triaged` (page_id + url + canonical + content_type).
     Extract owns `upsert_fetched` (raw_content + provenance) and
-    `update_extracted` (Topic Card payload + LLM provenance).
+    `record_extraction_calls` (one row per LLM call into extraction_calls
+    + cohort summary update on queue_items).
     """
 
     db_path: str = str(LOCAL_QUEUE_DB)
@@ -221,27 +222,47 @@ class QueueStoreResource(dg.ConfigurableResource):
             content_hash=content_hash,
         )
 
-    def update_extracted(
+    def record_extraction_calls(
         self,
         *,
         notion_page_id: str,
-        extraction: dict[str, Any],
-        prompt_label: str,
-        prompt_sha256: str,
+        extractor_label: str,
+        extractor_sha256: str,
         model: str,
-        tokens_in: int,
-        tokens_out: int,
+        calls: list,
+        tokens_in_total: int,
+        tokens_out_total: int,
+        langfuse_trace_id: str | None = None,
     ) -> None:
-        queue_db.update_extracted(
+        """Three-call writer. Inserts one row per call into extraction_calls
+        and updates queue_items cohort fields in one transaction."""
+        queue_db.record_extraction_calls(
             db_path=self._path(),
             notion_page_id=notion_page_id,
-            extraction=extraction,
-            prompt_label=prompt_label,
-            prompt_sha256=prompt_sha256,
+            extractor_label=extractor_label,
+            extractor_sha256=extractor_sha256,
             model=model,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
+            calls=calls,
+            tokens_in_total=tokens_in_total,
+            tokens_out_total=tokens_out_total,
+            langfuse_trace_id=langfuse_trace_id,
         )
+
+    def get_latest_extraction_calls(self, notion_page_id: str) -> dict[str, dict[str, Any]]:
+        return queue_db.get_latest_extraction_calls(
+            db_path=self._path(), notion_page_id=notion_page_id
+        )
+
+    def get_latest_topic_card(self, notion_page_id: str):
+        """Convenience for the `published` asset — returns the latest TopicCard
+        pydantic model parsed from extraction_calls, or None when absent."""
+        from domains.extraction.schemas import TopicCard
+
+        rows = self.get_latest_extraction_calls(notion_page_id)
+        topic_row = rows.get("topic_card")
+        if not topic_row or not topic_row.get("output"):
+            return None
+        return TopicCard.model_validate_json(topic_row["output"])
 
     def mark_failed(self, *, notion_page_id: str, error_text: str, url: str | None = None) -> None:
         queue_db.mark_failed(

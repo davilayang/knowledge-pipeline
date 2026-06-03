@@ -5,64 +5,19 @@ the import location in their respective modules. Covers what the asset bodies
 depend on:
 - Notion query/get/update payload shapes
 - Fetcher dispatch (YouTube, arXiv, article cascade)
-- ExtractorRegistry prompt routing + JSON parsing
+- ExtractorRegistry builds the three-call extractor + delegates correctly
 - Store thin delegation
 """
 
-import hashlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from orchestrators.defs.extract_complex_contents.extractors import ExtractionUsage
-from orchestrators.defs.extract_complex_contents.extractors.openai_single_shot import (
-    _parse_topic_card,
-)
 from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
 from orchestrators.defs.extract_complex_contents.resources import (
     ExtractorRegistry,
     FetcherResource,
 )
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
-
-# -------- _parse_topic_card --------
-
-
-def test_parse_topic_card_extracts_fenced_json():
-    text = """
-some preamble
-
-```json
-{
-  "title": "JEPA talk",
-  "core_mechanism": "predict abstract representations",
-  "best_example": "Meta's I-JEPA matched contrastive baselines",
-  "second_example": "DINO-WM extended to video",
-  "transferable_pattern": "predict in learned latent space",
-  "main_tension": "Pixel prediction vs abstraction loss",
-  "candidate_tie_backs": ["LeCun 2022 position paper"]
-}
-```
-
-trailing text"""
-    out = _parse_topic_card(text)
-    assert out["extracted_title"] == "JEPA talk"
-    assert out["core_mechanism"].startswith("predict")
-    assert out["candidate_tie_backs"] == ["LeCun 2022 position paper"]
-
-
-def test_parse_topic_card_renames_title_to_extracted_title():
-    """v5 prompt emits 'title'; schema uses 'extracted_title'."""
-    text = '```json\n{"title": "X"}\n```'
-    out = _parse_topic_card(text)
-    assert out["extracted_title"] == "X"
-    assert "title" not in out
-
-
-def test_parse_topic_card_omits_unknown_keys():
-    text = '```json\n{"title": "X", "extra_field": "ignored"}\n```'
-    out = _parse_topic_card(text)
-    assert "extra_field" not in out
-
 
 # -------- NotionQueueResource --------
 
@@ -307,117 +262,69 @@ def _make_registry(
     tmp_path: Path,
     monkeypatch,
     *,
-    pa: str = "article prompt",
-    py: str = "youtube prompt",
-    pax: str = "arxiv prompt",
+    narrative: str = "NARRATIVE PROMPT",
+    topic_card: str = "TOPIC CARD PROMPT",
+    followups: str = "FOLLOWUPS PROMPT",
 ) -> "ExtractorRegistry":
+    """Patches the prompts dir + the module-level PROMPT_LABEL_* constants
+    so the registry resolves to the synthetic files."""
     fake_dir = tmp_path / "prompts"
     fake_dir.mkdir(exist_ok=True)
-    (fake_dir / "pa.md").write_text(pa)
-    (fake_dir / "py.md").write_text(py)
-    (fake_dir / "pax.md").write_text(pax)
+    (fake_dir / "n.md").write_text(narrative)
+    (fake_dir / "t.md").write_text(topic_card)
+    (fake_dir / "f.md").write_text(followups)
     monkeypatch.setattr(
         "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
         fake_dir,
     )
-    return ExtractorRegistry(
-        openai_api_key="k",
-        model="gpt-4o-mini",
-        prompt_label_article="pa",
-        prompt_label_youtube="py",
-        prompt_label_arxiv="pax",
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_NARRATIVE",
+        "n",
+    )
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_TOPIC_CARD",
+        "t",
+    )
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_FOLLOWUPS",
+        "f",
+    )
+    return ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
+
+
+def test_registry_build_returns_extractor_with_3call_v1_bundle_label(tmp_path: Path, monkeypatch):
+    registry = _make_registry(tmp_path, monkeypatch)
+    ex = registry.build()
+    assert ex.bundle_label == "3call_v1"
+
+
+def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
+    """Bundle sha covers model + the three prompt texts — bumping any one
+    flips the cohort-staleness signal written to queue_items.extractor_sha256."""
+    base = _make_registry(tmp_path, monkeypatch).build()
+    other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE").build()
+    assert other.bundle_sha256 != base.bundle_sha256
+    assert len(base.bundle_sha256) == 64
+
+
+def test_extractor_uses_real_v1_prompt_labels():
+    """narrative_v1.md / topic_card_v1.md / followups_v1.md ship in the
+    package — the registry loads them without monkeypatching anything."""
+    from orchestrators.defs.extract_complex_contents.def_config import (
+        PROMPT_LABEL_FOLLOWUPS,
+        PROMPT_LABEL_NARRATIVE,
+        PROMPT_LABEL_TOPIC_CARD,
     )
 
+    assert PROMPT_LABEL_NARRATIVE == "narrative_v1"
+    assert PROMPT_LABEL_TOPIC_CARD == "topic_card_v1"
+    assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
 
-def test_strategy_for_article_uses_article_prompt(tmp_path: Path, monkeypatch):
-    registry = _make_registry(tmp_path, monkeypatch)
-    assert registry.prompt_label("Article") == "pa"
-    assert registry.prompt_sha256("Article") == _sha256_hex("article prompt")
-
-
-def test_strategy_for_youtube_uses_youtube_prompt(tmp_path: Path, monkeypatch):
-    registry = _make_registry(tmp_path, monkeypatch)
-    assert registry.prompt_label("YouTube") == "py"
-    assert registry.prompt_sha256("YouTube") == _sha256_hex("youtube prompt")
-
-
-def test_strategy_for_arxiv_uses_arxiv_prompt(tmp_path: Path, monkeypatch):
-    registry = _make_registry(tmp_path, monkeypatch)
-    assert registry.prompt_label("arXiv") == "pax"
-    assert registry.prompt_sha256("arXiv") == _sha256_hex("arxiv prompt")
-
-
-def test_strategy_for_unknown_type_falls_back_to_article(tmp_path: Path, monkeypatch):
-    registry = _make_registry(tmp_path, monkeypatch)
-    assert registry.prompt_label("UnknownType") == "pa"
-    assert registry.prompt_sha256("UnknownType") == _sha256_hex("article prompt")
-
-
-def test_extract_invokes_openai_with_per_type_prompt(tmp_path: Path, monkeypatch):
-    registry = _make_registry(tmp_path, monkeypatch)
-
-    fake_usage = MagicMock(prompt_tokens=500, completion_tokens=100)
-    fake_message = MagicMock(
-        content='```json\n{"title": "arXiv Paper", "core_mechanism": "CM"}\n```'
-    )
-    fake_choice = MagicMock(message=fake_message)
-    fake_response = MagicMock(choices=[fake_choice], usage=fake_usage)
-    fake_completions = MagicMock()
-    fake_completions.create.return_value = fake_response
-    fake_chat = MagicMock(completions=fake_completions)
-    fake_client = MagicMock(chat=fake_chat)
-
-    with patch(
-        "orchestrators.defs.extract_complex_contents.extractors.openai_single_shot.openai.OpenAI",
-        return_value=fake_client,
-    ):
-        extraction, usage = registry.extract("paper body", content_type="arXiv")
-
-    assert extraction["extracted_title"] == "arXiv Paper"
-    assert extraction["core_mechanism"] == "CM"
-    assert usage.input_tokens == 500
-    assert usage.output_tokens == 100
-
-    create_kwargs = fake_completions.create.call_args.kwargs
-    system_msg = next(m for m in create_kwargs["messages"] if m["role"] == "system")
-    assert system_msg["content"] == "arxiv prompt"
-
-
-def test_protocol_swap(tmp_path: Path, monkeypatch):
-    """Replacing _strategy_for returns the sentinel extraction — asset path is protocol-bound."""
-    registry = _make_registry(tmp_path, monkeypatch)
-    sentinel_extraction = {
-        "extracted_title": "SENTINEL",
-        "core_mechanism": None,
-        "best_example": None,
-        "second_example": None,
-        "transferable_pattern": None,
-        "main_tension": None,
-        "candidate_tie_backs": [],
-    }
-    sentinel_usage = ExtractionUsage(input_tokens=1, output_tokens=1)
-
-    class FakeExtractor:
-        def extract(self, content: str, *, content_type: str) -> tuple[dict, ExtractionUsage]:
-            return sentinel_extraction, sentinel_usage
-
-    monkeypatch.setattr(registry, "_strategy_for", lambda ct: FakeExtractor())
-    extraction, usage = registry.extract("x", content_type="YouTube")
-    assert extraction["extracted_title"] == "SENTINEL"
-    assert usage.input_tokens == 1
-
-
-def test_extractor_uses_real_v5_article_prompt_label():
-    """v5_article_kp_copy_2026_05_31.md exists in the package — registry can load it."""
-    registry = ExtractorRegistry(
-        openai_api_key="k",
-        model="gpt-4o-mini",
-        prompt_label_article="v5_article_kp_copy_2026_05_31",
-        prompt_label_youtube="v5_youtube_kp_copy_2026_06_01",
-        prompt_label_arxiv="v5_arxiv_kp_copy_2026_06_01",
-    )
-    assert "Topic Card" in registry._prompt_text("Article")
-    assert len(registry.prompt_sha256("Article")) == 64
+    registry = ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
+    assert "Core idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
+    assert "PER-FIELD CONTRACTS" in registry._prompt_text(PROMPT_LABEL_TOPIC_CARD)
+    assert "follow-up questions" in registry._prompt_text(PROMPT_LABEL_FOLLOWUPS)
+    assert len(registry.build().bundle_sha256) == 64
 
 
 # -------- QueueStoreResource --------
@@ -476,11 +383,3 @@ def test_fetcher_dispatch_unknown_type_falls_back_to_article():
     sentinel.assert_called_once()
     call_url = sentinel.call_args.args[0]
     assert call_url == "https://example.com/post"
-
-
-# -------- helpers --------
-
-
-def _sha256_hex(s: str) -> str:
-
-    return hashlib.sha256(s.encode()).hexdigest()
