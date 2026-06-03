@@ -166,6 +166,20 @@ class NotionQueueResource(dg.ConfigurableResource):
             },
         )
 
+    def update_status_skipped(self, page_id: str, reason: str) -> None:
+        """Used by triage when a duplicate canonical_url is detected. Distinct
+        from Failed so the Notion view can separate intentional skips (the
+        system did the right thing) from real errors (the run blew up). The
+        Notion Status SELECT must have a `Skipped` option before this is
+        called; absence will raise a Notion API validation error."""
+        self._client().pages.update(
+            page_id=page_id,
+            properties={
+                "Status": {"status": {"name": "Skipped"}},
+                "Error": {"rich_text": [{"text": {"content": reason[:1900]}}]},
+            },
+        )
+
 
 class QueueStoreResource(dg.ConfigurableResource):
     """Thin wrapper over domains.queue_store.sources covering both pipelines.
@@ -198,6 +212,15 @@ class QueueStoreResource(dg.ConfigurableResource):
             url=url,
             canonical_url=canonical_url,
             content_type=content_type,
+        )
+
+    def find_canonical_url_duplicate(
+        self, *, canonical_url: str, excluding_page_id: str
+    ) -> str | None:
+        return queue_db.find_canonical_url_duplicate(
+            db_path=self._path(),
+            canonical_url=canonical_url,
+            excluding_page_id=excluding_page_id,
         )
 
     def upsert_fetched(

@@ -56,6 +56,8 @@ CREATE TABLE IF NOT EXISTS queue_items (
 
 CREATE INDEX IF NOT EXISTS idx_queue_items_url
     ON queue_items(url);
+CREATE INDEX IF NOT EXISTS idx_queue_items_canonical_url
+    ON queue_items(canonical_url);
 CREATE INDEX IF NOT EXISTS idx_queue_items_content_type
     ON queue_items(content_type);
 CREATE INDEX IF NOT EXISTS idx_queue_items_extracted_at
@@ -201,6 +203,39 @@ def upsert_triaged(
             """,
             (notion_page_id, url, canonical_url, content_type),
         )
+
+
+def find_canonical_url_duplicate(
+    *,
+    db_path: Path,
+    canonical_url: str,
+    excluding_page_id: str,
+) -> str | None:
+    """Look for an existing queue_items row with the same canonical_url that
+    isn't `excluding_page_id`. Returns the earliest-inserted matching
+    notion_page_id, or None when no duplicate exists.
+
+    Used by triage to flag re-captures of an already-queued URL as
+    `Duplicate of <page_id>`. `excluding_page_id` is the page currently
+    being triaged — it must be excluded so re-triage on the same row
+    (e.g. Re-Queued from Failed) doesn't false-positive against itself.
+
+    Returns the oldest matching page by ROWID for stable forensics: when
+    the user clicks through to "Duplicate of X" they always land on the
+    same earliest row regardless of which later duplicate they're looking
+    at."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT notion_page_id
+              FROM queue_items
+             WHERE canonical_url = ? AND notion_page_id != ?
+             ORDER BY ROWID
+             LIMIT 1
+            """,
+            (canonical_url, excluding_page_id),
+        ).fetchone()
+    return row["notion_page_id"] if row else None
 
 
 def upsert_fetched(

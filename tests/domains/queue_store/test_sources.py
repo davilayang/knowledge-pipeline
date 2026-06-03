@@ -14,6 +14,7 @@ import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.queue_store.sources import (
     create_schema,
+    find_canonical_url_duplicate,
     get_latest_extraction_calls,
     get_queue_extraction,
     get_row,
@@ -295,6 +296,92 @@ def test_upsert_triaged_round_trips_canonical_and_content_type(db_path: Path):
     assert row is not None
     assert row["canonical_url"] == "https://youtube.com/watch?v=x"
     assert row["content_type"] == "youtube"
+
+
+def test_find_canonical_url_duplicate_returns_none_when_empty(db_path: Path):
+    assert (
+        find_canonical_url_duplicate(
+            db_path=db_path,
+            canonical_url="https://example.com/x",
+            excluding_page_id="p-new",
+        )
+        is None
+    )
+
+
+def test_find_canonical_url_duplicate_excludes_self(db_path: Path):
+    """Re-triaging the same Notion page shouldn't flag its own row as a dup."""
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    assert (
+        find_canonical_url_duplicate(
+            db_path=db_path,
+            canonical_url="https://example.com/x",
+            excluding_page_id="p-1",
+        )
+        is None
+    )
+
+
+def test_find_canonical_url_duplicate_returns_other_page_id(db_path: Path):
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    assert (
+        find_canonical_url_duplicate(
+            db_path=db_path,
+            canonical_url="https://example.com/x",
+            excluding_page_id="p-2",
+        )
+        == "p-1"
+    )
+
+
+def test_find_canonical_url_duplicate_picks_oldest_when_multiple(db_path: Path):
+    """Stable forensics: with multiple matches, return the earliest-inserted row."""
+    for pid in ("p-1", "p-2", "p-3"):
+        upsert_triaged(
+            db_path=db_path,
+            notion_page_id=pid,
+            url="https://example.com/x",
+            canonical_url="https://example.com/x",
+            content_type="Article",
+        )
+    assert (
+        find_canonical_url_duplicate(
+            db_path=db_path,
+            canonical_url="https://example.com/x",
+            excluding_page_id="p-4",
+        )
+        == "p-1"
+    )
+
+
+def test_find_canonical_url_duplicate_ignores_other_urls(db_path: Path):
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    assert (
+        find_canonical_url_duplicate(
+            db_path=db_path,
+            canonical_url="https://example.com/y",
+            excluding_page_id="p-2",
+        )
+        is None
+    )
 
 
 def test_upsert_triaged_then_fetched_keeps_single_row(db_path: Path):

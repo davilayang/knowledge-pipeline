@@ -17,6 +17,10 @@ triage_queued_items_job  (partition_key = notion_page_id)
         └──► triaged  (resolve Content Type (Notion override > URL classifier),
                        canonicalize URL, commit to local store + Notion)
                 │
+                ├──► canonical_url matches an existing queue_items row?
+                │    → Notion Status=Skipped, Error="Duplicate of <other_page_id>"
+                │      (no queue.db write; original cohort stays the single source)
+                │
                 ├──► Tier A (YouTube / arXiv): Notion Status=Fetching
                 │    extract_complex_contents sensor picks up next tick
                 │
@@ -71,6 +75,11 @@ PDF and Podcast options are intentionally absent in v1 — those content types
 fall through to Article (Tier B) until the fetchers land in
 extract_complex_contents and the Notion options are added.
 
+The Notion Queue DB's native `Status` property must additionally carry a
+`Skipped` option (alongside `Queued` / `Fetching` / `Ready` / `Failed`).
+Triage writes Status=Skipped on duplicate canonical_url detection;
+without the option, the Notion API rejects the update.
+
 ## Runbooks
 
 **Row stuck in Status=Queued forever:**
@@ -79,9 +88,15 @@ Most likely a `Status` Notion option mismatch — the DB doesn't have a
 (`...` → Edit database → Status property) and add the missing option.
 
 **Row ends at Status=Failed:**
-`mark_notion_failed_on_triage` fired. Check the Notion row's `Error`
-rich-text property for the failure message, then check the Dagster run logs for
-the full traceback (`dagster job logs --run-id <id>`).
+Run failed → `mark_notion_failed_on_triage` wrote the traceback. Check
+the Notion `Error` rich-text and `dagster job logs --run-id <id>`.
+
+**Row ends at Status=Skipped:**
+Duplicate detected → `triaged` wrote `Error="Duplicate of <other_page_id>"`.
+The pointer is the original Notion page that already holds this
+canonical_url; navigate to it for the real cohort. The duplicate row
+was NOT written to `queue.db`. Skipped (not Failed) so the Notion view
+can separate intentional dedup skips from real errors.
 
 **Re-triage a row:**
 Edit any field on the Notion row (or flip Status back to Queued) to bump

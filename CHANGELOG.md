@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.1] — 2026-06-03
+
+### Changed
+
+- **Triage dedupes Notion captures by `canonical_url`** — a second capture of an already-queued URL → `Status=Skipped`, `Error="Duplicate of <other_page_id>"`; no queue.db pollution. **Deploy:** add a `Skipped` option to the Notion Queue's Status property before merge.
+
+---
+
 ## [0.15.0] — 2026-06-03
 
 ### Changed

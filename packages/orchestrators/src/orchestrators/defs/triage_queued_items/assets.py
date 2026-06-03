@@ -85,6 +85,30 @@ def triaged(
         content_type_source = "classified"
 
     triage_store.ensure_schema()
+
+    # Dedup by canonical_url: a second Notion capture of an already-queued
+    # URL is flagged Failed with a pointer to the original. Excluding the
+    # current page_id keeps re-triage on the same row (Re-Queued from
+    # Failed) idempotent. No queue.db row is written for the dup so the
+    # original cohort stays the single source of truth.
+    dup_page_id = triage_store.find_canonical_url_duplicate(
+        canonical_url=canonical,
+        excluding_page_id=page_id,
+    )
+    if dup_page_id:
+        triage_notion.update_status_skipped(page_id, f"Duplicate of {dup_page_id}")
+        return dg.MaterializeResult(
+            metadata={
+                "outcome": dg.MetadataValue.text("duplicate"),
+                "duplicate_of": dg.MetadataValue.text(dup_page_id),
+                "canonical_url": dg.MetadataValue.url(canonical),
+                "original_url": dg.MetadataValue.url(config.url),
+                "content_type": dg.MetadataValue.text(content_type),
+                "status_after": dg.MetadataValue.text("Skipped"),
+                "summary": dg.MetadataValue.md(f"**Duplicate** of `{dup_page_id}`"),
+            }
+        )
+
     triage_store.upsert_triaged(
         notion_page_id=page_id,
         url=config.url,

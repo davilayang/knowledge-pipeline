@@ -340,6 +340,108 @@ def test_triaged_passes_added_at_iso_through_to_notion(tmp_path: Path):
     assert notion.write_triaged.call_args.kwargs["added_at_iso"] == "2026-06-02T08:21:00.000Z"
 
 
+# -------- canonical_url dedup --------
+
+
+def _seed_existing_triaged(
+    store: QueueStoreResource,
+    *,
+    page_id: str,
+    canonical_url: str,
+) -> None:
+    """Seed queue.db as if a prior triage row already exists for `page_id`.
+    Used to simulate the "second capture of an already-queued URL" case."""
+    from domains.queue_store import sources as queue_db
+
+    queue_db.create_schema(db_path=Path(store.db_path))
+    queue_db.upsert_triaged(
+        db_path=Path(store.db_path),
+        notion_page_id=page_id,
+        url=canonical_url,
+        canonical_url=canonical_url,
+        content_type="Article",
+    )
+
+
+def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
+    """Second capture of an already-triaged canonical_url → Notion row gets
+    Status=Skipped with Error="Duplicate of <other_page_id>". Queue.db is
+    not polluted with a second row, and the normal write_triaged
+    (status flip to Ready/Fetching) does not fire. Skipped (not Failed) so
+    the Notion view separates intentional dedup skips from real errors."""
+    resources, notion = _resources(tmp_path)
+    _seed_existing_triaged(
+        resources["triage_store"],
+        page_id="p-original",
+        canonical_url="https://example.com/post",
+    )
+    result = _materialize(
+        partition_key="p-dup",
+        resources=resources,
+        url="https://example.com/post",
+    )
+    assert result.success
+    # Notion is flagged Skipped, not Ready/Fetching/Failed.
+    notion.update_status_skipped.assert_called_once()
+    skipped_args = notion.update_status_skipped.call_args
+    assert skipped_args.args[0] == "p-dup"
+    assert "p-original" in skipped_args.args[1]
+    notion.update_status_failed.assert_not_called()
+    notion.write_triaged.assert_not_called()
+    # Queue.db is NOT polluted with a row for p-dup.
+    from domains.queue_store import sources as queue_db
+
+    assert (
+        queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-dup")
+        is None
+    )
+    # Materialization metadata flags the outcome for observability.
+    metadata = _get_metadata(result)
+    assert metadata["outcome"].text == "duplicate"
+    assert metadata["duplicate_of"].text == "p-original"
+    assert metadata["status_after"].text == "Skipped"
+
+
+def test_triaged_idempotent_on_re_triage_same_page(tmp_path: Path):
+    """Re-triaging the SAME notion_page_id (e.g. Re-Queued from Failed) must
+    NOT flag itself as a duplicate. Existing row for self stays; write_triaged
+    fires normally."""
+    resources, notion = _resources(tmp_path)
+    _seed_existing_triaged(
+        resources["triage_store"],
+        page_id="p-1",
+        canonical_url="https://example.com/post",
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/post",
+    )
+    assert result.success
+    notion.update_status_skipped.assert_not_called()
+    notion.update_status_failed.assert_not_called()
+    notion.write_triaged.assert_called_once()
+
+
+def test_triaged_dedup_uses_canonical_not_raw_url(tmp_path: Path):
+    """A new URL with extra tracking params that canonicalizes to an
+    already-triaged canonical_url → flagged as duplicate."""
+    resources, notion = _resources(tmp_path)
+    _seed_existing_triaged(
+        resources["triage_store"],
+        page_id="p-original",
+        canonical_url="https://example.com/post",
+    )
+    result = _materialize(
+        partition_key="p-dup",
+        resources=resources,
+        url="https://example.com/post?utm_source=twitter",
+    )
+    assert result.success
+    notion.update_status_skipped.assert_called_once()
+    notion.write_triaged.assert_not_called()
+
+
 def test_triaged_passes_none_added_at_when_unset(tmp_path: Path):
     """No added_at_iso in run_config → None forwarded to write_triaged."""
     resources, notion = _resources(tmp_path)
