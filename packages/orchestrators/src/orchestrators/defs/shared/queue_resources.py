@@ -200,6 +200,15 @@ class QueueStoreResource(dg.ConfigurableResource):
             content_type=content_type,
         )
 
+    def find_canonical_url_duplicate(
+        self, *, canonical_url: str, excluding_page_id: str
+    ) -> str | None:
+        return queue_db.find_canonical_url_duplicate(
+            db_path=self._path(),
+            canonical_url=canonical_url,
+            excluding_page_id=excluding_page_id,
+        )
+
     def upsert_fetched(
         self,
         *,

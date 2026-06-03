@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Triage flags duplicate Notion captures of an already-queued URL** as `Status=Failed` with `Error="Duplicate of <other_page_id>"`. Matched on `canonical_url`, so a second capture with extra tracking params still resolves to the original. The duplicate row is not written to `queue.db`, leaving the original cohort as the single source of truth. (`triage_queued_items/assets.py`, `domains/queue_store/sources.py`)
+
 ---
 
 ## [0.15.0] — 2026-06-03
