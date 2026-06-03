@@ -90,6 +90,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         *,
         page_id: str,
         content_type: str,
+        canonical_url: str,
         status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
         name: str | None = None,
         description: str | None = None,
@@ -102,7 +103,10 @@ class NotionQueueResource(dg.ConfigurableResource):
         `name` and `description` are optional Notion-enrichment fields. `name`
         is the page Title; pass it only when Notion's existing Name is empty.
         `description` is a rich_text blurb; safe to always overwrite."""
-        properties: dict[str, dict] = {"Content Type": {"select": {"name": content_type}}}
+        properties: dict[str, dict] = {
+            "Content Type": {"select": {"name": content_type}},
+            "Canonical URL": {"url": canonical_url},
+        }
         # Strip both ends — incoming title/description may include trailing
         # newlines from HTML metadata or padding from upstream writers. A value
         # that strips to empty is treated as "don't write" (don't blank a

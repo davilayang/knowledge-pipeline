@@ -1,3 +1,4 @@
+import pytest
 from orchestrators.defs.triage_queued_items.classify import (
     ALL_CONTENT_TYPES,
     canonicalize_url,
@@ -70,37 +71,43 @@ def test_classification_returns_value_in_all_content_types_set():
         assert classify_content_type(url) in ALL_CONTENT_TYPES
 
 
-# ---------------------------------------------------------------------------
-# canonicalize_url
-# ---------------------------------------------------------------------------
+# canonicalize_url — CONTRACT with newsletter-assistant's normalize_url.
 
 
-def test_youtu_be_normalizes_to_youtube_watch():
-    assert canonicalize_url("https://youtu.be/abc123") == "https://youtube.com/watch?v=abc123"
-
-
-def test_utm_params_stripped():
-    result = canonicalize_url("https://example.com/post?utm_source=newsletter&id=42")
-    assert "utm_source" not in result
-    assert "id=42" in result
-
-
-def test_fbclid_stripped():
-    result = canonicalize_url("https://example.com/?fbclid=xxx&keep=yes")
-    assert "fbclid" not in result
-    assert "keep=yes" in result
-
-
-def test_youtube_v_param_preserved():
-    result = canonicalize_url("https://youtube.com/watch?v=abc123&utm_source=x")
-    assert "v=abc123" in result
-    assert "utm_source" not in result
-
-
-def test_x_com_normalizes_to_twitter_com():
-    result = canonicalize_url("https://x.com/handle/status/123")
-    assert "twitter.com" in result
-    assert "x.com" not in result
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        ("https://youtu.be/vy7o1g2iHY8", "https://youtu.be/vy7o1g2iHY8"),
+        ("https://youtu.be/vy7o1g2iHY8?si=KNw9IPu3Da2KDR_q", "https://youtu.be/vy7o1g2iHY8"),
+        (
+            "https://youtube.com/watch?v=BD3vLtWhT5A&si=QawMlhQU1mLmI_IT",
+            "https://youtube.com/watch?v=BD3vLtWhT5A",
+        ),
+        (
+            "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
+            "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
+        ),
+        (
+            "https://youtube.com/watch?v=abc123&utm_source=x",
+            "https://youtube.com/watch?v=abc123",
+        ),
+        ("https://m.youtube.com/watch?v=abc123&si=Y", "https://m.youtube.com/watch?v=abc123"),
+        (
+            "https://music.youtube.com/watch?v=abc123&list=PL",
+            "https://music.youtube.com/watch?v=abc123",
+        ),
+        ("https://example.com/post?utm_source=newsletter&id=42", "https://example.com/post"),
+        ("https://example.com/?fbclid=xxx&keep=yes", "https://example.com"),
+        (
+            "https://medium.com/data-science-collective/ds-star-1c1a7b593277?source=home_for_you",
+            "https://medium.com/data-science-collective/ds-star-1c1a7b593277",
+        ),
+        ("https://example.com/post#section-2", "https://example.com/post"),
+        ("https://arxiv.org/abs/2305.14283", "https://arxiv.org/abs/2305.14283"),
+    ],
+)
+def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):
+    assert canonicalize_url(raw) == expected
 
 
 # ---------------------------------------------------------------------------

@@ -94,6 +94,7 @@ def triaged(
     triage_notion.write_triaged(
         page_id=page_id,
         content_type=content_type,
+        canonical_url=canonical,
         status_after=status_after,
         name=name_for_notion,
         description=meta.description,

@@ -295,9 +295,9 @@ def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
     assert kwargs.get("name") is None
 
 
-def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
-    """Canonical URL (tracking params stripped) goes to local store.
-    notion.write_triaged does not receive a canonical_url kwarg."""
+def test_triaged_persists_canonical_url_to_store_and_notion(tmp_path: Path):
+    """Canonical URL goes to both queue.db (NA reads it for kp_queue_cache)
+    and Notion's `Canonical URL` field (UI-visible debug surface)."""
     resources, notion = _resources(tmp_path)
     dirty_url = "https://example.com/p?utm_source=newsletter&id=42"
     result = _materialize(
@@ -310,7 +310,5 @@ def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
 
     row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-1")
     assert row is not None
-    assert "utm_source" not in row["canonical_url"]
-    assert "id=42" in row["canonical_url"]
-    write_triaged_kwargs = notion.write_triaged.call_args.kwargs
-    assert "canonical_url" not in write_triaged_kwargs
+    assert row["canonical_url"] == "https://example.com/p"
+    assert notion.write_triaged.call_args.kwargs["canonical_url"] == "https://example.com/p"

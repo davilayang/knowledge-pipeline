@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.8] — 2026-06-03
+
+### Changed
+
+- **`canonical_url` matches newsletter-assistant's `normalize_url`** — kp was emitting a different shape than NA's lookup form, so NA's `kp_queue_cache` tier silently missed on the `www.` / `youtu.be` / `?si=` axes. Now mirrors NA: keep only `v=` on `youtube.com`/`m.`/`music.`; strip query+fragment everywhere else. (`triage_queued_items/classify.py`)
+- **Triage writes `Canonical URL` to Notion** — new URL-type property on the Queue DB, set in triage's first properties update. (`shared/queue_resources.py`, `triage_queued_items/assets.py`)
+- **Deploy action required:** backfill prod `queue.db` on Hetzner with the new canonical shape (commands in PR #75 body). Existing rows have stale `canonical_url`; new triage runs are correct without intervention.
+
+---
+
 ## [0.14.7] — 2026-06-03
 
 ### Changed
