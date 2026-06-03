@@ -266,6 +266,8 @@ def _make_registry(
     topic_card: str = "TOPIC CARD PROMPT",
     followups: str = "FOLLOWUPS PROMPT",
 ) -> "ExtractorRegistry":
+    """Patches the prompts dir + the module-level PROMPT_LABEL_* constants
+    so the registry resolves to the synthetic files."""
     fake_dir = tmp_path / "prompts"
     fake_dir.mkdir(exist_ok=True)
     (fake_dir / "n.md").write_text(narrative)
@@ -275,13 +277,19 @@ def _make_registry(
         "orchestrators.defs.extract_complex_contents.resources._PROMPTS_DIR",
         fake_dir,
     )
-    return ExtractorRegistry(
-        openai_api_key="k",
-        model="gpt-4o-mini",
-        prompt_label_narrative="n",
-        prompt_label_topic_card="t",
-        prompt_label_followups="f",
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_NARRATIVE",
+        "n",
     )
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_TOPIC_CARD",
+        "t",
+    )
+    monkeypatch.setattr(
+        "orchestrators.defs.extract_complex_contents.resources.PROMPT_LABEL_FOLLOWUPS",
+        "f",
+    )
+    return ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
 
 
 def test_registry_build_returns_extractor_with_3call_v1_bundle_label(tmp_path: Path, monkeypatch):
@@ -301,17 +309,21 @@ def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path
 
 def test_extractor_uses_real_v1_prompt_labels():
     """narrative_v1.md / topic_card_v1.md / followups_v1.md ship in the
-    package — the registry loads them without monkeypatching the prompts dir."""
-    registry = ExtractorRegistry(
-        openai_api_key="k",
-        model="gpt-4o-mini",
-        prompt_label_narrative="narrative_v1",
-        prompt_label_topic_card="topic_card_v1",
-        prompt_label_followups="followups_v1",
+    package — the registry loads them without monkeypatching anything."""
+    from orchestrators.defs.extract_complex_contents.def_config import (
+        PROMPT_LABEL_FOLLOWUPS,
+        PROMPT_LABEL_NARRATIVE,
+        PROMPT_LABEL_TOPIC_CARD,
     )
-    assert "Core idea" in registry._prompt_text("narrative_v1")
-    assert "PER-FIELD CONTRACTS" in registry._prompt_text("topic_card_v1")
-    assert "follow-up questions" in registry._prompt_text("followups_v1")
+
+    assert PROMPT_LABEL_NARRATIVE == "narrative_v1"
+    assert PROMPT_LABEL_TOPIC_CARD == "topic_card_v1"
+    assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
+
+    registry = ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
+    assert "Core idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
+    assert "PER-FIELD CONTRACTS" in registry._prompt_text(PROMPT_LABEL_TOPIC_CARD)
+    assert "follow-up questions" in registry._prompt_text(PROMPT_LABEL_FOLLOWUPS)
     assert len(registry.build().bundle_sha256) == 64
 
 

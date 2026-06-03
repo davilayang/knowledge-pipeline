@@ -21,6 +21,11 @@ from orchestrators.defs.shared.queue_resources import (
     QueueStoreResource,
 )
 
+from .def_config import (
+    PROMPT_LABEL_FOLLOWUPS,
+    PROMPT_LABEL_NARRATIVE,
+    PROMPT_LABEL_TOPIC_CARD,
+)
 from .extractors.three_call_openai import ThreeCallOpenAIExtractor
 from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
@@ -80,18 +85,20 @@ class ExtractorRegistry(dg.ConfigurableResource):
     swap is a one-class change: change `build()` to return `LangGraphExtractor`
     instead — the asset code and storage shape don't move.
 
+    Active prompt labels live as code constants in `def_config.py`
+    (`PROMPT_LABEL_NARRATIVE` etc.) — not env vars. Prompt versions don't
+    vary per-deployment, so dev/prod env symmetry doesn't justify wiring
+    them through Dagster Config; bumping a prompt means editing the
+    markdown file AND the constant in the same commit, no env drift.
+
     Callers must `build()` ONCE per asset run and reuse the returned
     extractor for `extract()` + reads of `bundle_label` / `bundle_sha256` /
     `model`. Each build constructs a fresh AsyncOpenAI client that's closed
     at the end of `extract()` (see ThreeCallOpenAIExtractor docstring) —
-    calling `build()` more than once per run wastes httpx pools and is what
-    we explicitly fixed in this commit."""
+    calling `build()` more than once per run wastes httpx pools."""
 
     openai_api_key: str
     model: str
-    prompt_label_narrative: str
-    prompt_label_topic_card: str
-    prompt_label_followups: str
     max_tokens: int = 2048
 
     def _prompt_text(self, label: str) -> str:
@@ -101,12 +108,12 @@ class ExtractorRegistry(dg.ConfigurableResource):
         return ThreeCallOpenAIExtractor(
             api_key=self.openai_api_key,
             model=self.model,
-            narrative_prompt=self._prompt_text(self.prompt_label_narrative),
-            narrative_prompt_label=self.prompt_label_narrative,
-            topic_card_prompt=self._prompt_text(self.prompt_label_topic_card),
-            topic_card_prompt_label=self.prompt_label_topic_card,
-            followups_prompt=self._prompt_text(self.prompt_label_followups),
-            followups_prompt_label=self.prompt_label_followups,
+            narrative_prompt=self._prompt_text(PROMPT_LABEL_NARRATIVE),
+            narrative_prompt_label=PROMPT_LABEL_NARRATIVE,
+            topic_card_prompt=self._prompt_text(PROMPT_LABEL_TOPIC_CARD),
+            topic_card_prompt_label=PROMPT_LABEL_TOPIC_CARD,
+            followups_prompt=self._prompt_text(PROMPT_LABEL_FOLLOWUPS),
+            followups_prompt_label=PROMPT_LABEL_FOLLOWUPS,
             max_tokens=self.max_tokens,
         )
 
@@ -128,9 +135,6 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         "extractor": ExtractorRegistry(
             openai_api_key=dg.EnvVar("OPENAI_API_KEY"),
             model=dg.EnvVar("EXTRACT_QUEUE_MODEL"),
-            prompt_label_narrative=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_NARRATIVE"),
-            prompt_label_topic_card=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_TOPIC_CARD"),
-            prompt_label_followups=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_FOLLOWUPS"),
         ),
         "store": QueueStoreResource(),
     }
