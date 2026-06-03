@@ -18,6 +18,7 @@ from urllib.parse import urlparse
 
 import arxiv
 import httpx
+import requests
 from tenacity import (
     Retrying,
     retry_if_exception_type,
@@ -33,9 +34,6 @@ logger = logging.getLogger(__name__)
 # each other into worse 429 rate-limiting.
 _ARXIV_SEMAPHORE = threading.Semaphore(1)
 
-# Tenacity retry budget for the arxiv metadata call. The inner arxiv.Client
-# is set to num_retries=1 (single attempt per outer try) so this is the
-# single retry layer — no double-retry.
 _RETRY_STOP_AFTER_SECONDS = 60
 _RETRY_WAIT_INITIAL = 2
 _RETRY_WAIT_MAX = 8
@@ -259,7 +257,9 @@ def _fetch_inner(
     with _ARXIV_SEMAPHORE:
         try:
             for attempt in Retrying(
-                retry=retry_if_exception_type(arxiv.HTTPError),
+                retry=retry_if_exception_type(
+                    (arxiv.HTTPError, requests.exceptions.ConnectionError)
+                ),
                 stop=stop_after_delay(_RETRY_STOP_AFTER_SECONDS),
                 wait=wait_exponential_jitter(initial=_RETRY_WAIT_INITIAL, max=_RETRY_WAIT_MAX),
                 reraise=True,
@@ -275,7 +275,7 @@ def _fetch_inner(
                 retry_ms,
             )
             return FetchResult(error=f"no arXiv record for {arxiv_id}")
-        except arxiv.HTTPError as exc:
+        except (arxiv.HTTPError, requests.exceptions.ConnectionError) as exc:
             retry_ms = int((time.monotonic() - t_retry_start) * 1000)
             reason = f"{type(exc).__name__}: {exc}"[:300]
             logger.error(
