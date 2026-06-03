@@ -123,7 +123,6 @@ packages/
         prompts/               # Versioned LLM prompt copies (markdown)
       synthesize_wiki/
       populate_vector_store/
-      workbench/               # Retrieval strategy variants for eval (idx_*, evaluate)
       upstream_sources.py
 
 configs/           # Dagster config — dagster.yaml, workspace.yaml

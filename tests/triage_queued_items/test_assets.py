@@ -297,7 +297,8 @@ def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
 
 def test_triaged_persists_canonical_url_to_store_and_notion(tmp_path: Path):
     """Canonical URL goes to both queue.db (NA reads it for kp_queue_cache)
-    and Notion's `Canonical URL` field (UI-visible debug surface)."""
+    and Notion's `Canonical URL` field (UI-visible debug surface, text-typed
+    on purpose — see write_triaged docstring)."""
     resources, notion = _resources(tmp_path)
     dirty_url = "https://example.com/p?utm_source=newsletter&id=42"
     result = _materialize(
@@ -312,3 +313,40 @@ def test_triaged_persists_canonical_url_to_store_and_notion(tmp_path: Path):
     assert row is not None
     assert row["canonical_url"] == "https://example.com/p"
     assert notion.write_triaged.call_args.kwargs["canonical_url"] == "https://example.com/p"
+
+
+def test_triaged_passes_added_at_iso_through_to_notion(tmp_path: Path):
+    """added_at_iso from TriageInput → forwarded to write_triaged unchanged."""
+    resources, notion = _resources(tmp_path)
+    instance = _instance_with_partition("p-1")
+    result = dg.materialize(
+        [triaged],
+        partition_key="p-1",
+        resources=resources,
+        instance=instance,
+        tags={"notion_page_id": "p-1"},
+        run_config={
+            "ops": {
+                "triage_queued_items__triaged": {
+                    "config": {
+                        "url": "https://example.com/post",
+                        "added_at_iso": "2026-06-02T08:21:00.000Z",
+                    }
+                }
+            }
+        },
+    )
+    assert result.success
+    assert notion.write_triaged.call_args.kwargs["added_at_iso"] == "2026-06-02T08:21:00.000Z"
+
+
+def test_triaged_passes_none_added_at_when_unset(tmp_path: Path):
+    """No added_at_iso in run_config → None forwarded to write_triaged."""
+    resources, notion = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/post",
+    )
+    assert result.success
+    assert notion.write_triaged.call_args.kwargs["added_at_iso"] is None

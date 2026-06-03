@@ -14,17 +14,22 @@ def _notion_row(
     url: str,
     *,
     last_edited: str = "2026-06-01T10:00:00.000Z",
+    created_time: str = "2026-06-01T09:00:00.000Z",
     content_type: str | None = None,
     name: str = "",
+    added_at: str | None = None,
 ) -> dict:
     props: dict = {"URL": {"url": url}}
     if content_type is not None:
         props["Content Type"] = {"select": {"name": content_type}}
     if name:
         props["Name"] = {"title": [{"plain_text": name}]}
+    if added_at is not None:
+        props["Added At"] = {"date": {"start": added_at}}
     return {
         "id": page_id,
         "last_edited_time": last_edited,
+        "created_time": created_time,
         "properties": props,
     }
 
@@ -99,6 +104,39 @@ def test_sensor_reads_user_set_name():
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
     assert triaged_cfg["name"] == "My Article"
+
+
+def test_sensor_backfills_added_at_from_created_time_when_missing():
+    """Mobile capture often omits Added At; sensor backfills from
+    Notion's created_time so the row gets a sane chronological anchor."""
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row(
+            "p-1",
+            "https://example.com/a",
+            created_time="2026-06-02T08:21:00.000Z",
+            added_at=None,
+        ),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg["added_at_iso"] == "2026-06-02T08:21:00.000Z"
+
+
+def test_sensor_preserves_existing_added_at():
+    """Row already has Added At → sensor leaves it alone (added_at_iso=None)."""
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row(
+            "p-1",
+            "https://example.com/a",
+            created_time="2026-06-02T08:21:00.000Z",
+            added_at="2026-05-30T12:00:00.000Z",
+        ),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg.get("added_at_iso") is None
 
 
 def test_sensor_tags_carry_only_notion_page_id():

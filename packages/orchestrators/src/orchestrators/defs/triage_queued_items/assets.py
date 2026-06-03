@@ -30,11 +30,15 @@ class TriageInput(dg.Config):
     `content_type` and `name` are user overrides — set on the Notion row
     before triage runs. Empty / typo'd content_type falls back to URL
     classification. `name` is metadata-only (passes through to the run
-    materialization for observability; triage doesn't write it back)."""
+    materialization for observability; triage doesn't write it back).
+    `added_at_iso` is an Added At backfill — the sensor sets it to the
+    Notion page's `created_time` when the row has no Added At (mobile
+    captures often omit it); None means "leave Added At alone."""
 
     url: str
     content_type: str | None = None
     name: str | None = None
+    added_at_iso: str | None = None
 
 
 @dg.asset(
@@ -98,6 +102,7 @@ def triaged(
         status_after=status_after,
         name=name_for_notion,
         description=meta.description,
+        added_at_iso=config.added_at_iso,
     )
 
     return dg.MaterializeResult(
