@@ -108,13 +108,15 @@ class NotionQueueResource(dg.ConfigurableResource):
         one (mobile capture surfaces frequently omit it); pass None to leave
         Notion's Added At untouched.
 
-        Notion-side property name `URL (canonical)` is chosen so the Queue's
-        `URL` property sorts alphabetically before any other URL-typed field
-        — Web Clipper / Save-to-Notion default-bind to the alphabetically
-        first URL property when the user hasn't explicitly mapped one."""
+        Notion-side `Canonical URL` is a text property (not a URL property)
+        on purpose — Web Clipper / Save-to-Notion auto-pick a URL-typed
+        property when the user hasn't explicitly mapped one, and we want the
+        page URL to always land in the canonical `URL` field. Keeping
+        Canonical URL as text leaves only one URL-type property on the
+        Queue DB, removing the ambiguity entirely."""
         properties: dict[str, dict] = {
             "Content Type": {"select": {"name": content_type}},
-            "URL (canonical)": {"url": canonical_url},
+            "Canonical URL": {"rich_text": [{"text": {"content": canonical_url}}]},
         }
         # Strip both ends — incoming title/description may include trailing
         # newlines from HTML metadata or padding from upstream writers. A value

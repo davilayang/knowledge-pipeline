@@ -55,10 +55,11 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
 
 
 def test_triage_notion_write_triaged_writes_canonical_url():
-    """Canonical URL is batched into the first (non-Status) call. Notion-side
-    property is named `URL (canonical)` so the `URL` property sorts first
-    alphabetically — Web Clipper / Save-to-Notion default-bind to the
-    alphabetically-first URL field."""
+    """Canonical URL is batched into the first (non-Status) call. Written as a
+    Notion `rich_text` payload (not a `url` payload) — the Notion property is
+    intentionally a text property so it doesn't appear in Web Clipper's
+    URL-property candidate pool. That leaves `URL` as the only URL-type
+    property, so mobile captures always land the page URL there."""
     resource = _make_notion()
     fake_client = MagicMock()
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):
@@ -69,7 +70,9 @@ def test_triage_notion_write_triaged_writes_canonical_url():
             status_after="Fetching",
         )
     first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
-    assert first_call_props["URL (canonical)"] == {"url": "https://youtu.be/abc"}
+    assert first_call_props["Canonical URL"] == {
+        "rich_text": [{"text": {"content": "https://youtu.be/abc"}}]
+    }
 
 
 def test_triage_notion_write_triaged_writes_added_at_when_provided():

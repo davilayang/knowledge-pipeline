@@ -297,7 +297,8 @@ def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
 
 def test_triaged_persists_canonical_url_to_store_and_notion(tmp_path: Path):
     """Canonical URL goes to both queue.db (NA reads it for kp_queue_cache)
-    and Notion's `URL (canonical)` field (UI-visible debug surface)."""
+    and Notion's `Canonical URL` field (UI-visible debug surface, text-typed
+    on purpose — see write_triaged docstring)."""
     resources, notion = _resources(tmp_path)
     dirty_url = "https://example.com/p?utm_source=newsletter&id=42"
     result = _materialize(
