@@ -1,22 +1,27 @@
 """SQLite layer for the deferred-learning queue.
 
-Two tables:
+Two tables — full per-column descriptions live as inline ``--`` comments
+inside the ``_SCHEMA`` block below:
 
-- `queue_items` — one row per Notion Queue page (cohort identity, fetch
-  provenance, extraction-cohort summary fields).
-- `extraction_calls` — one row per LLM call (output + provenance). Multiple
-  rows per (notion_page_id, call_kind) are allowed for LangGraph refinement
-  loops; readers take the most-recent via `extracted_at DESC`.
+- ``queue_items`` — one row per Notion Queue page. Carries cohort identity
+  (``notion_page_id``, ``url``, ``canonical_url``, ``content_type``), fetch
+  provenance (``raw_content`` + tier log + hash), and the cohort-level
+  extraction summary (``extracted_at``, ``extraction_model``,
+  ``extractor_label``, ``extractor_sha256``, ``tokens_in/out_total``).
+- ``extraction_calls`` — one row per LLM call. Carries output + per-call
+  provenance (``prompt_label`` / ``prompt_sha256`` / ``schema_name`` /
+  ``model``) + usage (``tokens_in/out``, ``cached_tokens``, ``duration_ms``)
+  + the ``node_metadata`` JSON slot for future LangGraph nodes.
 
-The orchestrator's extract_complex_contents pipeline owns the writes
-(`upsert_fetched` + `record_extraction_calls`); newsletter-assistant reads
-via `get_queue_extraction` (legacy single-blob shape) or directly against
-`extraction_calls` (three-call shape) on the same SQLite file in mode=ro.
+Multiple rows per ``(notion_page_id, call_kind)`` are allowed — future
+LangGraph refinement loops accumulate history; readers take the most-recent
+via ``ORDER BY extracted_at DESC, id DESC``.
 
-The legacy single-blob columns on `queue_items` (`extraction_payload`,
-`extraction_prompt_label`, `prompt_sha256`, `tokens_in`, `tokens_out`) are
-RETAINED in this release cycle for cheap rollback. They will be dropped in
-a follow-up once three-call quality is confirmed in prod.
+The orchestrator's ``extract_complex_contents`` pipeline owns the writes
+(``upsert_fetched`` + ``record_extraction_calls``); newsletter-assistant
+reads ``get_queue_extraction`` (flat dict view, composed from the latest
+``topic_card`` row) or directly against ``extraction_calls`` on the same
+SQLite file in mode=ro.
 """
 
 import json
@@ -29,66 +34,51 @@ from domains.extraction.records import ExtractionCallRecord
 
 _SCHEMA = """
 CREATE TABLE IF NOT EXISTS queue_items (
-    notion_page_id              TEXT PRIMARY KEY,
-    url                         TEXT NOT NULL,
-    canonical_url               TEXT,
-    content_type                TEXT,
-
-    -- fetch
-    raw_content                 TEXT,
-    fetched_at                  TEXT,
-    fetch_tier                  TEXT,
-    fetch_tier_log              TEXT,
-    fetched_content_char_count  INTEGER,
-    content_hash                TEXT,
-
-    -- extraction provenance (operational; indexed)
-    extracted_at                TEXT,
-    extraction_prompt_label     TEXT,    -- legacy single-shot path; retained for rollback
-    extraction_model            TEXT,
-    prompt_sha256               TEXT,    -- legacy single-shot path; retained for rollback
-    tokens_in                   INTEGER, -- legacy single-shot path; retained for rollback
-    tokens_out                  INTEGER, -- legacy single-shot path; retained for rollback
-
-    -- legacy Topic Card content (output now lives in extraction_calls; retained for rollback)
-    extraction_payload          TEXT,
-
-    -- three-call cohort summary (per-call detail lives in extraction_calls)
-    extractor_label             TEXT,    -- "3call_v1" today; "graph_v3" later
-    extractor_sha256            TEXT,    -- bundle hash across the three sub-prompts
-    tokens_in_total             INTEGER, -- denormalised sum across extraction_calls rows
-    tokens_out_total            INTEGER,
-    langfuse_trace_id           TEXT,    -- nullable; deep-trace pointer (LangGraph era)
-
-    error_text                  TEXT
+    notion_page_id              TEXT PRIMARY KEY,  -- pipeline partition key
+    url                         TEXT NOT NULL,     -- captured Notion Queue URL
+    canonical_url               TEXT,              -- canonicalize_url() form
+    content_type                TEXT,              -- YouTube/arXiv/Article/Other
+    raw_content                 TEXT,              -- fetched body
+    fetched_at                  TEXT,              -- ISO-8601 UTC
+    fetch_tier                  TEXT,              -- winning fetcher
+    fetch_tier_log              TEXT,              -- JSON; per-tier attempts
+    fetched_content_char_count  INTEGER,           -- gates "below floor"
+    content_hash                TEXT,              -- SHA-256 of raw_content
+    extracted_at                TEXT,              -- cohort completion ts
+    extraction_model            TEXT,              -- cohort model
+    extractor_label             TEXT,              -- "3call_v1" etc.
+    extractor_sha256            TEXT,              -- model + 3-prompt hash
+    tokens_in_total             INTEGER,           -- sum across calls
+    tokens_out_total            INTEGER,           -- sum across calls
+    langfuse_trace_id           TEXT,              -- nullable (LangGraph era)
+    error_text                  TEXT               -- cohort failure msg
 );
 
 CREATE INDEX IF NOT EXISTS idx_queue_items_url
     ON queue_items(url);
 CREATE INDEX IF NOT EXISTS idx_queue_items_content_type
     ON queue_items(content_type);
-CREATE INDEX IF NOT EXISTS idx_queue_items_prompt_label
-    ON queue_items(extraction_prompt_label);
 CREATE INDEX IF NOT EXISTS idx_queue_items_extracted_at
     ON queue_items(extracted_at);
 CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
     ON queue_items(extractor_label);
 
 CREATE TABLE IF NOT EXISTS extraction_calls (
-    id                  INTEGER PRIMARY KEY AUTOINCREMENT,
-    notion_page_id      TEXT NOT NULL REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
-    call_kind           TEXT NOT NULL,        -- narrative | topic_card | followups
-    prompt_label        TEXT NOT NULL,
-    prompt_sha256       TEXT NOT NULL,
-    schema_name         TEXT,                 -- "TopicCard" | "Followups" | NULL for narrative
-    model               TEXT NOT NULL,
-    output              TEXT NOT NULL,        -- markdown narrative; pydantic-JSON for structured
-    tokens_in           INTEGER NOT NULL,
-    tokens_out          INTEGER NOT NULL,
-    cached_tokens       INTEGER,
-    duration_ms         REAL,
-    extracted_at        TEXT NOT NULL,
-    node_metadata       TEXT                  -- nullable JSON; LangGraph node extras
+    id              INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
+    notion_page_id  TEXT NOT NULL                       -- FK; cohort link
+                    REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
+    call_kind       TEXT NOT NULL,                      -- narrative/topic_card/followups
+    prompt_label    TEXT NOT NULL,                      -- e.g. "topic_card_v1"
+    prompt_sha256   TEXT NOT NULL,                      -- per-call staleness
+    schema_name     TEXT,                               -- "TopicCard"/"Followups"/NULL
+    model           TEXT NOT NULL,                      -- per-call model
+    output          TEXT NOT NULL,                      -- markdown or pydantic-JSON
+    tokens_in       INTEGER NOT NULL,
+    tokens_out      INTEGER NOT NULL,
+    cached_tokens   INTEGER,                            -- nullable; prefix-cache hits
+    duration_ms     REAL,                               -- per-call latency
+    extracted_at    TEXT NOT NULL,                      -- ISO-8601 UTC
+    node_metadata   TEXT                                -- nullable JSON; LangGraph
 );
 
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
@@ -100,6 +90,21 @@ CREATE INDEX IF NOT EXISTS idx_extraction_calls_prompt_label
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_extracted_at
     ON extraction_calls(notion_page_id, extracted_at DESC);
 """
+
+# Legacy single-shot columns dropped in this release. Listed here so the
+# idempotent DROPs below find them on any DB that still carries them, and so
+# the next-cycle reader sees the canonical list.
+_LEGACY_COLUMNS_TO_DROP = (
+    "extraction_payload",
+    "extraction_prompt_label",
+    "prompt_sha256",
+    "tokens_in",
+    "tokens_out",
+)
+
+# Indexes on legacy columns must be dropped before SQLite will let us drop the
+# columns themselves (SQLite ≥3.35 refuses DROP COLUMN on indexed columns).
+_LEGACY_INDEXES_TO_DROP = ("idx_queue_items_prompt_label",)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:
@@ -119,30 +124,60 @@ def _now_iso() -> str:
 
 
 def create_schema(*, db_path: Path) -> None:
+    """Idempotent schema bring-up + forward migration.
+
+    On a fresh DB: `executescript(_SCHEMA)` creates both tables with the
+    current column shape; the ALTER loops are no-ops.
+
+    On a DB carrying older columns (PR #65 / single-shot / pre-three-call):
+    the idempotent ADDs / DROPs converge it to the current shape. Legacy
+    columns (`extraction_payload`, `extraction_prompt_label`, `prompt_sha256`,
+    `tokens_in`, `tokens_out`) and the index on `extraction_prompt_label` are
+    removed — those existed only for the v1 single-shot extractor that was
+    superseded by three-call extraction."""
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
-        # Run idempotent column additions before executescript so the indexes
-        # that reference those columns (e.g. content_type) don't fail on
-        # pre-existing DBs that lack the column.
+        # 1. ADD new columns (idempotent — duplicate column = no-op).
         for ddl in (
             "ALTER TABLE queue_items ADD COLUMN canonical_url TEXT",
             "ALTER TABLE queue_items ADD COLUMN content_type TEXT",
-            "ALTER TABLE queue_items ADD COLUMN extraction_payload TEXT",
             "ALTER TABLE queue_items ADD COLUMN extractor_label TEXT",
             "ALTER TABLE queue_items ADD COLUMN extractor_sha256 TEXT",
             "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
         ):
-            try:
-                conn.execute(ddl)
-            except sqlite3.OperationalError as exc:
-                # SQLite ≥3.x guarantees these exact message strings — stable across versions.
-                if "duplicate column name" not in str(exc).lower():
-                    # Table doesn't exist yet — fine, executescript will create it.
-                    if "no such table" not in str(exc).lower():
-                        raise
+            _ddl_idempotent(conn, ddl)
+
+        # 2. DROP legacy indexes BEFORE legacy columns (SQLite refuses
+        # DROP COLUMN on indexed columns).
+        for idx in _LEGACY_INDEXES_TO_DROP:
+            _ddl_idempotent(conn, f"DROP INDEX IF EXISTS {idx}")
+
+        # 3. DROP legacy columns (idempotent — absent column = no-op).
+        for col in _LEGACY_COLUMNS_TO_DROP:
+            _ddl_idempotent(conn, f"ALTER TABLE queue_items DROP COLUMN {col}")
+
+        # 4. Bring up the current schema (creates tables if missing,
+        # creates current indexes; both `IF NOT EXISTS`).
         conn.executescript(_SCHEMA)
+
+
+def _ddl_idempotent(conn: sqlite3.Connection, ddl: str) -> None:
+    """Run a DDL statement; swallow the expected idempotency errors.
+
+    Stable SQLite error messages (≥3.x):
+    - "duplicate column name" → ADD on existing column
+    - "no such column" → DROP on absent column
+    - "no such table" → fresh DB; the executescript that follows creates it
+    """
+    try:
+        conn.execute(ddl)
+    except sqlite3.OperationalError as exc:
+        msg = str(exc).lower()
+        if "duplicate column name" in msg or "no such column" in msg or "no such table" in msg:
+            return
+        raise
 
 
 def upsert_triaged(
@@ -210,44 +245,6 @@ def upsert_fetched(
         )
 
 
-def update_extracted(
-    *,
-    db_path: Path,
-    notion_page_id: str,
-    extraction: dict[str, Any],
-    prompt_label: str,
-    prompt_sha256: str,
-    model: str,
-    tokens_in: int,
-    tokens_out: int,
-) -> None:
-    with _connect(db_path) as conn:
-        conn.execute(
-            """
-            UPDATE queue_items SET
-                extraction_payload = ?,
-                extraction_prompt_label = ?,
-                extraction_model = ?,
-                prompt_sha256 = ?,
-                tokens_in = ?,
-                tokens_out = ?,
-                extracted_at = ?,
-                error_text = NULL
-            WHERE notion_page_id = ?
-            """,
-            (
-                json.dumps(extraction),
-                prompt_label,
-                model,
-                prompt_sha256,
-                tokens_in,
-                tokens_out,
-                _now_iso(),
-                notion_page_id,
-            ),
-        )
-
-
 def record_extraction_calls(
     *,
     db_path: Path,
@@ -265,7 +262,8 @@ def record_extraction_calls(
 
     INSERT (not UPSERT): the AUTOINCREMENT id allows multiple rows per
     (notion_page_id, call_kind) so LangGraph refinement loops accumulate
-    history naturally. Readers take the most-recent via `extracted_at DESC`.
+    history naturally. Readers take the most-recent via
+    `ORDER BY extracted_at DESC, id DESC`.
 
     `queue_items.extracted_at` is the max across the supplied calls — cohort
     completion timestamp."""
@@ -325,10 +323,9 @@ def record_extraction_calls(
 def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[str, dict[str, Any]]:
     """Returns `{call_kind: latest_row_dict}` — the most-recent row per
     call_kind, handling LangGraph refinement loops where multiple rows exist
-    per call_kind.
+    per call_kind. Tiebreak on `id DESC` when timestamps match.
 
-    Empty dict when the page has no extraction_calls rows (e.g. fresh row,
-    legacy single-shot row pre-migration)."""
+    Empty dict when the page has no extraction_calls rows."""
     with _connect(db_path) as conn:
         rows = conn.execute(
             """
@@ -376,11 +373,16 @@ def get_row(*, db_path: Path, notion_page_id: str) -> dict[str, Any] | None:
 
 
 def list_with_stale_extraction(*, db_path: Path, min_age_minutes: int) -> list[dict[str, Any]]:
+    """Returns rows whose `extracted_at` is older than the cutoff.
+
+    Used by future re-extract sensors. `extractor_label` is the cohort
+    identity — comparing the row's label to the current extractor's label
+    is how the sensor decides whether to re-fire vs leave alone."""
     cutoff = (datetime.now(UTC) - timedelta(minutes=min_age_minutes)).isoformat()
     with _connect(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT notion_page_id, url, extracted_at, extraction_prompt_label
+            SELECT notion_page_id, url, extracted_at, extractor_label, extractor_sha256
             FROM queue_items
             WHERE extracted_at IS NOT NULL AND extracted_at < ?
             """,
@@ -393,14 +395,15 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
     """Public consumer API. Same-machine read path for newsletter-assistant.
 
     Returns the flattened extraction payload merged with provenance fields, or
-    None when the page hasn't been extracted yet. Excludes raw_content —
-    consumers wanting the underlying body should re-fetch from the URL rather
-    than depending on the kp store layout."""
+    None when the page hasn't been extracted yet. Composes the flat view from
+    the latest `topic_card` row in `extraction_calls`; field shape matches
+    what NA's reader has historically consumed (extracted_title /
+    core_mechanism / etc. + provenance keys at top level)."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
-            SELECT url, canonical_url, content_type, extraction_payload,
-                   extraction_prompt_label, extraction_model, extracted_at, content_hash
+            SELECT url, canonical_url, content_type, extraction_model,
+                   extracted_at, content_hash
             FROM queue_items
             WHERE notion_page_id = ? AND extracted_at IS NOT NULL
             """,
@@ -408,13 +411,15 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
         ).fetchone()
     if row is None:
         return None
-    payload = json.loads(row["extraction_payload"] or "{}")
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id=notion_page_id)
+    topic_row = latest.get("topic_card")
+    topic_payload = json.loads(topic_row["output"]) if topic_row else {}
     return {
         "url": row["url"],
         "canonical_url": row["canonical_url"],
         "content_type": row["content_type"],
-        **payload,
-        "extraction_prompt_label": row["extraction_prompt_label"],
+        **topic_payload,
+        "extraction_prompt_label": topic_row["prompt_label"] if topic_row else None,
         "extraction_model": row["extraction_model"],
         "extracted_at": row["extracted_at"],
         "content_hash": row["content_hash"],

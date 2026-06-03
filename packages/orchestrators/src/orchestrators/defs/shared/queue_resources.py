@@ -172,7 +172,8 @@ class QueueStoreResource(dg.ConfigurableResource):
 
     Triage owns `upsert_triaged` (page_id + url + canonical + content_type).
     Extract owns `upsert_fetched` (raw_content + provenance) and
-    `update_extracted` (Topic Card payload + LLM provenance).
+    `record_extraction_calls` (one row per LLM call into extraction_calls
+    + cohort summary update on queue_items).
     """
 
     db_path: str = str(LOCAL_QUEUE_DB)
@@ -219,30 +220,6 @@ class QueueStoreResource(dg.ConfigurableResource):
             fetch_tier_log=fetch_tier_log,
             fetched_content_char_count=fetched_content_char_count,
             content_hash=content_hash,
-        )
-
-    def update_extracted(
-        self,
-        *,
-        notion_page_id: str,
-        extraction: dict[str, Any],
-        prompt_label: str,
-        prompt_sha256: str,
-        model: str,
-        tokens_in: int,
-        tokens_out: int,
-    ) -> None:
-        """Legacy single-shot writer. Retained for rollback this release cycle
-        — the v2 three-call path uses `record_extraction_calls` instead."""
-        queue_db.update_extracted(
-            db_path=self._path(),
-            notion_page_id=notion_page_id,
-            extraction=extraction,
-            prompt_label=prompt_label,
-            prompt_sha256=prompt_sha256,
-            model=model,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
         )
 
     def record_extraction_calls(
