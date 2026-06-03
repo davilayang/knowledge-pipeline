@@ -36,7 +36,7 @@ _ARXIV_SEMAPHORE = threading.Semaphore(1)
 # Tenacity retry budget for the arxiv metadata call. The inner arxiv.Client
 # is set to num_retries=1 (single attempt per outer try) so this is the
 # single retry layer — no double-retry.
-_RETRY_STOP_AFTER_SECONDS = 15
+_RETRY_STOP_AFTER_SECONDS = 60
 _RETRY_WAIT_INITIAL = 2
 _RETRY_WAIT_MAX = 8
 

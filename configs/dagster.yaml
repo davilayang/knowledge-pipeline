@@ -24,6 +24,9 @@ compute_logs:
 concurrency:
   runs:
     max_concurrent_runs: 5
+  pools:
+    granularity: op
+    default_limit: 1
 
 run_launcher:
   module: dagster.core.launcher

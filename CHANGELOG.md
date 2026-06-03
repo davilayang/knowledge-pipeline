@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **arXiv fetcher rides through upstream overload spells.** Tenacity budget on the `arxiv.HTTPError` retry loop bumped 15s → 60s (`fetchers/arxiv.py`); transient 503/429 from `export.arxiv.org/api/query` no longer surface as run failures.
+- **Per-pipeline `dagster/concurrency_key` op tags now actually limit concurrency.** Added `concurrency.pools` to `configs/dagster.yaml` (`granularity: op`, `default_limit: 1`); without this the existing op-tag keys were metadata-only and parallel runs of the same pipeline could race upstream APIs. **Deploy:** pipelines designed to be serialized (backup, extract, triage, wiki, vector) gain real protection on next deploy. To allow cross-run parallelism on a specific pipeline, run `dagster instance concurrency set-limit <pool> <n>` post-deploy.
+
 ---
 
 ## [0.15.1] — 2026-06-03
