@@ -71,78 +71,42 @@ def test_classification_returns_value_in_all_content_types_set():
         assert classify_content_type(url) in ALL_CONTENT_TYPES
 
 
-# ---------------------------------------------------------------------------
 # canonicalize_url — CONTRACT with newsletter-assistant's normalize_url.
-#
-# These outputs must equal what NA's normalize_url produces (NA's
-# packages/knowledge/src/knowledge/fetcher/orchestrator.py). NA's
-# kp_queue_cache tier does WHERE canonical_url = ? against kp's queue.db,
-# where ? is NA's normalised form. Drift = silent cache miss → NA falls
-# through to slower live fetchers.
-# ---------------------------------------------------------------------------
 
 
 @pytest.mark.parametrize(
     "raw, expected",
     [
-        # youtu.be: keep the youtu.be host (do NOT rewrite to youtube.com/watch?v=)
         ("https://youtu.be/vy7o1g2iHY8", "https://youtu.be/vy7o1g2iHY8"),
-        # youtu.be with ?si= tracking: drop the query string entirely
         ("https://youtu.be/vy7o1g2iHY8?si=KNw9IPu3Da2KDR_q", "https://youtu.be/vy7o1g2iHY8"),
-        # youtube.com with &si= tracking: keep only v=
         (
             "https://youtube.com/watch?v=BD3vLtWhT5A&si=QawMlhQU1mLmI_IT",
             "https://youtube.com/watch?v=BD3vLtWhT5A",
         ),
-        # www.youtube.com: preserve www in the output (NA does not strip)
         (
             "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
             "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
         ),
-        # youtube.com with utm_source: keep only v=
         (
             "https://youtube.com/watch?v=abc123&utm_source=x",
             "https://youtube.com/watch?v=abc123",
         ),
-        # m.youtube.com: same treatment as youtube.com
-        (
-            "https://m.youtube.com/watch?v=abc123&si=Y",
-            "https://m.youtube.com/watch?v=abc123",
-        ),
-        # music.youtube.com: same treatment
+        ("https://m.youtube.com/watch?v=abc123&si=Y", "https://m.youtube.com/watch?v=abc123"),
         (
             "https://music.youtube.com/watch?v=abc123&list=PL",
             "https://music.youtube.com/watch?v=abc123",
         ),
-        # Non-YouTube host: strip entire query + fragment (NA's default)
-        (
-            "https://example.com/post?utm_source=newsletter&id=42",
-            "https://example.com/post",
-        ),
-        (
-            "https://example.com/?fbclid=xxx&keep=yes",
-            "https://example.com",
-        ),
-        # Medium tracking source params: stripped under the strict default
+        ("https://example.com/post?utm_source=newsletter&id=42", "https://example.com/post"),
+        ("https://example.com/?fbclid=xxx&keep=yes", "https://example.com"),
         (
             "https://medium.com/data-science-collective/ds-star-1c1a7b593277?source=home_for_you",
             "https://medium.com/data-science-collective/ds-star-1c1a7b593277",
         ),
-        # Fragment dropped
-        (
-            "https://example.com/post#section-2",
-            "https://example.com/post",
-        ),
-        # arXiv abs: passes through (already canonical)
+        ("https://example.com/post#section-2", "https://example.com/post"),
         ("https://arxiv.org/abs/2305.14283", "https://arxiv.org/abs/2305.14283"),
     ],
 )
 def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):
-    """canonical_url must equal NA's normalize_url output.
-
-    See ai-plannings/2026-06-03_align-canonical-url-with-na-normalize.md
-    for the kp_queue_cache miss regression that motivated this contract.
-    """
     assert canonicalize_url(raw) == expected
 
 

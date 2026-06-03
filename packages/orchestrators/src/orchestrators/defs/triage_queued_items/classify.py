@@ -63,20 +63,9 @@ def classify_content_type(url: str) -> str:
 
 
 def canonicalize_url(url: str) -> str:
-    """Produce the cache key NA's ``normalize_url`` expects.
-
-    CONTRACT: output must equal newsletter-assistant's ``normalize_url``
-    (``packages/knowledge/src/knowledge/fetcher/orchestrator.py``) for every
-    URL kp ingests. NA's ``kp_queue_cache`` tier does
-    ``WHERE canonical_url = ?`` against kp's queue.db, where ``?`` is NA's
-    normalised form. Drift = silent cache miss → NA falls through to slower
-    live fetchers. See ai-plannings/2026-06-03_align-canonical-url-with-na-normalize.md.
-
-    Behaviour (mirrors NA):
-      - youtube.com / m.youtube.com / music.youtube.com: keep only ``v=`` param.
-      - everything else (including youtu.be): drop entire query + fragment.
-      - hostname preserved as-is (``www.`` is NOT stripped from output).
-    """
+    """Output must equal newsletter-assistant's `normalize_url`
+    (`packages/knowledge/src/knowledge/fetcher/orchestrator.py`) — NA's
+    `kp_queue_cache` looks up by this exact string; drift = silent miss."""
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").removeprefix("www.")
 
