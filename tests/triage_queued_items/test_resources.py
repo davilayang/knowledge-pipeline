@@ -42,6 +42,7 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
         resource.write_triaged(
             page_id="p-1",
             content_type="YouTube",
+            canonical_url="https://youtu.be/abc",
             status_after="Fetching",
         )
     assert fake_client.pages.update.call_count == 2
@@ -53,6 +54,21 @@ def test_triage_notion_write_triaged_writes_content_type_then_status():
     assert second_call_props["Status"]["status"]["name"] == "Fetching"
 
 
+def test_triage_notion_write_triaged_writes_canonical_url():
+    """Canonical URL is batched into the first (non-Status) call."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="YouTube",
+            canonical_url="https://youtu.be/abc",
+            status_after="Fetching",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert first_call_props["Canonical URL"] == {"url": "https://youtu.be/abc"}
+
+
 def test_triage_notion_write_triaged_omits_name_when_not_provided():
     """name=None → no Name write. Preserves existing user-set value."""
     resource = _make_notion()
@@ -61,6 +77,7 @@ def test_triage_notion_write_triaged_omits_name_when_not_provided():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             name=None,
         )
@@ -76,6 +93,7 @@ def test_triage_notion_write_triaged_writes_name_when_provided():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             name="Hello World",
         )
@@ -92,6 +110,7 @@ def test_triage_notion_write_triaged_writes_description_when_provided():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             description="A short blurb.",
         )
@@ -108,6 +127,7 @@ def test_triage_notion_write_triaged_omits_description_when_not_provided():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             description=None,
         )
@@ -123,6 +143,7 @@ def test_triage_notion_write_triaged_strips_name_whitespace_and_newlines():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             name="\n  Hello World  \n",
         )
@@ -137,6 +158,7 @@ def test_triage_notion_write_triaged_strips_description_whitespace():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             description="  \n A blurb. \n  ",
         )
@@ -153,6 +175,7 @@ def test_triage_notion_write_triaged_skips_name_when_strips_to_empty():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             name="   \n  ",
         )
@@ -167,6 +190,7 @@ def test_triage_notion_write_triaged_skips_description_when_strips_to_empty():
         resource.write_triaged(
             page_id="p-1",
             content_type="Article",
+            canonical_url="https://example.com",
             status_after="Ready",
             description="\n\n  ",
         )
