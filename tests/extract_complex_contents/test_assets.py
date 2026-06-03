@@ -2,15 +2,17 @@
 
 Materializes individual assets in memory with mock resources and a real
 SQLite store (tmp_path). Verifies asset-level invariants: fetched dispatches
-by content_type via FetcherResource, extracted persists + check pass/fail,
-published flips Notion only when extraction is complete."""
+by content_type via FetcherResource, extracted persists three extraction_calls
+rows + updates queue_items cohort fields, published flips Notion only when
+extraction is complete and reads core_mechanism via the latest topic_card row."""
 
-import json
 from pathlib import Path
 from unittest.mock import MagicMock
 
 import dagster as dg
 import pytest
+from domains.extraction.records import ExtractionCallRecord
+from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from domains.queue_store import sources as queue_db
 from orchestrators.defs.extract_complex_contents.assets import (
     extracted,
@@ -20,7 +22,6 @@ from orchestrators.defs.extract_complex_contents.assets import (
 from orchestrators.defs.extract_complex_contents.def_config import (
     queue_items_partition_def,
 )
-from orchestrators.defs.extract_complex_contents.extractors import ExtractionUsage
 from orchestrators.defs.extract_complex_contents.resources import FetchResult
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
 
@@ -84,23 +85,49 @@ def _seed_with_raw_content(
     )
 
 
-def _mock_extractor(title: str | None = "Test Title") -> MagicMock:
-    extractor = MagicMock()
-    extractor.prompt_label.return_value = "v5_youtube_kp_2026_05_31"
-    extractor.prompt_sha256.return_value = "a" * 64
-    extractor.model = "gpt-4o-mini"
-    extractor.extract.return_value = (
-        {
-            "extracted_title": title,
-            "core_mechanism": "mechanism",
-            "best_example": "example",
-            "second_example": None,
-            "transferable_pattern": None,
-            "main_tension": None,
-            "candidate_tie_backs": [],
-        },
-        ExtractionUsage(input_tokens=1000, output_tokens=200),
+def _make_payload(title: str = "Test Title", followups_n: int = 4) -> ExtractionPayload:
+    return ExtractionPayload(
+        narrative_md="# Narrative\n\nbody content",
+        topic_card=TopicCard(
+            extracted_title=title,
+            core_mechanism="NAMED-METHOD does VERB to produce OUTCOME.",
+            best_example="ORG did SPECIFIC-THING for CONTEXT.",
+            second_example=None,
+            transferable_pattern="Doing X lets you achieve Y.",
+            main_tension="A vs B.",
+            candidate_tie_backs=[],
+        ),
+        followups=Followups(questions=[f"Q{i}?" for i in range(followups_n)]),
     )
+
+
+def _make_call(call_kind: str, output: str, tokens_in: int = 100, tokens_out: int = 50):
+    return ExtractionCallRecord(
+        call_kind=call_kind,
+        prompt_label=f"{call_kind}_v1",
+        prompt_sha256=f"{call_kind}_sha".ljust(64, "0"),
+        schema_name=None if call_kind == "narrative" else call_kind.title().replace("_", ""),
+        output=output,
+        tokens_in=tokens_in,
+        tokens_out=tokens_out,
+        cached_tokens=80,
+        duration_ms=500.0,
+        extracted_at="2026-06-03T12:00:00+00:00",
+    )
+
+
+def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMock:
+    payload = _make_payload(title=title, followups_n=followups_n)
+    calls = [
+        _make_call("narrative", payload.narrative_md, 200, 100),
+        _make_call("topic_card", payload.topic_card.model_dump_json(), 250, 80),
+        _make_call("followups", payload.followups.model_dump_json(), 150, 60),
+    ]
+    extractor = MagicMock()
+    extractor.model = "gpt-4o-mini"
+    extractor.bundle_label.return_value = "3call_v1"
+    extractor.bundle_sha256.return_value = "b" * 64
+    extractor.extract.return_value = (payload, calls)
     return extractor
 
 
@@ -250,7 +277,7 @@ def test_fetched_metadata_includes_content_preview(tmp_path: Path):
 # -------- extracted --------
 
 
-def test_extracted_persists_and_passes_check(tmp_path: Path):
+def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
@@ -261,26 +288,25 @@ def test_extracted_persists_and_passes_check(tmp_path: Path):
         resources={"extractor": extractor, "store": store},
     )
     assert result.success
+
+    # Three rows in extraction_calls (one per call_kind), most recent each.
+    latest = store.get_latest_extraction_calls("p-1")
+    assert set(latest.keys()) == {"narrative", "topic_card", "followups"}
+    topic_card_json = latest["topic_card"]["output"]
+    assert TopicCard.model_validate_json(topic_card_json).extracted_title == "JEPA talk"
+
+    # queue_items cohort fields updated.
     row = store.get_row("p-1")
-    payload = json.loads(row["extraction_payload"])
-    assert payload["extracted_title"] == "JEPA talk"
-    assert row["tokens_in"] == 1000
+    assert row["extractor_label"] == "3call_v1"
+    assert row["extractor_sha256"] == "b" * 64
+    assert row["tokens_in_total"] == 600  # 200 + 250 + 150
+    assert row["tokens_out_total"] == 240  # 100 + 80 + 60
+    assert row["extracted_at"] is not None
+
+    # Asset check fires + passes.
     check_events = [e for e in result.all_events if e.event_type_value == "ASSET_CHECK_EVALUATION"]
     assert check_events
     assert check_events[0].asset_check_evaluation_data.passed
-
-
-def test_extracted_check_fails_when_title_missing(tmp_path: Path):
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title=None)
-    with pytest.raises(Exception):
-        _materialize(
-            extracted,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
 
 
 def test_extracted_fails_when_no_raw_content(tmp_path: Path):
@@ -296,7 +322,9 @@ def test_extracted_fails_when_no_raw_content(tmp_path: Path):
         )
 
 
-def test_extracted_dispatches_by_content_type(tmp_path: Path):
+def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
+    """content_type flows through to the extractor — each prompt's body branches
+    on the [content_type: …] tag the extractor prepends."""
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "arXiv", "a" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
@@ -310,7 +338,7 @@ def test_extracted_dispatches_by_content_type(tmp_path: Path):
     assert extractor.extract.call_args.kwargs["content_type"] == "arXiv"
 
 
-def test_extracted_metadata_includes_extraction_preview(tmp_path: Path):
+def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
@@ -322,29 +350,49 @@ def test_extracted_metadata_includes_extraction_preview(tmp_path: Path):
     )
     assert result.success
     metadata = _materialization_metadata(result)
-    preview_md = metadata["extraction_preview"].md_str
-    assert "Visible Title" in preview_md  # short JSON fits without truncation
+    assert "Narrative" in metadata["narrative_preview"].md_str
+    assert "Visible Title" in metadata["topic_card_preview"].md_str
+    assert metadata["followups_count"].value == 4
+    assert metadata["extractor_label"].text == "3call_v1"
 
 
 # -------- published --------
 
 
+def _record_three_call_extraction(
+    db_path: Path,
+    page_id: str,
+    *,
+    core_mechanism: str = "Distilled mechanism summary.",
+):
+    topic_card = TopicCard(
+        extracted_title="T",
+        core_mechanism=core_mechanism,
+        best_example="Example.",
+        transferable_pattern="Pattern.",
+        main_tension="Tension.",
+    )
+    followups = Followups(questions=["a?", "b?", "c?", "d?"])
+    queue_db.record_extraction_calls(
+        db_path=db_path,
+        notion_page_id=page_id,
+        extractor_label="3call_v1",
+        extractor_sha256="b" * 64,
+        model="gpt-4o-mini",
+        calls=[
+            _make_call("narrative", "# narrative"),
+            _make_call("topic_card", topic_card.model_dump_json()),
+            _make_call("followups", followups.model_dump_json()),
+        ],
+        tokens_in_total=600,
+        tokens_out_total=240,
+    )
+
+
 def test_published_flips_notion_and_writes_core_mechanism_to_description(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    queue_db.update_extracted(
-        db_path=db_path,
-        notion_page_id="p-1",
-        extraction={
-            "extracted_title": "T",
-            "core_mechanism": "Distilled mechanism summary.",
-        },
-        prompt_label="v5_youtube",
-        prompt_sha256="a" * 64,
-        model="gpt-4o-mini",
-        tokens_in=100,
-        tokens_out=50,
-    )
+    _record_three_call_extraction(db_path, "p-1", core_mechanism="Distilled mechanism summary.")
     store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()
     result = _materialize(
@@ -358,20 +406,25 @@ def test_published_flips_notion_and_writes_core_mechanism_to_description(tmp_pat
     )
 
 
-def test_published_skips_description_when_core_mechanism_missing(tmp_path: Path):
-    """No core_mechanism in extraction → don't overwrite the Description Notion
-    already has (likely the triage-seeded HTML meta)."""
+def test_published_skips_description_when_no_topic_card_row(tmp_path: Path):
+    """No topic_card row in extraction_calls → don't overwrite the Description
+    Notion already has (likely the triage-seeded HTML meta). This shouldn't
+    happen under the three-call shape (all-or-nothing) but the published asset
+    must tolerate it defensively for forwards-compat with future extractors
+    that emit different call_kinds."""
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
-    queue_db.update_extracted(
+    # Write a cohort row but no extraction_calls rows — simulates an extractor
+    # that has not yet produced a topic_card (unreachable today; defensive).
+    queue_db.record_extraction_calls(
         db_path=db_path,
         notion_page_id="p-1",
-        extraction={"extracted_title": "T", "core_mechanism": None},
-        prompt_label="v5_youtube",
-        prompt_sha256="a" * 64,
+        extractor_label="future_v1",
+        extractor_sha256="c" * 64,
         model="gpt-4o-mini",
-        tokens_in=100,
-        tokens_out=50,
+        calls=[_make_call("narrative", "# narrative")],
+        tokens_in_total=100,
+        tokens_out_total=50,
     )
     store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()

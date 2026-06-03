@@ -12,18 +12,18 @@ Per-type strategies live in `fetchers/` and `extractors/`; this module
 holds the Dagster ConfigurableResource boundaries that orchestrate them.
 """
 
-import hashlib
 from pathlib import Path
-from typing import Any
 
 import dagster as dg
+from domains.extraction.records import ExtractionCallRecord
+from domains.extraction.schemas import ExtractionPayload
 
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
     QueueStoreResource,
 )
 
-from .extractors import ExtractionUsage, ExtractorProtocol, SingleShotOpenAIExtractor
+from .extractors.three_call_openai import ThreeCallOpenAIExtractor
 from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
 _PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
@@ -74,51 +74,52 @@ class FetcherResource(dg.ConfigurableResource):
 
 
 class ExtractorRegistry(dg.ConfigurableResource):
-    """Strategy registry — maps content_type → ExtractorProtocol impl.
+    """Strategy registry — wraps the active ExtractorProtocol impl.
 
-    v1: same SingleShotOpenAIExtractor backend for every type, only the
-    prompt differs. Future: adopting LangGraph for arXiv means writing
-    a class in `extractors/langgraph_arxiv.py` implementing
-    ExtractorProtocol and changing `_strategy_for("arXiv")` to return
-    it — no asset edits required.
-    """
+    v2: `ThreeCallOpenAIExtractor` is the only strategy; content-type
+    routing now happens **inside** the prompts (each prompt's body branches
+    on the `[content_type: ...]` tag the extractor prepends). Future LangGraph
+    swap is a one-class change: instantiate `LangGraphExtractor` instead of
+    `ThreeCallOpenAIExtractor`; the asset code and storage shape don't move.
+
+    `extract(content, content_type=...)` returns
+    `(ExtractionPayload, list[ExtractionCallRecord])` — the in-memory payload
+    feeds the asset's check + metadata, the records feed
+    `QueueStoreResource.record_extraction_calls(...)`."""
 
     openai_api_key: str
     model: str
-    prompt_label_article: str
-    prompt_label_youtube: str
-    prompt_label_arxiv: str
+    prompt_label_narrative: str
+    prompt_label_topic_card: str
+    prompt_label_followups: str
     max_tokens: int = 2048
 
-    def _label_for(self, content_type: str) -> str:
-        return {
-            "YouTube": self.prompt_label_youtube,
-            "arXiv": self.prompt_label_arxiv,
-            "Article": self.prompt_label_article,
-        }.get(content_type, self.prompt_label_article)
+    def _prompt_text(self, label: str) -> str:
+        return (_PROMPTS_DIR / f"{label}.md").read_text()
 
-    def _prompt_path(self, content_type: str) -> Path:
-        return _PROMPTS_DIR / f"{self._label_for(content_type)}.md"
-
-    def _prompt_text(self, content_type: str) -> str:
-        return self._prompt_path(content_type).read_text()
-
-    def prompt_label(self, content_type: str) -> str:
-        return self._label_for(content_type)
-
-    def prompt_sha256(self, content_type: str) -> str:
-        return hashlib.sha256(self._prompt_text(content_type).encode()).hexdigest()
-
-    def _strategy_for(self, content_type: str) -> ExtractorProtocol:
-        return SingleShotOpenAIExtractor(
+    def _build(self) -> ThreeCallOpenAIExtractor:
+        return ThreeCallOpenAIExtractor(
             api_key=self.openai_api_key,
             model=self.model,
-            prompt_text=self._prompt_text(content_type),
+            narrative_prompt=self._prompt_text(self.prompt_label_narrative),
+            narrative_prompt_label=self.prompt_label_narrative,
+            topic_card_prompt=self._prompt_text(self.prompt_label_topic_card),
+            topic_card_prompt_label=self.prompt_label_topic_card,
+            followups_prompt=self._prompt_text(self.prompt_label_followups),
+            followups_prompt_label=self.prompt_label_followups,
             max_tokens=self.max_tokens,
         )
 
-    def extract(self, content: str, *, content_type: str) -> tuple[dict[str, Any], ExtractionUsage]:
-        return self._strategy_for(content_type).extract(content, content_type=content_type)
+    def extract(
+        self, content: str, *, content_type: str
+    ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
+        return self._build().extract(content, content_type=content_type)
+
+    def bundle_label(self) -> str:
+        return self._build().bundle_label
+
+    def bundle_sha256(self) -> str:
+        return self._build().bundle_sha256
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
@@ -138,9 +139,9 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         "extractor": ExtractorRegistry(
             openai_api_key=dg.EnvVar("OPENAI_API_KEY"),
             model=dg.EnvVar("EXTRACT_QUEUE_MODEL"),
-            prompt_label_article=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_ARTICLE"),
-            prompt_label_youtube=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE"),
-            prompt_label_arxiv=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_ARXIV"),
+            prompt_label_narrative=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_NARRATIVE"),
+            prompt_label_topic_card=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_TOPIC_CARD"),
+            prompt_label_followups=dg.EnvVar("EXTRACT_QUEUE_PROMPT_LABEL_FOLLOWUPS"),
         ),
         "store": QueueStoreResource(),
     }

@@ -232,6 +232,8 @@ class QueueStoreResource(dg.ConfigurableResource):
         tokens_in: int,
         tokens_out: int,
     ) -> None:
+        """Legacy single-shot writer. Retained for rollback this release cycle
+        — the v2 three-call path uses `record_extraction_calls` instead."""
         queue_db.update_extracted(
             db_path=self._path(),
             notion_page_id=notion_page_id,
@@ -242,6 +244,48 @@ class QueueStoreResource(dg.ConfigurableResource):
             tokens_in=tokens_in,
             tokens_out=tokens_out,
         )
+
+    def record_extraction_calls(
+        self,
+        *,
+        notion_page_id: str,
+        extractor_label: str,
+        extractor_sha256: str,
+        model: str,
+        calls: list,
+        tokens_in_total: int,
+        tokens_out_total: int,
+        langfuse_trace_id: str | None = None,
+    ) -> None:
+        """Three-call writer. Inserts one row per call into extraction_calls
+        and updates queue_items cohort fields in one transaction."""
+        queue_db.record_extraction_calls(
+            db_path=self._path(),
+            notion_page_id=notion_page_id,
+            extractor_label=extractor_label,
+            extractor_sha256=extractor_sha256,
+            model=model,
+            calls=calls,
+            tokens_in_total=tokens_in_total,
+            tokens_out_total=tokens_out_total,
+            langfuse_trace_id=langfuse_trace_id,
+        )
+
+    def get_latest_extraction_calls(self, notion_page_id: str) -> dict[str, dict[str, Any]]:
+        return queue_db.get_latest_extraction_calls(
+            db_path=self._path(), notion_page_id=notion_page_id
+        )
+
+    def get_latest_topic_card(self, notion_page_id: str):
+        """Convenience for the `published` asset — returns the latest TopicCard
+        pydantic model parsed from extraction_calls, or None when absent."""
+        from domains.extraction.schemas import TopicCard
+
+        rows = self.get_latest_extraction_calls(notion_page_id)
+        topic_row = rows.get("topic_card")
+        if not topic_row or not topic_row.get("output"):
+            return None
+        return TopicCard.model_validate_json(topic_row["output"])
 
     def mark_failed(self, *, notion_page_id: str, error_text: str, url: str | None = None) -> None:
         queue_db.mark_failed(
