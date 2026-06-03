@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.14.7] — 2026-06-03
+
+### Changed
+
+- **LlamaParse tier promoted to required `LLAMA_PARSE_TIER` env var** — was hardcoded as `agentic_plus` (LlamaCloud's most expensive tier), forcing dev iteration to burn prod-grade credits. Dev now sets `LLAMA_PARSE_TIER=fast` (layout-only, ~100× cheaper); prod sets `LLAMA_PARSE_TIER=agentic_plus`. Field renamed `llama_parse_tier_arxiv` → `llama_parse_tier`. **Deploy action required:** set the var in `.env` and `.env.deploy` before next deploy — unset → run init fails fast. (`extract_complex_contents/resources.py`, `.env.example`)
+
+---
+
 ## [0.14.6] — 2026-06-02
 
 ### Changed

@@ -455,6 +455,7 @@ def test_fetcher_dispatch_arxiv_calls_arxiv_module():
     resource = FetcherResource(
         pi_socks5_url="socks5://pi:1080",
         llama_cloud_api_key="llama-key",
+        llama_parse_tier="agentic_plus",
     )
     sentinel = MagicMock(return_value=MagicMock())
     with patch.object(arxiv, "fetch", sentinel):
