@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.2] — 2026-06-03
+
+### Changed
+
+- **arXiv fetcher now survives transient upstream overload.** Retry budget extended 15s → 60s; `ConnectionError` added alongside `HTTPError` so 503/429 spells from `export.arxiv.org` no longer surface as run failures.
+- **Per-pipeline concurrency keys now actually enforce serialisation.** Added `concurrency.pools` (`granularity: op`, `default_limit: 1`) to `dagster.yaml`; previously the existing op-tag keys were metadata-only and parallel runs could race upstream APIs.
+
+---
+
 ## [0.15.1] — 2026-06-03
 
 ### Changed
