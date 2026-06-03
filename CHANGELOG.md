@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`likely_follow_up_questions` in extraction payload** — 4–6 user-phrased questions per content item, mirrored into the Topic Card JSON so newsletter-assistant's voice agent can surface chip suggestions on drilldown turns without re-running an LLM call (NA's `kp_queue_cache` path otherwise short-circuits NA's own follow-up generation). Existing rows without the field are tolerated as `None`; new extractions fill it in. (`extract_complex_contents/extractors/openai_single_shot.py`, v5 prompt copies)
+
 ---
 
 ## [0.14.8] — 2026-06-03

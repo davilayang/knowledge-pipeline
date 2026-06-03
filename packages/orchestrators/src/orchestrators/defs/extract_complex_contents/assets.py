@@ -228,7 +228,7 @@ def extracted(
             "extraction_preview": dg.MetadataValue.md(f"```json\n{_preview(extraction_json)}\n```"),
             "summary": dg.MetadataValue.md(
                 f"**{extraction.get('extracted_title') or '(no title)'}** — "
-                f"{field_count}/7 fields populated"
+                f"{field_count}/8 fields populated"
             ),
         }
     )

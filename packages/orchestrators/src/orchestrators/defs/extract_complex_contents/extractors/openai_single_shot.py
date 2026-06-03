@@ -24,6 +24,7 @@ _TOPIC_CARD_KEYS = (
     "transferable_pattern",
     "main_tension",
     "candidate_tie_backs",
+    "likely_follow_up_questions",
 )
 
 

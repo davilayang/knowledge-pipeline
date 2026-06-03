@@ -64,6 +64,32 @@ def test_parse_topic_card_omits_unknown_keys():
     assert "extra_field" not in out
 
 
+def test_parse_topic_card_extracts_likely_follow_up_questions():
+    """NA's voice agent reads this field for chip suggestions on drilldown turns."""
+    text = """```json
+{
+  "title": "T",
+  "likely_follow_up_questions": [
+    "What was the strongest measured gain?",
+    "How does it handle ambiguity?"
+  ]
+}
+```"""
+    out = _parse_topic_card(text)
+    assert out["likely_follow_up_questions"] == [
+        "What was the strongest measured gain?",
+        "How does it handle ambiguity?",
+    ]
+
+
+def test_parse_topic_card_likely_follow_up_questions_absent_is_none():
+    """Older prompt outputs without the field → None (NA tolerates missing)."""
+    text = '```json\n{"title": "X"}\n```'
+    out = _parse_topic_card(text)
+    assert "likely_follow_up_questions" in out
+    assert out["likely_follow_up_questions"] is None
+
+
 # -------- NotionQueueResource --------
 
 

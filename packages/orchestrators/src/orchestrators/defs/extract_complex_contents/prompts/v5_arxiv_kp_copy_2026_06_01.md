@@ -97,6 +97,8 @@ PER-FIELD CONTRACTS (load-bearing — every field must NAME a real person, organ
 
 - `candidate_tie_backs` — JSON list of up to 4 short attributed-concrete hooks. Each item MUST contain ≥ 2 capitalised tokens that name a paper, person, organisation, or specific event. Bare concept categories ("RLHF", "data-centric AI", "agentic search") are rejected. If you cannot attribute, drop the item.
 
+- `likely_follow_up_questions` — JSON list of 4–6 questions. Same list as the "Likely follow-up questions" plain-text section above — mirror it verbatim into the Topic Card so the voice agent can surface chips on drilldown turns without re-parsing the prose body. Each item is a complete English sentence ending in `?`, answerable from the source (not general world knowledge), and pushes toward mechanism, specifics, gaps, tradeoffs, or comparisons (not a restatement of the Topic Card fields).
+
 ANTI-PATTERNS (reject these — they are what previous extractions did wrong):
 
 - `core_mechanism` = "Full-stack X involves A, B, C, D, and E" (catalog of activities, no central verb, no outcome). REJECT.
@@ -127,6 +129,13 @@ For a hypothetical podcast where Yann LeCun discusses his JEPA (Joint Embedding 
     "LeCun's 'A Path Towards Autonomous Machine Intelligence' 2022 position paper outlining the JEPA stack",
     "Geoffrey Hinton's forward-forward algorithm — alternative non-backprop training, contrasts JEPA's pretraining stance",
     "Meta AI's V-JEPA video model release in 2024"
+  ],
+  "likely_follow_up_questions": [
+    "How does I-JEPA's 10x compute saving on ImageNet break down across encoder vs predictor cost?",
+    "What signal shapes the latent space when there's no pixel reconstruction loss to anchor it?",
+    "Where does JEPA underperform pixel-prediction models — is there a domain where the abstraction hurts?",
+    "How does DINO-WM translate JEPA's image patches into the temporal structure video needs?",
+    "What part of LeCun's autonomous-intelligence stack is still missing after JEPA?"
   ]
 }
 ```
@@ -145,6 +154,7 @@ Emit a single fenced JSON block with the keys below for the source content provi
   "second_example": "different entity OR different domain OR different outcome — empty if no real second instance",
   "main_tension": "A vs B, or open question about Z — one sentence",
   "transferable_pattern": "doing X lets you achieve Y in any domain — empty if it collapses to core_mechanism",
-  "candidate_tie_backs": ["attributed concrete hooks — named paper/person/org with specific position; concept labels rejected"]
+  "candidate_tie_backs": ["attributed concrete hooks — named paper/person/org with specific position; concept labels rejected"],
+  "likely_follow_up_questions": ["4–6 user-phrased questions answerable from the source — same list as the plain-text section above"]
 }
 ```
