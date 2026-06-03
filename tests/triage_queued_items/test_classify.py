@@ -1,3 +1,4 @@
+import pytest
 from orchestrators.defs.triage_queued_items.classify import (
     ALL_CONTENT_TYPES,
     canonicalize_url,
@@ -71,36 +72,78 @@ def test_classification_returns_value_in_all_content_types_set():
 
 
 # ---------------------------------------------------------------------------
-# canonicalize_url
+# canonicalize_url — CONTRACT with newsletter-assistant's normalize_url.
+#
+# These outputs must equal what NA's normalize_url produces (NA's
+# packages/knowledge/src/knowledge/fetcher/orchestrator.py). NA's
+# kp_queue_cache tier does WHERE canonical_url = ? against kp's queue.db,
+# where ? is NA's normalised form. Drift = silent cache miss → NA falls
+# through to slower live fetchers.
 # ---------------------------------------------------------------------------
 
 
-def test_youtu_be_normalizes_to_youtube_watch():
-    assert canonicalize_url("https://youtu.be/abc123") == "https://youtube.com/watch?v=abc123"
+@pytest.mark.parametrize(
+    "raw, expected",
+    [
+        # youtu.be: keep the youtu.be host (do NOT rewrite to youtube.com/watch?v=)
+        ("https://youtu.be/vy7o1g2iHY8", "https://youtu.be/vy7o1g2iHY8"),
+        # youtu.be with ?si= tracking: drop the query string entirely
+        ("https://youtu.be/vy7o1g2iHY8?si=KNw9IPu3Da2KDR_q", "https://youtu.be/vy7o1g2iHY8"),
+        # youtube.com with &si= tracking: keep only v=
+        (
+            "https://youtube.com/watch?v=BD3vLtWhT5A&si=QawMlhQU1mLmI_IT",
+            "https://youtube.com/watch?v=BD3vLtWhT5A",
+        ),
+        # www.youtube.com: preserve www in the output (NA does not strip)
+        (
+            "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
+            "https://www.youtube.com/watch?v=F8X9_Dp3ZUk",
+        ),
+        # youtube.com with utm_source: keep only v=
+        (
+            "https://youtube.com/watch?v=abc123&utm_source=x",
+            "https://youtube.com/watch?v=abc123",
+        ),
+        # m.youtube.com: same treatment as youtube.com
+        (
+            "https://m.youtube.com/watch?v=abc123&si=Y",
+            "https://m.youtube.com/watch?v=abc123",
+        ),
+        # music.youtube.com: same treatment
+        (
+            "https://music.youtube.com/watch?v=abc123&list=PL",
+            "https://music.youtube.com/watch?v=abc123",
+        ),
+        # Non-YouTube host: strip entire query + fragment (NA's default)
+        (
+            "https://example.com/post?utm_source=newsletter&id=42",
+            "https://example.com/post",
+        ),
+        (
+            "https://example.com/?fbclid=xxx&keep=yes",
+            "https://example.com",
+        ),
+        # Medium tracking source params: stripped under the strict default
+        (
+            "https://medium.com/data-science-collective/ds-star-1c1a7b593277?source=home_for_you",
+            "https://medium.com/data-science-collective/ds-star-1c1a7b593277",
+        ),
+        # Fragment dropped
+        (
+            "https://example.com/post#section-2",
+            "https://example.com/post",
+        ),
+        # arXiv abs: passes through (already canonical)
+        ("https://arxiv.org/abs/2305.14283", "https://arxiv.org/abs/2305.14283"),
+    ],
+)
+def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):
+    """canonical_url must equal NA's normalize_url output.
 
-
-def test_utm_params_stripped():
-    result = canonicalize_url("https://example.com/post?utm_source=newsletter&id=42")
-    assert "utm_source" not in result
-    assert "id=42" in result
-
-
-def test_fbclid_stripped():
-    result = canonicalize_url("https://example.com/?fbclid=xxx&keep=yes")
-    assert "fbclid" not in result
-    assert "keep=yes" in result
-
-
-def test_youtube_v_param_preserved():
-    result = canonicalize_url("https://youtube.com/watch?v=abc123&utm_source=x")
-    assert "v=abc123" in result
-    assert "utm_source" not in result
-
-
-def test_x_com_normalizes_to_twitter_com():
-    result = canonicalize_url("https://x.com/handle/status/123")
-    assert "twitter.com" in result
-    assert "x.com" not in result
+    See ai-plannings/2026-06-03_align-canonical-url-with-na-normalize.md
+    for the kp_queue_cache miss regression that motivated this contract.
+    """
+    assert canonicalize_url(raw) == expected
 
 
 # ---------------------------------------------------------------------------

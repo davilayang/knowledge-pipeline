@@ -296,7 +296,7 @@ def test_triaged_passes_name_through_to_metadata(tmp_path: Path):
 
 
 def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
-    """Canonical URL (tracking params stripped) goes to local store.
+    """Canonical URL (query + fragment stripped) goes to local store.
     notion.write_triaged does not receive a canonical_url kwarg."""
     resources, notion = _resources(tmp_path)
     dirty_url = "https://example.com/p?utm_source=newsletter&id=42"
@@ -310,7 +310,7 @@ def test_triaged_persists_canonical_url_to_store_not_to_notion(tmp_path: Path):
 
     row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-1")
     assert row is not None
-    assert "utm_source" not in row["canonical_url"]
-    assert "id=42" in row["canonical_url"]
+    # NA contract: non-YouTube hosts have the entire query string stripped.
+    assert row["canonical_url"] == "https://example.com/p"
     write_triaged_kwargs = notion.write_triaged.call_args.kwargs
     assert "canonical_url" not in write_triaged_kwargs

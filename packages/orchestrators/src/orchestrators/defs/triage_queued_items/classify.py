@@ -63,48 +63,29 @@ def classify_content_type(url: str) -> str:
 
 
 def canonicalize_url(url: str) -> str:
-    """Strip tracking params; normalize host shortcuts; preserve content keys.
+    """Produce the cache key NA's ``normalize_url`` expects.
 
-    Behaviour:
-      - youtu.be/<id> → https://youtube.com/watch?v=<id>
-      - x.com → twitter.com (aligns with NA convention)
-      - drops query params named: utm_*, ref_*, mc_*, _hs* (prefix match),
-        fbclid, gclid, yclid, msclkid (exact match)
-      - keeps every other query param (including youtube v=, arxiv arch/id)
-      - drops URL fragment
-      - prepends https scheme if missing
-      - normalizes empty path to "/"
+    CONTRACT: output must equal newsletter-assistant's ``normalize_url``
+    (``packages/knowledge/src/knowledge/fetcher/orchestrator.py``) for every
+    URL kp ingests. NA's ``kp_queue_cache`` tier does
+    ``WHERE canonical_url = ?`` against kp's queue.db, where ``?`` is NA's
+    normalised form. Drift = silent cache miss → NA falls through to slower
+    live fetchers. See ai-plannings/2026-06-03_align-canonical-url-with-na-normalize.md.
+
+    Behaviour (mirrors NA):
+      - youtube.com / m.youtube.com / music.youtube.com: keep only ``v=`` param.
+      - everything else (including youtu.be): drop entire query + fragment.
+      - hostname preserved as-is (``www.`` is NOT stripped from output).
     """
     parsed = urlparse(url)
-    host = (parsed.hostname or "").removeprefix("www.")
+    hostname = (parsed.hostname or "").removeprefix("www.")
 
-    if host == "youtu.be":
-        video_id = parsed.path.lstrip("/").split("/")[0]
-        return f"https://youtube.com/watch?v={video_id}"
+    if hostname in ("youtube.com", "m.youtube.com", "music.youtube.com"):
+        v = parse_qs(parsed.query).get("v", [""])[0]
+        query = urlencode({"v": v}) if v else ""
+        return urlunparse(parsed._replace(query=query, fragment="")).rstrip("/")
 
-    if host == "x.com":
-        host = "twitter.com"
-
-    junk_prefixes = ("utm_", "ref_", "mc_", "_hs")
-    junk_exact = {"fbclid", "gclid", "yclid", "msclkid"}
-    qs = parse_qs(parsed.query, keep_blank_values=True)
-    kept = {
-        k: v
-        for k, v in qs.items()
-        if not any(k.startswith(p) for p in junk_prefixes) and k not in junk_exact
-    }
-    new_query = urlencode(kept, doseq=True)
-
-    return urlunparse(
-        (
-            parsed.scheme or "https",
-            host,
-            parsed.path or "/",
-            parsed.params,
-            new_query,
-            "",
-        )
-    )
+    return urlunparse(parsed._replace(query="", fragment="")).rstrip("/")
 
 
 def is_tier_a(content_type: str) -> bool:
