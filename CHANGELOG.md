@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Triage flags duplicate Notion captures of an already-queued URL** as `Status=Failed` with `Error="Duplicate of <other_page_id>"`. Matched on `canonical_url`, so a second capture with extra tracking params still resolves to the original. The duplicate row is not written to `queue.db`, leaving the original cohort as the single source of truth. (`triage_queued_items/assets.py`, `domains/queue_store/sources.py`)
+- **Triage flags duplicate Notion captures of an already-queued URL** as `Status=Skipped` with `Error="Duplicate of <other_page_id>"`. Matched on `canonical_url`, so a second capture with extra tracking params still resolves to the original. Skipped (not Failed) so the Notion view separates intentional dedup skips from real run errors. The duplicate row is not written to `queue.db`, leaving the original cohort as the single source of truth. **Deploy:** add a `Skipped` option to the Notion Queue DB's Status property before merge. (`triage_queued_items/assets.py`, `domains/queue_store/sources.py`, `shared/queue_resources.py`)
 
 ---
 

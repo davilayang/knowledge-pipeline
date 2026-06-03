@@ -96,7 +96,7 @@ def triaged(
         excluding_page_id=page_id,
     )
     if dup_page_id:
-        triage_notion.update_status_failed(page_id, f"Duplicate of {dup_page_id}")
+        triage_notion.update_status_skipped(page_id, f"Duplicate of {dup_page_id}")
         return dg.MaterializeResult(
             metadata={
                 "outcome": dg.MetadataValue.text("duplicate"),
@@ -104,7 +104,7 @@ def triaged(
                 "canonical_url": dg.MetadataValue.url(canonical),
                 "original_url": dg.MetadataValue.url(config.url),
                 "content_type": dg.MetadataValue.text(content_type),
-                "status_after": dg.MetadataValue.text("Failed"),
+                "status_after": dg.MetadataValue.text("Skipped"),
                 "summary": dg.MetadataValue.md(f"**Duplicate** of `{dup_page_id}`"),
             }
         )

@@ -363,11 +363,12 @@ def _seed_existing_triaged(
     )
 
 
-def test_triaged_flags_duplicate_canonical_url_as_failed(tmp_path: Path):
+def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
     """Second capture of an already-triaged canonical_url → Notion row gets
-    Status=Failed with Error="Duplicate of <other_page_id>". Queue.db is
+    Status=Skipped with Error="Duplicate of <other_page_id>". Queue.db is
     not polluted with a second row, and the normal write_triaged
-    (status flip to Ready/Fetching) does not fire."""
+    (status flip to Ready/Fetching) does not fire. Skipped (not Failed) so
+    the Notion view separates intentional dedup skips from real errors."""
     resources, notion = _resources(tmp_path)
     _seed_existing_triaged(
         resources["triage_store"],
@@ -380,11 +381,12 @@ def test_triaged_flags_duplicate_canonical_url_as_failed(tmp_path: Path):
         url="https://example.com/post",
     )
     assert result.success
-    # Notion is flagged Failed, not Ready/Fetching.
-    notion.update_status_failed.assert_called_once()
-    failed_args = notion.update_status_failed.call_args
-    assert failed_args.args[0] == "p-dup"
-    assert "p-original" in failed_args.args[1].lower() or "p-original" in failed_args.args[1]
+    # Notion is flagged Skipped, not Ready/Fetching/Failed.
+    notion.update_status_skipped.assert_called_once()
+    skipped_args = notion.update_status_skipped.call_args
+    assert skipped_args.args[0] == "p-dup"
+    assert "p-original" in skipped_args.args[1]
+    notion.update_status_failed.assert_not_called()
     notion.write_triaged.assert_not_called()
     # Queue.db is NOT polluted with a row for p-dup.
     from domains.queue_store import sources as queue_db
@@ -397,6 +399,7 @@ def test_triaged_flags_duplicate_canonical_url_as_failed(tmp_path: Path):
     metadata = _get_metadata(result)
     assert metadata["outcome"].text == "duplicate"
     assert metadata["duplicate_of"].text == "p-original"
+    assert metadata["status_after"].text == "Skipped"
 
 
 def test_triaged_idempotent_on_re_triage_same_page(tmp_path: Path):
@@ -415,6 +418,7 @@ def test_triaged_idempotent_on_re_triage_same_page(tmp_path: Path):
         url="https://example.com/post",
     )
     assert result.success
+    notion.update_status_skipped.assert_not_called()
     notion.update_status_failed.assert_not_called()
     notion.write_triaged.assert_called_once()
 
@@ -434,7 +438,7 @@ def test_triaged_dedup_uses_canonical_not_raw_url(tmp_path: Path):
         url="https://example.com/post?utm_source=twitter",
     )
     assert result.success
-    notion.update_status_failed.assert_called_once()
+    notion.update_status_skipped.assert_called_once()
     notion.write_triaged.assert_not_called()
 
 
