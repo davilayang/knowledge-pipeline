@@ -85,8 +85,7 @@ notion_queue_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "Notion 'Knowledge OS Queue' database — user-facing capture surface. "
-        "Consumed by triage_queued_items/triaged and extract_complex_contents "
-        "(sensor + published writeback)."
+        "Read by triage_queued_items/triaged."
     ),
     metadata={
         "owner": dg.MetadataValue.text("user"),
