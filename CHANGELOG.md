@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.4] — 2026-06-04
+
+### Changed
+
+- **Triage duplicate-detection Error in Notion is now clickable.** Was: `"Duplicate of <bare-uuid>"`. Now: `"Duplicate of <Name>" — <canonical_url>`, where `<Name>` links to the original Notion page and `<canonical_url>` is itself a hyperlink. Adds `NotionQueueResource.get_page_name()` (one extra Notion read per duplicate) and reshapes `update_status_skipped(page_id, segments)` to accept structured rich_text tuples instead of a plain string.
+
+---
+
 ## [0.15.3] — 2026-06-04
 
 ### Changed
