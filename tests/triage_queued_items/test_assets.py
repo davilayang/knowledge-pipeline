@@ -365,11 +365,14 @@ def _seed_existing_triaged(
 
 def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
     """Second capture of an already-triaged canonical_url → Notion row gets
-    Status=Skipped with Error="Duplicate of <other_page_id>". Queue.db is
-    not polluted with a second row, and the normal write_triaged
-    (status flip to Ready/Fetching) does not fire. Skipped (not Failed) so
-    the Notion view separates intentional dedup skips from real errors."""
+    Status=Skipped with Error built as rich_text segments: "Duplicate of "
+    + <original Name as hyperlink to original Notion page> + " — " +
+    <canonical_url as hyperlink>. Queue.db is not polluted with a second
+    row, and the normal write_triaged (status flip to Ready/Fetching) does
+    not fire. Skipped (not Failed) so the Notion view separates intentional
+    dedup skips from real errors."""
     resources, notion = _resources(tmp_path)
+    notion.get_page_name.return_value = "Original Title"
     _seed_existing_triaged(
         resources["triage_store"],
         page_id="p-original",
@@ -381,11 +384,17 @@ def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
         url="https://example.com/post",
     )
     assert result.success
+    notion.get_page_name.assert_called_once_with("p-original")
     # Notion is flagged Skipped, not Ready/Fetching/Failed.
     notion.update_status_skipped.assert_called_once()
     skipped_args = notion.update_status_skipped.call_args
     assert skipped_args.args[0] == "p-dup"
-    assert "p-original" in skipped_args.args[1]
+    segments = skipped_args.args[1]
+    # Segment shape: (text, link_url | None)
+    assert segments[0] == ("Duplicate of ", None)
+    assert segments[1] == ("Original Title", "https://www.notion.so/poriginal")
+    assert segments[2] == (" — ", None)
+    assert segments[3] == ("https://example.com/post", "https://example.com/post")
     notion.update_status_failed.assert_not_called()
     notion.write_triaged.assert_not_called()
     # Queue.db is NOT polluted with a row for p-dup.
@@ -399,7 +408,28 @@ def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
     metadata = _get_metadata(result)
     assert metadata["outcome"].text == "duplicate"
     assert metadata["duplicate_of"].text == "p-original"
+    assert metadata["duplicate_of_name"].text == "Original Title"
     assert metadata["status_after"].text == "Skipped"
+
+
+def test_triaged_duplicate_falls_back_to_untitled_when_no_name(tmp_path: Path):
+    """If the original Notion page has no Name set, the link text falls
+    back to "(untitled)" rather than a bare UUID."""
+    resources, notion = _resources(tmp_path)
+    notion.get_page_name.return_value = None
+    _seed_existing_triaged(
+        resources["triage_store"],
+        page_id="p-original",
+        canonical_url="https://example.com/post",
+    )
+    result = _materialize(
+        partition_key="p-dup",
+        resources=resources,
+        url="https://example.com/post",
+    )
+    assert result.success
+    segments = notion.update_status_skipped.call_args.args[1]
+    assert segments[1] == ("(untitled)", "https://www.notion.so/poriginal")
 
 
 def test_triaged_idempotent_on_re_triage_same_page(tmp_path: Path):
@@ -427,6 +457,7 @@ def test_triaged_dedup_uses_canonical_not_raw_url(tmp_path: Path):
     """A new URL with extra tracking params that canonicalizes to an
     already-triaged canonical_url → flagged as duplicate."""
     resources, notion = _resources(tmp_path)
+    notion.get_page_name.return_value = "Original Title"
     _seed_existing_triaged(
         resources["triage_store"],
         page_id="p-original",

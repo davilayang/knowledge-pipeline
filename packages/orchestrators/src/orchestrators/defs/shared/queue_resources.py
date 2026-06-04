@@ -23,6 +23,26 @@ from notion_client import Client as NotionClient
 
 from orchestrators.config import LOCAL_QUEUE_DB
 
+_NOTION_ERROR_RICH_TEXT_CAP = 1900
+
+
+def _build_rich_text(segments: list[tuple[str, str | None]]) -> list[dict[str, Any]]:
+    """Convert (text, link_url | None) tuples into Notion rich_text array.
+    Total content length is capped at `_NOTION_ERROR_RICH_TEXT_CAP` to stay
+    well under Notion's 2000-char per-block limit."""
+    out: list[dict[str, Any]] = []
+    remaining = _NOTION_ERROR_RICH_TEXT_CAP
+    for text, link in segments:
+        chunk = text[:remaining]
+        if not chunk:
+            break
+        node: dict[str, Any] = {"text": {"content": chunk}}
+        if link:
+            node["text"]["link"] = {"url": link}
+        out.append(node)
+        remaining -= len(chunk)
+    return out
+
 
 class NotionQueueResource(dg.ConfigurableResource):
     """Notion Queue DB access. Used by triage and extract pipelines.
@@ -166,19 +186,35 @@ class NotionQueueResource(dg.ConfigurableResource):
             },
         )
 
-    def update_status_skipped(self, page_id: str, reason: str) -> None:
+    def update_status_skipped(self, page_id: str, segments: list[tuple[str, str | None]]) -> None:
         """Used by triage when a duplicate canonical_url is detected. Distinct
         from Failed so the Notion view can separate intentional skips (the
         system did the right thing) from real errors (the run blew up). The
         Notion Status SELECT must have a `Skipped` option before this is
-        called; absence will raise a Notion API validation error."""
+        called; absence will raise a Notion API validation error.
+
+        `segments` is a list of `(text, link_url | None)` tuples — the Error
+        field is built as Notion rich_text with hyperlinks where link_url is
+        non-None. Caller composes the message so the Notion-side reader can
+        click through to the duplicated page / URL instead of staring at a
+        bare UUID."""
         self._client().pages.update(
             page_id=page_id,
             properties={
                 "Status": {"status": {"name": "Skipped"}},
-                "Error": {"rich_text": [{"text": {"content": reason[:1900]}}]},
+                "Error": {"rich_text": _build_rich_text(segments)},
             },
         )
+
+    def get_page_name(self, page_id: str) -> str | None:
+        """Return the `Name` (title) property of a page, or None if empty /
+        missing. Used by triage's duplicate-detection path to label the
+        hyperlink back to the original row with something more useful than
+        a UUID."""
+        page = self._client().pages.retrieve(page_id=page_id)
+        title = (page.get("properties", {}).get("Name", {}) or {}).get("title", []) or []
+        text = "".join(t.get("plain_text", "") for t in title).strip()
+        return text or None
 
 
 class QueueStoreResource(dg.ConfigurableResource):
