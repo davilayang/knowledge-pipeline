@@ -24,8 +24,8 @@ raw_store_source = dg.AssetSpec(
     },
 )
 
-sessions_source = dg.AssetSpec(
-    key=["sessions"],
+session_store_source = dg.AssetSpec(
+    key=["session_store"],
     group_name=UPSTREAM_GROUP,
     description=(
         "newsletter-assistant SQLite — session turns from user/LLM chats. "
@@ -52,8 +52,8 @@ notes_source = dg.AssetSpec(
 )
 
 
-research_source = dg.AssetSpec(
-    key=["research"],
+research_store_source = dg.AssetSpec(
+    key=["research_store"],
     group_name=UPSTREAM_GROUP,
     description=(
         "newsletter-assistant SQLite — research-panel output (Claude/Gemini "
@@ -96,9 +96,9 @@ notion_queue_source = dg.AssetSpec(
 
 all_sources = [
     raw_store_source,
-    sessions_source,
+    session_store_source,
     notes_source,
-    research_source,
+    research_store_source,
     queue_store_source,
     notion_queue_source,
 ]

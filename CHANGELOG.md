@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Asset graph now shows the stores each pipeline reads.** Added `research`, `queue_store`, and `notion_queue` `AssetSpec` anchors in `upstream_sources.py`. `snapshot_research` / `snapshot_queue` (backup) and `triage_queued_items/triaged` declare `deps=` on the relevant anchors, matching the existing `raw_store` / `sessions` pattern. Pure graph-rendering change — no compute logic shifts.
+- **Asset graph now shows the stores each pipeline reads.** Added `research_store`, `queue_store`, and `notion_queue` `AssetSpec` anchors in `upstream_sources.py`. `snapshot_research` / `snapshot_queue` (backup) and `triage_queued_items/triaged` declare `deps=` on the relevant anchors. Existing `sessions` anchor renamed to `session_store` for SQLite-store naming consistency (matches `raw_store` / `queue_store` and NA's `session_store.py` / `research_store.py` modules). Pure graph-rendering change — no compute logic shifts.
 
 ---
 
