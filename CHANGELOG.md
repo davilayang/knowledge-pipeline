@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`backup_readings` lineage graph now shows the stores it snapshots.** Added `research` and `queue_store` `AssetSpec` anchors in `upstream_sources.py`; `snapshot_research` and `snapshot_queue` declare `deps=` on them, matching the existing `snapshot_raw_store`/`snapshot_sessions` pattern. Pure graph-rendering change — no compute logic shifts.
+
 ---
 
 ## [0.15.2] — 2026-06-03

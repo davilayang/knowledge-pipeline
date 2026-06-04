@@ -18,6 +18,8 @@ def test_definitions_load_with_expected_shape():
         # implicit external nodes auto-created from the dep references.
         "raw_store",
         "sessions",
+        "research",
+        "queue_store",
         "snapshots/raw_store",
         "snapshots/sessions",
         "snapshots/notes",
