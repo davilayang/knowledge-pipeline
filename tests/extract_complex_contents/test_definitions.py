@@ -12,6 +12,7 @@ def test_pipeline_defs_loads():
         "extract_complex_contents/fetched",
         "extract_complex_contents/extracted",
         "extract_complex_contents/published",
+        "notion_queue",
     }
 
 

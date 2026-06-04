@@ -80,6 +80,20 @@ queue_store_source = dg.AssetSpec(
     },
 )
 
+notion_queue_source = dg.AssetSpec(
+    key=["notion_queue"],
+    group_name=UPSTREAM_GROUP,
+    description=(
+        "Notion 'Knowledge OS Queue' database — user-facing capture surface. "
+        "Consumed by triage_queued_items/triaged and extract_complex_contents "
+        "(sensor + published writeback)."
+    ),
+    metadata={
+        "owner": dg.MetadataValue.text("user"),
+        "path": dg.MetadataValue.text("Notion: NOTION_QUEUE_DB_ID"),
+    },
+)
+
 
 all_sources = [
     raw_store_source,
@@ -87,6 +101,7 @@ all_sources = [
     notes_source,
     research_source,
     queue_store_source,
+    notion_queue_source,
 ]
 
 defs = dg.Definitions(assets=all_sources)

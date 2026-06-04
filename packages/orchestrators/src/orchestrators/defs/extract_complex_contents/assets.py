@@ -45,6 +45,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     compute_kind="python",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
+    deps=[dg.AssetDep("notion_queue")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=_oneline(
         """

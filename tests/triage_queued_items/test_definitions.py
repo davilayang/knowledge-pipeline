@@ -9,7 +9,7 @@ def test_defs_loads_without_error():
 
 def test_defs_includes_all_assets():
     asset_keys = {k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()}
-    assert asset_keys == {"triage_queued_items/triaged"}
+    assert asset_keys == {"triage_queued_items/triaged", "notion_queue"}
 
 
 def test_defs_includes_sensors():

@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **`backup_readings` lineage graph now shows the stores it snapshots.** Added `research` and `queue_store` `AssetSpec` anchors in `upstream_sources.py`; `snapshot_research` and `snapshot_queue` declare `deps=` on them, matching the existing `snapshot_raw_store`/`snapshot_sessions` pattern. Pure graph-rendering change — no compute logic shifts.
+- **Asset graph now shows the stores each pipeline reads.** Added `research`, `queue_store`, and `notion_queue` `AssetSpec` anchors in `upstream_sources.py`. `snapshot_research` / `snapshot_queue` (backup), `triage_queued_items/triaged`, and `extract_complex_contents/fetched` declare `deps=` on the relevant anchors, matching the existing `raw_store` / `sessions` pattern. Pure graph-rendering change — no compute logic shifts.
 
 ---
 
