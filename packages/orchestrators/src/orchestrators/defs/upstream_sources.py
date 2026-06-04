@@ -1,12 +1,9 @@
-# Source asset specs for upstream stores owned by newsletter-assistant.
-#
-# These are declarative-only AssetSpecs — they don't materialize. Their
-# purpose is to anchor lineage: pipelines that read from raw_store /
-# sessions / notes declare deps on these specs, and the Dagster UI
-# renders shared upstream nodes connecting backup_readings and
-# synthesize_wiki (and future per-source discoverers).
-#
-# Owned by newsletter-assistant; we consume read-only.
+# Declarative-only AssetSpecs that anchor lineage for the underlying
+# SQLite / filesystem stores consumed by this repo's pipelines. They
+# don't materialize — they exist so downstream assets (backup_readings,
+# synthesize_wiki, future per-source discoverers) can declare deps
+# against a stable upstream node and the graph renders connected rather
+# than orphaned. `owner` metadata names the writer.
 
 import dagster as dg
 
@@ -27,8 +24,8 @@ raw_store_source = dg.AssetSpec(
     },
 )
 
-sessions_source = dg.AssetSpec(
-    key=["sessions"],
+session_store_source = dg.AssetSpec(
+    key=["session_store"],
     group_name=UPSTREAM_GROUP,
     description=(
         "newsletter-assistant SQLite — session turns from user/LLM chats. "
@@ -55,6 +52,55 @@ notes_source = dg.AssetSpec(
 )
 
 
-all_sources = [raw_store_source, sessions_source, notes_source]
+research_store_source = dg.AssetSpec(
+    key=["research_store"],
+    group_name=UPSTREAM_GROUP,
+    description=(
+        "newsletter-assistant SQLite — research-panel output (Claude/Gemini "
+        "CLI sessions against `data/codebases/`). Consumed by "
+        "snapshot_research (backup_readings)."
+    ),
+    metadata={
+        "owner": dg.MetadataValue.text("newsletter-assistant"),
+        "path": dg.MetadataValue.path("data/research.db"),
+    },
+)
+
+queue_store_source = dg.AssetSpec(
+    key=["queue_store"],
+    group_name=UPSTREAM_GROUP,
+    description=(
+        "knowledge-pipeline SQLite — `queue_items` + `extraction_calls` "
+        "tables. Written by triage_queued_items and extract_complex_contents "
+        "assets in this repo. Consumed by snapshot_queue (backup_readings)."
+    ),
+    metadata={
+        "owner": dg.MetadataValue.text("knowledge-pipeline"),
+        "path": dg.MetadataValue.path("data/queue.db"),
+    },
+)
+
+notion_queue_source = dg.AssetSpec(
+    key=["notion_queue"],
+    group_name=UPSTREAM_GROUP,
+    description=(
+        "Notion 'Knowledge OS Queue' database — user-facing capture surface. "
+        "Read by triage_queued_items/triaged."
+    ),
+    metadata={
+        "owner": dg.MetadataValue.text("user"),
+        "path": dg.MetadataValue.text("Notion: NOTION_QUEUE_DB_ID"),
+    },
+)
+
+
+all_sources = [
+    raw_store_source,
+    session_store_source,
+    notes_source,
+    research_store_source,
+    queue_store_source,
+    notion_queue_source,
+]
 
 defs = dg.Definitions(assets=all_sources)

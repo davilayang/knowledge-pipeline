@@ -17,7 +17,9 @@ def test_definitions_load_with_expected_shape():
         # definitions level; backup_readings.defs alone sees them as
         # implicit external nodes auto-created from the dep references.
         "raw_store",
-        "sessions",
+        "session_store",
+        "research_store",
+        "queue_store",
         "snapshots/raw_store",
         "snapshots/sessions",
         "snapshots/notes",

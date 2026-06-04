@@ -137,7 +137,7 @@ def snapshot_raw_store(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
-    deps=[dg.AssetDep("sessions")],
+    deps=[dg.AssetDep("session_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of sessions.db for the partition's date.",
 )
@@ -168,6 +168,7 @@ def snapshot_notes(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("research_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description="Consistent SQLite snapshot of research.db for the partition's date.",
 )
@@ -183,6 +184,7 @@ def snapshot_research(
     compute_kind="sqlite",
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("queue_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
         "Consistent SQLite snapshot of queue.db (kp's triage + extract queue) "

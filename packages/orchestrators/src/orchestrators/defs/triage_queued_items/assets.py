@@ -47,6 +47,7 @@ class TriageInput(dg.Config):
     compute_kind="notion",
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
+    deps=[dg.AssetDep("notion_queue")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=_oneline(
         """
