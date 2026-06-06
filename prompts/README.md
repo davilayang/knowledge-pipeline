@@ -6,20 +6,21 @@ Markdown prompt bodies consumed by the workflow layer. Treated as **content arte
 
 ````
 prompts/
-  extraction/     # consumed by workflows.extraction (SingleShotOpenAIExtractor, ThreeCallOpenAIExtractor)
+  extraction/     # consumed by workflows.extraction (ThreeCallOpenAIExtractor)
   # future: wiki_synthesis/, knowledge_graph/, etc.
 ````
 
 ## Resolution
 
-Consumers resolve the prompts root via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory. The orchestrator's `ExtractorRegistry` adapter uses:
+Consumers resolve the prompts root via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory. The orchestrator's `ExtractorRegistry` adapter (`packages/orchestrators/.../extract_complex_contents/resources.py`) defines:
 
 ```python
-PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", DEFAULT_PROMPTS_ROOT))
-_PROMPTS_DIR = PROMPTS_ROOT / "extraction"
+_DEFAULT_PROMPTS_ROOT = Path(__file__).resolve().parents[6] / "prompts"
+_PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
+_PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
 ```
 
-Where `DEFAULT_PROMPTS_ROOT` is computed from a known relative path anchor inside the orchestrators package.
+`parents[6]` anchors at the repo root from `resources.py`'s location; `KP_PROMPTS_ROOT` is used by evals + tests to point at alternate trees, not by deployments.
 
 ## Version-naming convention
 

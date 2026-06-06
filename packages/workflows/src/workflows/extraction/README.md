@@ -18,7 +18,7 @@ from workflows.extraction import (
 
 `ThreeCallOpenAIExtractor` accepts per-role `*_prompt: str` arguments at construction. **It does NOT resolve prompts from files or env vars.**
 
-Prompt resolution is an orchestration concern. Production resolves via `orchestrators.defs.extract_complex_contents.resources.ExtractorRegistry`, which reads markdown from repo-root `prompts/extraction/` based on env-var labels (`EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE`, etc.). The `KP_PROMPTS_ROOT` env var overrides the prompts root.
+Prompt resolution is an orchestration concern. Production resolves via `orchestrators.defs.extract_complex_contents.resources.ExtractorRegistry`, which reads markdown from repo-root `prompts/extraction/` using the label constants in `def_config.py` (`PROMPT_LABEL_NARRATIVE`, `PROMPT_LABEL_TOPIC_CARD`, `PROMPT_LABEL_FOLLOWUPS`). The `KP_PROMPTS_ROOT` env var overrides the prompts root (used by evals + tests, not deployments).
 
 Evals and notebooks resolve prompts directly via variant config (see `evals/extraction/variants.py`).
 
