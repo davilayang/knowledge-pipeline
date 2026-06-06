@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.17.2] — 2026-06-06
+
+### Changed
+
+- **`TopicCardScorer` scores `extracted_title` via embedding similarity, not exact match.** First real benchmark run revealed exact-match on free-text titles was pure noise — LLMs almost never reproduce a hand-written reference verbatim, dragging `__overall__` down by ~0.13. `ExactMatchJudge` remains for future tag-like fields.
+
+---
+
 ## [0.17.1] — 2026-06-06
 
 ### Added
