@@ -21,6 +21,8 @@ notebooks = [
     "jupyterlab-vim",
     "jupyter-collaboration==4.0.2",
     "jupyter-mcp-tools>=0.1.4",
+    "jupytext>=1.16",
+    "papermill>=2.6",
     "pandas>=2.0",
     "matplotlib>=3.8",
 ]
@@ -166,18 +168,26 @@ help = "Run the generation-quality eval harness — faithfulness / answer releva
 
 [tool.poe.tasks.jupyter]
 cmd = """
-  uv run --extra notebooks jupyter lab notebooks/
+  uv run --extra notebooks jupyter lab packages/evals/notebooks/
     --port 8888
     --IdentityProvider.token "${JUPYTER_SERVER_TOKEN}"
     --no-browser
 """
 envfile = ".env"
 help = """
-  Launch JupyterLab on port 8888 with the [notebooks] extra installed.
-  The token is a fixed localhost-only dev string (no real secret) that
-  matches .mcp.json so the jupyter MCP server can authenticate against
-  this server. Don't expose 8888 publicly.
+  Launch JupyterLab on packages/evals/notebooks/ (the workbench home) with
+  the [notebooks] extra installed. Token is a fixed localhost-only dev
+  string (no real secret) matching .mcp.json so the jupyter MCP server can
+  authenticate. Don't expose 8888 publicly.
 """
+
+[tool.poe.tasks.nb-sync]
+cmd = "uv run --extra notebooks jupytext --sync"
+help = "Sync .ipynb <-> .py for the given file (pass file path as positional arg)"
+
+[tool.poe.tasks.nb-run]
+cmd = "uv run --extra notebooks papermill -k kp-eval --no-progress-bar"
+help = "Batch-run a notebook with the kp-eval kernel (input.ipynb output.ipynb [-p key val …])"
 
 ## Reset ##
 

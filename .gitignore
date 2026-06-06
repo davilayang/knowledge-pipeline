@@ -9,6 +9,8 @@ creds
 .zed
 *.ipynb
 !notebooks/*.ipynb
+!packages/evals/notebooks/*.ipynb
+!packages/evals/notebooks/*.py
 .jupyter*
 .ipynb_checkpoints
 .mcp.json
