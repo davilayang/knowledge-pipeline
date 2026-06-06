@@ -102,6 +102,50 @@ def test_variant_run_invokes_three_call_extractor(monkeypatch):
     assert run.tokens_out == 600
 
 
+def test_variant_run_inside_running_event_loop(monkeypatch):
+    """Jupyter regression: extract() uses asyncio.run() which crashes inside a
+    running loop. The variant must detect the loop and thread-hop the call."""
+    import asyncio
+
+    fake_payload = MagicMock()
+    fake_payload.topic_card.model_dump.return_value = {"extracted_title": "T"}
+    fake_payload.narrative_md = "n"
+    fake_payload.followups.model_dump.return_value = {"questions": []}
+    fake_record = MagicMock(tokens_in=1, tokens_out=2, duration_ms=1.0)
+
+    class StubExtractor:
+        def __init__(self, **kwargs):
+            pass
+
+        def extract(self, content: str, *, content_type: str):
+            # Simulate the production extractor: would crash here if called
+            # inside a running loop.
+            asyncio.run(asyncio.sleep(0))
+            return fake_payload, [fake_record, fake_record, fake_record]
+
+    monkeypatch.setattr(
+        "evals.extraction.variants.ThreeCallOpenAIExtractor",
+        StubExtractor,
+    )
+
+    v = make_three_call_variant(
+        name="v5",
+        narrative_prompt_text="N",
+        topic_card_prompt_text="T",
+        followups_prompt_text="F",
+        prompt_versions={"topic_card": "v1"},
+        model="gpt-4o-mini",
+        api_key="k",
+    )
+
+    async def _drive():
+        return v.run(_fixture())
+
+    run = asyncio.run(_drive())
+    assert run.status == "success"
+    assert run.output["topic_card"] == {"extracted_title": "T"}
+
+
 def test_variant_run_returns_error_status_on_extractor_failure(monkeypatch):
     class FailingExtractor:
         def __init__(self, **kwargs):

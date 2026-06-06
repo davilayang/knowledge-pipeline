@@ -9,14 +9,33 @@ benchmark CLI — resolve labels to text up front (`prompts/extraction/<label>.m
 read) and pass the text in. This keeps env/label/path concerns out of evals.
 """
 
+import asyncio
+import concurrent.futures
 import hashlib
 import time
 from collections.abc import Callable
+from typing import Any
 
 from workflows.extraction import ThreeCallOpenAIExtractor
 
 from evals.core import FixtureRun, RunStatus, Variant, VariantProvenance
 from evals.extraction.types import ExtractionFixture
+
+
+def _call_extractor(extractor: ThreeCallOpenAIExtractor, content: str, content_type: str) -> Any:
+    """Invoke the extractor regardless of whether a loop is already running.
+
+    ThreeCallOpenAIExtractor.extract() wraps its async pipeline with asyncio.run(),
+    which raises RuntimeError when called inside an existing event loop (Jupyter
+    kernels are the common case). When we detect a running loop, hop into a
+    short-lived thread so the extractor's asyncio.run gets its own loop.
+    """
+    try:
+        asyncio.get_running_loop()
+    except RuntimeError:
+        return extractor.extract(content, content_type=content_type)
+    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
+        return pool.submit(extractor.extract, content, content_type=content_type).result()
 
 
 def make_three_call_variant(
@@ -69,7 +88,9 @@ def make_three_call_variant(
         )
         t0 = time.monotonic()
         try:
-            payload, records = extractor.extract(fixture.content, content_type=fixture.content_type)
+            payload, records = _call_extractor(
+                extractor, fixture.content, fixture.content_type
+            )
         except Exception as e:
             duration_ms = int((time.monotonic() - t0) * 1000)
             return FixtureRun(
