@@ -43,5 +43,7 @@ def test_missing_field_in_chat_output_scores_zero():
         chat_fn=_partial_chat,
         prompt_template="...",
     )
-    score = judge.score(expected={"title": "X", "mechanism": "Y"}, actual={"title": "X", "mechanism": "Y"})
+    score = judge.score(
+        expected={"title": "X", "mechanism": "Y"}, actual={"title": "X", "mechanism": "Y"}
+    )
     assert score.value == {"title": 0.9, "mechanism": 0.0}
