@@ -10,13 +10,11 @@ to extractor constructors. This module does NOT resolve prompts from files —
 that's an orchestration concern (see orchestrators.defs.extract_complex_contents.resources).
 """
 
-from workflows.extraction.openai_single_shot import SingleShotOpenAIExtractor
 from workflows.extraction.protocol import ExtractionUsage, ExtractorProtocol
 from workflows.extraction.three_call_openai import ThreeCallOpenAIExtractor
 
 __all__ = [
     "ExtractionUsage",
     "ExtractorProtocol",
-    "SingleShotOpenAIExtractor",
     "ThreeCallOpenAIExtractor",
 ]

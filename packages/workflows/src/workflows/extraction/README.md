@@ -6,16 +6,17 @@ Stateless OpenAI extraction primitives. Produces a Topic Card dict from `(conten
 
 ````python
 from workflows.extraction import (
-    SingleShotOpenAIExtractor,   # one call, JSON-mode response
     ThreeCallOpenAIExtractor,    # three calls (narrative → topic_card → followups)
     ExtractorProtocol,           # structural contract for extractor strategies
     ExtractionUsage,             # token usage dataclass
 )
 ````
 
+`ThreeCallOpenAIExtractor` is the v2 strategy and the only production extractor. A v1 `SingleShotOpenAIExtractor` existed in earlier revisions; it has been removed. Reviving a single-shot path would be a few lines on top of `workflows.llm.generate_structured_with_usage(schema=TopicCard)` if ever needed.
+
 ## Prompt-loading contract
 
-Extractors accept `prompt_text: str` (or per-role `*_prompt: str` arguments for `ThreeCallOpenAIExtractor`) at construction. **They do NOT resolve prompts from files or env vars.**
+`ThreeCallOpenAIExtractor` accepts per-role `*_prompt: str` arguments at construction. **It does NOT resolve prompts from files or env vars.**
 
 Prompt resolution is an orchestration concern. Production resolves via `orchestrators.defs.extract_complex_contents.resources.ExtractorRegistry`, which reads markdown from repo-root `prompts/extraction/` based on env-var labels (`EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE`, etc.). The `KP_PROMPTS_ROOT` env var overrides the prompts root.
 
