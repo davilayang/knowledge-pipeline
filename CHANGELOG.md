@@ -8,8 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Notion `Error` column now shows the underlying step failure reason** instead of the generic `Steps failed: [...]` string. Both `mark_notion_failed_on_extract` and `mark_notion_failed_on_triage` now walk `context.get_step_failure_events()` and prefer the `dg.Failure(description=...)` text — so a row that hit an arXiv 503 reads `arXiv fetch failed: HTTPError ... 503` on the Notion page instead of requiring a Dagster round-trip to triage. Helper lives in `defs/shared/run_failure.py`.
-- **`extract_complex_contents/fetched` now retries transient fetch failures via Dagster `RetryPolicy`** (`max_retries=2, delay=120, backoff=EXPONENTIAL` — first retry at 120s, second at 360s, ~8 min worst case). Permanent guards (no queue_items row, missing content_type, missing url, content under floor) are marked `allow_retries=False` so they fail fast. In-fetcher tenacity budget for arXiv dropped 60s → 15s — Dagster now handles the long waits; the in-process loop only rides short blips.
+- **Notion `Error` column now shows the underlying step failure reason** instead of the generic `Steps failed: [...]` string. Both `mark_notion_failed_on_extract` and `mark_notion_failed_on_triage` consume the shared `mark_notion_failed_from_run` helper in `defs/shared/run_failure.py`, which walks `context.get_step_failure_events()` and prefers the *terminal* attempt's `dg.Failure(description=...)` — so a retried run shows the final cause, not the historical first 503.
+- **`extract_complex_contents/fetched` retries only fetcher errors the fetcher tagged transient.** New `FetchResult.transient: bool` (default `False`); arXiv sets `True` on HTTPError/ConnectionError + LlamaParse `httpx.HTTPError`, YouTube on `IpBlocked`/`RequestBlocked`. The asset passes `allow_retries=result.transient` so permanent failures (`NoTranscriptFound`, `VideoUnavailable`, `AgeRestricted`, `no arXiv record`, `no pdf_url`, LlamaParse `ValueError`) fail fast instead of holding the pool-of-1 slot through retry delays. Asset-level `RetryPolicy(max_retries=1, delay=120)` — one retry, 2 min cap.
+- **In-fetcher tenacity budget for arXiv dropped 60s → 15s** — Dagster's asset-level retry is the long-wait layer now; the in-process loop only rides sub-15s blips.
 
 ---
 

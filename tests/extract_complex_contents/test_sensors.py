@@ -7,10 +7,7 @@ from orchestrators.defs.extract_complex_contents.def_config import (
     MAX_TO_EXTRACT_PER_TICK,
     SUPPORTED_CONTENT_TYPES,
 )
-from orchestrators.defs.extract_complex_contents.sensors import (
-    _handle_run_failure,
-    poll_notion_for_extract,
-)
+from orchestrators.defs.extract_complex_contents.sensors import poll_notion_for_extract
 
 
 def _notion_row(
@@ -122,27 +119,3 @@ def test_sensor_run_request_carries_content_type_tag():
     ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
     assert result.run_requests[0].tags["content_type"] == "YouTube"
-
-
-def test_handle_run_failure_writes_to_notion_with_run_tag_page_id():
-    notion = MagicMock()
-    _handle_run_failure(
-        run_tags={"notion_page_id": "p-1"},
-        failure_message="Fetched content under floor: 100 chars",
-        notion=notion,
-    )
-    notion.update_status_failed.assert_called_once_with(
-        "p-1", "Fetched content under floor: 100 chars"
-    )
-
-
-def test_handle_run_failure_falls_back_to_default_message():
-    notion = MagicMock()
-    _handle_run_failure(run_tags={"notion_page_id": "p-1"}, failure_message=None, notion=notion)
-    notion.update_status_failed.assert_called_once_with("p-1", "run failed")
-
-
-def test_handle_run_failure_noop_when_run_lacks_page_id_tag():
-    notion = MagicMock()
-    _handle_run_failure(run_tags={}, failure_message="x", notion=notion)
-    notion.update_status_failed.assert_not_called()

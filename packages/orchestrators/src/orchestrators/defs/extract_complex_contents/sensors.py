@@ -1,7 +1,7 @@
 import dagster as dg
 
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
-from orchestrators.defs.shared.run_failure import step_failure_message
+from orchestrators.defs.shared.run_failure import mark_notion_failed_from_run
 
 from .def_config import MAX_TO_EXTRACT_PER_TICK, SENSOR_MIN_INTERVAL_S, SUPPORTED_CONTENT_TYPES
 from .schedules import extract_complex_contents_job
@@ -53,15 +53,6 @@ def poll_notion_for_extract(
     return dg.SensorResult(run_requests=run_requests)
 
 
-def _handle_run_failure(
-    *, run_tags: dict[str, str], failure_message: str | None, notion: NotionQueueResource
-) -> None:
-    page_id = run_tags.get("notion_page_id")
-    if not page_id:
-        return
-    notion.update_status_failed(page_id, failure_message or "run failed")
-
-
 @dg.run_failure_sensor(
     monitored_jobs=[extract_complex_contents_job],
     minimum_interval_seconds=60,
@@ -74,11 +65,7 @@ def _handle_run_failure(
 def mark_notion_failed_on_extract(
     context: dg.RunFailureSensorContext, notion: NotionQueueResource
 ) -> None:
-    _handle_run_failure(
-        run_tags=dict(context.dagster_run.tags),
-        failure_message=step_failure_message(context),
-        notion=notion,
-    )
+    mark_notion_failed_from_run(context, notion)
 
 
 all_sensors = [poll_notion_for_extract, mark_notion_failed_on_extract]

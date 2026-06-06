@@ -1,46 +1,49 @@
-"""Shared helpers for `@dg.run_failure_sensor` bodies.
-
-Run-failure sensors receive a `RunFailureSensorContext` whose
-`failure_event.message` is the *generic* `Steps failed: [...]` string.
-The user-meaningful reason — the `dg.Failure(description=...)` text raised
-by the op — lives on the step failure events, which the sensor has to ask
-for explicitly. `step_failure_message` walks those events and returns the
-sharpest message we can produce, with a safe fallback chain.
-"""
+"""Shared body for `@dg.run_failure_sensor` handlers that write back to Notion."""
 
 from __future__ import annotations
 
 from typing import Any
 
+from orchestrators.defs.shared.queue_resources import NotionQueueResource
+
 
 def step_failure_message(context: Any) -> str | None:
-    """Best-effort underlying step error for a failed run.
+    """Underlying step error for a failed run.
 
-    Order of preference:
-    1. `user_failure_data.description` from the first step failure event —
-       this is exactly the string passed to `dg.Failure(description=...)`.
-    2. `error.message` from the same event — useful for unhandled exceptions
-       (KeyError etc.) that weren't raised via `dg.Failure`.
-    3. `context.failure_event.message` — fallback for cancellations / launcher
-       errors where no step event exists.
-
-    Wrapped in a try/except so a Dagster API change can't take the sensor
-    down — the worst case is we write the generic run message to Notion."""
+    Prefers (in order): `user_failure_data.description` from the terminal
+    step failure event (the `dg.Failure(description=...)` text), then the
+    step's raw `error.message`, then the run-level `failure_event.message`.
+    Uses `step_events[-1]` so retried runs show the terminal cause, not the
+    historical first attempt."""
     try:
         step_events = list(context.get_step_failure_events() or [])
-    except Exception:  # noqa: BLE001
+    except AttributeError:
         step_events = []
 
     if step_events:
-        first = step_events[0]
-        data = getattr(first, "event_specific_data", None)
-        user_failure_data = getattr(data, "user_failure_data", None)
-        description = getattr(user_failure_data, "description", None)
+        data = getattr(step_events[-1], "event_specific_data", None)
+        description = getattr(getattr(data, "user_failure_data", None), "description", None)
         if description:
             return description
-        error = getattr(data, "error", None)
-        message = getattr(error, "message", None)
+        message = getattr(getattr(data, "error", None), "message", None)
         if message:
             return message
 
-    return getattr(getattr(context, "failure_event", None), "message", None)
+    return context.failure_event.message
+
+
+def mark_notion_failed_from_run(
+    context: Any,
+    notion: NotionQueueResource,
+    *,
+    fallback: str = "run failed",
+) -> None:
+    """Body for run-failure sensors monitoring a partitioned Notion job.
+
+    Pulls `notion_page_id` from run tags (no-op if absent — non-Notion run),
+    resolves the sharpest step failure message, and writes Status=Failed +
+    Error back to the row."""
+    page_id = dict(context.dagster_run.tags).get("notion_page_id")
+    if not page_id:
+        return
+    notion.update_status_failed(page_id, step_failure_message(context) or fallback)

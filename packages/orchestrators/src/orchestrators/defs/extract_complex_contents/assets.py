@@ -46,14 +46,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    # In-process retries (worker held during delay) for transient upstream
-    # outages — chiefly the arXiv export API's 5xx windows, which the
-    # in-fetcher tenacity loop (15s budget) can't ride out. Exponential
-    # delay = ((2^n) - 1) * 120, so first retry at 120s, second at 360s
-    # (≈8 min total wall-clock worst case). Worker hold is acceptable on
-    # this 5-slot personal pipeline; alternative would be no retry and
-    # leaving the row stuck on Status=Failed for the user to re-trigger.
-    retry_policy=dg.RetryPolicy(max_retries=2, delay=120, backoff=dg.Backoff.EXPONENTIAL),
+    retry_policy=dg.RetryPolicy(max_retries=1, delay=120),
     description=_oneline(
         """
         Dispatches to the per-type fetcher (YouTube transcript / arXiv PDF
@@ -108,6 +101,7 @@ def fetched(
     if result.error:
         raise dg.Failure(
             description=f"{content_type} fetch failed: {result.error}",
+            allow_retries=result.transient,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),

@@ -1,9 +1,12 @@
-"""Tests for the shared step_failure_message helper used by run-failure sensors."""
+"""Tests for shared run-failure sensor helpers."""
 
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-from orchestrators.defs.shared.run_failure import step_failure_message
+from orchestrators.defs.shared.run_failure import (
+    mark_notion_failed_from_run,
+    step_failure_message,
+)
 
 
 def _step_event(*, user_description: str | None, error_message: str | None) -> SimpleNamespace:
@@ -12,33 +15,24 @@ def _step_event(*, user_description: str | None, error_message: str | None) -> S
     )
     error = SimpleNamespace(message=error_message) if error_message is not None else None
     return SimpleNamespace(
-        event_specific_data=SimpleNamespace(
-            user_failure_data=user_failure_data,
-            error=error,
-        )
+        event_specific_data=SimpleNamespace(user_failure_data=user_failure_data, error=error)
     )
 
 
-def test_prefers_user_failure_data_description():
-    """A raised dg.Failure(description=...) is exposed via user_failure_data;
-    that is the cleanest description for the Notion Error column."""
+def test_step_failure_message_uses_terminal_step_not_first():
+    """On a retried run, we want the terminal failure (what actually gave up),
+    not the historical first attempt that may have been transient."""
     context = MagicMock()
     context.get_step_failure_events.return_value = [
-        _step_event(
-            user_description="arXiv fetch failed: HTTPError: Page request resulted in HTTP 503",
-            error_message="wrapped DagsterExecutionStepExecutionError",
-        )
+        _step_event(user_description="arXiv 503", error_message=None),
+        _step_event(user_description="arXiv 503 again", error_message=None),
+        _step_event(user_description="LlamaParse rejected PDF", error_message=None),
     ]
-    context.failure_event.message = "Execution of run failed. Steps failed: [...]"
-    assert (
-        step_failure_message(context)
-        == "arXiv fetch failed: HTTPError: Page request resulted in HTTP 503"
-    )
+    context.failure_event.message = "Steps failed: [...]"
+    assert step_failure_message(context) == "LlamaParse rejected PDF"
 
 
-def test_falls_back_to_error_message_when_no_user_failure_data():
-    """Unhandled exceptions (not raised via dg.Failure) carry no user_failure_data
-    but do carry the underlying error message."""
+def test_step_failure_message_falls_back_to_error_message_when_no_user_failure_data():
     context = MagicMock()
     context.get_step_failure_events.return_value = [
         _step_event(user_description=None, error_message="KeyError: 'content_type'")
@@ -47,30 +41,44 @@ def test_falls_back_to_error_message_when_no_user_failure_data():
     assert step_failure_message(context) == "KeyError: 'content_type'"
 
 
-def test_falls_back_to_run_failure_message_when_no_step_events():
-    """Run-level failures with no step failure event (cancellation, launcher
-    error) fall back to the run-level message so we still write something."""
+def test_step_failure_message_falls_back_to_run_failure_when_no_step_events():
     context = MagicMock()
     context.get_step_failure_events.return_value = []
     context.failure_event.message = "Run was canceled"
     assert step_failure_message(context) == "Run was canceled"
 
 
-def test_handles_get_step_failure_events_raising():
-    """If the Dagster context API itself raises (older versions, unexpected
-    state), we degrade to the run-level message instead of crashing the sensor."""
+def test_step_failure_message_survives_get_step_failure_events_raising():
     context = MagicMock()
-    context.get_step_failure_events.side_effect = RuntimeError("nope")
-    context.failure_event.message = "fallback message"
-    assert step_failure_message(context) == "fallback message"
+    context.get_step_failure_events.side_effect = AttributeError("api removed")
+    context.failure_event.message = "fallback"
+    assert step_failure_message(context) == "fallback"
 
 
-def test_empty_user_description_is_treated_as_missing():
-    """A user_failure_data with empty-string description shouldn't shadow the
-    underlying error message — empty isn't useful on the Notion row."""
+def test_mark_notion_failed_from_run_writes_with_page_id_from_tag():
     context = MagicMock()
+    context.dagster_run.tags = {"notion_page_id": "p-1"}
     context.get_step_failure_events.return_value = [
-        _step_event(user_description="", error_message="real error here")
+        _step_event(user_description="arXiv fetch failed: HTTP 503", error_message=None)
     ]
-    context.failure_event.message = "Steps failed: [...]"
-    assert step_failure_message(context) == "real error here"
+    notion = MagicMock()
+    mark_notion_failed_from_run(context, notion)
+    notion.update_status_failed.assert_called_once_with("p-1", "arXiv fetch failed: HTTP 503")
+
+
+def test_mark_notion_failed_from_run_noop_when_run_lacks_page_id():
+    context = MagicMock()
+    context.dagster_run.tags = {}
+    notion = MagicMock()
+    mark_notion_failed_from_run(context, notion)
+    notion.update_status_failed.assert_not_called()
+
+
+def test_mark_notion_failed_from_run_uses_fallback_when_no_message():
+    context = MagicMock()
+    context.dagster_run.tags = {"notion_page_id": "p-1"}
+    context.get_step_failure_events.return_value = []
+    context.failure_event.message = None
+    notion = MagicMock()
+    mark_notion_failed_from_run(context, notion, fallback="triage run failed")
+    notion.update_status_failed.assert_called_once_with("p-1", "triage run failed")
