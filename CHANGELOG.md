@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.16.0] — 2026-06-06
+
+### Changed
+
+- **Extractor classes now live in `workflows.extraction`.** `ThreeCallOpenAIExtractor`, `ExtractorProtocol`, and `ExtractionUsage` move out of `orchestrators`; production import path updated.
+- **Extraction prompts moved to repo-root `prompts/extraction/`.** `KP_PROMPTS_ROOT` env var overrides the default root for evals and tests.
+
+### Removed
+
+- **`SingleShotOpenAIExtractor` deleted** — unused since the three-call cutover.
+
+---
+
 ## [0.15.5] — 2026-06-06
 
 ### Changed

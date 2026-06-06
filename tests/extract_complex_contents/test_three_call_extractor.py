@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
-from orchestrators.defs.extract_complex_contents.extractors.three_call_openai import (
+from workflows.extraction.three_call_openai import (
     ThreeCallOpenAIExtractor,
 )
 

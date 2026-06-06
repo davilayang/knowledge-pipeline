@@ -107,7 +107,8 @@ packages/
     research/
     notes/
     wiki/
-  workflows/       # LangGraph workflows + agents (wiki synthesis, research)
+  workflows/       # LangGraph workflows + agents (wiki synthesis, research, extraction)
+    extraction/    # ThreeCallOpenAIExtractor, ExtractorProtocol, ExtractionUsage
   retrievers/      # RAG infra — chunking, OpenAI embedding, Chroma HTTP client, retrieval protocols
   evals/           # Retrieval eval (active), generation + wiki eval (reserved)
     datasets/      # Pinned eval JSONL datasets — checked in
@@ -119,13 +120,13 @@ packages/
         classify.py            # Pure URL → Content Type / canonicalize (no I/O)
         url_meta.py            # Best-effort HTTP fetch → page title + description
       extract_complex_contents/
-        extractors/            # Extractor strategies (mirrors fetchers/)
         fetchers/
-        prompts/               # Versioned LLM prompt copies (markdown)
       synthesize_wiki/
       populate_vector_store/
       upstream_sources.py
 
+prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
+  extraction/      # Prompt files consumed by workflows.extraction.ThreeCallOpenAIExtractor
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
 scripts/           # Deployment scripts — deploy-hcloud.sh

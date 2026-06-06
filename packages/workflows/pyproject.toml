@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-workflows"
-version = "0.15.5"
+version = "0.16.0"
 description = "LangGraph agentic workflows and agent primitives"
 requires-python = ">=3.13"
 dependencies = [
@@ -9,6 +9,7 @@ dependencies = [
     "langgraph>=1.0,<2.0",
     "langgraph-checkpoint-postgres>=2.0,<3.0",
     "langchain>=1.0,<2.0",  # langfuse.langchain.CallbackHandler runtime dep
+    "openai>=1.0,<2.0",
     "langchain-openai>=0.3,<1.0",
     "langchain-anthropic>=0.3,<1.0",
     "langfuse>=3.0,<4.0",

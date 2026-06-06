@@ -12,9 +12,11 @@ Per-type strategies live in `fetchers/` and `extractors/`; this module
 holds the Dagster ConfigurableResource boundaries that orchestrate them.
 """
 
+import os
 from pathlib import Path
 
 import dagster as dg
+from workflows.extraction import ThreeCallOpenAIExtractor
 
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
@@ -26,10 +28,22 @@ from .def_config import (
     PROMPT_LABEL_NARRATIVE,
     PROMPT_LABEL_TOPIC_CARD,
 )
-from .extractors.three_call_openai import ThreeCallOpenAIExtractor
 from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
-_PROMPTS_DIR = Path(__file__).resolve().parent / "prompts"
+# Resolve repo-root prompts/extraction/ for the extractor registry.
+# Anchor: this file lives at
+#   packages/orchestrators/src/orchestrators/defs/extract_complex_contents/resources.py
+#         parents[0] = extract_complex_contents/
+#         parents[1] = defs/
+#         parents[2] = orchestrators/         (package src)
+#         parents[3] = src/
+#         parents[4] = orchestrators/         (package root)
+#         parents[5] = packages/
+#         parents[6] = repo root
+# Override with KP_PROMPTS_ROOT env var if set (used by evals + tests).
+_DEFAULT_PROMPTS_ROOT = Path(__file__).resolve().parents[6] / "prompts"
+_PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
+_PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
 
 
 class FetcherResource(dg.ConfigurableResource):

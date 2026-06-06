@@ -62,8 +62,9 @@ dg launch --job extract_complex_contents \
           --partition-range <first_id>...<last_id>
 
 # Re-extract a page with a bumped prompt label (overwrites prior extraction).
-EXTRACT_QUEUE_PROMPT_LABEL=v6_kp_copy_<date> \
-  dg launch --job extract_complex_contents --partition <notion_page_id>
+# Bump the relevant PROMPT_LABEL_* constant in def_config.py AND add the new
+# prompts/extraction/<label>.md file in the same commit, then re-launch:
+dg launch --job extract_complex_contents --partition <notion_page_id>
 
 # Recovery — stuck in Fetching:
 # Check the local store; if extraction row exists, manually flip Notion Status=Ready.
