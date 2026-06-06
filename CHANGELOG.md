@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.17.1] — 2026-06-06
+
+### Added
+
+- **`evals.extraction` harness** consuming the `evals.core` substrate — `make_three_call_variant`, `TopicCardScorer`, `run_variant`s, `run_benchmark`.
+- **`eval-extraction` CLI** with `--dry-run` pre-flight cost estimate; live mode redirects to the workbench notebooks until a variant registry lands.
+- **Three workbench notebooks** (`ab_topic_card` / `ab_narrative` / `ab_followups`) plus a 9-cell `_template`, all jupytext py:percent paired.
+- **`poe nb-sync` and `poe nb-run`** for jupytext + papermill workflows; `poe jupyter` now roots at `packages/evals/notebooks/`.
+- **`datasets/extraction_eval.jsonl`** — 15-row hand-curated synthetic fixture set (5 per content type) with measurement-floor caveat documented in `datasets/README.md`.
+
+### Changed
+
+- **Extractor variants now work inside Jupyter kernels.** `make_three_call_variant` thread-hops `ThreeCallOpenAIExtractor.extract()` when a running event loop is detected, avoiding the prior `asyncio.run()` `RuntimeError`.
+
+---
+
 ## [0.17.0] — 2026-06-06
 
 ### Added
