@@ -6,11 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.15.5] — 2026-06-06
+
 ### Changed
 
-- **Notion `Error` column now shows the underlying step failure reason** instead of the generic `Steps failed: [...]` string. Both `mark_notion_failed_on_extract` and `mark_notion_failed_on_triage` consume the shared `mark_notion_failed_from_run` helper in `defs/shared/run_failure.py`, which walks `context.get_step_failure_events()` and prefers the *terminal* attempt's `dg.Failure(description=...)` — so a retried run shows the final cause, not the historical first 503.
-- **`extract_complex_contents/fetched` retries only fetcher errors the fetcher tagged transient.** New `FetchResult.transient: bool` (default `False`); arXiv sets `True` on HTTPError/ConnectionError + LlamaParse `httpx.HTTPError`, YouTube on `IpBlocked`/`RequestBlocked`. The asset passes `allow_retries=result.transient` so permanent failures (`NoTranscriptFound`, `VideoUnavailable`, `AgeRestricted`, `no arXiv record`, `no pdf_url`, LlamaParse `ValueError`) fail fast instead of holding the pool-of-1 slot through retry delays. Asset-level `RetryPolicy(max_retries=1, delay=120)` — one retry, 2 min cap.
-- **In-fetcher tenacity budget for arXiv dropped 60s → 15s** — Dagster's asset-level retry is the long-wait layer now; the in-process loop only rides sub-15s blips.
+- **Notion `Error` column shows the actual step failure reason** instead of `Steps failed: [...]`. New shared helper `defs/shared/run_failure.py` reads the terminal `dg.Failure(description=...)`.
+- **Extract retries are now transient-only.** `FetchResult.transient` (set by arXiv on 5xx/connection, YouTube on IP/request blocks) gates `allow_retries`; asset-level `RetryPolicy(max_retries=1, delay=120)` replaces the in-fetcher 60s tenacity loop (now 15s).
 
 ---
 
