@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.17.0] — 2026-06-06
+
+### Added
+
+- **`evals.core` substrate** — pure-function primitives composing into per-pipeline harnesses in Steps 3+. Variant identity hashing over `(config, provenance)`; schema-versioned JSONL fixtures (`SchemaVersionMismatch` on drift); JSON-safe `snapshot()` with sentinels for LangGraph state.
+- **Run persistence** at `data/eval_runs/{kind}/{target}/{version}/{run_id}/run.json` — workbench (30d retention) vs benchmark (indefinite) split via `kind`.
+- **Four judges** with injected callables — `ExactMatchJudge`, `EmbeddingSimilarityJudge`, `LLMJudge`, plus `JudgeProtocol`. No provider deps in the substrate.
+- **`CostBudget` + `BudgetExceededError`** — pre-launch spend gate; harness aborts before $$.
+- **Field-level `DiffReport`** with text + HTML renderers for variant comparison.
+- **Eval composition patterns documented** in `packages/evals/README.md` — adding a content type, upgrading a prompt, composing a workflow graph, golden-regression migration.
+
+---
+
 ## [0.16.0] — 2026-06-06
 
 ### Changed
