@@ -1,0 +1,26 @@
+# `workflows/extraction/`
+
+Stateless OpenAI extraction primitives. Produces a Topic Card dict from `(content: str, content_type: str)` via one or three OpenAI Chat Completions calls.
+
+## Public API
+
+````python
+from workflows.extraction import (
+    SingleShotOpenAIExtractor,   # one call, JSON-mode response
+    ThreeCallOpenAIExtractor,    # three calls (narrative → topic_card → followups)
+    ExtractorProtocol,           # structural contract for extractor strategies
+    ExtractionUsage,             # token usage dataclass
+)
+````
+
+## Prompt-loading contract
+
+Extractors accept `prompt_text: str` (or per-role `*_prompt: str` arguments for `ThreeCallOpenAIExtractor`) at construction. **They do NOT resolve prompts from files or env vars.**
+
+Prompt resolution is an orchestration concern. Production resolves via `orchestrators.defs.extract_complex_contents.resources.ExtractorRegistry`, which reads markdown from repo-root `prompts/extraction/` based on env-var labels (`EXTRACT_QUEUE_PROMPT_LABEL_YOUTUBE`, etc.). The `KP_PROMPTS_ROOT` env var overrides the prompts root.
+
+Evals and notebooks resolve prompts directly via variant config (see `evals/extraction/variants.py`).
+
+## Why this lives in `workflows/`
+
+`workflows/` is the home for LLM-calling code (alongside `wiki_synthesis/`, `costs.py`, `llm.py`). The `extract_complex_contents/` Dagster wiring stays in `orchestrators/`; the LLM call itself is workflow-layer concern. This split lets `evals` depend on `workflows` (which it already does) and reuse the production extractor for variant comparison without a circular dep.
