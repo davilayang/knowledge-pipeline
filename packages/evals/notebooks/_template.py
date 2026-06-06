@@ -42,8 +42,20 @@ from evals.extraction import (
     run_variants,
 )
 
+
+def _repo_root() -> Path:
+    # Kernel cwd is packages/evals/notebooks/ when launched via `poe jupyter`;
+    # walk up until we find pyproject.toml so paths resolve from anywhere.
+    for parent in [Path.cwd(), *Path.cwd().parents]:
+        if (parent / "pyproject.toml").exists() and (parent / "packages").is_dir():
+            return parent
+    raise RuntimeError("Could not locate repo root (no pyproject.toml + packages/ in any parent)")
+
+
+REPO_ROOT = _repo_root()
+
 # %% tags=["load"]
-header, rows = load_fixtures(Path(FIXTURE_SET), expected_schema_version=1)
+header, rows = load_fixtures(REPO_ROOT / FIXTURE_SET, expected_schema_version=1)
 fixtures = [
     ExtractionFixture(
         fixture_id=r["fixture_id"],
@@ -57,7 +69,7 @@ print(f"loaded {len(fixtures)} fixtures from {FIXTURE_SET}")
 
 # %% tags=["adapter"]
 # Wire variants here. Read prompt text from prompts/extraction/<file>.md.
-PROMPTS = Path("prompts/extraction")
+PROMPTS = REPO_ROOT / "prompts" / "extraction"
 narrative = (PROMPTS / "narrative_v1.md").read_text()
 topic_card = (PROMPTS / "topic_card_v1.md").read_text()
 followups = (PROMPTS / "followups_v1.md").read_text()
