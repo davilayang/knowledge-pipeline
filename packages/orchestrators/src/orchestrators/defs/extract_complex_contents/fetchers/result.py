@@ -12,4 +12,8 @@ class FetchResult:
     title: str = ""
     author: str = ""
     error: str = ""
+    # True only when the fetcher is confident the error is transient (upstream
+    # 5xx, blocked IP, connection drop). Default False = treat as permanent
+    # and fail fast — Dagster RetryPolicy is gated on this at the asset.
+    transient: bool = False
     extras: dict[str, Any] = field(default_factory=dict)

@@ -114,7 +114,7 @@ def fetch(url: str, *, proxy_url: str | None = None) -> FetchResult:
     except (IpBlocked, RequestBlocked) as exc:
         reason = f"{type(exc).__name__}: {exc}"[:300]
         logger.warning("fetch: blocked by youtube for %s — %s", url, reason)
-        return FetchResult(error=reason)
+        return FetchResult(error=reason, transient=True)
     except (AgeRestricted, VideoUnplayable, VideoUnavailable) as exc:
         reason = f"{type(exc).__name__}: {exc}"[:300]
         logger.warning("fetch: video unavailable for %s — %s", url, reason)

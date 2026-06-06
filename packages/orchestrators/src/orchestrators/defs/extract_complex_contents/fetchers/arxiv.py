@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # each other into worse 429 rate-limiting.
 _ARXIV_SEMAPHORE = threading.Semaphore(1)
 
-_RETRY_STOP_AFTER_SECONDS = 60
+_RETRY_STOP_AFTER_SECONDS = 15
 _RETRY_WAIT_INITIAL = 2
 _RETRY_WAIT_MAX = 8
 
@@ -285,7 +285,7 @@ def _fetch_inner(
                 attempts,
                 retry_ms,
             )
-            return FetchResult(error=reason)
+            return FetchResult(error=reason, transient=True)
 
     title = paper.title.strip()
     authors = [a.name for a in paper.authors]
@@ -304,7 +304,9 @@ def _fetch_inner(
             base_url=llama_cloud_base_url,
             tier=llama_parse_tier,
         )
-    except (ValueError, httpx.HTTPError) as exc:
+    except httpx.HTTPError as exc:
+        return FetchResult(error=f"{type(exc).__name__}: {exc}"[:300], transient=True)
+    except ValueError as exc:
         return FetchResult(error=f"{type(exc).__name__}: {exc}"[:300])
 
     content = _format_content(

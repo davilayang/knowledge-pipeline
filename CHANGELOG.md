@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.15.5] — 2026-06-06
+
+### Changed
+
+- **Notion `Error` column shows the actual step failure reason** instead of `Steps failed: [...]`. New shared helper `defs/shared/run_failure.py` reads the terminal `dg.Failure(description=...)`.
+- **Extract retries are now transient-only.** `FetchResult.transient` (set by arXiv on 5xx/connection, YouTube on IP/request blocks) gates `allow_retries`; asset-level `RetryPolicy(max_retries=1, delay=120)` replaces the in-fetcher 60s tenacity loop (now 15s).
+
+---
+
 ## [0.15.4] — 2026-06-04
 
 ### Changed

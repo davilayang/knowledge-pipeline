@@ -3,10 +3,7 @@
 from unittest.mock import MagicMock
 
 import dagster as dg
-from orchestrators.defs.triage_queued_items.sensors import (
-    _handle_run_failure,
-    poll_notion_for_triage,
-)
+from orchestrators.defs.triage_queued_items.sensors import poll_notion_for_triage
 
 
 def _notion_row(
@@ -146,13 +143,3 @@ def test_sensor_tags_carry_only_notion_page_id():
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert result.run_requests[0].tags == {"notion_page_id": "p-1"}
-
-
-def test_run_failure_helper_writes_notion_failed():
-    notion = MagicMock()
-    _handle_run_failure(
-        run_tags={"notion_page_id": "p-1"},
-        failure_message="classification error",
-        triage_notion=notion,
-    )
-    notion.update_status_failed.assert_called_once_with("p-1", "classification error")
