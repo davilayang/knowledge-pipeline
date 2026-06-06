@@ -37,7 +37,6 @@ from pathlib import Path
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
-    TopicCardScorer,
     make_three_call_variant,
     run_variants,
 )

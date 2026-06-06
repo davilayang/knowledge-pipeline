@@ -114,7 +114,7 @@ for r in records:
 
 # %% tags=["render"]
 # Two-column markdown side-by-side of the narrative_md output.
-from IPython.display import HTML, Markdown, display
+from IPython.display import HTML, display
 
 records = RESULTS["records"]
 baseline_narrative = (records[0].samples[0].output or {}).get("narrative_md", "<missing>")
