@@ -4,8 +4,6 @@ If this fails, the workflows.extraction __init__.py is broken or the
 underlying modules don't import.
 """
 
-import pytest
-
 
 def test_public_api_importable():
     from workflows.extraction import (
@@ -26,8 +24,9 @@ def test_single_shot_accepts_prompt_text():
     """Contract: SingleShotOpenAIExtractor.__init__ takes prompt_text: str directly.
     No file/label resolution inside the extractor — that's an orchestration concern.
     """
-    from workflows.extraction import SingleShotOpenAIExtractor
     import inspect
+
+    from workflows.extraction import SingleShotOpenAIExtractor
 
     sig = inspect.signature(SingleShotOpenAIExtractor.__init__)
     assert "prompt_text" in sig.parameters, (
@@ -61,6 +60,5 @@ def test_no_dagster_import_in_workflows_extraction():
         text=True,
     )
     assert result.returncode == 0, (
-        "workflows.extraction transitively imports dagster:\n"
-        f"stderr:\n{result.stderr}"
+        "workflows.extraction transitively imports dagster:\n" f"stderr:\n{result.stderr}"
     )

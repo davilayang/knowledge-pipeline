@@ -6,7 +6,6 @@ math silently is a real risk — these tests catch that.
 """
 
 import os
-from pathlib import Path
 
 import pytest
 
@@ -20,6 +19,7 @@ def reload_resources():
     the real repo-root prompts/, not a tmp_path left over from this fixture.
     """
     import importlib
+
     import orchestrators.defs.extract_complex_contents.resources as r
 
     def _reload():
