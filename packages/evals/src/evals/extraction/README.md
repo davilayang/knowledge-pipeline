@@ -10,9 +10,10 @@ See `evals/extraction/__init__.py` for the re-export list.
 
 | Topic Card field | Scorer |
 |---|---|
-| `extracted_title` | ExactMatchJudge |
-| `core_mechanism`, `transferable_pattern` | EmbeddingSimilarityJudge (OpenAI text-embedding-3-small by default) |
+| `extracted_title`, `core_mechanism`, `transferable_pattern` | EmbeddingSimilarityJudge (OpenAI text-embedding-3-small by default) |
 | `best_example`, `main_tension`, `candidate_tie_backs` | LLMJudge (gpt-4o-2024-11-20 by default) |
+
+`extracted_title` was originally on exact-match but every real run scored 0.0 — LLMs basically never reproduce hand-written reference titles verbatim. Moved to embedding similarity after the first benchmark surfaced the issue.
 
 Scorers carry no provider dependency — callers inject `embed_fn` and `chat_fn`. Tests pass stubs; runtime callers wire OpenAI clients.
 

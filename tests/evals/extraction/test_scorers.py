@@ -22,28 +22,40 @@ def _stub_chat(per_field_scores: dict[str, float]):
     return chat
 
 
-def test_scorer_uses_exact_match_for_extracted_title():
+def test_scorer_uses_embedding_for_extracted_title():
+    embed_fn = _stub_embed(
+        {
+            "Hello world": [1.0, 0.0, 0.0, 0.0],
+            "Hello world!": [1.0, 0.0, 0.0, 0.0],
+        }
+    )
     scorer = TopicCardScorer(
-        embed_fn=_stub_embed({}),
+        embed_fn=embed_fn,
         chat_fn=_stub_chat({"best_example": 1.0, "main_tension": 1.0, "candidate_tie_backs": 1.0}),
     )
     score = scorer.score(
         expected={"extracted_title": "Hello world"},
-        actual={"extracted_title": "Hello world"},
+        actual={"extracted_title": "Hello world!"},
     )
-    assert score.value["extracted_title"] == 1.0
+    assert score.value["extracted_title"] == pytest.approx(1.0, abs=1e-6)
 
 
-def test_scorer_exact_mismatch_yields_zero_for_title():
+def test_scorer_unrelated_title_yields_low_embedding_score():
+    embed_fn = _stub_embed(
+        {
+            "Hello world": [1.0, 0.0, 0.0, 0.0],
+            "Goodbye world": [0.0, 1.0, 0.0, 0.0],
+        }
+    )
     scorer = TopicCardScorer(
-        embed_fn=_stub_embed({}),
+        embed_fn=embed_fn,
         chat_fn=_stub_chat({"best_example": 1.0, "main_tension": 1.0, "candidate_tie_backs": 1.0}),
     )
     score = scorer.score(
         expected={"extracted_title": "Hello world"},
         actual={"extracted_title": "Goodbye world"},
     )
-    assert score.value["extracted_title"] == 0.0
+    assert score.value["extracted_title"] == pytest.approx(0.0, abs=1e-6)
 
 
 def test_scorer_uses_embedding_for_core_mechanism():
@@ -92,6 +104,7 @@ def test_scorer_coerces_list_field_to_string():
 def test_scorer_overall_is_mean_of_field_scores():
     embed_fn = _stub_embed(
         {
+            "T": [1.0, 0.0, 0.0, 0.0],
             "X": [1.0, 0.0, 0.0, 0.0],
         }
     )
@@ -108,7 +121,7 @@ def test_scorer_overall_is_mean_of_field_scores():
         "candidate_tie_backs": "W",
     }
     actual = dict(expected)
-    # title exact 1.0, core embed 1.0, transferable embed 1.0, llm trio 0.5 each → mean = 0.75
+    # title/core/transferable all embed-identity 1.0; llm trio 0.5 each → mean = 0.75
     score = scorer.score(expected=expected, actual=actual)
     assert score.value["__overall__"] == pytest.approx(0.75, abs=1e-6)
 
@@ -123,6 +136,6 @@ def test_scorer_metadata_records_judge_per_field():
         actual={"extracted_title": "T"},
     )
     judge_per_field = score.metadata["judge_per_field"]
-    assert judge_per_field["extracted_title"] == "exact"
+    assert judge_per_field["extracted_title"] == "embedding"
     assert judge_per_field["core_mechanism"] == "embedding"
     assert judge_per_field["best_example"] == "llm"

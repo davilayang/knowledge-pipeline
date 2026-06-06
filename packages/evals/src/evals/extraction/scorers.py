@@ -15,8 +15,12 @@ from typing import Any
 from evals.core import FieldScore
 from evals.core.judges import EmbeddingSimilarityJudge, ExactMatchJudge, LLMJudge
 
-_EXACT_FIELDS = ("extracted_title",)
-_EMBED_FIELDS = ("core_mechanism", "transferable_pattern")
+# extracted_title moved from exact-match to embedding similarity after the
+# first real benchmark run scored every fixture's title at 0.0 — LLMs basically
+# never reproduce a hand-written reference title verbatim, so exact match is
+# pure noise. ExactMatchJudge is retained for future use (e.g. tag-like fields).
+_EXACT_FIELDS: tuple[str, ...] = ()
+_EMBED_FIELDS = ("extracted_title", "core_mechanism", "transferable_pattern")
 _LLM_FIELDS = ("best_example", "main_tension", "candidate_tie_backs")
 
 DEFAULT_LLM_PROMPT = """\
