@@ -111,6 +111,7 @@ packages/
     extraction/    # ThreeCallOpenAIExtractor, ExtractorProtocol, ExtractionUsage
   retrievers/      # RAG infra — chunking, OpenAI embedding, Chroma HTTP client, retrieval protocols
   evals/           # Retrieval eval (active), generation + wiki eval (reserved)
+    core/          # Variant, RunRecord, FixtureRun, judges, snapshot, diff — pure substrate
     datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
