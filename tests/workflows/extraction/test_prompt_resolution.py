@@ -12,8 +12,13 @@ import pytest
 
 
 @pytest.fixture
-def reload_resources(monkeypatch):
-    """Reload resources module so env-var changes take effect at import time."""
+def reload_resources():
+    """Reload resources module so env-var changes take effect at import time.
+
+    On teardown, unconditionally clears `KP_PROMPTS_ROOT` and reloads so any
+    later test that imports `resources` sees `_PROMPTS_DIR` resolved against
+    the real repo-root prompts/, not a tmp_path left over from this fixture.
+    """
     import importlib
     import orchestrators.defs.extract_complex_contents.resources as r
 
@@ -21,7 +26,10 @@ def reload_resources(monkeypatch):
         importlib.reload(r)
         return r
 
-    return _reload
+    yield _reload
+
+    os.environ.pop("KP_PROMPTS_ROOT", None)
+    importlib.reload(r)
 
 
 def test_default_prompts_dir_resolves_to_repo_root(monkeypatch, reload_resources):

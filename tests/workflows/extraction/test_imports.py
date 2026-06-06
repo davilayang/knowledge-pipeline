@@ -37,15 +37,30 @@ def test_single_shot_accepts_prompt_text():
 
 
 def test_no_dagster_import_in_workflows_extraction():
-    """workflows is forbidden from importing dagster (architectural rule)."""
-    import workflows.extraction
-    import workflows.extraction.openai_single_shot
-    import workflows.extraction.three_call_openai
-    import workflows.extraction.protocol
+    """workflows is forbidden from importing dagster (architectural rule).
 
+    Runs in a fresh subprocess so the check isn't polluted by other tests in
+    the same pytest run that legitimately import dagster (e.g. orchestrators
+    tests).
+    """
+    import subprocess
     import sys
-    loaded = {name for name in sys.modules if "dagster" in name.lower()}
-    assert not loaded, (
-        f"workflows.extraction imports pulled in dagster modules: {loaded}. "
-        "workflows must not depend on dagster."
+
+    probe = (
+        "import workflows.extraction\n"
+        "import workflows.extraction.openai_single_shot\n"
+        "import workflows.extraction.three_call_openai\n"
+        "import workflows.extraction.protocol\n"
+        "import sys\n"
+        "leaked = sorted(n for n in sys.modules if 'dagster' in n.lower())\n"
+        "assert not leaked, leaked\n"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, (
+        "workflows.extraction transitively imports dagster:\n"
+        f"stderr:\n{result.stderr}"
     )
