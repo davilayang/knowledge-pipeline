@@ -30,7 +30,7 @@ from evals.core import (
     # fixtures.py
     FixtureHeader, SchemaVersionMismatch, load_fixtures, save_fixtures,
     # cost.py
-    CostBudget, BudgetExceededError,
+    CostBudget, BudgetExceededError, CostEstimatorProtocol,
     # snapshotter.py
     snapshot,
     # runs.py

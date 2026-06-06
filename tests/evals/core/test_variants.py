@@ -2,7 +2,9 @@
 
 import hashlib
 import json
+from pathlib import Path
 
+import pytest
 from evals.core.types import VariantProvenance
 from evals.core.variants import (
     RetrievalVariant,
@@ -63,6 +65,64 @@ def test_corpus_signature_is_content_id_sorted_sha():
 
 def test_corpus_signature_order_independent():
     assert corpus_signature(["a", "b", "c"]) == corpus_signature(["c", "b", "a"])
+
+
+def test_variant_identity_matches_pinned_hash():
+    """Cross-process determinism: a known input pins a known sha256.
+
+    Regenerate this hex ONLY after confirming the new hash is identical across
+    at least three separate process invocations under PYTHONHASHSEED=random.
+    Drift here means the cache contract just broke.
+    """
+    v = Variant(
+        name="pinned",
+        config={"prompt": "v5", "max_tokens": 2048},
+        provenance=VariantProvenance(
+            prompt_versions={"extraction": "v5_2026_06_01"},
+            model_versions={"extraction": "gpt-4o-mini"},
+            code_revision="abc1234",
+            corpus_anchor="backup/raw_store/2026-05-30",
+            output_schema_version=1,
+        ),
+        run=_no_op_runner,
+    )
+    assert variant_identity(v) == "c1149c2528051709ffcad5f48d0c3a3a4a89eca3aab14cbea4908e19736576a1"
+
+
+def test_variant_identity_rejects_set_in_config():
+    """sets iterate in hash-randomised order; reject up-front."""
+    v = Variant(
+        name="A",
+        config={"selected_fields": {"a", "b"}},
+        provenance=_provenance(),
+        run=_no_op_runner,
+    )
+    with pytest.raises(ValueError, match="set"):
+        variant_identity(v)
+
+
+def test_variant_identity_rejects_path_in_config():
+    """Path objects need ad-hoc stringification; reject up-front."""
+    v = Variant(
+        name="A",
+        config={"prompt_path": Path("/tmp/x")},
+        provenance=_provenance(),
+        run=_no_op_runner,
+    )
+    with pytest.raises(ValueError, match="Path"):
+        variant_identity(v)
+
+
+def test_variant_identity_rejects_non_string_dict_key():
+    """JSON requires str keys; reject up-front."""
+    v = Variant(
+        name="A",
+        config={1: "x"},
+        provenance=_provenance(),
+        run=_no_op_runner,
+    )
+    with pytest.raises(ValueError, match="str"):
+        variant_identity(v)
 
 
 def test_retrieval_variant_has_setup_and_query_callables():
