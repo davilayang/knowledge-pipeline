@@ -1023,6 +1023,15 @@ wheels = [
 ]
 
 [[package]]
+name = "entrypoints"
+version = "0.4"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/ea/8d/a7121ffe5f402dc015277d2d31eb82d2187334503a011c18f2e78ecbb9b2/entrypoints-0.4.tar.gz", hash = "sha256:b706eddaa9218a19ebcd67b56818f05bb27589b1ca9e8d797b74affad4ccacd4", size = 13974, upload-time = "2022-02-02T21:30:28.172Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/35/a8/365059bbcd4572cbc41de17fd5b682be5868b218c3c5479071865cab9078/entrypoints-0.4-py3-none-any.whl", hash = "sha256:f174b5ff827504fd3cd97cc3f8649f3693f51538c7e4bdf3ef002c8429d42f9f", size = 5294, upload-time = "2022-02-02T21:30:26.024Z" },
+]
+
+[[package]]
 name = "executing"
 version = "2.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2014,6 +2023,22 @@ wheels = [
 ]
 
 [[package]]
+name = "jupytext"
+version = "1.19.3"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+    { name = "mdit-py-plugins" },
+    { name = "nbformat" },
+    { name = "packaging" },
+    { name = "pyyaml" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ef/2d/15624c3d9440d85a280ff13d2d23afd989802f25470ac59932f4fef6f0c6/jupytext-1.19.3.tar.gz", hash = "sha256:713c3ed4441afe0f31474d28ea2e6b61a268c04c40fd78e5ccfd7f7ac9e9f766", size = 4305350, upload-time = "2026-05-17T09:09:29.294Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/aa/ec/d9be3bd1db141e76b2f525c265f70e66edd30a51a3307d8edf0ef1909c54/jupytext-1.19.3-py3-none-any.whl", hash = "sha256:acf75492f80895ad8e664fd8db1708b617008dd0e71c341a1abc3d0d07310ed0", size = 170579, upload-time = "2026-05-17T09:09:27.478Z" },
+]
+
+[[package]]
 name = "justext"
 version = "3.0.2"
 source = { registry = "https://pypi.org/simple" }
@@ -2094,7 +2119,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.17.0"
+version = "0.17.2"
 source = { editable = "packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
@@ -2113,7 +2138,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-evals"
-version = "0.17.0"
+version = "0.17.2"
 source = { editable = "packages/evals" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2134,7 +2159,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-orchestrators"
-version = "0.17.0"
+version = "0.17.2"
 source = { editable = "packages/orchestrators" }
 dependencies = [
     { name = "arxiv" },
@@ -2177,7 +2202,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-pipeline"
-version = "0.17.0"
+version = "0.17.2"
 source = { virtual = "." }
 dependencies = [
     { name = "knowledge-domains" },
@@ -2194,8 +2219,10 @@ notebooks = [
     { name = "jupyter-mcp-tools" },
     { name = "jupyterlab" },
     { name = "jupyterlab-vim" },
+    { name = "jupytext" },
     { name = "matplotlib" },
     { name = "pandas" },
+    { name = "papermill" },
 ]
 
 [package.dev-dependencies]
@@ -2214,6 +2241,7 @@ requires-dist = [
     { name = "jupyter-mcp-tools", marker = "extra == 'notebooks'", specifier = ">=0.1.4" },
     { name = "jupyterlab", marker = "extra == 'notebooks'" },
     { name = "jupyterlab-vim", marker = "extra == 'notebooks'" },
+    { name = "jupytext", marker = "extra == 'notebooks'", specifier = ">=1.16" },
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-evals", editable = "packages/evals" },
     { name = "knowledge-orchestrators", editable = "packages/orchestrators" },
@@ -2221,6 +2249,7 @@ requires-dist = [
     { name = "knowledge-workflows", editable = "packages/workflows" },
     { name = "matplotlib", marker = "extra == 'notebooks'", specifier = ">=3.8" },
     { name = "pandas", marker = "extra == 'notebooks'", specifier = ">=2.0" },
+    { name = "papermill", marker = "extra == 'notebooks'", specifier = ">=2.6" },
 ]
 provides-extras = ["notebooks"]
 
@@ -2235,7 +2264,7 @@ dev = [
 
 [[package]]
 name = "knowledge-retrievers"
-version = "0.17.0"
+version = "0.17.2"
 source = { editable = "packages/retrievers" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2258,7 +2287,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-workflows"
-version = "0.17.0"
+version = "0.17.2"
 source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },
@@ -2765,6 +2794,18 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/bd/c0/9f7c9a46090390368a4d7bcb76bb87a4a36c421e4c0792cdb53486ffac7a/matplotlib_inline-0.2.2.tar.gz", hash = "sha256:72f3fe8fce36b70d4a5b612f899090cd0401deddc4ea90e1572b9f4bfb058c79", size = 8150, upload-time = "2026-05-08T17:33:33.49Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/41/09/5b161152e2d90f7b87f781c2e1267494aef9c32498df793f73ad0a0a494a/matplotlib_inline-0.2.2-py3-none-any.whl", hash = "sha256:3c821cf1c209f59fb2d2d64abbf5b23b67bcb2210d663f9918dd851c6da1fcf6", size = 9534, upload-time = "2026-05-08T17:33:32.055Z" },
+]
+
+[[package]]
+name = "mdit-py-plugins"
+version = "0.6.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "markdown-it-py" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/59/fc/f8d0863f8862f25602c0404d75568e89fb6b4109804645e5cdfb1be5cf56/mdit_py_plugins-0.6.1.tar.gz", hash = "sha256:a2bca0f039f39dbd35fb74ae1b5f998608c437463371f0ff7f49a19a17a114d0", size = 56114, upload-time = "2026-05-13T09:03:38.91Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/a5/69/6da5581c6a7fede7dc261bf4e67d6adca4196f176b43288b55b3db395b6e/mdit_py_plugins-0.6.1-py3-none-any.whl", hash = "sha256:214c82fb2ac524472ab6a5bcab1de80f73b50443e187f401bfd77efbc7c6481d", size = 66663, upload-time = "2026-05-13T09:03:37.76Z" },
 ]
 
 [[package]]
@@ -3316,6 +3357,25 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/70/6f/3dd4940bbe001c06a65f88e36bad298bc7a0de5036115639926b0c5c0458/pandocfilters-1.5.1.tar.gz", hash = "sha256:002b4a555ee4ebc03f8b66307e287fa492e4a77b4ea14d3f934328297bb4939e", size = 8454, upload-time = "2024-01-18T20:08:13.726Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/ef/af/4fbc8cab944db5d21b7e2a5b8e9211a03a79852b1157e2c102fcc61ac440/pandocfilters-1.5.1-py2.py3-none-any.whl", hash = "sha256:93be382804a9cdb0a7267585f157e5d1731bbe5545a85b268d6f5fe6232de2bc", size = 8663, upload-time = "2024-01-18T20:08:11.28Z" },
+]
+
+[[package]]
+name = "papermill"
+version = "2.7.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "click" },
+    { name = "entrypoints" },
+    { name = "nbclient" },
+    { name = "nbformat" },
+    { name = "pyyaml" },
+    { name = "requests" },
+    { name = "tenacity" },
+    { name = "tqdm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/f8/b6/92d770c5ced66ed0134256f8de781e98c824d3a0662af1643a91fcc36663/papermill-2.7.0.tar.gz", hash = "sha256:ec10b37594a060662f57269e1ebd108c209d204450f00fdfeb70a1c7cfb7fbc8", size = 77961, upload-time = "2026-02-27T19:07:30.548Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/95/9f/f9fd57a727dcc89c54e84455d8317bff7db05ef21bb6d05b03705111f7c0/papermill-2.7.0-py3-none-any.whl", hash = "sha256:e1855e6670100a02bb4f8a6870484a5c10b84a8d2e49c49921c90209940c7514", size = 88858, upload-time = "2026-02-27T19:07:28.862Z" },
 ]
 
 [[package]]

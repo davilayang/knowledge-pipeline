@@ -108,10 +108,16 @@ packages/
     notes/
     wiki/
   workflows/       # LangGraph workflows + agents (wiki synthesis, research, extraction)
+    agents/        # Agent primitives
     extraction/    # ThreeCallOpenAIExtractor, ExtractorProtocol, ExtractionUsage
+    shared/        # Shared workflow utilities
+    wiki_synthesis/ # Wiki synthesis workflow
   retrievers/      # RAG infra — chunking, OpenAI embedding, Chroma HTTP client, retrieval protocols
   evals/           # Retrieval eval (active), generation + wiki eval (reserved)
     core/          # Variant, RunRecord, FixtureRun, judges, snapshot, diff — pure substrate
+    extraction/    # First per-pipeline harness — Variant + scorer + workbench + benchmark (eval-extraction CLI)
+    retrieval/     # Retrieval eval harness (Recall@K / MRR / nDCG)
+    notebooks/     # Workbench notebooks (jupytext py:percent paired, papermill via poe nb-run)
     datasets/      # Pinned eval JSONL datasets — checked in
   orchestrators/   # Dagster definitions — only package that imports dagster
     defs/
