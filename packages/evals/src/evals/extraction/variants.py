@@ -88,9 +88,7 @@ def make_three_call_variant(
         )
         t0 = time.monotonic()
         try:
-            payload, records = _call_extractor(
-                extractor, fixture.content, fixture.content_type
-            )
+            payload, records = _call_extractor(extractor, fixture.content, fixture.content_type)
         except Exception as e:
             duration_ms = int((time.monotonic() - t0) * 1000)
             return FixtureRun(

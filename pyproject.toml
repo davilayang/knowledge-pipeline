@@ -221,7 +221,7 @@ target-version = "py313"
 # Jupytext py:percent files put imports inside cells, not at file top —
 # ruff's E402/F401 rules don't apply to notebook source. Lint the .ipynb
 # pair separately via `nbqa` if needed.
-extend-exclude = ["packages/evals/notebooks/*.py"]
+extend-exclude = ["packages/evals/notebooks/*.py", "packages/evals/notebooks/*.ipynb"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP"]
