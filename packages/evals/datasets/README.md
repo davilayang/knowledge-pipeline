@@ -1,6 +1,8 @@
 # `knowledge-evals` datasets
 
-Pinned eval inputs for the `evals.retrieval` harness. Lives alongside the package source — the dataset is part of the package's contract, not an unrelated top-level artefact.
+Pinned eval inputs for the per-pipeline harnesses (`evals.retrieval`, `evals.extraction`, future `evals.workflows`). Lives alongside the package source — each dataset is part of its harness's contract, not an unrelated top-level artefact.
+
+Every JSONL carries a `schema_version` header line; `evals.core.load_fixtures` validates it and rejects unknown versions. Add a new dataset section below when adding a new file.
 
 ## `retrieval_eval.jsonl`
 
@@ -36,3 +38,51 @@ Refresh per-source slices when:
 - Quarterly (whichever is sooner).
 
 Baseline results land in `data/eval_results/retrieval_<ts>.json` (gitignored, local-only). Keep them locally chronological — baseline-vs-current trends are easier to spot when prior runs aren't overwritten — and tag dataset version (e.g. via `git rev-parse` of the JSONL commit) when comparing across regenerations.
+
+## `extraction_eval.jsonl`
+
+JSONL of `{fixture_id, content_type, content, expected_topic_card}` rows consumed by the `evals.extraction` harness — `eval-extraction --fixtures …` (benchmark, scored) and the workbench notebooks under `packages/evals/notebooks/ab_*__content.ipynb` (single-fixture eyeball). Schema validated by `evals.core.load_fixtures(expected_schema_version=1)` — bad rows fail loudly.
+
+### v0 (2026-06-06) — Step 3 synthetic first-cut
+
+| content_type | Fixtures | Topic neighbourhood | Difficulty mix |
+|---|---|---|---|
+| Article | 5 | Memory science (spaced repetition), ML history (EM/Minsky), data infra (text dedup, DuckDB optimisation), energy (Oklo microreactors) | Easy → Hard mix; named orgs & numbers throughout |
+| arXiv | 5 | Fluid dynamics ML, streaming SGD, protein diffusion, adaptive PDE stencils, continuous-time RL | Abstracts only; varied subfields to avoid LLM-research monoculture |
+| YouTube | 5 | Acting craft (Gadot/Lex), ML scaling laws, hippocampal neuroscience, UK grid forecasting, paleontology | Talk/podcast openings; concrete named studies |
+
+**Total: 15 fixtures**, balanced across stratification dimensions.
+
+### How they were curated
+
+- **Drafted by `codex-advisor`** with the v5 topic_card prompt as context and explicit instructions on per-field grammatical rules (NAMED-METHOD does VERB to OUTCOME for `core_mechanism`; named org/person/paper/number in `best_example`; attributed-concrete hooks in `candidate_tie_backs`).
+- **Reviewed inline** on the way in. Two typos corrected (`Googd's` → `Google's`; `globallyunpredictable` → `globally unpredictable`).
+- **One historically dubious framing kept on purpose** (`art_002`: Minsky+EM credit). Useful for testing whether the extractor faithfully reproduces source claims rather than correcting them.
+- **No live LLM calls.** Content and expected_topic_card are both hand-crafted text.
+
+### Measurement floor (load-bearing caveat)
+
+`expected_topic_card` rows are **hand-written examples of what v5-shaped output *should* look like — they are NOT actual v5 extractor outputs.** Scoring a candidate prompt against this set tells you *"does the candidate produce output that looks like what I think v5 should produce"* — it does NOT tell you *"does the candidate match what v5 actually produces"*. Score deltas in this v0 are direction signals, not absolute rankings.
+
+Real v5-baseline curation (run the production three-call extractor against 15 real raw_store rows, pair each with its output as `expected_topic_card`) lands once `eval-corpus` tooling exists (spec Step 6). Until then, treat absolute scores from `eval-extraction` against this set as advisory; trust ordinal comparisons between variants more than absolute numbers.
+
+### Known v0 gaps
+
+- **Synthetic content.** Real raw_store content has structural quirks (truncated transcripts, embedded HTML, mixed languages) that this set won't surface. v1 from raw_store will.
+- **No second_example field.** The `TopicCard` schema has an optional `second_example` field; fixtures don't include it. Scorer ignores it anyway, but a refresh should consider populating it.
+- **No deliberately-broken fixtures.** No fixtures specifically test extractor robustness to short / repetitive / off-domain content. Add a `synthetic_edge_cases/` slice in v1 if extractor failure modes become a focus.
+
+### Adding new fixtures
+
+1. Pick a `fixture_id` matching the pattern: `art_<NNN>` / `arx_<NNN>` / `yt_<NNN>`. Increment within the existing range; ids are stable handles that cache keys depend on.
+2. Append the row to `extraction_eval.jsonl` (one row per line, no trailing comma).
+3. Validate: `uv run python -c "from pathlib import Path; from evals.core import load_fixtures; h,r=load_fixtures(Path('packages/evals/datasets/extraction_eval.jsonl'), expected_schema_version=1); print(len(r))"`
+4. Re-run `eval-extraction baseline --fixtures … --dry-run` to confirm the new count + estimate.
+
+### Cadence review
+
+Refresh when:
+- `eval-corpus` tooling lands (Step 6) → swap the whole set for raw_store-derived fixtures with real v5 baseline expected output.
+- A new `content_type` ships in production extraction (e.g., podcast, book) → add 5 of the new type before promoting the prompts for it.
+- Score variance between v5 and v6 candidate runs is dominated by 1–2 fixtures → add diversity in that content_type to dilute the outlier.
+- Quarterly (whichever sooner), revisit topic diversity — the user's interests drift over time.
