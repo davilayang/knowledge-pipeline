@@ -46,6 +46,14 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    # In-process retries (worker held during delay) for transient upstream
+    # outages — chiefly the arXiv export API's 5xx windows, which the
+    # in-fetcher tenacity loop (15s budget) can't ride out. Exponential
+    # delay = ((2^n) - 1) * 120, so first retry at 120s, second at 360s
+    # (≈8 min total wall-clock worst case). Worker hold is acceptable on
+    # this 5-slot personal pipeline; alternative would be no retry and
+    # leaving the row stuck on Status=Failed for the user to re-trigger.
+    retry_policy=dg.RetryPolicy(max_retries=2, delay=120, backoff=dg.Backoff.EXPONENTIAL),
     description=_oneline(
         """
         Dispatches to the per-type fetcher (YouTube transcript / arXiv PDF
@@ -66,11 +74,13 @@ def fetched(
     if not row:
         raise dg.Failure(
             description=f"No queue_items row for partition {page_id}; triage must run first.",
+            allow_retries=False,
         )
     content_type = row.get("content_type")
     if not content_type:
         raise dg.Failure(
             description=f"queue_items row for {page_id} has no content_type; triage incomplete.",
+            allow_retries=False,
         )
 
     if row.get("raw_content") and row.get("url"):
@@ -92,7 +102,7 @@ def fetched(
 
     url = row.get("url") or context.run.tags.get("url") or ""
     if not url:
-        raise dg.Failure(description=f"Missing url for page_id={page_id}")
+        raise dg.Failure(description=f"Missing url for page_id={page_id}", allow_retries=False)
 
     result = fetcher.fetch_for_type(url, content_type=content_type)
     if result.error:
@@ -110,6 +120,7 @@ def fetched(
     if char_count < FETCHED_CONTENT_MIN_CHARS:
         raise dg.Failure(
             description=f"{content_type} content below floor: {char_count} chars",
+            allow_retries=False,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),

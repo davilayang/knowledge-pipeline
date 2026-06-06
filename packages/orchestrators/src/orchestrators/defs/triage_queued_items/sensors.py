@@ -1,6 +1,7 @@
 import dagster as dg
 
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
+from orchestrators.defs.shared.run_failure import step_failure_message
 
 from .assets import TriageInput
 from .def_config import MAX_QUEUED_PER_TICK, SENSOR_MIN_INTERVAL_S, queue_items_partition_def
@@ -107,7 +108,7 @@ def mark_notion_failed_on_triage(
 ) -> None:
     _handle_run_failure(
         run_tags=dict(context.dagster_run.tags),
-        failure_message=context.failure_event.message,
+        failure_message=step_failure_message(context),
         triage_notion=triage_notion,
     )
 

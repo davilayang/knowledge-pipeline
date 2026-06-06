@@ -1,6 +1,7 @@
 import dagster as dg
 
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
+from orchestrators.defs.shared.run_failure import step_failure_message
 
 from .def_config import MAX_TO_EXTRACT_PER_TICK, SENSOR_MIN_INTERVAL_S, SUPPORTED_CONTENT_TYPES
 from .schedules import extract_complex_contents_job
@@ -75,7 +76,7 @@ def mark_notion_failed_on_extract(
 ) -> None:
     _handle_run_failure(
         run_tags=dict(context.dagster_run.tags),
-        failure_message=context.failure_event.message,
+        failure_message=step_failure_message(context),
         notion=notion,
     )
 

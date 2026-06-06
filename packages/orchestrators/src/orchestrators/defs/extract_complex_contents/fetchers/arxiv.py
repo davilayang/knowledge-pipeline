@@ -34,7 +34,7 @@ logger = logging.getLogger(__name__)
 # each other into worse 429 rate-limiting.
 _ARXIV_SEMAPHORE = threading.Semaphore(1)
 
-_RETRY_STOP_AFTER_SECONDS = 60
+_RETRY_STOP_AFTER_SECONDS = 15
 _RETRY_WAIT_INITIAL = 2
 _RETRY_WAIT_MAX = 8
 
