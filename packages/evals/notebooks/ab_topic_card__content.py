@@ -131,9 +131,7 @@ for field in TopicCardFields.canonical():
 display(
     HTML(
         "<table style='border-collapse:collapse'>"
-        "<tr><th></th><th>baseline</th><th>candidate</th></tr>"
-        + "".join(rows_html)
-        + "</table>"
+        "<tr><th></th><th>baseline</th><th>candidate</th></tr>" + "".join(rows_html) + "</table>"
     )
 )
 

@@ -130,7 +130,9 @@ display(
         "</tr></table>"
     )
 )
-print(f"shared: {len(shared)} / unique-to-baseline: {len(set(baseline_qs) - shared)} / unique-to-candidate: {len(set(candidate_qs) - shared)}")
+print(
+    f"shared: {len(shared)} / unique-to-baseline: {len(set(baseline_qs) - shared)} / unique-to-candidate: {len(set(candidate_qs) - shared)}"
+)
 
 # %% tags=["score"]
 RESULTS["scores"] = None
