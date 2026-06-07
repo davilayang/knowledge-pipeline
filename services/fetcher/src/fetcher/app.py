@@ -7,7 +7,7 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
-from domains.fetcher.db import init_schema, open_connection
+from domains.fetches_store.sources import create_schema
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -22,11 +22,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize DB schema on startup. Source registry pre-warm lands in Phase 1."""
     try:
         settings = Settings()
-        conn = open_connection(settings.db_path)
-        try:
-            init_schema(conn)
-        finally:
-            conn.close()
+        create_schema(settings.db_path)
         app.state.settings_ok = True
     except ValidationError:
         app.state.settings_ok = False
