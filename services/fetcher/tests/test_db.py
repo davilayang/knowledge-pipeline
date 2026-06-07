@@ -1,8 +1,8 @@
-"""Tests for fetcher.db schema init."""
+"""Tests for domains.fetcher.db schema init."""
 
 import sqlite3
 
-from fetcher.db import init_schema, open_connection
+from domains.fetcher.db import init_schema, open_connection
 
 
 def _table_names(conn: sqlite3.Connection) -> list[str]:

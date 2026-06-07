@@ -119,11 +119,11 @@ do_setup() {
     # Create runtime directories. They're owned by the deploy user — and since
     # APP_UID/APP_GID in .env make the container's dagster user match the host
     # deploy user, the bind-mounted dirs are writable by both without chown.
-    run_deploy "mkdir -p ~/${REMOTE_DIR}/data/fetcher ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
+    run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
 
-    # External network shared with newsletter-assistant. Compose declares it as
-    # external, so it must exist before the stack starts.
-    run_deploy "docker network create personal-os-net 2>/dev/null || true"
+    # External network shared by Knowledge OS compose stacks. Compose declares
+    # it as external, so it must exist before the stack starts.
+    run_deploy "docker network create kos-network 2>/dev/null || true"
 
     echo ""
     echo "========================================="

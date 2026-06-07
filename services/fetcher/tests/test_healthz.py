@@ -4,7 +4,6 @@ import sqlite3
 
 import pytest
 from fastapi.testclient import TestClient
-
 from fetcher.app import create_app
 
 

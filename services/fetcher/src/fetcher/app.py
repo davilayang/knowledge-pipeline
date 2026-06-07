@@ -4,13 +4,13 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from domains.fetches_store.sources import open_connection, create_schema
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from fetcher.config import Settings
 from fetcher.context import make_fetch_context
-from fetcher.db import init_schema, open_connection
 from fetcher.endpoints import canonicalize as canonicalize_endpoint
 from fetcher.endpoints import fetch as fetch_endpoint
 from fetcher.endpoints import fetches as fetches_endpoint
@@ -26,6 +26,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize settings, DB schema, and shared fetch context on startup."""
     try:
         settings = Settings()
+        create_schema(settings.db_path)
+        app.state.settings_ok = True
     except ValidationError:
         app.state.settings_ok = False
         app.state.settings = None
@@ -35,6 +37,7 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
 
     app.state.settings = settings
     conn = open_connection(settings.db_path)
+    # FIXME: why do this?
     try:
         init_schema(conn)
         conn.execute(

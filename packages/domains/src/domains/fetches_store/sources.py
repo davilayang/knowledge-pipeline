@@ -1,12 +1,10 @@
-"""SQLite schema init and connection helpers.
+"""SQLite layer for the fetcher service
 
-Three tables: cache, fetches, url_aliases. All in one file
-(``FETCHER_DB_PATH``, default ``/app/data/fetcher.db``).
+Three tables: cache, fetches, url_aliases.
 """
 
 import sqlite3
 from pathlib import Path
-
 
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS cache (
@@ -56,15 +54,21 @@ CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
 """
 
 
-def open_connection(db_path: str) -> sqlite3.Connection:
+def open_connection(db_path: Path | str) -> sqlite3.Connection:
     """Open a SQLite connection with defaults for this service."""
-    Path(db_path).parent.mkdir(parents=True, exist_ok=True)
+
     conn = sqlite3.connect(db_path, isolation_level=None)
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
     return conn
 
 
-def init_schema(conn: sqlite3.Connection) -> None:
+def create_schema(*, db_path: Path) -> None:
     """Create the three tables and supporting indexes if needed."""
-    conn.executescript(_SCHEMA_SQL)
+
+    db_path.parent.mkdir(parents=True, exist_ok=True)
+    with open_connection(db_path) as conn:
+
+        # Bring up the current schema (creates tables if missing,
+        # creates current indexes; both `IF NOT EXISTS`).
+        conn.executescript(_SCHEMA_SQL)

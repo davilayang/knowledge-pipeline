@@ -2,21 +2,28 @@
 # Fetcher service - Phase 0 skeleton. Slim Python base; uv-built.
 FROM python:3.13-slim AS builder
 
-COPY --from=ghcr.io/astral-sh/uv:latest /uv /uvx /usr/local/bin/
+# Official uv Docker integration recommends copying uv from the published image,
+# pinning the tag, and using cache mounts for sync.
+COPY --from=ghcr.io/astral-sh/uv:0.11.19 /uv /uvx /bin/
 
 ENV UV_LINK_MODE=copy \
     UV_COMPILE_BYTECODE=1 \
-    UV_PYTHON_DOWNLOADS=never
+    UV_PYTHON_DOWNLOADS=never \
+    UV_PROJECT_ENVIRONMENT=/app/.venv
 
-WORKDIR /app
+WORKDIR /app/services/fetcher
 
-COPY services/fetcher/pyproject.toml services/fetcher/uv.lock /app/
+# Copy manifests first for dependency-layer caching. Keep paths aligned with
+# the source tree so the local knowledge-domains path dependency resolves.
+COPY services/fetcher/pyproject.toml services/fetcher/uv.lock /app/services/fetcher/
+COPY packages/domains/pyproject.toml /app/packages/domains/pyproject.toml
+COPY packages/domains/src /app/packages/domains/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-install-project --no-dev
+    uv sync --locked --no-install-project --no-dev --no-editable
 
-COPY services/fetcher/src /app/src
+COPY services/fetcher/src /app/services/fetcher/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --frozen --no-dev
+    uv sync --locked --no-dev --no-editable
 
 
 FROM python:3.13-slim AS runtime
@@ -24,10 +31,8 @@ FROM python:3.13-slim AS runtime
 RUN useradd --create-home --uid 1000 fetcher
 
 COPY --from=builder --chown=fetcher:fetcher /app/.venv /app/.venv
-COPY --from=builder --chown=fetcher:fetcher /app/src /app/src
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONPATH="/app/src" \
     PYTHONUNBUFFERED=1
 
 RUN mkdir -p /app/data && chown fetcher:fetcher /app/data
