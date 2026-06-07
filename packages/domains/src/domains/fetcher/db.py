@@ -7,7 +7,6 @@ Three tables: cache, fetches, url_aliases. All in one file
 import sqlite3
 from pathlib import Path
 
-
 _SCHEMA_SQL = """
 CREATE TABLE IF NOT EXISTS cache (
     url_hash       TEXT PRIMARY KEY,

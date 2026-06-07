@@ -1,7 +1,6 @@
 """Tests for fetcher.config."""
 
 import pytest
-
 from fetcher.config import Settings
 
 

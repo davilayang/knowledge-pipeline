@@ -191,10 +191,10 @@ services:
     environment:
       - FETCHER_DB_PATH=/app/data/fetcher.db
     volumes:
-      - ./data/fetcher:/app/data
+      - ./data:/app/data
     networks:
       dagster_network: {}
-      personal-os-net:
+      kos_network:
         aliases:
           - kp-fetcher
     restart: unless-stopped
@@ -217,8 +217,9 @@ networks:
   dagster_network:
     driver: bridge
     name: dagster_network
-  personal-os-net:
+  kos_network:
     external: true
+    name: kos-network
 
 volumes:
   postgres_data:

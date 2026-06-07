@@ -7,13 +7,12 @@ from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
 
+from domains.fetcher.db import init_schema, open_connection
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from fetcher.config import Settings
-from fetcher.db import init_schema, open_connection
-
 
 _registered_sources: list[str] = []
 
