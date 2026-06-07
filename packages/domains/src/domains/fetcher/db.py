@@ -1,7 +1,7 @@
 """SQLite schema init and connection helpers.
 
 Three tables: cache, fetches, url_aliases. All in one file
-(``FETCHER_DB_PATH``, default ``/app/data/fetcher.db``).
+(``FETCHER_DB_PATH``, default ``/app/data/fetches.db``).
 """
 
 import sqlite3
