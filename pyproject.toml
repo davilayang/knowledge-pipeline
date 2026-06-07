@@ -112,19 +112,19 @@ sequence = ["fmt", "lint", "test"]
 help = "Run all checks: formatting, linting, and tests"
 
 [tool.poe.tasks.fmt]
-cmd = "black --check packages/ tests/"
+cmd = "black --check packages/ services/ tests/"
 help = "Check code formatting with black (does not modify)"
 
 [tool.poe.tasks.fmt-fix]
-cmd = "black packages/ tests/"
+cmd = "black packages/ services/ tests/"
 help = "Fix code formatting issues automatically with black"
 
 [tool.poe.tasks.lint]
-cmd = "ruff check packages/ tests/"
+cmd = "ruff check packages/ services/ tests/"
 help = "Check code linting with ruff (does not modify)"
 
 [tool.poe.tasks.lint-fix]
-cmd = "ruff check --fix packages/ tests/"
+cmd = "ruff check --fix packages/ services/ tests/"
 help = "Fix code linting issues automatically with ruff"
 
 [tool.poe.tasks.fix]

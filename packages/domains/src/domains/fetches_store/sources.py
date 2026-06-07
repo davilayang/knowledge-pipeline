@@ -54,7 +54,7 @@ CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
 """
 
 
-def open_connection(db_path: Path | str) -> sqlite3.Connection:
+def _connect(db_path: Path | str) -> sqlite3.Connection:
     """Open a SQLite connection with defaults for this service."""
 
     conn = sqlite3.connect(db_path, isolation_level=None)
@@ -67,8 +67,31 @@ def create_schema(*, db_path: Path) -> None:
     """Create the three tables and supporting indexes if needed."""
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
-    with open_connection(db_path) as conn:
+    with _connect(db_path) as conn:
 
         # Bring up the current schema (creates tables if missing,
         # creates current indexes; both `IF NOT EXISTS`).
         conn.executescript(_SCHEMA_SQL)
+
+
+def mark_orphans_failed(*, db_path: Path, error_json: str) -> int:
+    """Sweep pending/running fetches → failed.
+
+    Called at service boot: --workers=1 means any in-flight row at boot
+    is orphaned (the worker process that owned its task_handles entry is gone).
+    Returns rows affected.
+    """
+
+    # Mark pending fetch jobs as failed
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            UPDATE fetches
+                SET status = 'failed',
+                    error_json = ?,
+                    updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
+            WHERE status IN ('pending', 'running')
+            """,
+            (error_json,),
+        )
+        return cur.rowcount

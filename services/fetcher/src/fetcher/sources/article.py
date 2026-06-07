@@ -33,7 +33,9 @@ def matches(url: str) -> bool:
 
 def _validate_not_js_wall(content: str) -> bool:
     lowered = content.lower()
-    return "please enable javascript" not in lowered and "you need to enable javascript" not in lowered
+    return (
+        "please enable javascript" not in lowered and "you need to enable javascript" not in lowered
+    )
 
 
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:

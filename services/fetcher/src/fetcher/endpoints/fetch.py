@@ -113,7 +113,10 @@ async def run_fetch_request(
                     if if_none_match and if_none_match.strip('"') == cached.etag:
                         return Response(
                             status_code=304,
-                            headers={"etag": f'"{cached.etag}"', "last-modified": cached.fetched_at},
+                            headers={
+                                "etag": f'"{cached.etag}"',
+                                "last-modified": cached.fetched_at,
+                            },
                         )
                     body = _build_response_body(
                         markdown=cached.markdown,

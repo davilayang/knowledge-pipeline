@@ -78,7 +78,9 @@ async def post_fetches(batch: FetchBatch, request: Request) -> Response:
             request_body = item.model_dump()
             insert_job_row(conn, job_id=job_id, batch_id=batch_id, request_body=request_body)
             spawn_job(job_id, request_body, request)
-            row = conn.execute("SELECT expires_at FROM fetches WHERE job_id = ?", (job_id,)).fetchone()
+            row = conn.execute(
+                "SELECT expires_at FROM fetches WHERE job_id = ?", (job_id,)
+            ).fetchone()
             items.append(
                 {
                     "job_id": job_id,

@@ -20,8 +20,10 @@ def _now_iso() -> str:
 
 def _iso_plus(days: int) -> str:
     return (
-        datetime.now(timezone.utc) + timedelta(days=days)
-    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+        (datetime.now(timezone.utc) + timedelta(days=days))
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def _input_hash(url: str) -> str:

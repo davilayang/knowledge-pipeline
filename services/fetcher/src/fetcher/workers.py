@@ -33,8 +33,10 @@ def _now_iso() -> str:
 
 def _iso_plus_hours(hours: int) -> str:
     return (
-        datetime.now(timezone.utc) + timedelta(hours=hours)
-    ).isoformat(timespec="seconds").replace("+00:00", "Z")
+        (datetime.now(timezone.utc) + timedelta(hours=hours))
+        .isoformat(timespec="seconds")
+        .replace("+00:00", "Z")
+    )
 
 
 def insert_job_row(conn, *, job_id: str, batch_id: str, request_body: dict[str, Any]) -> None:

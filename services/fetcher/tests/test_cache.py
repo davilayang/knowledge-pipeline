@@ -17,9 +17,9 @@ def conn(tmp_db_path: str):
 
 
 def test_cache_key_is_sha256_of_canonical() -> None:
-    assert cache_key("https://example.com/x") == hashlib.sha256(
-        b"https://example.com/x"
-    ).hexdigest()
+    assert (
+        cache_key("https://example.com/x") == hashlib.sha256(b"https://example.com/x").hexdigest()
+    )
 
 
 def test_compute_etag_is_sha256_of_markdown() -> None:

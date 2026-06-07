@@ -61,7 +61,9 @@ async def run_cascade(
             continue
         validated = tier.validate is None or tier.validate(raw.content)
         tier_log.append(
-            TierLogEntry(tier.name, raw.status, len(raw.content), None if raw.content else "empty", validated)
+            TierLogEntry(
+                tier.name, raw.status, len(raw.content), None if raw.content else "empty", validated
+            )
         )
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log)
@@ -83,7 +85,13 @@ async def run_cascade(
                 continue
             validated = tier.validate is None or tier.validate(raw.content)
             tier_log.append(
-                TierLogEntry(tier.name, raw.status, len(raw.content), None if raw.content else "empty", validated)
+                TierLogEntry(
+                    tier.name,
+                    raw.status,
+                    len(raw.content),
+                    None if raw.content else "empty",
+                    validated,
+                )
             )
             if _tier_meets_floor(tier, raw.content, quality):
                 return CascadeResult(raw.content, tier.name, tier_log)

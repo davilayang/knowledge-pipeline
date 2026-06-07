@@ -19,9 +19,7 @@ def test_strips_utm_params() -> None:
         follow_redirects.return_value = _mock_redirect(
             "https://example.com/article?utm_source=twitter&utm_campaign=x&id=42"
         )
-        result = canonicalize(
-            "https://example.com/article?utm_source=twitter&utm_campaign=x&id=42"
-        )
+        result = canonicalize("https://example.com/article?utm_source=twitter&utm_campaign=x&id=42")
 
     assert result.canonical_url == "https://example.com/article?id=42"
     assert set(result.params_stripped) == {"utm_source", "utm_campaign"}

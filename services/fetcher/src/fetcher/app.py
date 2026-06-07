@@ -3,8 +3,10 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from typing import Any
+import logging
 
-from domains.fetches_store.sources import open_connection, create_schema
+
+from domains.fetches_store.sources import create_schema, mark_orphans_failed
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
@@ -17,6 +19,7 @@ from fetcher.endpoints import fetches as fetches_endpoint
 from fetcher.errors import FetcherError, fetcher_exception_handler
 from fetcher.registry import REGISTERED_SOURCES
 
+logger = logging.getLogger(__name__)
 
 _registered_sources: list[str] = []
 
@@ -24,10 +27,9 @@ _registered_sources: list[str] = []
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize settings, DB schema, and shared fetch context on startup."""
+
     try:
         settings = Settings()
-        create_schema(settings.db_path)
-        app.state.settings_ok = True
     except ValidationError:
         app.state.settings_ok = False
         app.state.settings = None
@@ -35,39 +37,26 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         return
 
-    app.state.settings = settings
-    conn = open_connection(settings.db_path)
-    # FIXME: why do this?
-    try:
-        init_schema(conn)
-        conn.execute(
-            """
-            UPDATE fetches
-               SET status = 'failed',
-                   error_json = ?,
-                   updated_at = strftime('%Y-%m-%dT%H:%M:%SZ', 'now')
-             WHERE status IN ('pending', 'running')
-            """,
-            (
-                json_restart_error(),
-            ),
-        )
-    finally:
-        conn.close()
+    # Initialise sqlite db
+    create_schema(settings.db_path)
 
+    # Label pending fetches (prior to service restart) as failed
+    #
+    json_restart_error = (
+        '{"code":"SERVICE_RESTARTED","title":"Service restarted while job was running",'
+        '"detail":"Issue a fresh POST /v1/fetches to retry.","retryable":true}'
+    )
+    n_swept = mark_orphans_failed(db_path=settings.db_path, error_json=json_restart_error)
+    if n_swept:
+        logger.info("fetcher.boot.orphans_swept", count=n_swept)
+
+    app.state.settings = settings
     async with make_fetch_context(settings) as ctx:
         app.state.fetch_context = ctx
         _registered_sources.clear()
         _registered_sources.extend(source.NAME for source in REGISTERED_SOURCES)
         app.state.settings_ok = True
         yield
-
-
-def json_restart_error() -> str:
-    return (
-        '{"code":"SERVICE_RESTARTED","title":"Service restarted while job was running",'
-        '"detail":"Issue a fresh POST /v1/fetches to retry.","retryable":true}'
-    )
 
 
 def _missing_settings(exc: ValidationError) -> list[str]:
