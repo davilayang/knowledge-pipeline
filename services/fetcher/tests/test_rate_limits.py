@@ -1,0 +1,47 @@
+"""Tests for fetcher.rate_limits."""
+
+import asyncio
+
+import pytest
+
+from fetcher.rate_limits import SOURCE_LIMITS, get_semaphore
+
+
+def test_known_sources_have_explicit_limits() -> None:
+    assert SOURCE_LIMITS["arxiv"] == 1
+    assert SOURCE_LIMITS["jina"] == 5
+    assert SOURCE_LIMITS["youtube"] == 2
+
+
+@pytest.mark.asyncio
+async def test_get_semaphore_returns_same_instance_for_same_source() -> None:
+    a = get_semaphore("arxiv")
+    b = get_semaphore("arxiv")
+    assert a is b
+
+
+@pytest.mark.asyncio
+async def test_unknown_source_gets_default_semaphore() -> None:
+    """Unknown sources fall back to the default Semaphore(4)."""
+    semaphore = get_semaphore("brand-new-source")
+    assert semaphore._value == 4
+
+
+@pytest.mark.asyncio
+async def test_arxiv_semaphore_is_single_flight() -> None:
+    """arxiv: Semaphore(1), only one coroutine can hold it at a time."""
+    semaphore = get_semaphore("arxiv")
+    order: list[str] = []
+
+    async def worker(label: str, delay: float) -> None:
+        async with semaphore:
+            order.append(f"{label}-enter")
+            await asyncio.sleep(delay)
+            order.append(f"{label}-exit")
+
+    await asyncio.gather(worker("A", 0.05), worker("B", 0.01))
+
+    assert order in [
+        ["A-enter", "A-exit", "B-enter", "B-exit"],
+        ["B-enter", "B-exit", "A-enter", "A-exit"],
+    ]
