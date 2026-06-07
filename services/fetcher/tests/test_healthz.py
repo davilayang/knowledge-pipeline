@@ -12,7 +12,7 @@ def test_healthz_returns_200_when_ready(
     tmp_db_path: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """/healthz returns 200 with ok=true and an empty registered_sources list."""
+    """/healthz returns 200 with ok=true and the registered source list."""
     monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
     monkeypatch.setenv("FETCHER_JINA_API_KEY", "x")
     monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
@@ -25,7 +25,7 @@ def test_healthz_returns_200_when_ready(
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["registered_sources"] == []
+    assert body["registered_sources"] == ["arxiv", "youtube", "article"]
 
 
 def test_healthz_returns_503_when_required_env_missing(
