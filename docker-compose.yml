@@ -180,10 +180,45 @@ services:
       start_period: 30s
     restart: on-failure
 
+  fetcher:
+    image: ${DOCKER_USER:-local}/fetcher
+    profiles: [app]
+    platform: ${PLATFORM:-}
+    build:
+      context: .
+      dockerfile: docker/fetcher/Dockerfile
+    env_file: .env
+    environment:
+      - FETCHER_DB_PATH=/app/data/fetcher.db
+    volumes:
+      - ./data/fetcher:/app/data
+    networks:
+      dagster_network: {}
+      personal-os-net:
+        aliases:
+          - kp-fetcher
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "10"
+
 networks:
   dagster_network:
     driver: bridge
     name: dagster_network
+  personal-os-net:
+    external: true
 
 volumes:
   postgres_data:
