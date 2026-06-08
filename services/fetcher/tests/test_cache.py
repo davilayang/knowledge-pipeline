@@ -1,17 +1,20 @@
 """Tests for fetcher.cache."""
 
 import hashlib
+from pathlib import Path
 
 import pytest
 
+from domains.fetches_store.sources import create_schema
+
 from fetcher.cache import cache_key, compute_etag, lookup, upsert
-from fetcher.db import init_schema, open_connection
+from fetcher.db import open_connection
 
 
 @pytest.fixture
 def conn(tmp_db_path: str):
+    create_schema(db_path=Path(tmp_db_path))
     connection = open_connection(tmp_db_path)
-    init_schema(connection)
     yield connection
     connection.close()
 

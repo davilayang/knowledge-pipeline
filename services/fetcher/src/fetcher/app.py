@@ -1,10 +1,10 @@
 """FastAPI app factory, /healthz, and fetcher endpoints."""
 
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
-import logging
-
 
 from domains.fetches_store.sources import create_schema, mark_orphans_failed
 from fastapi import FastAPI
@@ -37,18 +37,19 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
         yield
         return
 
+    db_path = Path(settings.db_path)
+
     # Initialise sqlite db
-    create_schema(settings.db_path)
+    create_schema(db_path=db_path)
 
     # Label pending fetches (prior to service restart) as failed
-    #
     json_restart_error = (
         '{"code":"SERVICE_RESTARTED","title":"Service restarted while job was running",'
         '"detail":"Issue a fresh POST /v1/fetches to retry.","retryable":true}'
     )
-    n_swept = mark_orphans_failed(db_path=settings.db_path, error_json=json_restart_error)
+    n_swept = mark_orphans_failed(db_path=db_path, error_json=json_restart_error)
     if n_swept:
-        logger.info("fetcher.boot.orphans_swept", count=n_swept)
+        logger.info("fetcher.boot: swept %d orphaned jobs", n_swept)
 
     app.state.settings = settings
     async with make_fetch_context(settings) as ctx:

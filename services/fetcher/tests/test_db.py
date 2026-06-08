@@ -1,8 +1,11 @@
-"""Tests for domains.fetcher.db schema init."""
+"""Tests for fetcher.db connection helper + domain-layer schema setup."""
 
 import sqlite3
+from pathlib import Path
 
-from domains.fetcher.db import init_schema, open_connection
+from domains.fetches_store.sources import create_schema
+
+from fetcher.db import open_connection
 
 
 def _table_names(conn: sqlite3.Connection) -> list[str]:
@@ -14,22 +17,24 @@ def _table_names(conn: sqlite3.Connection) -> list[str]:
     ]
 
 
-def test_init_schema_creates_three_tables(tmp_db_path: str) -> None:
+def test_create_schema_creates_three_tables(tmp_db_path: str) -> None:
     """cache, fetches, url_aliases: three tables, no others."""
+    create_schema(db_path=Path(tmp_db_path))
+
     conn = open_connection(tmp_db_path)
     try:
-        init_schema(conn)
         assert _table_names(conn) == ["cache", "fetches", "url_aliases"]
     finally:
         conn.close()
 
 
-def test_init_schema_is_idempotent(tmp_db_path: str) -> None:
-    """Calling init_schema twice does not error or duplicate tables."""
+def test_create_schema_is_idempotent(tmp_db_path: str) -> None:
+    """Calling create_schema twice does not error or duplicate tables."""
+    create_schema(db_path=Path(tmp_db_path))
+    create_schema(db_path=Path(tmp_db_path))
+
     conn = open_connection(tmp_db_path)
     try:
-        init_schema(conn)
-        init_schema(conn)
         assert _table_names(conn) == ["cache", "fetches", "url_aliases"]
     finally:
         conn.close()
@@ -37,9 +42,10 @@ def test_init_schema_is_idempotent(tmp_db_path: str) -> None:
 
 def test_cache_table_has_required_columns(tmp_db_path: str) -> None:
     """Schema check: cache table has the columns Phase 1 will use."""
+    create_schema(db_path=Path(tmp_db_path))
+
     conn = open_connection(tmp_db_path)
     try:
-        init_schema(conn)
         cols = {row[1] for row in conn.execute("PRAGMA table_info(cache)").fetchall()}
         required = {
             "url_hash",
