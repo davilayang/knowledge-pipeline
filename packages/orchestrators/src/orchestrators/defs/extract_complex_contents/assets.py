@@ -234,6 +234,11 @@ def extracted(
         tokens_in_total=tokens_in_total,
         tokens_out_total=tokens_out_total,
     )
+    # Fold the -wal sidecar into the main queue.db so NA's reader path
+    # (which opens with `immutable=1` and skips WAL sidecars) sees this
+    # extraction immediately instead of waiting for SQLite's
+    # auto-checkpoint. Companion to NA-side bug 376d130d.
+    store.checkpoint_wal()
 
     topic_card = payload.topic_card
     followups = payload.followups

@@ -238,6 +238,27 @@ def find_canonical_url_duplicate(
     return row["notion_page_id"] if row else None
 
 
+def checkpoint_wal(*, db_path: Path) -> None:
+    """Run `PRAGMA wal_checkpoint(TRUNCATE)` to fold the -wal sidecar back
+    into the main DB file and reset -wal to zero bytes.
+
+    Why TRUNCATE specifically: PASSIVE (the default) only flushes what it
+    can without blocking writers; TRUNCATE waits briefly to fully flush +
+    reset the WAL file to zero bytes — the cleanest state for readers that
+    open with `immutable=1` (and therefore skip the WAL sidecars entirely).
+    The NA side reads queue.db with `immutable=1` to satisfy the agent
+    container's read-only bind-mount; without periodic checkpoints, days
+    of kp writes accumulate in -wal and stay invisible to NA. Companion to
+    the NA-side fix for bug 376d130d (kp_queue_cache empty for items in
+    queue, 2026-06-08).
+
+    Safe to call when there's nothing to checkpoint — SQLite returns
+    immediately.
+    """
+    with _connect(db_path) as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+
+
 def upsert_fetched(
     *,
     db_path: Path,

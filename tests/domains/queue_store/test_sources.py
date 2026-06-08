@@ -13,6 +13,7 @@ from pathlib import Path
 import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.queue_store.sources import (
+    checkpoint_wal,
     create_schema,
     find_canonical_url_duplicate,
     get_latest_extraction_calls,
@@ -507,6 +508,42 @@ def test_list_with_stale_extraction_filters_by_age(db_path: Path):
 
     stale_rows = list_with_stale_extraction(db_path=db_path, min_age_minutes=60)
     assert {r["notion_page_id"] for r in stale_rows} == {"stale"}
+
+
+# --- checkpoint_wal tests ---
+
+
+def test_checkpoint_wal_truncates_wal_sidecar(db_path: Path):
+    """After writes, the -wal sidecar grows; checkpoint_wal(TRUNCATE) resets
+    it to zero bytes so a reader opening with `immutable=1` (which ignores
+    the WAL) still sees committed writes in the main file.
+
+    This is the kp-side companion to the NA-side `immutable=1` fix for the
+    "kp_queue_cache returns empty for items in queue" bug observed
+    2026-06-08 (see knowledge-os bug 376d130d). Without periodic checkpoint,
+    days of writes accumulate in -wal and are invisible to any reader that
+    skips WAL sidecars.
+    """
+    _insert_fetched(db_path, page_id="p-1")
+    _record_three_call(db_path, page_id="p-1")
+
+    wal = db_path.with_suffix(db_path.suffix + "-wal")
+    assert wal.exists(), "expected -wal sidecar after writes (journal_mode=WAL)"
+    assert wal.stat().st_size > 0, "expected -wal to carry the writes pre-checkpoint"
+
+    checkpoint_wal(db_path=db_path)
+
+    assert wal.stat().st_size == 0, "TRUNCATE checkpoint must reset -wal to zero bytes"
+
+    # Reader with immutable=1 (ignores WAL) sees the row → writes landed in
+    # the main file.
+    uri = f"file:{db_path}?mode=ro&immutable=1"
+    with sqlite3.connect(uri, uri=True) as conn:
+        row = conn.execute(
+            "SELECT extractor_label FROM queue_items WHERE notion_page_id=?",
+            ("p-1",),
+        ).fetchone()
+    assert row is not None and row[0] == "3call_v1"
 
 
 def test_list_with_stale_extraction_returns_extractor_label_not_raw_content(db_path: Path):
