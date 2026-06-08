@@ -72,6 +72,14 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
 
 
 TIERS: list[Tier] = [
-    Tier("jina", "free", 2000, 8000, _jina_fetch, validate=_validate_not_js_wall),
+    Tier(
+        "jina",
+        "free",
+        2000,
+        8000,
+        _jina_fetch,
+        validate=_validate_not_js_wall,
+        rate_limit_key="jina",
+    ),
     Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=_validate_not_js_wall),
 ]

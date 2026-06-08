@@ -1,22 +1,20 @@
 """Background workers for async fetch jobs."""
 
 import asyncio
-import json
 import logging
 import secrets
-from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any
 
-from fastapi import Request
-from fastapi.responses import JSONResponse
-
-from fetcher.db import open_connection
-from fetcher.endpoints.fetch import FetchRequest, run_fetch_request
+from domains.fetches_store.sources import update_job
+from fetcher import task_registry
+from fetcher.config import Settings
+from fetcher.fetch_service import run_fetch_request
+from fetcher.problems import problem_body
+from fetcher.types import FetchContext, FetchRequest, TierLogEntry
 
 
 logger = logging.getLogger(__name__)
-
-task_handles: dict[str, asyncio.Task] = {}
 
 
 def new_job_id() -> str:
@@ -27,117 +25,106 @@ def new_batch_id() -> str:
     return "batch_" + secrets.token_hex(6)
 
 
-def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+def _tier_log_payload(tier_log: list[TierLogEntry]) -> list[dict[str, Any]]:
+    return [
+        {
+            "tier": entry.tier,
+            "status": entry.status,
+            "chars": entry.chars,
+            "error": entry.error,
+            "validated": entry.validated,
+        }
+        for entry in tier_log
+    ]
 
 
-def _iso_plus_hours(hours: int) -> str:
-    return (
-        (datetime.now(timezone.utc) + timedelta(hours=hours))
-        .isoformat(timespec="seconds")
-        .replace("+00:00", "Z")
-    )
-
-
-def insert_job_row(conn, *, job_id: str, batch_id: str, request_body: dict[str, Any]) -> None:
-    now = _now_iso()
-    conn.execute(
-        """
-        INSERT INTO fetches (
-            job_id, status, request_json, batch_id, created_at, updated_at, expires_at
-        )
-        VALUES (?, 'pending', ?, ?, ?, ?, ?)
-        """,
-        (job_id, json.dumps(request_body), batch_id, now, now, _iso_plus_hours(24)),
-    )
-
-
-def update_job(
-    conn,
-    *,
+async def _job_worker(
     job_id: str,
-    status: str,
-    result: dict[str, Any] | None = None,
-    error: dict[str, Any] | None = None,
+    req: dict[str, Any],
+    *,
+    settings: Settings,
+    ctx: FetchContext,
 ) -> None:
-    conn.execute(
-        """
-        UPDATE fetches
-           SET status = ?, result_json = ?, error_json = ?, updated_at = ?
-         WHERE job_id = ?
-        """,
-        (
-            status,
-            json.dumps(result) if result else None,
-            json.dumps(error) if error else None,
-            _now_iso(),
-            job_id,
-        ),
-    )
-
-
-async def run_fetch_inline(req: dict[str, Any], *, request: Request) -> dict[str, Any]:
-    response = await run_fetch_request(FetchRequest(**req), request)
-    if not isinstance(response, JSONResponse):
-        raise ValueError(f"unexpected fetch response status {response.status_code}")
-    return json.loads(response.body)
-
-
-async def _job_worker(job_id: str, req: dict[str, Any], request: Request) -> None:
-    settings = request.app.state.settings
-    conn = open_connection(settings.db_path)
-    try:
-        update_job(conn, job_id=job_id, status="running")
-    finally:
-        conn.close()
+    db_path = Path(settings.db_path)
+    update_job(db_path=db_path, job_id=job_id, status="running")
 
     try:
-        result = await run_fetch_inline(req, request=request)
+        fetch_req = FetchRequest(**req)
+        outcome = await run_fetch_request(
+            fetch_req,
+            db_path=db_path,
+            ctx=ctx,
+            ttl_days=settings.cache_ttl_days,
+        )
+
+        result = {
+            "markdown": outcome.markdown,
+            "source_type": outcome.source_type,
+            "canonical_url": outcome.canonical_url,
+            "tier_used": outcome.tier_used,
+            "fetched_at": outcome.fetched_at,
+            "cache_hit": outcome.cache_hit,
+            "etag": outcome.etag,
+            "tier_log": _tier_log_payload(outcome.tier_log),
+            "metadata": outcome.metadata or {},
+        }
+        update_job(db_path=db_path, job_id=job_id, status="done", result=result)
+
     except asyncio.CancelledError:
-        conn = open_connection(settings.db_path)
-        try:
-            update_job(
-                conn,
-                job_id=job_id,
-                status="failed",
-                error={
-                    "code": "CANCELLED",
-                    "title": "Job was cancelled",
-                    "detail": "DELETE /v1/fetches/{job_id}",
-                    "retryable": False,
-                },
+        # Check current status: if already done/failed, don't overwrite
+        # This prevents the "just finished" vs "just cancelled" race.
+        from domains.fetches_store.sources import get_job_status
+
+        status = get_job_status(db_path=db_path, job_id=job_id)
+        if status in {"pending", "running"}:
+            error = problem_body(
+                status=499,  # Client Closed Request-ish
+                code="CANCELLED",
+                title="Job was cancelled",
+                detail="DELETE /v1/fetches/{job_id}",
+                instance=f"/v1/fetches/{job_id}",
+                retryable=False,
             )
-        finally:
-            conn.close()
-            task_handles.pop(job_id, None)
+            update_job(db_path=db_path, job_id=job_id, status="failed", error=error)
         raise
     except Exception as exc:
         logger.warning("fetch job %s failed: %s", job_id, exc)
-        conn = open_connection(settings.db_path)
-        try:
-            update_job(
-                conn,
-                job_id=job_id,
-                status="failed",
-                error={
-                    "code": "UPSTREAM_FAILURE",
-                    "title": "Fetch failed",
-                    "detail": str(exc),
-                    "retryable": True,
-                },
-            )
-        finally:
-            conn.close()
-            task_handles.pop(job_id, None)
-        return
+        # Map domain exceptions to problem bodies if possible
+        status_code = 502
+        code = "UPSTREAM_FAILURE"
+        title = "Fetch failed"
+        retryable = True
 
-    conn = open_connection(settings.db_path)
-    try:
-        update_job(conn, job_id=job_id, status="done", result=result)
+        if hasattr(exc, "status"):
+            status_code = exc.status
+        if hasattr(exc, "code"):
+            code = exc.code
+        if hasattr(exc, "title"):
+            title = exc.title
+        if hasattr(exc, "retryable"):
+            retryable = exc.retryable
+
+        error = problem_body(
+            status=status_code,
+            code=code,
+            title=title,
+            detail=str(exc),
+            instance=f"/v1/fetches/{job_id}",
+            retryable=retryable,
+            canonical_url=getattr(exc, "extra", {}).get("canonical_url"),
+            tier_log=_tier_log_payload(getattr(exc, "extra", {}).get("tier_log", [])),
+        )
+        update_job(db_path=db_path, job_id=job_id, status="failed", error=error)
     finally:
-        conn.close()
-        task_handles.pop(job_id, None)
+        task_registry.discard(job_id)
 
 
-def spawn_job(job_id: str, req: dict[str, Any], request: Request) -> None:
-    task_handles[job_id] = asyncio.create_task(_job_worker(job_id, req, request))
+def spawn_job(
+    job_id: str,
+    req: dict[str, Any],
+    *,
+    settings: Settings,
+    ctx: FetchContext,
+) -> None:
+    task = asyncio.create_task(_job_worker(job_id, req, settings=settings, ctx=ctx))
+    task_registry.register(job_id, task)

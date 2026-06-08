@@ -6,7 +6,7 @@ from fastapi.testclient import TestClient
 
 from fetcher.app import create_app
 from fetcher.canonicalize import CanonicalResult
-from fetcher.registry import CascadeResult
+from fetcher.types import CascadeResult
 
 
 def _setup_envs(monkeypatch, tmp_db_path: str) -> None:
@@ -20,8 +20,8 @@ def test_fetch_returns_200_with_markdown(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with (
-        patch("fetcher.endpoints.fetch.canonicalize") as can_mock,
-        patch("fetcher.endpoints.fetch.run_cascade", new_callable=AsyncMock) as cascade,
+        patch("fetcher.fetch_service.canonicalize") as can_mock,
+        patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/x", "https://example.com/x", [], []
@@ -61,8 +61,8 @@ def test_fetch_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with (
-        patch("fetcher.endpoints.fetch.canonicalize") as can_mock,
-        patch("fetcher.endpoints.fetch.run_cascade", new_callable=AsyncMock) as cascade,
+        patch("fetcher.fetch_service.canonicalize") as can_mock,
+        patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/x", "https://example.com/x", [], []

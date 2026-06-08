@@ -5,10 +5,35 @@ from dataclasses import dataclass, field
 from typing import Any, Literal, Protocol
 
 import httpx
+from pydantic import BaseModel
 
 
 Quality = Literal["fast", "high"]
 Cost = Literal["free", "paid"]
+
+
+class FetchRequest(BaseModel):
+    url: str
+    quality: Quality = "fast"
+    allow_paid: bool = False
+    force_refresh: bool = False
+
+
+@dataclass(frozen=True)
+class TierLogEntry:
+    tier: str
+    status: int | None
+    chars: int
+    error: str | None
+    validated: bool
+
+
+@dataclass(frozen=True)
+class CascadeResult:
+    content: str
+    tier_used: str
+    tier_log: list[TierLogEntry]
+    metadata: dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -21,15 +46,6 @@ class FetchContext:
     llama_parse_api_key: str
     llama_parse_tier_arxiv: str
     default_timeout_s: int
-
-
-@dataclass(frozen=True)
-class TierLogEntry:
-    tier: str
-    status: int | None
-    chars: int
-    error: str | None
-    validated: bool
 
 
 @dataclass
@@ -67,6 +83,7 @@ class Tier:
     run: Callable[[FetchContext, str], Awaitable[RawTierResult]]
     validate: Callable[[str], bool] | None = None
     applies: Callable[[str], bool] | None = None
+    rate_limit_key: str | None = None
 
 
 class Source(Protocol):

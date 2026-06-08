@@ -16,7 +16,8 @@ from fetcher.context import make_fetch_context
 from fetcher.endpoints import canonicalize as canonicalize_endpoint
 from fetcher.endpoints import fetch as fetch_endpoint
 from fetcher.endpoints import fetches as fetches_endpoint
-from fetcher.errors import FetcherError, fetcher_exception_handler
+from fetcher.endpoints.errors import fetcher_exception_handler
+from fetcher.errors import FetcherError
 from fetcher.registry import REGISTERED_SOURCES
 
 logger = logging.getLogger(__name__)
