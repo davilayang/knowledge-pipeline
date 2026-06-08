@@ -121,6 +121,10 @@ do_setup() {
     # deploy user, the bind-mounted dirs are writable by both without chown.
     run_deploy "mkdir -p ~/${REMOTE_DIR}/data ~/${REMOTE_DIR}/datasets ~/${REMOTE_DIR}/logs ~/${REMOTE_DIR}/backups"
 
+    # External network shared by Knowledge OS compose stacks. Compose declares
+    # it as external, so it must exist before the stack starts.
+    run_deploy "docker network create kos-network 2>/dev/null || true"
+
     echo ""
     echo "========================================="
     echo " Setup complete!"

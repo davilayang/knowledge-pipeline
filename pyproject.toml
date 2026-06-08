@@ -30,7 +30,7 @@ notebooks = [
 # For local dev/test/lint tooling
 [dependency-groups]
 dev = [
-    "black>=24.0,<25.0",
+    "black[jupyter]>=24.0,<25.0",
     "ruff>=0.8,<1.0",
     "pytest>=8.0,<9.0",
     "pytest-postgresql>=6.0,<8.0",
