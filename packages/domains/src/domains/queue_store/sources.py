@@ -238,6 +238,22 @@ def find_canonical_url_duplicate(
     return row["notion_page_id"] if row else None
 
 
+def checkpoint_wal(*, db_path: Path) -> None:
+    """Run `PRAGMA wal_checkpoint(TRUNCATE)` to fold the -wal sidecar back
+    into the main DB file and reset -wal to zero bytes.
+
+    Use TRUNCATE to ensure checkpoints are merged into main db
+    TRUNCATE policy: Waits briefly to fully flush + reset the WAL file to zero
+    bytes — the cleanest state for readers that open with `immutable=1`
+    (and therefore skip the WAL sidecars entirely).
+
+    Safe to call when there's nothing to checkpoint — SQLite returns
+    immediately.
+    """
+    with _connect(db_path) as conn:
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE);")
+
+
 def upsert_fetched(
     *,
     db_path: Path,
