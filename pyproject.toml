@@ -88,25 +88,6 @@ help = "Run the fetcher service locally (default port 8000; envs from repo-root 
 default = "8000"
 help = "Port to bind (override e.g. 8765 if 8000 is occupied)"
 
-[tool.poe.tasks.dev]
-# Full laptop dev stack: data services (compose) + fetcher + Dagster, one shell.
-# Trap stops the background fetcher and tears down the data services when this
-# exits (Ctrl-C, crash, normal end). Fetcher logs interleave with Dagster logs
-# on stdout; split terminals (poe dagster-dev + poe fetcher-dev) if that bites.
-shell = """
-trap '[ -n "$FETCHER_PID" ] && kill $FETCHER_PID 2>/dev/null; docker compose --profile data down' EXIT INT TERM
-docker compose --profile data up -d
-(cd services/fetcher && exec env FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" \\
-  uv run uvicorn fetcher.app:app --workers 1 --port ${fetcher_port} --env-file ../../.env) &
-FETCHER_PID=$!
-FETCHER_URL=http://localhost:${fetcher_port} dagster dev --port 3030 -m orchestrators.definitions
-"""
-help = "Start data services + fetcher + Dagster UI (laptop one-shot dev)"
-
-[tool.poe.tasks.dev.args.fetcher_port]
-options = ["--fetcher-port"]
-default = "8000"
-help = "Port for the fetcher service (override if 8000 is occupied)"
 
 [tool.poe.tasks.backup]
 cmd = "dg launch -m orchestrators.definitions --job backup_readings"

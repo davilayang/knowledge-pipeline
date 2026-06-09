@@ -1,9 +1,27 @@
-# --- Dagster dev ---
+# --- Local dev stack ---
 
-.PHONY: dev build up down logs tunnel
+.ONESHELL:
+SHELL := /bin/bash
 
-dev:  ## Launch Dagster UI at localhost:3030
-	-pkill -f dagster; uv run poe dagster-dev
+FETCHER_PORT ?= 8000
+
+.PHONY: dev dagster-dev fetcher-dev build up down logs tunnel
+
+dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot). Override port with FETCHER_PORT=8765
+	pkill -f dagster 2>/dev/null || true
+	trap '[ -n "$$FETCHER_PID" ] && kill $$FETCHER_PID 2>/dev/null; docker compose --profile data down' EXIT INT TERM
+	docker compose --profile data up -d
+	(cd services/fetcher && exec env FETCHER_DB_PATH="$$(pwd)/../../data/fetches.db" \
+	  uv run uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) --env-file ../../.env) &
+	FETCHER_PID=$$!
+	FETCHER_URL=http://localhost:$(FETCHER_PORT) dagster dev --port 3030 -m orchestrators.definitions
+
+dagster-dev:  ## Start only Dagster (when fetcher is already running elsewhere)
+	pkill -f dagster 2>/dev/null || true
+	uv run poe dagster-dev
+
+fetcher-dev:  ## Start only the fetcher service
+	uv run poe fetcher-dev --port $(FETCHER_PORT)
 
 # --- Docker Compose ---
 
