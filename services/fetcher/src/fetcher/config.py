@@ -31,7 +31,13 @@ class Settings(BaseSettings):
         description="Default upstream request timeout in seconds.",
     )
 
-    jina_api_key: str = Field(description="Jina Reader API key used by article tiers.")
+    jina_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Jina Reader API key. Optional: the free tier works without auth at lower rate limits. "
+            "Set this to unlock the paid tier's higher quota."
+        ),
+    )
     socks5_url: str = Field(description="SOCKS5 proxy URL used for browser-like fetch fallbacks.")
     llama_parse_api_key: str = Field(description="LlamaParse API key used by PDF/arXiv tiers.")
     llama_parse_tier_arxiv: str = Field(

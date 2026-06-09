@@ -1,33 +1,64 @@
-"""FastAPI app factory and /healthz endpoint.
+"""FastAPI app factory, /healthz, and fetcher endpoints."""
 
-Phase 0 scope: only /healthz exists. /v1/fetch and related endpoints arrive in Phase 1.
-"""
-
+import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Any
 
-from domains.fetches_store.sources import create_schema
+from domains.fetches_store.sources import create_schema, mark_orphans_failed
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from fetcher.config import Settings
+from fetcher.context import make_fetch_context
+from fetcher.endpoints import canonicalize as canonicalize_endpoint
+from fetcher.endpoints import fetch as fetch_endpoint
+from fetcher.endpoints import fetches as fetches_endpoint
+from fetcher.endpoints.errors import fetcher_exception_handler
+from fetcher.errors import FetcherError
+from fetcher.registry import REGISTERED_SOURCES
+
+logger = logging.getLogger(__name__)
 
 _registered_sources: list[str] = []
 
 
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
-    """Initialize DB schema on startup. Source registry pre-warm lands in Phase 1."""
+    """Initialize settings, DB schema, and shared fetch context on startup."""
+
     try:
         settings = Settings()
-        create_schema(settings.db_path)
-        app.state.settings_ok = True
     except ValidationError:
         app.state.settings_ok = False
+        app.state.settings = None
+        app.state.fetch_context = None
+        yield
+        return
 
-    yield
+    db_path = Path(settings.db_path)
+
+    # Initialise sqlite db
+    create_schema(db_path=db_path)
+
+    # Label pending fetches (prior to service restart) as failed
+    json_restart_error = (
+        '{"code":"SERVICE_RESTARTED","title":"Service restarted while job was running",'
+        '"detail":"Issue a fresh POST /v1/fetches to retry.","retryable":true}'
+    )
+    n_swept = mark_orphans_failed(db_path=db_path, error_json=json_restart_error)
+    if n_swept:
+        logger.info("fetcher.boot: swept %d orphaned jobs", n_swept)
+
+    app.state.settings = settings
+    async with make_fetch_context(settings) as ctx:
+        app.state.fetch_context = ctx
+        _registered_sources.clear()
+        _registered_sources.extend(source.NAME for source in REGISTERED_SOURCES)
+        app.state.settings_ok = True
+        yield
 
 
 def _missing_settings(exc: ValidationError) -> list[str]:
@@ -41,6 +72,10 @@ def _missing_settings(exc: ValidationError) -> list[str]:
 
 def create_app() -> FastAPI:
     app = FastAPI(title="fetcher", version="0.1.0", lifespan=_lifespan)
+    app.add_exception_handler(FetcherError, fetcher_exception_handler)
+    app.include_router(fetch_endpoint.router)
+    app.include_router(canonicalize_endpoint.router)
+    app.include_router(fetches_endpoint.router)
 
     @app.get("/healthz")
     async def healthz() -> Any:

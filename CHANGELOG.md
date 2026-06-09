@@ -8,6 +8,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.0] — 2026-06-09
+
+### Added
+
+- **Fetcher service** at `services/fetcher/` — URL → markdown for KP and NA, replacing the per-pipeline fetchers. Three sources today (article via Jina → curl_cffi+trafilatura; arxiv via pymupdf4llm → LlamaParse agentic_plus, strict; youtube via transcript-api with oEmbed header). Endpoints: `POST /v1/fetch` (sync, ETag / 304), `POST/GET/DELETE /v1/fetches` (async batch with real in-process cancellation), `GET /v1/canonicalize`.
+
+- **`domains.fetches_store.sources`** owns all fetcher SQLite state. New named ops (`cache_lookup/upsert`, `insert_job`, `update_job`, `get_job`, `get_job_status`, `canonicalize_lookup/upsert`, `mark_orphans_failed`) match the `queue_store`/`raw_store` convention — `_connect` stays private, callers never see SQL or connections.
+
+- **Free-first tier cascade.** Each source declares ordered free → paid tiers; cascade walks free tiers first, escalates to paid only when `allow_paid=true` AND the quality floor isn't met. Paid escalations (LlamaParse `agentic_plus`) gated behind explicit caller intent.
+
+- **`kos-network` external Docker network** shared with sibling stacks. Fetcher reachable as `http://fetcher:8000` from KP containers and `http://kp-fetcher:8000` from other KOS stacks. `scripts/deploy-hcloud.sh setup` creates the network on first deploy.
+
+- **Single-worker invariant.** `uvicorn --workers 1` is load-bearing: per-source `asyncio.Semaphore`, per-URL `asyncio.Lock`, and `task_registry: dict[job_id, asyncio.Task]` are correctness primitives. README banner documents the failure modes if this is violated.
+
+- **RFC 7807 error contract** at `endpoints/errors.py` with `retryable` field. Exception hierarchy (`BadUrl`, `UnsupportedSource`, `UpstreamFailure`, `UpstreamTimeout`, `RateLimited`) split across `errors.py` (domain) and `problems.py` (pure body factory, no FastAPI) so workers and cache can persist the same problem shape into SQLite.
+
+- **Soft-404 guard on article tiers.** Jina Reader wraps upstream 4xx/5xx in HTTP 200 with a `"Warning: Target URL returned error"` marker; the guard now demotes these to empty content. curl_cffi short-circuits on HTTP status ≥ 400 before invoking trafilatura. Prevents error pages from being cached as article text.
+
+### Changed
+
+- **`FETCHER_JINA_API_KEY` is now optional.** Jina Reader's free tier works without auth at lower rate limits; the key only unlocks the paid quota. `Authorization` header is set only when a key is configured. Required envs that remain: `FETCHER_SOCKS5_URL`, `FETCHER_LLAMA_PARSE_API_KEY`.
+
+---
+
 ## [0.17.3] — 2026-06-08
 
 ### Changed
