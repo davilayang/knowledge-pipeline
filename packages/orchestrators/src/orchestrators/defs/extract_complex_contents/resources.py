@@ -1,12 +1,10 @@
 """Resources for the extract_complex_contents pipeline.
 
-- FetcherResource — thin HTTP client for the standalone `fetcher` service.
-- ExtractorRegistry — strategy registry: maps content_type → ExtractorProtocol.
+- FetcherResource — HTTP client for the standalone `fetcher` service.
+- ExtractorRegistry — strategy registry: content_type → ExtractorProtocol.
 
-Notion access and the queue.db wrapper live in
-`orchestrators.defs.shared.queue_resources` since both are shared with the
-triage pipeline. This module wires the extract-specific resources and
-binds shared classes to local keys in `build_resources`.
+Notion + queue.db wrappers live in `orchestrators.defs.shared.queue_resources`
+(shared with triage); `build_resources` binds them to local keys.
 """
 
 import os
@@ -47,52 +45,24 @@ _PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
 
 @dataclass
 class FetchResult:
-    """What the asset consumes after `FetcherResource.fetch_for_type`.
-
-    Shape is decoupled from the fetcher service's wire schema so the asset
-    body stays byte-identical to the in-process-fetchers era: it reads
-    `result.content/tier/tier_log/title/extras/error/transient`. The
-    service's `markdown`/`tier_used`/`metadata` are mapped onto this
-    surface in `_call_service`.
-    """
-
     content: str = ""
     tier: str = ""
     tier_log: list[dict[str, Any]] = field(default_factory=list)
     title: str = ""
     error: str = ""
-    # True iff the orchestrator should retry. Sourced from the service's
-    # `problem.retryable` for HTTP-level errors, or from local transport
-    # judgement for connect/read timeouts (always retryable).
     transient: bool = False
     extras: dict[str, Any] = field(default_factory=dict)
 
 
 class FetcherResource(dg.ConfigurableResource):
-    """HTTP client for the standalone `fetcher` service.
-
-    Phase 2 ripped out per-tier fetchers (curl_cffi+trafilatura / pymupdf+
-    LlamaParse / youtube-transcript-api). All URL→markdown happens in the
-    sidecar service; this resource just translates the HTTP response shape
-    into `FetchResult`. The `content_type` arg is kept on the public
-    method for asset-side API stability — the service determines source
-    from the URL via its own `Source.matches()`, so the arg is currently
-    unused.
-    """
-
     service_url: str
     timeout_s: int = 60
     allow_paid: bool = True
 
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
-        del content_type  # service does URL→source matching; arg kept for API stability
+        del content_type  # service matches source by URL
         with httpx.Client(timeout=self.timeout_s) as client:
-            return _call_service(
-                client,
-                self.service_url,
-                url,
-                allow_paid=self.allow_paid,
-            )
+            return _call_service(client, self.service_url, url, allow_paid=self.allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
         return self.fetch_for_type(url, content_type="Article")

@@ -48,12 +48,9 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     retry_policy=dg.RetryPolicy(max_retries=1, delay=120),
     description=_oneline(
         """
-        Calls the standalone fetcher service (POST /v1/fetch) via
-        FetcherResource and persists the returned markdown + tier_log to
-        queue_items. The service is authoritative for source matching and
-        quality-floor enforcement; the asset only translates wire errors
-        into Dagster Failures. Cache: skips the network fetch if
-        raw_content is already set for this row.
+        POSTs to the fetcher service's /v1/fetch and persists the returned
+        markdown + tier_log to queue_items. Cache: skips when raw_content
+        is already set.
         """
     ),
 )

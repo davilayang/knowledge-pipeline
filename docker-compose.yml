@@ -91,10 +91,7 @@ services:
       BACKUP_SOURCE_DIR: /app/source # Used by app in container
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
-      # extract_complex_contents speaks HTTP to the sidecar fetcher container
-      # over dagster_network. Override .env's FETCHER_URL (which sets localhost
-      # for laptop `poe dagster-dev`) to the in-network alias.
-      FETCHER_URL: http://fetcher:8000
+      FETCHER_URL: http://fetcher:8000  # override .env's localhost for laptop dev
     volumes:
       - ./data:/app/data
       - ./datasets:/app/datasets
