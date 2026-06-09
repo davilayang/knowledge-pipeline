@@ -1,7 +1,7 @@
 """Tests for source matching and tier metadata."""
 
-from fetcher.sources import article, arxiv, youtube
-from fetcher.sources.article import _jina_wraps_upstream_error
+from fetcher.handlers import article, arxiv, youtube
+from fetcher.handlers.article import _jina_wraps_upstream_error
 
 
 def test_article_matches_generic_http_only() -> None:
@@ -36,7 +36,7 @@ def test_tier_order_and_strict_flags() -> None:
 async def test_article_jina_4xx_returns_empty_content() -> None:
     from unittest.mock import AsyncMock, MagicMock
 
-    from fetcher.sources.article import _jina_fetch
+    from fetcher.handlers.article import _jina_fetch
 
     ctx = MagicMock()
     response = MagicMock()
@@ -65,7 +65,7 @@ async def test_article_jina_demotes_upstream_404_wrapper() -> None:
     """HTTP 200 from Jina but body carries the upstream-error marker → empty content."""
     from unittest.mock import AsyncMock, MagicMock
 
-    from fetcher.sources.article import _jina_fetch
+    from fetcher.handlers.article import _jina_fetch
 
     ctx = MagicMock()
     response = MagicMock()

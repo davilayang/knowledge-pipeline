@@ -1,4 +1,4 @@
-"""Shared dataclasses and protocols used across sources, tiers, cache, and endpoints."""
+"""Shared dataclasses and protocols used across handlers, tiers, cache, and endpoints."""
 
 from collections.abc import Awaitable, Callable
 from dataclasses import dataclass, field
@@ -62,7 +62,7 @@ class FetchResult:
     """Response shape returned on a successful fetch."""
 
     markdown: str
-    source_type: str
+    kind: str
     canonical_url: str
     tier_used: str
     fetched_at: str
@@ -74,7 +74,7 @@ class FetchResult:
 
 @dataclass(frozen=True)
 class Tier:
-    """One step in a source cascade."""
+    """One step in a handler cascade."""
 
     name: str
     cost: Cost
@@ -86,8 +86,8 @@ class Tier:
     rate_limit_key: str | None = None
 
 
-class Source(Protocol):
-    """Protocol every source module conforms to."""
+class URLHandler(Protocol):
+    """Protocol every handler module conforms to."""
 
     NAME: str
     TIERS: list[Tier]

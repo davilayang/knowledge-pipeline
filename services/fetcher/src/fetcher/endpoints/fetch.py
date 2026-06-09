@@ -64,7 +64,7 @@ async def fetch(
 
     body = {
         "markdown": outcome.markdown,
-        "source_type": outcome.source_type,
+        "kind": outcome.kind,
         "canonical_url": outcome.canonical_url,
         "tier_used": outcome.tier_used,
         "fetched_at": outcome.fetched_at,

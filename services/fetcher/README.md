@@ -9,7 +9,7 @@ the KOS services.
 
 This service runs with **`uvicorn ... --workers 1`** as the only correct invocation.
 
-The in-memory per-source `asyncio.Semaphore` instances are correctness primitives, not
+The in-memory per-key `asyncio.Semaphore` instances are correctness primitives, not
 optimization knobs. Multi-worker uvicorn splits them per process:
 
 - arxiv ban risk doubles immediately
@@ -32,8 +32,8 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **`POST /v1/fetch`** — sync single-URL fetch; returns markdown + provenance with ETag / `If-None-Match` → 304 support.
 - **`POST /v1/fetches`** — async batch; per-item job_id, `GET /v1/fetches/{job_id}` for status, `DELETE` for real in-process cancellation.
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
-- **Sources:** article (Jina → curl_cffi+trafilatura), arxiv (pymupdf → LlamaParse agentic_plus, strict), youtube (transcript-api with oEmbed metadata header).
-- **Free-first tier cascade** per source: walk free tiers, escalate to paid only when `allow_paid=true` and the quality floor isn't met.
+- **Handlers:** article (Jina → curl_cffi+trafilatura), arxiv (pymupdf → LlamaParse agentic_plus, strict), youtube (transcript-api with oEmbed metadata header).
+- **Free-first tier cascade** per handler: walk free tiers, escalate to paid only when `allow_paid=true` and the quality floor isn't met.
 - **SQLite cache** with three tables: `cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
 - **Container** in this repo's docker-compose stack, attached to `dagster_network` and `kos-network` with the alias `kp-fetcher`.
 

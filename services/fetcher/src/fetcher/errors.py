@@ -20,8 +20,8 @@ class BadUrl(FetcherError):
     status, code, title, retryable = 400, "BAD_URL", "Malformed URL", False
 
 
-class UnsupportedSource(FetcherError):
-    status, code, title, retryable = 422, "UNSUPPORTED_SOURCE", "No source matches this URL", False
+class UnsupportedKind(FetcherError):
+    status, code, title, retryable = 422, "UNSUPPORTED_KIND", "No handler matches this URL", False
 
 
 class UpstreamFailure(FetcherError):
@@ -33,4 +33,4 @@ class UpstreamTimeout(FetcherError):
 
 
 class RateLimited(FetcherError):
-    status, code, title, retryable = 429, "RATE_LIMITED", "Per-source semaphore exhausted", True
+    status, code, title, retryable = 429, "RATE_LIMITED", "Per-key semaphore exhausted", True

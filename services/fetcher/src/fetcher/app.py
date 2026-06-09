@@ -18,11 +18,11 @@ from fetcher.endpoints import fetch as fetch_endpoint
 from fetcher.endpoints import fetches as fetches_endpoint
 from fetcher.endpoints.errors import fetcher_exception_handler
 from fetcher.errors import FetcherError
-from fetcher.registry import REGISTERED_SOURCES
+from fetcher.registry import REGISTERED_HANDLERS
 
 logger = logging.getLogger(__name__)
 
-_registered_sources: list[str] = []
+_registered_kinds: list[str] = []
 
 
 @asynccontextmanager
@@ -55,8 +55,8 @@ async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     app.state.settings = settings
     async with make_fetch_context(settings) as ctx:
         app.state.fetch_context = ctx
-        _registered_sources.clear()
-        _registered_sources.extend(source.NAME for source in REGISTERED_SOURCES)
+        _registered_kinds.clear()
+        _registered_kinds.extend(handler.NAME for handler in REGISTERED_HANDLERS)
         app.state.settings_ok = True
         yield
 
@@ -94,7 +94,7 @@ def create_app() -> FastAPI:
                 content={"ok": False, "missing": _missing_settings(exc)},
             )
 
-        return {"ok": True, "registered_sources": list(_registered_sources)}
+        return {"ok": True, "registered_kinds": list(_registered_kinds)}
 
     return app
 

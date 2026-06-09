@@ -1,4 +1,4 @@
-"""YouTube source: transcript API plus oEmbed metadata."""
+"""YouTube handler: transcript API plus oEmbed metadata."""
 
 import logging
 import re

@@ -1,4 +1,4 @@
-"""arXiv source: pymupdf4llm free tier, then strict LlamaParse paid tier."""
+"""arXiv handler: pymupdf4llm free tier, then strict LlamaParse paid tier."""
 
 import logging
 import re

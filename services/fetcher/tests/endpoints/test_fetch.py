@@ -33,7 +33,7 @@ def test_fetch_returns_200_with_markdown(monkeypatch, tmp_db_path: str) -> None:
     assert response.status_code == 200
     body = response.json()
     assert body["markdown"] == "# Hello\n\nbody"
-    assert body["source_type"] == "article"
+    assert body["kind"] == "article"
     assert body["tier_used"] == "jina"
     assert body["cache_hit"] is False
     assert response.headers.get("etag") is not None
@@ -48,13 +48,13 @@ def test_fetch_returns_400_on_bad_url(monkeypatch, tmp_db_path: str) -> None:
     assert response.json()["code"] == "BAD_URL"
 
 
-def test_fetch_returns_422_unsupported_source(monkeypatch, tmp_db_path: str) -> None:
+def test_fetch_returns_422_unsupported_kind(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with TestClient(app) as client:
         response = client.post("/v1/fetch", json={"url": "https://example.com/paper.pdf"})
     assert response.status_code == 422
-    assert response.json()["code"] == "UNSUPPORTED_SOURCE"
+    assert response.json()["code"] == "UNSUPPORTED_KIND"
 
 
 def test_fetch_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) -> None:
