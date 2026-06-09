@@ -8,6 +8,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.1] — 2026-06-09
+
+### Changed
+
+- **`extract_complex_contents/fetched` now delegates all URL→markdown work to the fetcher service.** `FetcherResource` is a thin httpx client to `POST /v1/fetch`; per-tier in-process fetchers (curl_cffi+trafilatura, pymupdf+LlamaParse, youtube-transcript-api) are removed. RFC 7807 `retryable` flows into Dagster `allow_retries`, so transient blips re-queue and permanent failures (bad URL, unsupported source) fail fast.
+
+- **Env contract updated for `extract_complex_contents`.** Three new required vars: `FETCHER_URL`, `FETCHER_TIMEOUT_S`, `FETCHER_ALLOW_PAID`. Removes `PI_SOCKS5_URL`, `EXTRACT_QUEUE_IMPERSONATE_PROFILE`, `YOUTUBE_PROXY_URL`, `LLAMA_CLOUD_API_KEY`, `LLAMA_PARSE_TIER` — those moved into the fetcher service in 0.18.0. `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bumped 2→3; previously-materialized `fetched` partitions show stale on first deploy and refill on the next scheduled tick.
+
+- **Extraction floor lowered from 2000 → 500 chars.** The fetcher cascade can return sub-floor content via its `best_result` fallback; 500 rejects degenerate fetches while letting short legitimate YouTube clips through.
+
+- **`fetched` Dagster UI compute_kind changed from `python` to `http`.** Matches the system-not-tool convention used by `extracted` (`openai`) and `published` (`notion`).
+
+- **Fetcher service now emits its own INFO logs.** `logging.basicConfig(force=True)` in `create_app()` overrides uvicorn's pre-installed root logger config so `fetcher.*` namespace lines surface.
+
+### Added
+
+- **`make dev` starts the full laptop dev stack in one shot** — data services, fetcher service, and Dagster UI. `poe fetcher-dev` and `make fetcher-dev` also available when only the fetcher needs to be run independently.
+
+### Removed
+
+- **`extract_complex_contents/fetchers/` package deleted** (`article.py`, `arxiv.py`, `youtube.py`, `result.py`). `curl-cffi`, `youtube-transcript-api`, `pysocks`, and `arxiv` dropped from `packages/orchestrators` dependencies.
+
+---
+
 ## [0.18.0] — 2026-06-09
 
 ### Added

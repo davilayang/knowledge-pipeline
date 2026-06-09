@@ -7,7 +7,6 @@ from orchestrators.config import EXTRACT_COMPLEX_CONTENTS_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 from .def_config import (
-    FETCHED_CONTENT_MIN_CHARS,
     PIPELINE_TAG,
     queue_items_partition_def,
 )
@@ -42,17 +41,16 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 @dg.asset(
     key=["extract_complex_contents", "fetched"],
     group_name=GROUP_NAME,
-    compute_kind="python",
+    compute_kind="http",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     retry_policy=dg.RetryPolicy(max_retries=1, delay=120),
     description=_oneline(
         """
-        Dispatches to the per-type fetcher (YouTube transcript / arXiv PDF
-        text / article cascade) via FetcherResource, validates the content
-        is above the floor, and persists raw_content to queue_items. Cache:
-        skips the network fetch if raw_content is already set for this row.
+        POSTs to the fetcher service's /v1/fetch and persists the returned
+        markdown + tier_log to queue_items. Cache: skips when raw_content
+        is already set.
         """
     ),
 )
@@ -111,20 +109,21 @@ def fetched(
         )
 
     char_count = len(result.content)
-    if char_count < FETCHED_CONTENT_MIN_CHARS:
+    # The fetcher cascade falls back to `best_result` when no tier hits its
+    # floor (services/fetcher/cascade.py), so a 200 can carry sub-floor
+    # content. Guard the extractor against degenerate inputs before persist.
+    if char_count < 500:
         raise dg.Failure(
-            description=f"{content_type} content below floor: {char_count} chars",
+            description=f"{content_type} fetch below extraction floor: {char_count} chars",
             allow_retries=False,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),
                 "fetch_tier": dg.MetadataValue.text(result.tier),
                 "content_chars": dg.MetadataValue.int(char_count),
-                "min_chars": dg.MetadataValue.int(FETCHED_CONTENT_MIN_CHARS),
                 "tier_log": dg.MetadataValue.json(result.tier_log),
             },
         )
-
     content_hash = hashlib.sha256(result.content.encode()).hexdigest()
     store.upsert_fetched(
         notion_page_id=page_id,

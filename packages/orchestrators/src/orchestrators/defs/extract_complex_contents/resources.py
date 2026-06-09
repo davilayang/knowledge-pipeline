@@ -1,21 +1,19 @@
 """Resources for the extract_complex_contents pipeline.
 
-- FetcherResource — per-type dispatch (YouTube, arXiv, article cascade).
-- ExtractorRegistry — strategy registry: maps content_type → ExtractorProtocol.
+- FetcherResource — HTTP client for the standalone `fetcher` service.
+- ExtractorRegistry — strategy registry: content_type → ExtractorProtocol.
 
-Notion access and the queue.db wrapper live in
-`orchestrators.defs.shared.queue_resources` since both are shared with the
-triage pipeline. This module wires the extract-specific resources and
-binds shared classes to local keys in `build_resources`.
-
-Per-type strategies live in `fetchers/` and `extractors/`; this module
-holds the Dagster ConfigurableResource boundaries that orchestrate them.
+Notion + queue.db wrappers live in `orchestrators.defs.shared.queue_resources`
+(shared with triage); `build_resources` binds them to local keys.
 """
 
 import os
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
 
 import dagster as dg
+import httpx
 from workflows.extraction import ThreeCallOpenAIExtractor
 
 from orchestrators.defs.shared.queue_resources import (
@@ -28,7 +26,6 @@ from .def_config import (
     PROMPT_LABEL_NARRATIVE,
     PROMPT_LABEL_TOPIC_CARD,
 )
-from .fetchers import FetchResult  # noqa: F401 — re-exported for callers
 
 # Resolve repo-root prompts/extraction/ for the extractor registry.
 # Anchor: this file lives at
@@ -46,48 +43,103 @@ _PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
 _PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
 
 
+@dataclass
+class FetchResult:
+    content: str = ""
+    tier: str = ""
+    tier_log: list[dict[str, Any]] = field(default_factory=list)
+    title: str = ""
+    error: str = ""
+    transient: bool = False
+    extras: dict[str, Any] = field(default_factory=dict)
+
+
 class FetcherResource(dg.ConfigurableResource):
-    pi_socks5_url: str
-    impersonate_profile: str = "safari17_0"
-    jina_floor_chars: int = 2000
-    timeout_s: int = 30
-    youtube_proxy_url: str = ""
-    # LlamaParse (LlamaCloud) for arxiv PDF rendering. Tier is per-deployment
-    # via LLAMA_PARSE_TIER: prod runs `agentic_plus` (highest-fidelity, ~60s
-    # for a 26-page PDF) — dev defaults to `fast` (layout-only, no LLM,
-    # ~100× cheaper) so iterating on the pipeline doesn't burn credits.
-    llama_cloud_api_key: str = ""
-    llama_cloud_base_url: str = "https://api.cloud.eu.llamaindex.ai"
-    llama_parse_tier: str = ""
+    service_url: str
+    timeout_s: int
+    # str-typed because Dagster has no `EnvVar.bool` — resolved to "true"/"false"
+    # at run init, parsed at the call site below.
+    allow_paid: str
 
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
-        """Dispatch to per-type fetcher. Defensive fallback to article cascade
-        for unknown types — should only trigger when triage misclassifies."""
-        if content_type == "YouTube":
-            from .fetchers import youtube
-
-            return youtube.fetch(url, proxy_url=self.youtube_proxy_url or None)
-        if content_type == "arXiv":
-            from .fetchers import arxiv as arxiv_fetcher
-
-            return arxiv_fetcher.fetch(
-                url,
-                llama_cloud_api_key=self.llama_cloud_api_key,
-                llama_cloud_base_url=self.llama_cloud_base_url,
-                llama_parse_tier=self.llama_parse_tier,
-            )
-        from .fetchers import article
-
-        return article.fetch(
-            url,
-            pi_socks5_url=self.pi_socks5_url,
-            impersonate_profile=self.impersonate_profile,
-            jina_floor_chars=self.jina_floor_chars,
-            timeout_s=self.timeout_s,
-        )
+        del content_type  # service matches source by URL
+        allow_paid = self.allow_paid.lower() == "true"
+        with httpx.Client(timeout=self.timeout_s) as client:
+            return _call_service(client, self.service_url, url, allow_paid=allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
         return self.fetch_for_type(url, content_type="Article")
+
+
+def _call_service(
+    client: httpx.Client,
+    service_url: str,
+    url: str,
+    *,
+    allow_paid: bool,
+) -> FetchResult:
+    endpoint = f"{service_url.rstrip('/')}/v1/fetch"
+    payload = {
+        "url": url,
+        "quality": "fast",
+        "allow_paid": allow_paid,
+        "force_refresh": False,
+    }
+    try:
+        resp = client.post(endpoint, json=payload)
+    except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+        return FetchResult(error=f"fetcher service unreachable: {exc!r}", transient=True)
+    except httpx.ReadTimeout as exc:
+        return FetchResult(error=f"fetcher request timeout: {exc!r}", transient=True)
+    except httpx.TransportError as exc:
+        # Catches RemoteProtocolError, WriteTimeout, PoolTimeout, NetworkError —
+        # the realistic "fetcher process restarted mid-request" shape.
+        return FetchResult(error=f"fetcher transport error: {exc!r}", transient=True)
+
+    if resp.status_code == 200:
+        return _parse_success(resp)
+    return _parse_problem(resp)
+
+
+def _parse_success(resp: httpx.Response) -> FetchResult:
+    try:
+        body = resp.json()
+    except ValueError:
+        return FetchResult(
+            error=f"malformed fetcher response: status=200 body={resp.text[:200]!r}",
+            transient=False,
+        )
+    if "markdown" not in body:
+        return FetchResult(
+            error="malformed FetchOutcome: missing markdown",
+            transient=False,
+        )
+    metadata = body.get("metadata") or {}
+    return FetchResult(
+        content=body["markdown"],
+        tier=body.get("tier_used", ""),
+        tier_log=body.get("tier_log") or [],
+        title=str(metadata.get("title", "")),
+        extras=metadata,
+    )
+
+
+def _parse_problem(resp: httpx.Response) -> FetchResult:
+    try:
+        problem = resp.json()
+    except ValueError:
+        return FetchResult(
+            error=f"malformed fetcher response: status={resp.status_code} body={resp.text[:200]!r}",
+            transient=False,
+        )
+    title = problem.get("title") or problem.get("code") or f"HTTP {resp.status_code}"
+    detail = problem.get("detail")
+    error = f"{title}: {detail}" if detail else title
+    return FetchResult(
+        error=error,
+        transient=bool(problem.get("retryable", False)),
+        tier_log=problem.get("tier_log") or [],
+    )
 
 
 class ExtractorRegistry(dg.ConfigurableResource):
@@ -140,11 +192,9 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             queue_data_source_id=dg.EnvVar("NOTION_QUEUE_DATA_SOURCE_ID"),
         ),
         "fetcher": FetcherResource(
-            pi_socks5_url=dg.EnvVar("PI_SOCKS5_URL"),
-            impersonate_profile=dg.EnvVar("EXTRACT_QUEUE_IMPERSONATE_PROFILE"),
-            youtube_proxy_url=dg.EnvVar("YOUTUBE_PROXY_URL").get_value(""),
-            llama_cloud_api_key=dg.EnvVar("LLAMA_CLOUD_API_KEY"),
-            llama_parse_tier=dg.EnvVar("LLAMA_PARSE_TIER"),
+            service_url=dg.EnvVar("FETCHER_URL"),
+            timeout_s=dg.EnvVar.int("FETCHER_TIMEOUT_S"),
+            allow_paid=dg.EnvVar("FETCHER_ALLOW_PAID"),
         ),
         "extractor": ExtractorRegistry(
             openai_api_key=dg.EnvVar("OPENAI_API_KEY"),

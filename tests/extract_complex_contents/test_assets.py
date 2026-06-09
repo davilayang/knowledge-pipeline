@@ -245,13 +245,18 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     assert metadata["title"].text == "Attention Is All You Need"
 
 
-def test_fetched_fails_when_below_floor(tmp_path: Path):
+def test_fetched_fails_when_below_extraction_floor(tmp_path: Path):
+    """Service's cascade may return sub-floor content (`best_result`
+    fallback) when no tier hits its own floor. The asset has its own
+    extraction-floor guard so degenerate fetches don't reach the extractor."""
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
     store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
-    fetcher.fetch_for_type.return_value = FetchResult(content="short", tier="youtube", tier_log=[])
-    with pytest.raises(Exception, match="below floor"):
+    fetcher.fetch_for_type.return_value = FetchResult(
+        content="short", tier="transcript_api", tier_log=[]
+    )
+    with pytest.raises(Exception, match="below extraction floor"):
         _materialize(
             fetched,
             partition_key="p-1",

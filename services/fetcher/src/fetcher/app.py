@@ -71,6 +71,13 @@ def _missing_settings(exc: ValidationError) -> list[str]:
 
 
 def create_app() -> FastAPI:
+    # force=True overrides uvicorn's pre-installed root logger config so
+    # `fetcher.*` INFO lines aren't silently dropped.
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s %(levelname)s %(name)s: %(message)s",
+        force=True,
+    )
     app = FastAPI(title="fetcher", version="0.1.0", lifespan=_lifespan)
     app.add_exception_handler(FetcherError, fetcher_exception_handler)
     app.include_router(fetch_endpoint.router)

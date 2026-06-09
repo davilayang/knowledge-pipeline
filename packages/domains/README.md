@@ -63,13 +63,18 @@ and others don't — consumers read what they need.
 
 ## Source contract
 
-Every source exposes:
+The `IngestSource` Protocol in `types.py` requires only one method:
 
 ```python
 class IngestSource(Protocol):
-    def get_item_ids(self) -> list[str]: ...
-    def get_item(self, item_id: str) -> IngestItem | None: ...
     def get_items(self) -> list[IngestItem]: ...
+```
+
+All concrete source classes additionally implement `get_item_ids` and `get_item`:
+
+```python
+def get_item_ids(self) -> list[str]: ...
+def get_item(self, item_id: str) -> IngestItem | None: ...
 ```
 
 `get_item_ids` is the cheap discovery path used by the `populate_vector_store`

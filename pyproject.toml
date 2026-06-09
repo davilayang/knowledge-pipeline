@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.18.0"
+version = "0.18.1"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -72,6 +72,22 @@ docker compose --profile data up -d
 dagster dev --port 3030 -m orchestrators.definitions
 """
 help = "Start postgres + chroma, launch Dagster UI at localhost:3030; tear down data services on exit"
+
+[tool.poe.tasks.fetcher-dev]
+# Single worker is load-bearing (see services/fetcher/README.md).
+# FETCHER_DB_PATH override redirects the SQLite file from the container path
+# (/app/data/fetches.db, set in .env) to the laptop's data/ dir.
+shell = """
+cd services/fetcher
+FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" uv run uvicorn fetcher.app:app \\
+  --workers 1 --port ${port} --env-file ../../.env
+"""
+help = "Run the fetcher service locally (default port 8000; envs from repo-root .env)"
+
+[tool.poe.tasks.fetcher-dev.args.port]
+default = "8765"
+help = "Port to bind (8000 is reserved for chroma in docker-compose)"
+
 
 [tool.poe.tasks.backup]
 cmd = "dg launch -m orchestrators.definitions --job backup_readings"

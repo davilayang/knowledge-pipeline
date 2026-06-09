@@ -12,7 +12,7 @@ depend on:
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from orchestrators.defs.extract_complex_contents.fetchers import article, arxiv, youtube
+import httpx
 from orchestrators.defs.extract_complex_contents.resources import (
     ExtractorRegistry,
     FetcherResource,
@@ -176,85 +176,6 @@ def test_notion_get_status_reads_native_status_name():
         assert resource.get_status("p-1") == "Ready"
 
 
-# -------- FetcherResource --------
-
-
-def test_fetcher_returns_jina_when_above_floor():
-    resource = FetcherResource(
-        pi_socks5_url="socks5://pi:1080",
-        impersonate_profile="safari17_0",
-        jina_floor_chars=100,
-    )
-    with (
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
-            return_value=("a" * 200, 200, None),
-        ) as jina_mock,
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch"
-        ) as curl_mock,
-    ):
-        result = resource.fetch("https://example.com/x")
-    jina_mock.assert_called_once()
-    curl_mock.assert_not_called()
-    assert result.tier == "jina"
-    assert len(result.content) == 200
-    assert result.tier_log[0]["tier"] == "jina"
-    assert result.tier_log[0]["chars"] == 200
-
-
-def test_fetcher_falls_through_to_curl_cffi_when_jina_short():
-    resource = FetcherResource(
-        pi_socks5_url="socks5://pi:1080",
-        impersonate_profile="safari17_0",
-        jina_floor_chars=2000,
-    )
-    with (
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
-            return_value=("short", 200, None),
-        ),
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch",
-            return_value=("<html><body>real article body</body></html>", 200, None),
-        ),
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._trafilatura_extract",
-            return_value="extracted markdown body, multiple paragraphs.",
-        ),
-    ):
-        result = resource.fetch("https://example.com/x")
-    assert result.tier == "curl_cffi"
-    assert result.content == "extracted markdown body, multiple paragraphs."
-    assert [entry["tier"] for entry in result.tier_log] == ["jina", "curl_cffi"]
-
-
-def test_fetcher_tier_log_records_errors_from_both_tiers():
-    resource = FetcherResource(
-        pi_socks5_url="socks5://pi:1080",
-        impersonate_profile="safari17_0",
-        jina_floor_chars=100,
-    )
-    with (
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._jina_fetch",
-            return_value=("", None, "ConnectionError"),
-        ),
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._curl_cffi_fetch",
-            return_value=("", 403, None),
-        ),
-        patch(
-            "orchestrators.defs.extract_complex_contents.fetchers.article._trafilatura_extract",
-            return_value="",
-        ),
-    ):
-        result = resource.fetch("https://example.com/x")
-    assert result.tier_log[0]["error"] == "ConnectionError"
-    assert result.tier_log[1]["status"] == 403
-    assert result.content == ""
-
-
 # -------- ExtractorRegistry --------
 
 
@@ -347,39 +268,250 @@ def test_store_roundtrip_via_real_sqlite(tmp_path: Path):
     assert row is not None and row["url"] == "https://example.com/x"
 
 
-# -------- FetcherResource dispatch --------
+# -------- FetcherResource (service-backed) --------
 
 
-def test_fetcher_dispatch_youtube_calls_youtube_module():
-    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
-    sentinel = MagicMock(return_value=MagicMock())
-    with patch.object(youtube, "fetch", sentinel):
-        resource.fetch_for_type("https://youtu.be/abcdefghijk", content_type="YouTube")
-    sentinel.assert_called_once_with("https://youtu.be/abcdefghijk", proxy_url=None)
-
-
-def test_fetcher_dispatch_arxiv_calls_arxiv_module():
-    resource = FetcherResource(
-        pi_socks5_url="socks5://pi:1080",
-        llama_cloud_api_key="llama-key",
-        llama_parse_tier="agentic_plus",
-    )
-    sentinel = MagicMock(return_value=MagicMock())
-    with patch.object(arxiv, "fetch", sentinel):
-        resource.fetch_for_type("https://arxiv.org/abs/2310.06770", content_type="arXiv")
-    sentinel.assert_called_once_with(
-        "https://arxiv.org/abs/2310.06770",
-        llama_cloud_api_key="llama-key",
-        llama_cloud_base_url="https://api.cloud.eu.llamaindex.ai",
-        llama_parse_tier="agentic_plus",
+def _make_service_fetcher(**overrides) -> FetcherResource:
+    return FetcherResource(
+        service_url="http://fetcher:8000",
+        timeout_s=overrides.pop("timeout_s", 30),
+        allow_paid=overrides.pop("allow_paid", "true"),
+        **overrides,
     )
 
 
-def test_fetcher_dispatch_unknown_type_falls_back_to_article():
-    resource = FetcherResource(pi_socks5_url="socks5://pi:1080")
-    sentinel = MagicMock(return_value=MagicMock())
-    with patch.object(article, "fetch", sentinel):
-        resource.fetch_for_type("https://example.com/post", content_type="Article")
-    sentinel.assert_called_once()
-    call_url = sentinel.call_args.args[0]
-    assert call_url == "https://example.com/post"
+def _fake_response(status_code: int, json_body: dict | None, *, raise_on_json: bool = False):
+    mock = MagicMock()
+    mock.status_code = status_code
+    if raise_on_json:
+        mock.json.side_effect = ValueError("not json")
+        mock.text = "<html>not json</html>"
+    else:
+        mock.json.return_value = json_body
+    return mock
+
+
+def test_fetcher_returns_outcome_when_service_returns_200():
+    resource = _make_service_fetcher()
+    body = {
+        "markdown": "# Title\n\nbody",
+        "source_type": "article",
+        "canonical_url": "https://example.com/x",
+        "tier_used": "jina",
+        "fetched_at": "2026-06-09T00:00:00Z",
+        "cache_hit": False,
+        "etag": "abc123",
+        "tier_log": [
+            {"tier": "jina", "status": 200, "chars": 5000, "error": None, "validated": True},
+        ],
+        "metadata": {"title": "Title"},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)) as post:
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert post.called
+    sent = post.call_args
+    assert sent.kwargs["json"] == {
+        "url": "https://example.com/x",
+        "quality": "fast",
+        "allow_paid": True,
+        "force_refresh": False,
+    }
+    assert result.content == "# Title\n\nbody"
+    assert result.tier == "jina"
+    assert result.tier_log == body["tier_log"]
+    assert result.title == "Title"
+    assert result.extras == {"title": "Title"}
+    assert result.error == ""
+    assert result.transient is False
+
+
+def test_fetcher_maps_502_upstream_failure_to_transient():
+    resource = _make_service_fetcher()
+    problem = {
+        "type": "https://fetcher/errors/upstream-failure",
+        "title": "All tiers failed",
+        "status": 502,
+        "code": "UPSTREAM_FAILURE",
+        "detail": "jina:520 curl_cffi:0",
+        "instance": "/v1/fetch",
+        "retryable": True,
+        "tier_log": [
+            {"tier": "jina", "status": 520, "chars": 0, "error": "blocked", "validated": False},
+        ],
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(502, problem)):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is True
+    assert "All tiers failed" in result.error
+    assert "jina:520" in result.error
+    assert result.tier_log == problem["tier_log"]
+
+
+def test_fetcher_maps_422_unsupported_source_to_permanent():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "No source matches this URL",
+        "status": 422,
+        "code": "UNSUPPORTED_SOURCE",
+        "detail": "no source matches: https://weird/",
+        "retryable": False,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(422, problem)):
+        result = resource.fetch_for_type("https://weird/", content_type="Article")
+    assert result.transient is False
+    assert "No source matches this URL" in result.error
+
+
+def test_fetcher_maps_429_rate_limited_to_transient():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Per-source semaphore exhausted",
+        "status": 429,
+        "code": "RATE_LIMITED",
+        "detail": "arxiv concurrent fetches >= 1",
+        "retryable": True,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(429, problem)):
+        result = resource.fetch_for_type("https://arxiv.org/abs/x", content_type="arXiv")
+    assert result.transient is True
+    assert "Per-source semaphore exhausted" in result.error
+
+
+def test_fetcher_maps_400_bad_url_to_permanent():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Malformed URL",
+        "status": 400,
+        "code": "BAD_URL",
+        "detail": "malformed URL: not-a-url",
+        "retryable": False,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(400, problem)):
+        result = resource.fetch_for_type("not-a-url", content_type="Article")
+    assert result.transient is False
+    assert "Malformed URL" in result.error
+
+
+def test_fetcher_maps_504_upstream_timeout_to_transient():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Per-request deadline exceeded",
+        "status": 504,
+        "code": "UPSTREAM_TIMEOUT",
+        "detail": "timeout after 30s",
+        "retryable": True,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(504, problem)):
+        result = resource.fetch_for_type("https://example.com/slow", content_type="Article")
+    assert result.transient is True
+    assert "Per-request deadline exceeded" in result.error
+
+
+def test_fetcher_maps_connect_error_to_transient():
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", side_effect=httpx.ConnectError("Connection refused")):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is True
+    assert "fetcher service unreachable" in result.error
+    assert "Connection refused" in result.error
+
+
+def test_fetcher_maps_read_timeout_to_transient():
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", side_effect=httpx.ReadTimeout("timed out")):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is True
+    assert "fetcher request timeout" in result.error
+
+
+def test_fetcher_maps_remote_protocol_error_to_transient():
+    """Catches the realistic 'fetcher process restarted mid-request' shape —
+    httpx.RemoteProtocolError is a TransportError, not a Connect/ReadTimeout."""
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", side_effect=httpx.RemoteProtocolError("Server disconnected")):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is True
+    assert "fetcher transport error" in result.error
+
+
+def test_fetcher_maps_500_internal_error_to_transient():
+    """500 INTERNAL_ERROR (FetcherError base default) — retryable=False per the
+    contract, but the response shape itself is still problem+json."""
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Internal error",
+        "status": 500,
+        "code": "INTERNAL_ERROR",
+        "detail": "KeyError: 'foo'",
+        "retryable": False,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(500, problem)):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is False
+    assert "Internal error" in result.error
+
+
+def test_fetcher_fails_loud_on_malformed_error_json():
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", return_value=_fake_response(502, None, raise_on_json=True)):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is False
+    assert "malformed fetcher response" in result.error
+    assert "status=502" in result.error
+
+
+def test_fetcher_fails_loud_on_200_missing_markdown():
+    resource = _make_service_fetcher()
+    body = {
+        "source_type": "article",
+        "tier_used": "jina",
+        "tier_log": [],
+        "metadata": {},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is False
+    assert "missing markdown" in result.error
+
+
+def test_fetcher_sends_allow_paid_false_when_configured():
+    resource = _make_service_fetcher(allow_paid="false")
+    body = {
+        "markdown": "x",
+        "source_type": "article",
+        "canonical_url": "u",
+        "tier_used": "jina",
+        "fetched_at": "t",
+        "cache_hit": False,
+        "etag": "e",
+        "tier_log": [],
+        "metadata": {},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)) as post:
+        resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert post.call_args.kwargs["json"]["allow_paid"] is False
+
+
+def test_fetcher_passes_content_type_without_using_it():
+    """`content_type` arg is kept for asset-side API stability but unused —
+    the service determines source from the URL itself. Different types must
+    produce identical request payloads for the same URL."""
+    resource = _make_service_fetcher()
+    body = {
+        "markdown": "x",
+        "source_type": "article",
+        "canonical_url": "u",
+        "tier_used": "jina",
+        "fetched_at": "t",
+        "cache_hit": False,
+        "etag": "e",
+        "tier_log": [],
+        "metadata": {},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)) as post:
+        resource.fetch_for_type("https://x/", content_type="YouTube")
+        resource.fetch_for_type("https://x/", content_type="arXiv")
+        resource.fetch_for_type("https://x/", content_type="Article")
+    payloads = [call.kwargs["json"] for call in post.call_args_list]
+    assert payloads[0] == payloads[1] == payloads[2]
+    assert "source" not in payloads[0]
