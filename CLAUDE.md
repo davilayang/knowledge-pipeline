@@ -102,6 +102,7 @@ packages/
   domains/         # Pure data layer (no LLM/Dagster deps)
     raw_store/     # raw_store.db SQLite layer
     queue_store/   # queue.db SQLite layer (sources.py)
+    fetches_store/ # fetches.db SQLite layer — cache_lookup/upsert, insert_job, update_job, get_job, get_job_status, canonicalize_lookup/upsert, mark_orphans_failed, create_schema
     extraction/    # Extraction schemas + records (schemas.py, records.py)
     sessions/
     research/
@@ -131,6 +132,9 @@ packages/
       synthesize_wiki/
       populate_vector_store/
       upstream_sources.py
+
+services/
+  fetcher/         # Standalone FastAPI URL→markdown fetch service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by workflows.extraction.ThreeCallOpenAIExtractor

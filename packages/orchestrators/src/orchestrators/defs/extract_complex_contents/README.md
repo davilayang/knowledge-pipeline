@@ -47,9 +47,10 @@ agent (`newsletter-assistant`) doesn't wait on extraction.
 NA's equivalent fetcher uses pymupdf4llm (faster, lower quality) because
 the agent layer is user-facing.
 
-Required env: `LLAMA_CLOUD_API_KEY` (LlamaCloud API key). Defaults for
-`llama_cloud_base_url` (`https://api.cloud.eu.llamaindex.ai`) and
-`llama_parse_tier_arxiv` (`agentic_plus`) live on `FetcherResource`.
+Required env: `LLAMA_CLOUD_API_KEY` (LlamaCloud API key), `LLAMA_PARSE_TIER`
+(tier string, e.g. `agentic_plus` for prod or `fast` for dev — see
+`FetcherResource.llama_parse_tier`). `llama_cloud_base_url` defaults to
+`https://api.cloud.eu.llamaindex.ai` on `FetcherResource`.
 
 ## Runbook
 

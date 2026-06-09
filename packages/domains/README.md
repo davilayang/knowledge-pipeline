@@ -28,8 +28,14 @@ src/domains/
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
 │                       # the marker format consumed by the turn_grouping
 │                       # chunker in retrievers
-└── research/           # Research-panel SQLite (newsletter-assistant)
-    └── sources.py      # ResearchSource
+├── research/           # Research-panel SQLite (newsletter-assistant)
+│   └── sources.py      # ResearchSource
+├── queue_store/        # queue.db — Notion Queue pipeline SQLite store
+│   └── sources.py      # queue_items + extraction_calls tables; upsert/read helpers
+│                       # consumed by triage + extract_complex_contents pipelines
+└── fetches_store/      # fetches.db — fetcher service SQLite store
+    └── sources.py      # cache + fetches + url_aliases tables; upsert/read helpers
+                        # consumed by the fetcher service
 ```
 
 ## `IngestItem`

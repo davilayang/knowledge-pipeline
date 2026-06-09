@@ -6,19 +6,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.0] — 2026-06-09
+
 ### Added
 
-- **`fetcher` service — URL → markdown for the Knowledge OS.** Standalone FastAPI service (`services/fetcher/`) shipping the canonical fetch path the KP pipelines and NA agent layer will both call. Three sources today (article, arxiv, youtube) with a free-first tier cascade per source — escalate to paid (LlamaParse `agentic_plus` for arxiv; future Whisper for podcast) only when `allow_paid=true` and the quality floor isn't met. Three endpoints: `POST /v1/fetch` (sync, single URL, ETag / `If-None-Match` → 304 supported), `POST /v1/fetches` + `GET/DELETE /v1/fetches/{job_id}` (async batch with real in-process cancellation via a `task_registry`), `GET /v1/canonicalize` (URL normalization with `url_aliases` cache). SQLite state owned by `domains.fetches_store` (cache + fetches + url_aliases tables); the service holds zero raw connections.
-- **Single-worker invariant.** `uvicorn --workers 1` is load-bearing — per-source `asyncio.Semaphore`, per-URL `asyncio.Lock` (via `WeakValueDictionary`), and the `task_registry: dict[job_id, asyncio.Task]` are correctness primitives, not optimization knobs. Documented in `services/fetcher/README.md`; if horizontal scale is ever needed, swap to redis-backed primitives before raising worker count.
-- **Cross-stack reachability.** `kos-network` external Docker network shared with sibling stacks; service reachable from KP containers as `http://fetcher:8000` and from other KOS stacks as `http://kp-fetcher:8000`. Deploy script (`scripts/deploy-hcloud.sh setup`) creates the network on first deploy.
-- **RFC 7807 error contract.** `application/problem+json` responses with a `retryable` field. Domain exception hierarchy (`BadUrl`, `UnsupportedSource`, `UpstreamFailure`, `UpstreamTimeout`, `RateLimited`) splits cleanly across `errors.py` (exceptions) / `problems.py` (body factory, no FastAPI) / `endpoints/errors.py` (HTTP handler) — workers and cache persist the same shape into SQLite without importing FastAPI.
-- **Soft-404 guard on article tiers.** Jina Reader wraps upstream 4xx/5xx in HTTP 200 with a `"Warning: Target URL returned error"` body marker; without the guard, the cascade was caching error pages as content. Jina now demotes wrapped errors to empty content; curl_cffi short-circuits on HTTP status ≥ 400 before invoking trafilatura. The cascade emits `502 UPSTREAM_FAILURE` when all tiers report empty.
+- **Fetcher service** at `services/fetcher/` — URL → markdown for KP and NA, replacing the per-pipeline fetchers. Three sources today (article via Jina → curl_cffi+trafilatura; arxiv via pymupdf4llm → LlamaParse agentic_plus, strict; youtube via transcript-api with oEmbed header). Endpoints: `POST /v1/fetch` (sync, ETag / 304), `POST/GET/DELETE /v1/fetches` (async batch with real in-process cancellation), `GET /v1/canonicalize`.
+
+- **`domains.fetches_store.sources`** owns all fetcher SQLite state. New named ops (`cache_lookup/upsert`, `insert_job`, `update_job`, `get_job`, `get_job_status`, `canonicalize_lookup/upsert`, `mark_orphans_failed`) match the `queue_store`/`raw_store` convention — `_connect` stays private, callers never see SQL or connections.
+
+- **Free-first tier cascade.** Each source declares ordered free → paid tiers; cascade walks free tiers first, escalates to paid only when `allow_paid=true` AND the quality floor isn't met. Paid escalations (LlamaParse `agentic_plus`) gated behind explicit caller intent.
+
+- **`kos-network` external Docker network** shared with sibling stacks. Fetcher reachable as `http://fetcher:8000` from KP containers and `http://kp-fetcher:8000` from other KOS stacks. `scripts/deploy-hcloud.sh setup` creates the network on first deploy.
+
+- **Single-worker invariant.** `uvicorn --workers 1` is load-bearing: per-source `asyncio.Semaphore`, per-URL `asyncio.Lock`, and `task_registry: dict[job_id, asyncio.Task]` are correctness primitives. README banner documents the failure modes if this is violated.
+
+- **RFC 7807 error contract** at `endpoints/errors.py` with `retryable` field. Exception hierarchy (`BadUrl`, `UnsupportedSource`, `UpstreamFailure`, `UpstreamTimeout`, `RateLimited`) split across `errors.py` (domain) and `problems.py` (pure body factory, no FastAPI) so workers and cache can persist the same problem shape into SQLite.
+
+- **Soft-404 guard on article tiers.** Jina Reader wraps upstream 4xx/5xx in HTTP 200 with a `"Warning: Target URL returned error"` marker; the guard now demotes these to empty content. curl_cffi short-circuits on HTTP status ≥ 400 before invoking trafilatura. Prevents error pages from being cached as article text.
 
 ### Changed
 
-- **`FETCHER_JINA_API_KEY` is now optional.** Jina Reader's free tier works without auth at lower rate limits; the key only unlocks the higher paid quota. The `Authorization` header is set only when a key is configured. Required envs that remain: `FETCHER_SOCKS5_URL`, `FETCHER_LLAMA_PARSE_API_KEY`.
-
-- **`domains.fetches_store.sources` exposes named DB operations** (`cache_lookup/upsert`, `insert_job`, `update_job`, `get_job`, `get_job_status`, `canonicalize_lookup/upsert`, `mark_orphans_failed`, `create_schema`) matching the `queue_store` / `raw_store` convention — `_connect` stays private; callers never see SQL or connections. The fetcher service is the first caller; future callers (Dagster ops, NA) can use the same surface.
+- **`FETCHER_JINA_API_KEY` is now optional.** Jina Reader's free tier works without auth at lower rate limits; the key only unlocks the paid quota. `Authorization` header is set only when a key is configured. Required envs that remain: `FETCHER_SOCKS5_URL`, `FETCHER_LLAMA_PARSE_API_KEY`.
 
 ---
 
