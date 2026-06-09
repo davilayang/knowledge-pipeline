@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`CLAUDE.md` @-imports now resolve again** — directory renamed `personal-knowledge-os/` → `knowledge-os/` upstream (data-context-builder PR #47). Updated absolute paths plus a stray test-fixture tag in `tests/domains/queue_store/test_sources.py`.
+
 ---
 
 ## [0.18.2] — 2026-06-09
