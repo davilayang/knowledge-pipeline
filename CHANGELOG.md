@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`fetcher` service — URL → markdown for the Knowledge OS.** Standalone FastAPI service (`services/fetcher/`) shipping the canonical fetch path the KP pipelines and NA agent layer will both call. Three sources today (article, arxiv, youtube) with a free-first tier cascade per source — escalate to paid (LlamaParse `agentic_plus` for arxiv; future Whisper for podcast) only when `allow_paid=true` and the quality floor isn't met. Three endpoints: `POST /v1/fetch` (sync, single URL, ETag / `If-None-Match` → 304 supported), `POST /v1/fetches` + `GET/DELETE /v1/fetches/{job_id}` (async batch with real in-process cancellation via a `task_registry`), `GET /v1/canonicalize` (URL normalization with `url_aliases` cache). SQLite state owned by `domains.fetches_store` (cache + fetches + url_aliases tables); the service holds zero raw connections.
+- **Single-worker invariant.** `uvicorn --workers 1` is load-bearing — per-source `asyncio.Semaphore`, per-URL `asyncio.Lock` (via `WeakValueDictionary`), and the `task_registry: dict[job_id, asyncio.Task]` are correctness primitives, not optimization knobs. Documented in `services/fetcher/README.md`; if horizontal scale is ever needed, swap to redis-backed primitives before raising worker count.
+- **Cross-stack reachability.** `kos-network` external Docker network shared with sibling stacks; service reachable from KP containers as `http://fetcher:8000` and from other KOS stacks as `http://kp-fetcher:8000`. Deploy script (`scripts/deploy-hcloud.sh setup`) creates the network on first deploy.
+- **RFC 7807 error contract.** `application/problem+json` responses with a `retryable` field. Domain exception hierarchy (`BadUrl`, `UnsupportedSource`, `UpstreamFailure`, `UpstreamTimeout`, `RateLimited`) splits cleanly across `errors.py` (exceptions) / `problems.py` (body factory, no FastAPI) / `endpoints/errors.py` (HTTP handler) — workers and cache persist the same shape into SQLite without importing FastAPI.
+
+### Changed
+
+- **`domains.fetches_store.sources` exposes named DB operations** (`cache_lookup/upsert`, `insert_job`, `update_job`, `get_job`, `get_job_status`, `canonicalize_lookup/upsert`, `mark_orphans_failed`, `create_schema`) matching the `queue_store` / `raw_store` convention — `_connect` stays private; callers never see SQL or connections. The fetcher service is the first caller; future callers (Dagster ops, NA) can use the same surface.
+
 ---
 
 ## [0.17.3] — 2026-06-08
