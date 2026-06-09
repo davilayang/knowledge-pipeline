@@ -1,4 +1,4 @@
-"""Article source: Jina Reader, then curl_cffi plus trafilatura."""
+"""Article handler: Jina Reader, then curl_cffi plus trafilatura."""
 
 import logging
 from urllib.parse import quote, urlparse

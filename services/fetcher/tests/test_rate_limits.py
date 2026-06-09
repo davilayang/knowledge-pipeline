@@ -4,13 +4,13 @@ import asyncio
 
 import pytest
 
-from fetcher.rate_limits import SOURCE_LIMITS, get_semaphore
+from fetcher.rate_limits import LIMITS, get_semaphore
 
 
 def test_known_sources_have_explicit_limits() -> None:
-    assert SOURCE_LIMITS["arxiv"] == 1
-    assert SOURCE_LIMITS["jina"] == 5
-    assert SOURCE_LIMITS["youtube"] == 2
+    assert LIMITS["arxiv"] == 1
+    assert LIMITS["jina"] == 5
+    assert LIMITS["youtube"] == 2
 
 
 @pytest.mark.asyncio

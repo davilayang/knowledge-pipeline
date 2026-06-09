@@ -24,7 +24,7 @@ def test_healthz_returns_200_when_ready(
     assert response.status_code == 200
     body = response.json()
     assert body["ok"] is True
-    assert body["registered_sources"] == ["arxiv", "youtube", "article"]
+    assert body["registered_kinds"] == ["arxiv", "youtube", "article"]
 
 
 def test_healthz_returns_503_when_required_env_missing(

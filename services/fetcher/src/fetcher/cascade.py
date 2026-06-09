@@ -1,4 +1,4 @@
-"""Cascade engine: runs source tiers in order until a result meets the quality floor."""
+"""Cascade engine: runs handler tiers in order until a result meets the quality floor."""
 
 import logging
 
@@ -7,9 +7,9 @@ from fetcher.types import (
     CascadeResult,
     FetchContext,
     RawTierResult,
-    Source,
     Tier,
     TierLogEntry,
+    URLHandler,
 )
 
 
@@ -23,15 +23,15 @@ def _tier_meets_floor(tier: Tier, content: str, quality: str) -> bool:
     return tier.validate is None or tier.validate(content)
 
 
-async def _run_tier(src: Source, ctx: FetchContext, tier: Tier, url: str) -> RawTierResult:
-    key = tier.rate_limit_key or src.NAME
+async def _run_tier(handler: URLHandler, ctx: FetchContext, tier: Tier, url: str) -> RawTierResult:
+    key = tier.rate_limit_key or handler.NAME
     semaphore = get_semaphore(key)
     async with semaphore:
         return await tier.run(ctx, url)
 
 
 async def run_cascade(
-    src: Source,
+    handler: URLHandler,
     ctx: FetchContext,
     url: str,
     *,
@@ -42,7 +42,7 @@ async def run_cascade(
     tier_log: list[TierLogEntry] = []
     best_result: tuple[Tier, RawTierResult] | None = None
 
-    for tier in src.TIERS:
+    for tier in handler.TIERS:
         if tier.cost != "free":
             continue
         if tier.applies is not None and not tier.applies(url):
@@ -50,7 +50,7 @@ async def run_cascade(
         try:
             match tier:
                 case Tier():
-                    raw = await _run_tier(src, ctx, tier, url)
+                    raw = await _run_tier(handler, ctx, tier, url)
                 case _:
                     logger.warning("unknown tier kind: %s", type(tier))
                     continue
@@ -69,7 +69,7 @@ async def run_cascade(
             best_result = (tier, raw)
 
     if allow_paid:
-        for tier in src.TIERS:
+        for tier in handler.TIERS:
             if tier.cost != "paid":
                 continue
             if tier.applies is not None and not tier.applies(url):
@@ -77,13 +77,13 @@ async def run_cascade(
             try:
                 match tier:
                     case Tier():
-                        raw = await _run_tier(src, ctx, tier, url)
+                        raw = await _run_tier(handler, ctx, tier, url)
                     case _:
                         logger.warning("unknown tier kind: %s", type(tier))
                         continue
             except Exception as exc:
                 tier_log.append(TierLogEntry(tier.name, 0, 0, str(exc), False))
-                if src.STRICT_PAID_TIER:
+                if handler.STRICT_PAID_TIER:
                     raise
                 continue
             validated = tier.validate is None or tier.validate(raw.content)

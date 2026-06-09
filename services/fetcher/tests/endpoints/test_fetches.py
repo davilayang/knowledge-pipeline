@@ -18,9 +18,9 @@ def _setup_envs(monkeypatch, tmp_db_path: str) -> None:
 
 def _outcome() -> FetchOutcome:
     return FetchOutcome(
-        kind="success",
+        status="success",
         markdown="x",
-        source_type="article",
+        kind="article",
         canonical_url="https://x",
         tier_used="jina",
         fetched_at="2026-06-06T00:00:00Z",

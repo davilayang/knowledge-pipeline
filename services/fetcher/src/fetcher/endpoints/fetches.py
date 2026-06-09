@@ -16,9 +16,9 @@ from pydantic import BaseModel
 
 from fetcher import task_registry
 from fetcher.endpoints.errors import problem_response
-from fetcher.errors import BadUrl, UnsupportedSource
+from fetcher.errors import BadUrl, UnsupportedKind
 from fetcher.problems import problem_body
-from fetcher.registry import find_source
+from fetcher.registry import find_handler
 from fetcher.types import FetchRequest
 from fetcher.workers import new_batch_id, new_job_id, spawn_job
 
@@ -71,14 +71,14 @@ async def post_fetches(batch: FetchBatch, request: Request) -> Response:
                 instance=f"/v1/fetches/{job_id}",
                 retryable=BadUrl.retryable,
             )
-        elif find_source(item.url) is None:
+        elif find_handler(item.url) is None:
             validation_error = problem_body(
-                status=UnsupportedSource.status,
-                code=UnsupportedSource.code,
-                title=UnsupportedSource.title,
-                detail=f"no source matches URL: {item.url}",
+                status=UnsupportedKind.status,
+                code=UnsupportedKind.code,
+                title=UnsupportedKind.title,
+                detail=f"no handler matches URL: {item.url}",
                 instance=f"/v1/fetches/{job_id}",
-                retryable=UnsupportedSource.retryable,
+                retryable=UnsupportedKind.retryable,
             )
 
         expires_at = insert_job(

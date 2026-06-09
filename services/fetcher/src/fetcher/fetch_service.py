@@ -12,10 +12,10 @@ from typing import Any
 from fetcher.cache import cache_key, compute_etag, lookup as cache_lookup, upsert as cache_upsert
 from fetcher.canonicalize import canonicalize
 from fetcher.cascade import run_cascade
-from fetcher.errors import UnsupportedSource, UpstreamFailure
-from fetcher.registry import find_source
+from fetcher.errors import UnsupportedKind, UpstreamFailure
+from fetcher.registry import find_handler
 from fetcher.single_flight import get_url_lock
-from fetcher.types import FetchContext, FetchRequest, Source, TierLogEntry
+from fetcher.types import FetchContext, FetchRequest, TierLogEntry, URLHandler
 
 
 logger = logging.getLogger(__name__)
@@ -25,9 +25,9 @@ logger = logging.getLogger(__name__)
 class FetchOutcome:
     """Domain result of a fetch operation."""
 
-    kind: str  # "success" | "pending" | "failure"
+    status: str  # "success" | "pending" | "failure"
     markdown: str = ""
-    source_type: str = ""
+    kind: str = ""
     canonical_url: str = ""
     tier_used: str = ""
     fetched_at: str = ""
@@ -43,8 +43,8 @@ def _now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
-def _cache_satisfies(source: Source, tier_used: str, markdown: str, quality: str) -> bool:
-    tier = next((candidate for candidate in source.TIERS if candidate.name == tier_used), None)
+def _cache_satisfies(handler: URLHandler, tier_used: str, markdown: str, quality: str) -> bool:
+    tier = next((candidate for candidate in handler.TIERS if candidate.name == tier_used), None)
     if tier is None:
         return False
     floor = tier.min_chars if quality == "fast" else tier.high_chars
@@ -61,9 +61,9 @@ async def run_fetch_request(
     ttl_days: int,
 ) -> FetchOutcome:
     """Run the fetch pipeline: canonicalize -> cache lookup -> cascade -> cache upsert."""
-    source = find_source(req.url)
-    if source is None:
-        raise UnsupportedSource(f"no source matches URL: {req.url}")
+    handler = find_handler(req.url)
+    if handler is None:
+        raise UnsupportedKind(f"no handler matches URL: {req.url}")
 
     canonical = canonicalize(req.url).canonical_url
     lock = get_url_lock(cache_key(canonical))
@@ -72,12 +72,12 @@ async def run_fetch_request(
         if not req.force_refresh:
             cached = cache_lookup(db_path=db_path, canonical_url=canonical)
             if cached is not None and _cache_satisfies(
-                source, cached.tier_used, cached.markdown, req.quality
+                handler, cached.tier_used, cached.markdown, req.quality
             ):
                 return FetchOutcome(
-                    kind="success",
+                    status="success",
                     markdown=cached.markdown,
-                    source_type=cached.source_type,
+                    kind=cached.source_type,
                     canonical_url=cached.canonical_url,
                     tier_used=cached.tier_used,
                     fetched_at=cached.fetched_at,
@@ -88,7 +88,7 @@ async def run_fetch_request(
                 )
 
         cascade = await run_cascade(
-            source,
+            handler,
             ctx,
             req.url,
             quality=req.quality,
@@ -105,7 +105,7 @@ async def run_fetch_request(
         cache_upsert(
             db_path=db_path,
             canonical_url=canonical,
-            source_type=source.NAME,
+            source_type=handler.NAME,
             markdown=cascade.content,
             tier_used=cascade.tier_used,
             metadata=cascade.metadata,
@@ -115,9 +115,9 @@ async def run_fetch_request(
         )
 
         return FetchOutcome(
-            kind="success",
+            status="success",
             markdown=cascade.content,
-            source_type=source.NAME,
+            kind=handler.NAME,
             canonical_url=canonical,
             tier_used=cascade.tier_used,
             fetched_at=_now_iso(),

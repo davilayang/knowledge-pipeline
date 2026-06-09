@@ -1,15 +1,15 @@
-"""Source registry: maps URLs to source modules."""
+"""URL-handler registry: maps URLs to handler modules."""
 
-from fetcher.sources import article, arxiv, youtube
-from fetcher.types import Source
-
-
-REGISTERED_SOURCES: list[Source] = [arxiv, youtube, article]  # type: ignore[list-item]
+from fetcher.handlers import article, arxiv, youtube
+from fetcher.types import URLHandler
 
 
-def find_source(url: str) -> Source | None:
-    """Find the first source that matches the given URL."""
-    for source in REGISTERED_SOURCES:
-        if source.matches(url):
-            return source
+REGISTERED_HANDLERS: list[URLHandler] = [arxiv, youtube, article]  # type: ignore[list-item]
+
+
+def find_handler(url: str) -> URLHandler | None:
+    """Find the first handler that claims the given URL."""
+    for handler in REGISTERED_HANDLERS:
+        if handler.matches(url):
+            return handler
     return None
