@@ -4,8 +4,8 @@ import logging
 import re
 from urllib.parse import parse_qs, urlparse
 
-from fetcher.parsers import oembed as oembed_parser
-from fetcher.parsers import youtube_transcript as transcript_parser
+from fetcher.extractors import oembed as oembed_extractor
+from fetcher.extractors import youtube_transcript as transcript_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -80,8 +80,8 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         logger.warning("youtube transcript fetch failed for %s: %s", video_id, exc)
         return RawTierResult(content="", status=0)
 
-    header = await oembed_parser.youtube_metadata_header(ctx.http_client, url)
-    body = transcript_parser.chunks_to_markdown(chunks)
+    header = await oembed_extractor.youtube_metadata_header(ctx.http_client, url)
+    body = transcript_extractor.chunks_to_markdown(chunks)
     return RawTierResult(content=header + body, status=200)
 
 
