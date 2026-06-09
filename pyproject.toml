@@ -103,6 +103,7 @@ FETCHER_URL=http://localhost:${fetcher_port} dagster dev --port 3030 -m orchestr
 help = "Start data services + fetcher + Dagster UI (laptop one-shot dev)"
 
 [tool.poe.tasks.dev.args.fetcher_port]
+options = ["--fetcher-port"]
 default = "8000"
 help = "Port for the fetcher service (override if 8000 is occupied)"
 
