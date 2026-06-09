@@ -25,12 +25,62 @@ def test_youtube_extracts_video_ids() -> None:
 
 
 def test_tier_order_and_strict_flags() -> None:
-    assert [tier.name for tier in article.TIERS] == ["jina", "curl_cffi"]
+    assert [tier.name for tier in article.TIERS] == ["jina", "curl_cffi", "tavily"]
     assert [tier.name for tier in arxiv.TIERS] == ["pymupdf4llm", "llamaparse"]
     assert [tier.name for tier in youtube.TIERS] == ["transcript_api"]
     assert article.STRICT_PAID_TIER is False
     assert arxiv.STRICT_PAID_TIER is True
     assert youtube.STRICT_PAID_TIER is False
+
+
+def test_article_tavily_tier_metadata() -> None:
+    tavily_tier = next(tier for tier in article.TIERS if tier.name == "tavily")
+    assert tavily_tier.cost == "paid"
+    assert tavily_tier.rate_limit_key == "tavily"
+
+
+async def test_article_tavily_skipped_when_key_unset() -> None:
+    from unittest.mock import MagicMock
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = None
+
+    result = await _tavily_fetch(ctx, "https://example.com")
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_article_tavily_calls_extractor_when_key_set() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = "k"
+    with patch("fetcher.handlers.article.tavily_extractor.extract", new=AsyncMock(return_value="# md")):
+        result = await _tavily_fetch(ctx, "https://example.com")
+
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+async def test_article_tavily_demotes_extractor_failure() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = "k"
+    with patch(
+        "fetcher.handlers.article.tavily_extractor.extract",
+        new=AsyncMock(side_effect=ValueError("Tavily extract HTTP 500: boom")),
+    ):
+        result = await _tavily_fetch(ctx, "https://example.com")
+
+    assert result.content == ""
+    assert result.status == 0
 
 
 async def test_article_jina_4xx_returns_empty_content() -> None:

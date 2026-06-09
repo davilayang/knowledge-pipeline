@@ -1,9 +1,10 @@
-"""Article handler: Jina Reader, then curl_cffi plus trafilatura."""
+"""Article handler: Jina Reader, then curl_cffi plus trafilatura, then Tavily Extract."""
 
 import logging
 from urllib.parse import urlparse
 
 from fetcher.extractors import jina as jina_extractor
+from fetcher.extractors import tavily as tavily_extractor
 from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 
@@ -74,6 +75,19 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(content=trafilatura_extractor.extract(html), status=status)
 
 
+async def _tavily_fetch(ctx: FetchContext, url: str) -> RawTierResult:
+    if not ctx.tavily_api_key:
+        return RawTierResult(content="", status=0)
+    try:
+        content = await tavily_extractor.extract(
+            ctx.http_client, url=url, api_key=ctx.tavily_api_key
+        )
+    except ValueError as exc:
+        logger.warning("tavily extract failed for %s: %s", url, exc)
+        return RawTierResult(content="", status=0)
+    return RawTierResult(content=content, status=200)
+
+
 TIERS: list[Tier] = [
     Tier(
         "jina",
@@ -85,4 +99,13 @@ TIERS: list[Tier] = [
         rate_limit_key="jina",
     ),
     Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=_validate_not_js_wall),
+    Tier(
+        "tavily",
+        "paid",
+        1500,
+        6000,
+        _tavily_fetch,
+        validate=_validate_not_js_wall,
+        rate_limit_key="tavily",
+    ),
 ]

@@ -27,6 +27,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             llama_parse_api_key=settings.llama_parse_api_key,
             llama_parse_tier_arxiv=settings.llama_parse_tier_arxiv,
             default_timeout_s=settings.default_timeout_s,
+            tavily_api_key=settings.tavily_api_key,
         )
     finally:
         await default.aclose()

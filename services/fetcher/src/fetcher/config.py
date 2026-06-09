@@ -44,3 +44,10 @@ class Settings(BaseSettings):
         default="agentic_plus",
         description="LlamaParse tier used for arXiv PDF rendering.",
     )
+    tavily_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Tavily Extract API key. Optional: the article handler's tavily tier "
+            "is unreachable when unset."
+        ),
+    )
