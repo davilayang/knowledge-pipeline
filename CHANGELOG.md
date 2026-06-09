@@ -6,17 +6,29 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.1] — 2026-06-09
+
 ### Changed
 
-- **`extract_complex_contents/fetched` speaks HTTP to the fetcher service.** `FetcherResource` is now a thin httpx client that POSTs to `/v1/fetch`; the per-tier in-process fetchers (curl_cffi+trafilatura / pymupdf+LlamaParse / youtube-transcript-api) are gone. The service owns source matching; the orchestrator translates the RFC 7807 `problem+json` surface onto Dagster `Failure`s. `problem.retryable` flows directly into `allow_retries`, so transient upstream blips (502/504/429) re-queue under the existing `RetryPolicy` while permanent failures (400 BAD_URL, 422 UNSUPPORTED_SOURCE) fail fast. `httpx.ConnectError` / `ReadTimeout` / other `TransportError` subclasses are treated as transient; malformed JSON or `200`-missing-`markdown` fail loud (contract drift). `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bumped 2→3 — every previously-materialized `fetched` partition shows stale on first deploy; the next scheduled tick refills, no backfill required.
+- **`extract_complex_contents/fetched` now delegates all URL→markdown work to the fetcher service.** `FetcherResource` is a thin httpx client to `POST /v1/fetch`; per-tier in-process fetchers (curl_cffi+trafilatura, pymupdf+LlamaParse, youtube-transcript-api) are removed. RFC 7807 `retryable` flows into Dagster `allow_retries`, so transient blips re-queue and permanent failures (bad URL, unsupported source) fail fast.
 
-- **Asset-side extraction floor at 500 chars.** The service's cascade falls back to `best_result` when no tier hits its per-tier floor, so a 200 can carry sub-floor content. The asset guards the extractor against degenerate fetches with a single inline floor in `assets.py` — `dg.Failure(allow_retries=False)` below 500 chars. Old `FETCHED_CONTENT_MIN_CHARS = 2000` was tuned for the in-process era; 500 is a softer floor that still rejects degenerate transcripts but lets short legitimate YouTube clips through.
+- **Env contract updated for `extract_complex_contents`.** Three new required vars: `FETCHER_URL`, `FETCHER_TIMEOUT_S`, `FETCHER_ALLOW_PAID`. Removes `PI_SOCKS5_URL`, `EXTRACT_QUEUE_IMPERSONATE_PROFILE`, `YOUTUBE_PROXY_URL`, `LLAMA_CLOUD_API_KEY`, `LLAMA_PARSE_TIER` — those moved into the fetcher service in 0.18.0. `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bumped 2→3; previously-materialized `fetched` partitions show stale on first deploy and refill on the next scheduled tick.
 
-- **Env contract.** Adds `FETCHER_URL` (required), `FETCHER_TIMEOUT_S` (default 60), `FETCHER_ALLOW_PAID` (default `true`; arxiv needs it for LlamaParse escalation). Removes `PI_SOCKS5_URL`, `EXTRACT_QUEUE_IMPERSONATE_PROFILE`, `YOUTUBE_PROXY_URL`, `LLAMA_CLOUD_API_KEY`, `LLAMA_PARSE_TIER` from the orchestrator side — these moved into `services/fetcher` as `FETCHER_*` in 0.18.0.
+- **Extraction floor lowered from 2000 → 500 chars.** The fetcher cascade can return sub-floor content via its `best_result` fallback; 500 rejects degenerate fetches while letting short legitimate YouTube clips through.
+
+- **`fetched` Dagster UI compute_kind changed from `python` to `http`.** Matches the system-not-tool convention used by `extracted` (`openai`) and `published` (`notion`).
+
+- **Fetcher service now emits its own INFO logs.** `logging.basicConfig(force=True)` in `create_app()` overrides uvicorn's pre-installed root logger config so `fetcher.*` namespace lines surface.
+
+### Added
+
+- **`make dev` starts the full laptop dev stack in one shot** — data services, fetcher service, and Dagster UI. `poe fetcher-dev` and `make fetcher-dev` also available when only the fetcher needs to be run independently.
 
 ### Removed
 
-- `packages/orchestrators/.../extract_complex_contents/fetchers/` (article / arxiv / youtube modules + result dataclass). `curl-cffi`, `youtube-transcript-api`, `pysocks`, `arxiv` dropped from `packages/orchestrators` deps; `trafilatura` stays (still used by `triage_queued_items/url_meta.py`).
+- **`extract_complex_contents/fetchers/` package deleted** (`article.py`, `arxiv.py`, `youtube.py`, `result.py`). `curl-cffi`, `youtube-transcript-api`, `pysocks`, and `arxiv` dropped from `packages/orchestrators` dependencies.
 
 ---
 

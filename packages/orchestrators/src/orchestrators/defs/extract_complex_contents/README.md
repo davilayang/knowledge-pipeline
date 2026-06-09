@@ -31,8 +31,8 @@ fetched ──► extracted ──► published
 dagster_network; the service is authoritative for source matching
 (article / arxiv / youtube) and quality-floor enforcement. `extracted`
 runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetched +
-extracted include `content_preview` / `extraction_preview` metadata (head
-+ tail of the content) for at-a-glance verification.
+extracted include `content_preview` / `narrative_preview` / `topic_card_preview`
+metadata (head + tail of the content) for at-a-glance verification.
 ```
 
 Local store: `data/queue.db` (SQLite). Lifecycle status (Queued / Fetching /
