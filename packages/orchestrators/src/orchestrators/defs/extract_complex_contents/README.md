@@ -44,7 +44,11 @@ Topic Card, provenance) lives in the local store.
 URL→markdown is handled by `services/fetcher/` (a sidecar FastAPI
 container). The orchestrator's `FetcherResource` is a thin httpx client
 that POSTs `{url, quality: "fast", allow_paid, force_refresh: false}` to
-`/v1/fetch` and maps the response onto `FetchResult`.
+`/v1/fetch` and maps the response onto `FetchResult`. The asset enforces
+its own 500-char extraction floor — the service's cascade falls back to
+the longest available content when no tier hits its per-tier floor, so
+sub-floor 200s do happen and the asset rejects them before they reach
+the extractor.
 
 Error semantics: every non-200 problem+json becomes a `dg.Failure`; the
 service's `problem.retryable` flag flows directly into `allow_retries`,

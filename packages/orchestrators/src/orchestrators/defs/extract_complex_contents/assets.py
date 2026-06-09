@@ -109,6 +109,21 @@ def fetched(
         )
 
     char_count = len(result.content)
+    # The fetcher cascade falls back to `best_result` when no tier hits its
+    # floor (services/fetcher/cascade.py), so a 200 can carry sub-floor
+    # content. Guard the extractor against degenerate inputs before persist.
+    if char_count < 500:
+        raise dg.Failure(
+            description=f"{content_type} fetch below extraction floor: {char_count} chars",
+            allow_retries=False,
+            metadata={
+                "content_type": dg.MetadataValue.text(content_type),
+                "url": dg.MetadataValue.url(url),
+                "fetch_tier": dg.MetadataValue.text(result.tier),
+                "content_chars": dg.MetadataValue.int(char_count),
+                "tier_log": dg.MetadataValue.json(result.tier_log),
+            },
+        )
     content_hash = hashlib.sha256(result.content.encode()).hexdigest()
     store.upsert_fetched(
         notion_page_id=page_id,

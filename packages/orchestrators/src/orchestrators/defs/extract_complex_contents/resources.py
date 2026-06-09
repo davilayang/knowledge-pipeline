@@ -88,6 +88,10 @@ def _call_service(
         return FetchResult(error=f"fetcher service unreachable: {exc!r}", transient=True)
     except httpx.ReadTimeout as exc:
         return FetchResult(error=f"fetcher request timeout: {exc!r}", transient=True)
+    except httpx.TransportError as exc:
+        # Catches RemoteProtocolError, WriteTimeout, PoolTimeout, NetworkError —
+        # the realistic "fetcher process restarted mid-request" shape.
+        return FetchResult(error=f"fetcher transport error: {exc!r}", transient=True)
 
     if resp.status_code == 200:
         return _parse_success(resp)

@@ -94,10 +94,11 @@ help = "Port to bind (override e.g. 8765 if 8000 is occupied)"
 # exits (Ctrl-C, crash, normal end). Fetcher logs interleave with Dagster logs
 # on stdout; split terminals (poe dagster-dev + poe fetcher-dev) if that bites.
 shell = """
-trap 'jobs -p | xargs -r kill 2>/dev/null; docker compose --profile data down' EXIT INT TERM
+trap '[ -n "$FETCHER_PID" ] && kill $FETCHER_PID 2>/dev/null; docker compose --profile data down' EXIT INT TERM
 docker compose --profile data up -d
-(cd services/fetcher && FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" \\
+(cd services/fetcher && exec env FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" \\
   uv run uvicorn fetcher.app:app --workers 1 --port ${fetcher_port} --env-file ../../.env) &
+FETCHER_PID=$!
 FETCHER_URL=http://localhost:${fetcher_port} dagster dev --port 3030 -m orchestrators.definitions
 """
 help = "Start data services + fetcher + Dagster UI (laptop one-shot dev)"

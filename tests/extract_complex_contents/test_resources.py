@@ -424,6 +424,33 @@ def test_fetcher_maps_read_timeout_to_transient():
     assert "fetcher request timeout" in result.error
 
 
+def test_fetcher_maps_remote_protocol_error_to_transient():
+    """Catches the realistic 'fetcher process restarted mid-request' shape —
+    httpx.RemoteProtocolError is a TransportError, not a Connect/ReadTimeout."""
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", side_effect=httpx.RemoteProtocolError("Server disconnected")):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is True
+    assert "fetcher transport error" in result.error
+
+
+def test_fetcher_maps_500_internal_error_to_transient():
+    """500 INTERNAL_ERROR (FetcherError base default) — retryable=False per the
+    contract, but the response shape itself is still problem+json."""
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Internal error",
+        "status": 500,
+        "code": "INTERNAL_ERROR",
+        "detail": "KeyError: 'foo'",
+        "retryable": False,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(500, problem)):
+        result = resource.fetch_for_type("https://example.com/x", content_type="Article")
+    assert result.transient is False
+    assert "Internal error" in result.error
+
+
 def test_fetcher_fails_loud_on_malformed_error_json():
     resource = _make_service_fetcher()
     with patch("httpx.Client.post", return_value=_fake_response(502, None, raise_on_json=True)):
