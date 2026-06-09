@@ -3,7 +3,7 @@
 import logging
 from urllib.parse import quote, urlparse
 
-from fetcher.parsers import trafilatura as trafilatura_parser
+from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -81,7 +81,7 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     # Trafilatura happily extracts boilerplate from 4xx error pages — short-circuit.
     if status >= 400:
         return RawTierResult(content="", status=status)
-    return RawTierResult(content=trafilatura_parser.extract(html), status=status)
+    return RawTierResult(content=trafilatura_extractor.extract(html), status=status)
 
 
 TIERS: list[Tier] = [

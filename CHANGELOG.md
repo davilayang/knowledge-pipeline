@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.2] — 2026-06-09
+
+### Changed
+
+- **Fetcher service: extraction primitives moved from `services/fetcher/src/fetcher/parsers/` to `extractors/`.** Internal rename; the directory mixes local parsers (`trafilatura`, `pymupdf`) with remote-API callers (`llamaparse`, `oembed`, `youtube_transcript`), and the new name describes both honestly. No consumer impact — the service is HTTP-only.
+
+---
+
 ## [0.18.1] — 2026-06-09
 
 ### Changed

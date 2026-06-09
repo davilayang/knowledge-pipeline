@@ -1,6 +1,6 @@
 """Tests for transcript chunk formatting."""
 
-from fetcher.parsers.youtube_transcript import chunks_to_markdown
+from fetcher.extractors.youtube_transcript import chunks_to_markdown
 
 
 def test_formats_simple_chunks() -> None:

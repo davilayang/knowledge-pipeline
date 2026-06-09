@@ -6,8 +6,8 @@ from urllib.parse import urlparse
 
 import arxiv as arxiv_pypi
 
-from fetcher.parsers import llamaparse as llamaparse_parser
-from fetcher.parsers import pymupdf as pymupdf_parser
+from fetcher.extractors import llamaparse as llamaparse_extractor
+from fetcher.extractors import pymupdf as pymupdf_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -107,7 +107,7 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     except Exception as exc:
         logger.warning("arxiv PDF download failed for %s: %s", paper.pdf_url, exc)
         return RawTierResult(content="", status=0)
-    body = pymupdf_parser.to_markdown(pdf_bytes)
+    body = pymupdf_extractor.to_markdown(pdf_bytes)
     if not body:
         return RawTierResult(content="", status=0)
     return RawTierResult(content=_format_header(paper, arxiv_id) + body, status=200)
@@ -120,7 +120,7 @@ async def _arxiv_llamaparse(ctx: FetchContext, url: str) -> RawTierResult:
     arxiv_id, paper = metadata
     if not paper.pdf_url:
         raise ValueError(f"arxiv paper has no PDF URL for {url}")
-    body = await llamaparse_parser.render_pdf(
+    body = await llamaparse_extractor.render_pdf(
         ctx.http_client,
         pdf_url=paper.pdf_url,
         api_key=ctx.llama_parse_api_key,
