@@ -3,7 +3,7 @@
 .ONESHELL:
 SHELL := /bin/bash
 
-FETCHER_PORT ?= 8000
+FETCHER_PORT ?= 8765
 
 .PHONY: dev dagster-dev fetcher-dev build up down logs tunnel
 

@@ -85,8 +85,8 @@ FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" uv run uvicorn fetcher.app:app \\
 help = "Run the fetcher service locally (default port 8000; envs from repo-root .env)"
 
 [tool.poe.tasks.fetcher-dev.args.port]
-default = "8000"
-help = "Port to bind (override e.g. 8765 if 8000 is occupied)"
+default = "8765"
+help = "Port to bind (8000 is reserved for chroma in docker-compose)"
 
 
 [tool.poe.tasks.backup]
