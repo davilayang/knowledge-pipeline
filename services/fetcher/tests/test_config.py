@@ -26,13 +26,24 @@ def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
 
 def test_settings_raises_when_required_missing(monkeypatch: pytest.MonkeyPatch) -> None:
-    """Missing FETCHER_JINA_API_KEY raises a ValidationError."""
-    monkeypatch.delenv("FETCHER_JINA_API_KEY", raising=False)
-    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    """Missing FETCHER_SOCKS5_URL raises a ValidationError (jina key is optional)."""
+    monkeypatch.delenv("FETCHER_SOCKS5_URL", raising=False)
+    monkeypatch.setenv("FETCHER_JINA_API_KEY", "x")
     monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
 
     with pytest.raises(Exception) as excinfo:
         Settings()
 
     error = str(excinfo.value)
-    assert "FETCHER_JINA_API_KEY" in error or "jina_api_key" in error.lower()
+    assert "FETCHER_SOCKS5_URL" in error or "socks5_url" in error.lower()
+
+
+def test_settings_accepts_missing_jina_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Jina key is optional — free tier works without auth."""
+    monkeypatch.delenv("FETCHER_JINA_API_KEY", raising=False)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    settings = Settings()
+
+    assert settings.jina_api_key is None

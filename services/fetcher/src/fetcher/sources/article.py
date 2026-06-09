@@ -38,11 +38,21 @@ def _validate_not_js_wall(content: str) -> bool:
     )
 
 
+def _jina_wraps_upstream_error(body: str) -> bool:
+    """Jina Reader returns HTTP 200 even when the upstream URL 4xx/5xx'd.
+
+    The body carries a 'Warning: Target URL returned error <code>:' marker
+    that we use to demote the response to a tier failure.
+    """
+    return "Warning: Target URL returned error" in body
+
+
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     response = await ctx.jina_client.get(_JINA_BASE + quote(url, safe=""))
-    if response.status_code >= 400:
+    body = response.text or ""
+    if response.status_code >= 400 or _jina_wraps_upstream_error(body):
         return RawTierResult(content="", status=response.status_code)
-    return RawTierResult(content=response.text or "", status=response.status_code)
+    return RawTierResult(content=body, status=response.status_code)
 
 
 async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
@@ -68,6 +78,9 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
             logger.warning("curl_cffi direct fetch failed for %s: %s", url, direct_exc)
             return RawTierResult(content="", status=0)
 
+    # Trafilatura happily extracts boilerplate from 4xx error pages — short-circuit.
+    if status >= 400:
+        return RawTierResult(content="", status=status)
     return RawTierResult(content=trafilatura_parser.extract(html), status=status)
 
 
