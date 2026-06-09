@@ -55,3 +55,17 @@ class Settings(BaseSettings):
             "is unreachable when unset."
         ),
     )
+    rapidapi_key: str | None = Field(
+        default=None,
+        description=(
+            "RapidAPI key used by Medium paywall bypass (mediumapi.com). "
+            "Optional: tier unreachable when unset."
+        ),
+    )
+    medium_domains_path: str = Field(
+        default="config/medium_domains.yaml",
+        description=(
+            "Path to the YAML file listing Medium-hosted domains. "
+            "Relative to the service working dir."
+        ),
+    )

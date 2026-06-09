@@ -29,6 +29,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             llama_parse_tier_pdf=settings.llama_parse_tier_pdf,
             default_timeout_s=settings.default_timeout_s,
             tavily_api_key=settings.tavily_api_key,
+            rapidapi_key=settings.rapidapi_key,
         )
     finally:
         await default.aclose()

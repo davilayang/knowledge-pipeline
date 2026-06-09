@@ -48,6 +48,7 @@ class FetchContext:
     default_timeout_s: int
     llama_parse_tier_pdf: str = "agentic_plus"
     tavily_api_key: str | None = None
+    rapidapi_key: str | None = None
 
 
 @dataclass

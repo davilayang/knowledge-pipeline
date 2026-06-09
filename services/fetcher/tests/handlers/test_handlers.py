@@ -1,7 +1,17 @@
-"""Tests for source matching and tier metadata."""
+"""Tests for handler matching and tier metadata."""
+
+import pytest
 
 from fetcher.extractors.jina import wraps_upstream_error as _jina_wraps_upstream_error
-from fetcher.handlers import article, arxiv, pdf, youtube
+from fetcher.handlers import article, arxiv, medium, pdf, youtube
+
+
+@pytest.fixture
+def medium_domains(monkeypatch: pytest.MonkeyPatch) -> set[str]:
+    """Pin the medium handler's domain set for deterministic match tests."""
+    pinned = {"medium.com", "towardsdatascience.com", "betterprogramming.pub"}
+    monkeypatch.setattr(medium, "_MEDIUM_DOMAINS", pinned)
+    return pinned
 
 
 def test_article_matches_generic_http_only() -> None:
@@ -64,6 +74,124 @@ async def test_article_tavily_calls_extractor_when_key_set() -> None:
 
     assert result.content == "# md"
     assert result.status == 200
+
+
+def test_medium_matches_configured_domain(medium_domains: set[str]) -> None:
+    assert medium.matches("https://medium.com/@author/title-abc123def456") is True
+    assert medium.matches("https://towardsdatascience.com/title-abc123def456") is True
+    assert medium.matches("https://www.towardsdatascience.com/title-abc123def456") is True
+    assert medium.matches("https://example.com/post-abc123def456") is False
+    assert medium.matches("mailto:x@y.com") is False
+
+
+def test_medium_strict_paid_tier_is_false(medium_domains: set[str]) -> None:
+    assert medium.STRICT_PAID_TIER is False
+
+
+def test_medium_tier_order_jina_then_rapidapi(medium_domains: set[str]) -> None:
+    assert [tier.name for tier in medium.TIERS] == ["jina", "rapidapi"]
+    paid = next(tier for tier in medium.TIERS if tier.name == "rapidapi")
+    assert paid.cost == "paid"
+    assert paid.rate_limit_key == "rapidapi"
+
+
+def test_medium_extract_article_id_from_url() -> None:
+    assert (
+        medium.extract_article_id(
+            "https://towardsdatascience.com/some-cool-title-abc123def456"
+        )
+        == "abc123def456"
+    )
+    assert (
+        medium.extract_article_id(
+            "https://medium.com/@author/another-title-deadbeef1234"
+        )
+        == "deadbeef1234"
+    )
+    assert (
+        medium.extract_article_id(
+            "https://medium.com/publication-name/yet-another-1a2b3c4d5e6f?source=rss"
+        )
+        == "1a2b3c4d5e6f"
+    )
+    with pytest.raises(ValueError):
+        medium.extract_article_id("https://medium.com/no-trailing-id-here")
+
+
+def test_medium_load_domains_lowercases_and_strips_www(tmp_path) -> None:
+    yaml_path = tmp_path / "domains.yaml"
+    yaml_path.write_text(
+        "medium_domains:\n"
+        "  - Medium.com\n"
+        "  - www.TowardsDataScience.com\n"
+        "  - betterprogramming.pub\n"
+    )
+    domains = medium._load_domains(str(yaml_path))
+    assert domains == {
+        "medium.com",
+        "towardsdatascience.com",
+        "betterprogramming.pub",
+    }
+
+
+async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) -> None:
+    from unittest.mock import MagicMock
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = None
+
+    result = await _rapidapi_fetch(
+        ctx, "https://towardsdatascience.com/title-abc123def456"
+    )
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_medium_rapidapi_calls_extractor_when_key_set(medium_domains: set[str]) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = "k"
+    with patch(
+        "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
+        new=AsyncMock(return_value="# md"),
+    ) as fetch:
+        result = await _rapidapi_fetch(
+            ctx, "https://towardsdatascience.com/title-abc123def456"
+        )
+
+    fetch.assert_called_once_with(
+        ctx.http_client, article_id="abc123def456", api_key="k"
+    )
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+async def test_medium_rapidapi_demotes_extractor_failure(medium_domains: set[str]) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = "k"
+    with patch(
+        "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
+        new=AsyncMock(side_effect=ValueError("boom")),
+    ):
+        result = await _rapidapi_fetch(
+            ctx, "https://towardsdatascience.com/title-abc123def456"
+        )
+    assert result.content == ""
+    assert result.status == 0
+
+
+def test_article_matches_excludes_medium_host(medium_domains: set[str]) -> None:
+    assert article.matches("https://medium.com/@author/x-abc123def456") is False
+    assert article.matches("https://towardsdatascience.com/x-abc123def456") is False
 
 
 def test_pdf_matches_pdf_url_not_arxiv() -> None:

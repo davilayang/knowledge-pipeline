@@ -29,6 +29,10 @@ def matches(url: str) -> bool:
         return False
     if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
         return False
+    from fetcher.handlers import medium as medium_handler
+
+    if medium_handler.matches(url):
+        return False
     return True
 
 
