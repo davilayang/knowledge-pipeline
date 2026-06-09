@@ -31,8 +31,6 @@ async def test_fetch_quotes_url_into_base() -> None:
 
 
 def test_wraps_upstream_error_detects_marker() -> None:
-    assert jina.wraps_upstream_error(
-        "Warning: Target URL returned error 404: Not Found"
-    )
+    assert jina.wraps_upstream_error("Warning: Target URL returned error 404: Not Found")
     assert not jina.wraps_upstream_error("Title: Real Article\n\nprose")
     assert not jina.wraps_upstream_error("")

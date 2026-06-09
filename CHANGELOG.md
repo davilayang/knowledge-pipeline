@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Medium articles now fetch via a dedicated handler.** Jina Reader free tier, then mediumapi.com RapidAPI paywall bypass under `FETCHER_RAPIDAPI_KEY` (optional). Domain set in `services/fetcher/config/medium_domains.yaml`; ships with a seed of well-known Medium-hosted publications, expand from your subscription list. Path overridable via `FETCHER_MEDIUM_DOMAINS_PATH`.
+- **Generic-PDF URLs now route to a dedicated `pdf` handler** instead of falling to article's curl_cffi tier. Free tier: pymupdf4llm with a 50MB download cap. Paid tier: LlamaParse `agentic_plus` (overridable via `FETCHER_LLAMA_PARSE_TIER_PDF`). arXiv PDFs still go to the arxiv handler.
+- **Article handler gains a paid third tier (Tavily Extract API).** Runs when Jina and curl_cffi+trafilatura both fail the JavaScript-wall validator. `FETCHER_TAVILY_API_KEY` is optional; tier becomes unreachable when unset.
+
 ### Changed
 
 - **`CLAUDE.md` @-imports now resolve again** — directory renamed `personal-knowledge-os/` → `knowledge-os/` upstream (data-context-builder PR #47). Updated absolute paths plus a stray test-fixture tag in `tests/domains/queue_store/test_sources.py`.

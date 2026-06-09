@@ -69,7 +69,9 @@ async def test_article_tavily_calls_extractor_when_key_set() -> None:
 
     ctx = MagicMock()
     ctx.tavily_api_key = "k"
-    with patch("fetcher.handlers.article.tavily_extractor.extract", new=AsyncMock(return_value="# md")):
+    with patch(
+        "fetcher.handlers.article.tavily_extractor.extract", new=AsyncMock(return_value="# md")
+    ):
         result = await _tavily_fetch(ctx, "https://example.com")
 
     assert result.content == "# md"
@@ -97,15 +99,11 @@ def test_medium_tier_order_jina_then_rapidapi(medium_domains: set[str]) -> None:
 
 def test_medium_extract_article_id_from_url() -> None:
     assert (
-        medium.extract_article_id(
-            "https://towardsdatascience.com/some-cool-title-abc123def456"
-        )
+        medium.extract_article_id("https://towardsdatascience.com/some-cool-title-abc123def456")
         == "abc123def456"
     )
     assert (
-        medium.extract_article_id(
-            "https://medium.com/@author/another-title-deadbeef1234"
-        )
+        medium.extract_article_id("https://medium.com/@author/another-title-deadbeef1234")
         == "deadbeef1234"
     )
     assert (
@@ -142,9 +140,7 @@ async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) 
     ctx = MagicMock()
     ctx.rapidapi_key = None
 
-    result = await _rapidapi_fetch(
-        ctx, "https://towardsdatascience.com/title-abc123def456"
-    )
+    result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
     assert result.content == ""
     assert result.status == 0
 
@@ -160,13 +156,9 @@ async def test_medium_rapidapi_calls_extractor_when_key_set(medium_domains: set[
         "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
         new=AsyncMock(return_value="# md"),
     ) as fetch:
-        result = await _rapidapi_fetch(
-            ctx, "https://towardsdatascience.com/title-abc123def456"
-        )
+        result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
 
-    fetch.assert_called_once_with(
-        ctx.http_client, article_id="abc123def456", api_key="k"
-    )
+    fetch.assert_called_once_with(ctx.http_client, article_id="abc123def456", api_key="k")
     assert result.content == "# md"
     assert result.status == 200
 
@@ -182,9 +174,7 @@ async def test_medium_rapidapi_demotes_extractor_failure(medium_domains: set[str
         "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
         new=AsyncMock(side_effect=ValueError("boom")),
     ):
-        result = await _rapidapi_fetch(
-            ctx, "https://towardsdatascience.com/title-abc123def456"
-        )
+        result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
     assert result.content == ""
     assert result.status == 0
 
@@ -226,9 +216,7 @@ async def test_pdf_free_tier_reads_bytes_then_calls_pymupdf_extractor() -> None:
     response.content = b"%PDF-1.4 fake bytes"
     ctx.http_client.get = AsyncMock(return_value=response)
 
-    with patch(
-        "fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md"
-    ) as render:
+    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md") as render:
         result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
 
     render.assert_called_once_with(b"%PDF-1.4 fake bytes")
@@ -248,9 +236,7 @@ async def test_pdf_free_tier_caps_download_at_max_bytes() -> None:
     response.content = b"x" * (MAX_PDF_BYTES + 1024)
     ctx.http_client.get = AsyncMock(return_value=response)
 
-    with patch(
-        "fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="ok"
-    ) as render:
+    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="ok") as render:
         await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
 
     passed = render.call_args.args[0]
