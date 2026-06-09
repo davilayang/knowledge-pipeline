@@ -56,13 +56,16 @@ class FetchResult:
 
 class FetcherResource(dg.ConfigurableResource):
     service_url: str
-    timeout_s: int = 60
-    allow_paid: bool = True
+    timeout_s: int
+    # str-typed because Dagster has no `EnvVar.bool` — resolved to "true"/"false"
+    # at run init, parsed at the call site below.
+    allow_paid: str
 
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
         del content_type  # service matches source by URL
+        allow_paid = self.allow_paid.lower() == "true"
         with httpx.Client(timeout=self.timeout_s) as client:
-            return _call_service(client, self.service_url, url, allow_paid=self.allow_paid)
+            return _call_service(client, self.service_url, url, allow_paid=allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
         return self.fetch_for_type(url, content_type="Article")
@@ -190,9 +193,8 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         ),
         "fetcher": FetcherResource(
             service_url=dg.EnvVar("FETCHER_URL"),
-            timeout_s=int(dg.EnvVar("FETCHER_TIMEOUT_S").get_value("60") or "60"),
-            allow_paid=(dg.EnvVar("FETCHER_ALLOW_PAID").get_value("true") or "true").lower()
-            == "true",
+            timeout_s=dg.EnvVar.int("FETCHER_TIMEOUT_S"),
+            allow_paid=dg.EnvVar("FETCHER_ALLOW_PAID"),
         ),
         "extractor": ExtractorRegistry(
             openai_api_key=dg.EnvVar("OPENAI_API_KEY"),

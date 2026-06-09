@@ -39,29 +39,11 @@ Local store: `data/queue.db` (SQLite). Lifecycle status (Queued / Fetching /
 Ready / Failed) lives in Notion; everything else (raw_content, extracted
 Topic Card, provenance) lives in the local store.
 
-## URL → markdown — delegated to the fetcher service
-
-URL→markdown is handled by `services/fetcher/` (a sidecar FastAPI
-container). The orchestrator's `FetcherResource` is a thin httpx client
-that POSTs `{url, quality: "fast", allow_paid, force_refresh: false}` to
-`/v1/fetch` and maps the response onto `FetchResult`. The asset enforces
-its own 500-char extraction floor — the service's cascade falls back to
-the longest available content when no tier hits its per-tier floor, so
-sub-floor 200s do happen and the asset rejects them before they reach
-the extractor.
-
-Error semantics: every non-200 problem+json becomes a `dg.Failure`; the
-service's `problem.retryable` flag flows directly into `allow_retries`,
-so transient upstream blips (502 UPSTREAM_FAILURE, 504 UPSTREAM_TIMEOUT,
-429 RATE_LIMITED) re-queue under the asset's `RetryPolicy` while
-permanent failures (400 BAD_URL, 422 UNSUPPORTED_SOURCE) fail fast and
-surface to Notion as Status=Failed.
-
-Required env: `FETCHER_URL` (base URL of the fetcher service). Optional:
-`FETCHER_TIMEOUT_S` (default 60s), `FETCHER_ALLOW_PAID` (default `true`;
-arxiv needs it to escalate from pymupdf to LlamaParse). LlamaParse /
-SOCKS5 / proxy knobs live on the fetcher service as `FETCHER_*` envs —
-see that service's README.
+URL→markdown is delegated to `services/fetcher/`. The asset enforces a
+500-char extraction floor as the last line of defence before extraction
+— see `assets.py`. Env wiring in `.env.example` under the `FETCHER_*`
+block; service-side knobs (LlamaParse / SOCKS5 / Jina) live in the
+fetcher service's own env.
 
 ## Runbook
 

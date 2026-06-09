@@ -275,7 +275,7 @@ def _make_service_fetcher(**overrides) -> FetcherResource:
     return FetcherResource(
         service_url="http://fetcher:8000",
         timeout_s=overrides.pop("timeout_s", 30),
-        allow_paid=overrides.pop("allow_paid", True),
+        allow_paid=overrides.pop("allow_paid", "true"),
         **overrides,
     )
 
@@ -475,7 +475,7 @@ def test_fetcher_fails_loud_on_200_missing_markdown():
 
 
 def test_fetcher_sends_allow_paid_false_when_configured():
-    resource = _make_service_fetcher(allow_paid=False)
+    resource = _make_service_fetcher(allow_paid="false")
     body = {
         "markdown": "x",
         "source_type": "article",

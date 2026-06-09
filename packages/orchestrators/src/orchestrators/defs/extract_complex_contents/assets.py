@@ -41,7 +41,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 @dg.asset(
     key=["extract_complex_contents", "fetched"],
     group_name=GROUP_NAME,
-    compute_kind="python",
+    compute_kind="http",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
