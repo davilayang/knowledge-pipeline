@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.3] — 2026-06-09
+
+### Changed
+
+- **Fetcher service wire vocabulary now uses `kind`.** `/v1/fetch` response field `source_type` → `kind`; `/healthz` field `registered_sources` → `registered_kinds`; error code `UNSUPPORTED_SOURCE` → `UNSUPPORTED_KIND`. Internal directory `services/fetcher/src/fetcher/sources/` → `handlers/` reflects that each module handles a URL kind. Cache schema column unchanged.
+
+---
+
 ## [0.18.2] — 2026-06-09
 
 ### Changed
