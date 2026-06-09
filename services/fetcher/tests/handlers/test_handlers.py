@@ -1,7 +1,7 @@
 """Tests for source matching and tier metadata."""
 
 from fetcher.extractors.jina import wraps_upstream_error as _jina_wraps_upstream_error
-from fetcher.handlers import article, arxiv, youtube
+from fetcher.handlers import article, arxiv, pdf, youtube
 
 
 def test_article_matches_generic_http_only() -> None:
@@ -64,6 +64,112 @@ async def test_article_tavily_calls_extractor_when_key_set() -> None:
 
     assert result.content == "# md"
     assert result.status == 200
+
+
+def test_pdf_matches_pdf_url_not_arxiv() -> None:
+    assert pdf.matches("https://example.com/paper.pdf") is True
+    assert pdf.matches("https://example.com/path/file.PDF") is True
+    assert pdf.matches("https://arxiv.org/pdf/2401.00001v2.pdf") is False
+    assert pdf.matches("https://export.arxiv.org/pdf/2401.00001.pdf") is False
+    assert pdf.matches("https://example.com/article") is False
+    assert pdf.matches("mailto:x@y.com") is False
+
+
+def test_pdf_strict_paid_tier_is_false() -> None:
+    assert pdf.STRICT_PAID_TIER is False
+
+
+def test_pdf_tier_order_is_pymupdf_then_llamaparse() -> None:
+    assert [tier.name for tier in pdf.TIERS] == ["pymupdf4llm", "llamaparse"]
+    paid = next(tier for tier in pdf.TIERS if tier.name == "llamaparse")
+    assert paid.cost == "paid"
+    assert paid.rate_limit_key == "llamaparse"
+
+
+async def test_pdf_free_tier_reads_bytes_then_calls_pymupdf_extractor() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import _pymupdf4llm_fetch
+
+    ctx = MagicMock()
+    ctx.default_timeout_s = 30
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"%PDF-1.4 fake bytes"
+    ctx.http_client.get = AsyncMock(return_value=response)
+
+    with patch(
+        "fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md"
+    ) as render:
+        result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
+
+    render.assert_called_once_with(b"%PDF-1.4 fake bytes")
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+async def test_pdf_free_tier_caps_download_at_max_bytes() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
+
+    ctx = MagicMock()
+    ctx.default_timeout_s = 30
+    response = MagicMock()
+    response.status_code = 200
+    response.content = b"x" * (MAX_PDF_BYTES + 1024)
+    ctx.http_client.get = AsyncMock(return_value=response)
+
+    with patch(
+        "fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="ok"
+    ) as render:
+        await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
+
+    passed = render.call_args.args[0]
+    assert len(passed) == MAX_PDF_BYTES
+
+
+async def test_pdf_paid_tier_calls_llamaparse_render_pdf() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import _llamaparse_fetch
+
+    ctx = MagicMock()
+    ctx.llama_parse_api_key = "k"
+    ctx.llama_parse_tier_pdf = "agentic_plus"
+
+    with patch(
+        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        new=AsyncMock(return_value="# heavy md"),
+    ) as render:
+        result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")
+
+    render.assert_called_once_with(
+        ctx.http_client,
+        pdf_url="https://example.com/paper.pdf",
+        api_key="k",
+        tier="agentic_plus",
+    )
+    assert result.content == "# heavy md"
+    assert result.status == 200
+
+
+async def test_pdf_paid_tier_demotes_extractor_failure() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import _llamaparse_fetch
+
+    ctx = MagicMock()
+    ctx.llama_parse_api_key = "k"
+    ctx.llama_parse_tier_pdf = "agentic_plus"
+    with patch(
+        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        new=AsyncMock(side_effect=ValueError("boom")),
+    ):
+        result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")
+
+    assert result.content == ""
+    assert result.status == 0
 
 
 async def test_article_tavily_demotes_extractor_failure() -> None:

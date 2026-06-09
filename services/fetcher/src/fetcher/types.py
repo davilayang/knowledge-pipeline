@@ -46,6 +46,7 @@ class FetchContext:
     llama_parse_api_key: str
     llama_parse_tier_arxiv: str
     default_timeout_s: int
+    llama_parse_tier_pdf: str = "agentic_plus"
     tavily_api_key: str | None = None
 
 

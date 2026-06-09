@@ -26,6 +26,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             socks5_url=settings.socks5_url,
             llama_parse_api_key=settings.llama_parse_api_key,
             llama_parse_tier_arxiv=settings.llama_parse_tier_arxiv,
+            llama_parse_tier_pdf=settings.llama_parse_tier_pdf,
             default_timeout_s=settings.default_timeout_s,
             tavily_api_key=settings.tavily_api_key,
         )

@@ -52,7 +52,9 @@ def test_fetch_returns_422_unsupported_kind(monkeypatch, tmp_db_path: str) -> No
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with TestClient(app) as client:
-        response = client.post("/v1/fetch", json={"url": "https://example.com/paper.pdf"})
+        # youtube host without an extractable video id: youtube.matches() → False,
+        # article excludes youtube hosts, pdf needs .pdf suffix → no handler claims it.
+        response = client.post("/v1/fetch", json={"url": "https://www.youtube.com/about"})
     assert response.status_code == 422
     assert response.json()["code"] == "UNSUPPORTED_KIND"
 
