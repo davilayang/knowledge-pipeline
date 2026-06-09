@@ -459,7 +459,7 @@ def test_get_queue_extraction_flattens_topic_card_with_provenance(db_path: Path)
         "best_example": "Replay during SWS",
         "transferable_pattern": "Async memory consolidation",
         "main_tension": "Throughput vs fidelity",
-        "candidate_tie_backs": ["agent-memory", "personal-knowledge-os"],
+        "candidate_tie_backs": ["agent-memory", "knowledge-os"],
     }
     _record_three_call(db_path, page_id="p-1", topic_payload=topic_payload)
 
@@ -467,7 +467,7 @@ def test_get_queue_extraction_flattens_topic_card_with_provenance(db_path: Path)
     assert out is not None
     # Payload keys flattened to top level.
     assert out["extracted_title"] == "Anthropic talk"
-    assert out["candidate_tie_backs"] == ["agent-memory", "personal-knowledge-os"]
+    assert out["candidate_tie_backs"] == ["agent-memory", "knowledge-os"]
     # Provenance keys also top-level.
     assert out["extraction_prompt_label"] == "topic_card_v1"
     assert out["extraction_model"] == "gpt-4o-mini"
