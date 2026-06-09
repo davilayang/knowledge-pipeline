@@ -8,6 +8,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.17.3] — 2026-06-08
+
+### Changed
+
+- Use TRUNCATE policy after queue db database write to ensure checkpoints are merged into main db. Allow reader can read full data. 
+
 ## [0.17.2] — 2026-06-06
 
 ### Changed

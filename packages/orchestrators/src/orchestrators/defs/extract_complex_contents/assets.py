@@ -234,6 +234,8 @@ def extracted(
         tokens_in_total=tokens_in_total,
         tokens_out_total=tokens_out_total,
     )
+    # Fold -wal sidecar into the main queue.db, allowing readers to read all rows
+    store.checkpoint_wal()
 
     topic_card = payload.topic_card
     followups = payload.followups

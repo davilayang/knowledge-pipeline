@@ -338,3 +338,10 @@ class QueueStoreResource(dg.ConfigurableResource):
         return queue_db.list_with_stale_extraction(
             db_path=self._path(), min_age_minutes=min_age_minutes
         )
+
+    def checkpoint_wal(self) -> None:
+        """Fold the -wal sidecar back into the main queue.db file. Called
+        after each extracted asset materialization so NA's read path
+        (which opens with `immutable=1` and ignores WAL sidecars) sees
+        fresh writes without waiting for SQLite's auto-checkpoint."""
+        queue_db.checkpoint_wal(db_path=self._path())
