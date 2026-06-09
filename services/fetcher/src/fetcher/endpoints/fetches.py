@@ -149,12 +149,14 @@ async def delete_fetch(job_id: str, request: Request) -> Response:
             db_path=db_path,
             job_id=job_id,
             status="failed",
-            error={
-                "code": "CANCELLED",
-                "title": "Job was cancelled",
-                "detail": "DELETE /v1/fetches/{job_id}",
-                "retryable": False,
-            },
+            error=problem_body(
+                status=499,
+                code="CANCELLED",
+                title="Job was cancelled",
+                detail="DELETE /v1/fetches/{job_id}",
+                instance=f"/v1/fetches/{job_id}",
+                retryable=False,
+            ),
         )
 
     return Response(status_code=204)

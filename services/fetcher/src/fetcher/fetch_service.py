@@ -9,13 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fetcher.cache import cache_key, lookup as cache_lookup, upsert as cache_upsert
+from fetcher.cache import cache_key, compute_etag, lookup as cache_lookup, upsert as cache_upsert
 from fetcher.canonicalize import canonicalize
 from fetcher.cascade import run_cascade
 from fetcher.errors import UnsupportedSource, UpstreamFailure
 from fetcher.registry import find_source
 from fetcher.single_flight import get_url_lock
-from fetcher.types import CascadeResult, FetchContext, FetchRequest, Source, TierLogEntry
+from fetcher.types import FetchContext, FetchRequest, Source, TierLogEntry
 
 
 logger = logging.getLogger(__name__)
@@ -113,8 +113,6 @@ async def run_fetch_request(
             ttl_days=ttl_days,
             url=req.url,
         )
-
-        from fetcher.cache import compute_etag
 
         return FetchOutcome(
             kind="success",

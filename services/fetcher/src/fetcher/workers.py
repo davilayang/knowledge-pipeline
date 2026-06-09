@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from domains.fetches_store.sources import update_job
+from domains.fetches_store.sources import get_job_status, update_job
 from fetcher import task_registry
 from fetcher.config import Settings
 from fetcher.fetch_service import run_fetch_request
@@ -71,14 +71,11 @@ async def _job_worker(
         update_job(db_path=db_path, job_id=job_id, status="done", result=result)
 
     except asyncio.CancelledError:
-        # Check current status: if already done/failed, don't overwrite
-        # This prevents the "just finished" vs "just cancelled" race.
-        from domains.fetches_store.sources import get_job_status
-
+        # Status-check guard: don't overwrite if worker already transitioned to done/failed.
         status = get_job_status(db_path=db_path, job_id=job_id)
         if status in {"pending", "running"}:
             error = problem_body(
-                status=499,  # Client Closed Request-ish
+                status=499,
                 code="CANCELLED",
                 title="Job was cancelled",
                 detail="DELETE /v1/fetches/{job_id}",

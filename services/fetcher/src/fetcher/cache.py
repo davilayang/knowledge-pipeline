@@ -12,18 +12,21 @@ from typing import Any
 
 from domains.fetches_store.sources import (
     _cache_key as cache_key,
-)
-from domains.fetches_store.sources import (
     _etag as compute_etag,
-)
-from domains.fetches_store.sources import (
     cache_lookup as _store_lookup,
-)
-from domains.fetches_store.sources import (
     cache_upsert as _store_upsert,
 )
 
 from fetcher.types import TierLogEntry
+
+
+__all__ = [
+    "CacheRow",
+    "cache_key",
+    "compute_etag",
+    "lookup",
+    "upsert",
+]
 
 
 @dataclass(frozen=True)

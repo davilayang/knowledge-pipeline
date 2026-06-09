@@ -6,7 +6,7 @@ Three tables: cache, fetches, url_aliases.
 import hashlib
 import json
 import sqlite3
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -68,12 +68,12 @@ def _connect(db_path: Path | str) -> sqlite3.Connection:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+    return datetime.now(UTC).isoformat(timespec="seconds").replace("+00:00", "Z")
 
 
 def _iso_plus_days(days: int) -> str:
     return (
-        (datetime.now(timezone.utc) + timedelta(days=days))
+        (datetime.now(UTC) + timedelta(days=days))
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )
@@ -225,7 +225,7 @@ def insert_job(
     """Insert a new pending fetch job. Returns `expires_at` ISO string."""
     now = _now_iso()
     expires_at = (
-        (datetime.now(timezone.utc) + timedelta(hours=expires_in_hours))
+        (datetime.now(UTC) + timedelta(hours=expires_in_hours))
         .isoformat(timespec="seconds")
         .replace("+00:00", "Z")
     )
