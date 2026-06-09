@@ -6,7 +6,6 @@ SENSOR_MIN_INTERVAL_S = 900
 MAX_TO_EXTRACT_PER_TICK = (
     2  # renamed from MAX_QUEUED_PER_TICK; lower than triage's because extraction is expensive
 )
-FETCHED_CONTENT_MIN_CHARS = 2000
 
 LIFECYCLE_DRIFT_AGE_MINUTES = 60
 
@@ -28,7 +27,6 @@ PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"
 PROMPT_LABEL_FOLLOWUPS = "followups_v1"
 
 __all__ = [
-    "FETCHED_CONTENT_MIN_CHARS",
     "JOB_MAX_RETRIES",
     "LIFECYCLE_DRIFT_AGE_MINUTES",
     "MAX_TO_EXTRACT_PER_TICK",

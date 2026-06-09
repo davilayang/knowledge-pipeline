@@ -24,33 +24,42 @@ fetched ──► extracted ──► published
    │           └─ on failure (LLM error / required-fields check):
    │              run_failure_sensor → Notion: Status=Failed + Error
    │
-   └─ on failure (per-type fetcher cascade exhausted / under floor):
+   └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
 
-Each asset dispatches to per-type strategies (FetcherResource for fetched,
-ExtractorRegistry for extracted) — no branching in the asset graph itself.
-fetched + extracted include `content_preview` / `extraction_preview`
-metadata (head + tail of the content) for at-a-glance verification.
+`fetched` calls the standalone `fetcher` service (POST /v1/fetch) over
+dagster_network; the service is authoritative for source matching
+(article / arxiv / youtube) and quality-floor enforcement. `extracted`
+runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetched +
+extracted include `content_preview` / `extraction_preview` metadata (head
++ tail of the content) for at-a-glance verification.
 ```
 
 Local store: `data/queue.db` (SQLite). Lifecycle status (Queued / Fetching /
 Ready / Failed) lives in Notion; everything else (raw_content, extracted
 Topic Card, provenance) lives in the local store.
 
-## arXiv PDF rendering — LlamaParse (kp) vs pymupdf4llm (NA)
+## URL → markdown — delegated to the fetcher service
 
-kp uses LlamaParse (LlamaCloud, `agentic_plus` tier) for arXiv PDF →
-markdown. Hard-fails on any LlamaParse failure — no pymupdf4llm fallback.
-Latency is acceptable here because kp is the async ingestion layer; the
-agent (`newsletter-assistant`) doesn't wait on extraction.
+Phase 2 (release 0.19.0) cut the in-process per-tier fetchers (curl_cffi +
+trafilatura / pymupdf + LlamaParse / youtube-transcript-api). All
+URL→markdown is now handled by `services/fetcher/` (a sidecar FastAPI
+container). The orchestrator's `FetcherResource` is a thin httpx client
+that POSTs `{url, quality: "fast", allow_paid, force_refresh: false}` to
+`/v1/fetch` and maps the response onto `FetchResult`.
 
-NA's equivalent fetcher uses pymupdf4llm (faster, lower quality) because
-the agent layer is user-facing.
+Error semantics: every non-200 problem+json becomes a `dg.Failure`; the
+service's `problem.retryable` flag flows directly into `allow_retries`,
+so transient upstream blips (502 UPSTREAM_FAILURE, 504 UPSTREAM_TIMEOUT,
+429 RATE_LIMITED) re-queue under the asset's `RetryPolicy` while
+permanent failures (400 BAD_URL, 422 UNSUPPORTED_SOURCE) fail fast and
+surface to Notion as Status=Failed.
 
-Required env: `LLAMA_CLOUD_API_KEY` (LlamaCloud API key), `LLAMA_PARSE_TIER`
-(tier string, e.g. `agentic_plus` for prod or `fast` for dev — see
-`FetcherResource.llama_parse_tier`). `llama_cloud_base_url` defaults to
-`https://api.cloud.eu.llamaindex.ai` on `FetcherResource`.
+Required env: `FETCHER_URL` (base URL of the fetcher service). Optional:
+`FETCHER_TIMEOUT_S` (default 60s), `FETCHER_ALLOW_PAID` (default `true`;
+arxiv needs it to escalate from pymupdf to LlamaParse). All
+LlamaParse/SOCKS5/proxy knobs now live in `services/fetcher/.env` as
+`FETCHER_*` envs — see that service's README.
 
 ## Runbook
 
@@ -83,8 +92,12 @@ dg launch --job extract_complex_contents --partition <notion_page_id>
   `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`,
   a `URL` url property, a `Content Type` select property (YouTube, arXiv, …),
   and an `Error` rich-text property.
-- **Pi SOCKS5 proxy** — `PI_SOCKS5_URL` reachable from the Dagster host;
-  used as the curl-cffi fallback when Jina is blocked.
+- **Fetcher service** — `FETCHER_URL` must point to a reachable
+  `services/fetcher/` instance. In docker-compose the sidecar container
+  resolves at `http://fetcher:8000` over `dagster_network`; for laptop
+  `poe dagster-dev`, run `uv run uvicorn fetcher.app:app --workers 1
+  --port 8000` from `services/fetcher/` and set
+  `FETCHER_URL=http://localhost:8000`.
 - **Notion AI training opt-out** — `Notion Workspace Settings → Notion AI
   → Manage data → "Don't use my workspace data to train models"` must be
   ON. Lifecycle-only Notion writes are intentional (raw content + Topic

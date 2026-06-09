@@ -245,21 +245,6 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     assert metadata["title"].text == "Attention Is All You Need"
 
 
-def test_fetched_fails_when_below_floor(tmp_path: Path):
-    db_path = tmp_path / "q.db"
-    _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
-    store = QueueStoreResource(db_path=str(db_path))
-    fetcher = MagicMock()
-    fetcher.fetch_for_type.return_value = FetchResult(content="short", tier="youtube", tier_log=[])
-    with pytest.raises(Exception, match="below floor"):
-        _materialize(
-            fetched,
-            partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
-            url="https://youtube.com/watch?v=abc",
-        )
-
-
 def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")
