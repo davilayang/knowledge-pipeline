@@ -41,9 +41,7 @@ Topic Card, provenance) lives in the local store.
 
 ## URL → markdown — delegated to the fetcher service
 
-Phase 2 (release 0.19.0) cut the in-process per-tier fetchers (curl_cffi +
-trafilatura / pymupdf + LlamaParse / youtube-transcript-api). All
-URL→markdown is now handled by `services/fetcher/` (a sidecar FastAPI
+URL→markdown is handled by `services/fetcher/` (a sidecar FastAPI
 container). The orchestrator's `FetcherResource` is a thin httpx client
 that POSTs `{url, quality: "fast", allow_paid, force_refresh: false}` to
 `/v1/fetch` and maps the response onto `FetchResult`.
@@ -57,9 +55,9 @@ surface to Notion as Status=Failed.
 
 Required env: `FETCHER_URL` (base URL of the fetcher service). Optional:
 `FETCHER_TIMEOUT_S` (default 60s), `FETCHER_ALLOW_PAID` (default `true`;
-arxiv needs it to escalate from pymupdf to LlamaParse). All
-LlamaParse/SOCKS5/proxy knobs now live in `services/fetcher/.env` as
-`FETCHER_*` envs — see that service's README.
+arxiv needs it to escalate from pymupdf to LlamaParse). LlamaParse /
+SOCKS5 / proxy knobs live on the fetcher service as `FETCHER_*` envs —
+see that service's README.
 
 ## Runbook
 
