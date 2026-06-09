@@ -1,8 +1,9 @@
 """Article handler: Jina Reader, then curl_cffi plus trafilatura."""
 
 import logging
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
+from fetcher.extractors import jina as jina_extractor
 from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 
@@ -11,7 +12,6 @@ logger = logging.getLogger(__name__)
 
 NAME = "article"
 STRICT_PAID_TIER = False
-_JINA_BASE = "https://r.jina.ai/"
 
 
 def matches(url: str) -> bool:
@@ -38,21 +38,11 @@ def _validate_not_js_wall(content: str) -> bool:
     )
 
 
-def _jina_wraps_upstream_error(body: str) -> bool:
-    """Jina Reader returns HTTP 200 even when the upstream URL 4xx/5xx'd.
-
-    The body carries a 'Warning: Target URL returned error <code>:' marker
-    that we use to demote the response to a tier failure.
-    """
-    return "Warning: Target URL returned error" in body
-
-
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
-    response = await ctx.jina_client.get(_JINA_BASE + quote(url, safe=""))
-    body = response.text or ""
-    if response.status_code >= 400 or _jina_wraps_upstream_error(body):
-        return RawTierResult(content="", status=response.status_code)
-    return RawTierResult(content=body, status=response.status_code)
+    body, status = await jina_extractor.fetch(ctx.jina_client, url)
+    if status >= 400 or jina_extractor.wraps_upstream_error(body):
+        return RawTierResult(content="", status=status)
+    return RawTierResult(content=body, status=status)
 
 
 async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:

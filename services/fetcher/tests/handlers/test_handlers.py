@@ -1,7 +1,7 @@
 """Tests for source matching and tier metadata."""
 
+from fetcher.extractors.jina import wraps_upstream_error as _jina_wraps_upstream_error
 from fetcher.handlers import article, arxiv, youtube
-from fetcher.handlers.article import _jina_wraps_upstream_error
 
 
 def test_article_matches_generic_http_only() -> None:
