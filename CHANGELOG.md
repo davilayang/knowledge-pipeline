@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`extract_complex_contents/fetched` speaks HTTP to the fetcher service.** `FetcherResource` is now a thin httpx client that POSTs to `/v1/fetch`; the per-tier in-process fetchers (curl_cffi+trafilatura / pymupdf+LlamaParse / youtube-transcript-api) are gone. The service is authoritative for URL→source matching and quality-floor enforcement; the orchestrator only translates the RFC 7807 `problem+json` surface onto Dagster `Failure`s. `problem.retryable` flows directly into `allow_retries`, so transient upstream blips (502/504/429) re-queue under the existing `RetryPolicy` while permanent failures (400 BAD_URL, 422 UNSUPPORTED_SOURCE) fail fast. `httpx.ConnectError`/`ReadTimeout` are treated as transient; malformed JSON or `200`-missing-`markdown` fail loud (contract drift). `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bumped 2→3 — every previously-materialized `fetched` partition shows stale on first deploy; the next scheduled tick refills, no backfill required.
+
+- **Env contract.** Adds `FETCHER_URL` (required), `FETCHER_TIMEOUT_S` (default 60), `FETCHER_ALLOW_PAID` (default `true`; arxiv needs it for LlamaParse escalation). Removes `PI_SOCKS5_URL`, `EXTRACT_QUEUE_IMPERSONATE_PROFILE`, `YOUTUBE_PROXY_URL`, `LLAMA_CLOUD_API_KEY`, `LLAMA_PARSE_TIER` from the orchestrator side — these moved into `services/fetcher` as `FETCHER_*` in 0.18.0.
+
+### Removed
+
+- `packages/orchestrators/.../extract_complex_contents/fetchers/` (article / arxiv / youtube modules + result dataclass). `curl-cffi`, `youtube-transcript-api`, `pysocks`, `arxiv` dropped from `packages/orchestrators` deps; `trafilatura` stays (still used by `triage_queued_items/url_meta.py`). Asset-side `FETCHED_CONTENT_MIN_CHARS` floor guard removed — the service enforces the floor now.
+
 ---
 
 ## [0.18.0] — 2026-06-09
