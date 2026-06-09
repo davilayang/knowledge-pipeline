@@ -12,8 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Single-worker invariant.** `uvicorn --workers 1` is load-bearing — per-source `asyncio.Semaphore`, per-URL `asyncio.Lock` (via `WeakValueDictionary`), and the `task_registry: dict[job_id, asyncio.Task]` are correctness primitives, not optimization knobs. Documented in `services/fetcher/README.md`; if horizontal scale is ever needed, swap to redis-backed primitives before raising worker count.
 - **Cross-stack reachability.** `kos-network` external Docker network shared with sibling stacks; service reachable from KP containers as `http://fetcher:8000` and from other KOS stacks as `http://kp-fetcher:8000`. Deploy script (`scripts/deploy-hcloud.sh setup`) creates the network on first deploy.
 - **RFC 7807 error contract.** `application/problem+json` responses with a `retryable` field. Domain exception hierarchy (`BadUrl`, `UnsupportedSource`, `UpstreamFailure`, `UpstreamTimeout`, `RateLimited`) splits cleanly across `errors.py` (exceptions) / `problems.py` (body factory, no FastAPI) / `endpoints/errors.py` (HTTP handler) — workers and cache persist the same shape into SQLite without importing FastAPI.
+- **Soft-404 guard on article tiers.** Jina Reader wraps upstream 4xx/5xx in HTTP 200 with a `"Warning: Target URL returned error"` body marker; without the guard, the cascade was caching error pages as content. Jina now demotes wrapped errors to empty content; curl_cffi short-circuits on HTTP status ≥ 400 before invoking trafilatura. The cascade emits `502 UPSTREAM_FAILURE` when all tiers report empty.
 
 ### Changed
+
+- **`FETCHER_JINA_API_KEY` is now optional.** Jina Reader's free tier works without auth at lower rate limits; the key only unlocks the higher paid quota. The `Authorization` header is set only when a key is configured. Required envs that remain: `FETCHER_SOCKS5_URL`, `FETCHER_LLAMA_PARSE_API_KEY`.
 
 - **`domains.fetches_store.sources` exposes named DB operations** (`cache_lookup/upsert`, `insert_job`, `update_job`, `get_job`, `get_job_status`, `canonicalize_lookup/upsert`, `mark_orphans_failed`, `create_schema`) matching the `queue_store` / `raw_store` convention — `_connect` stays private; callers never see SQL or connections. The fetcher service is the first caller; future callers (Dagster ops, NA) can use the same surface.
 
