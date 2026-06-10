@@ -33,15 +33,25 @@ def matches(url: str) -> bool:
 
 async def _pymupdf4llm_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     try:
-        response = await ctx.http_client.get(
-            url, follow_redirects=True, timeout=ctx.default_timeout_s
-        )
+        async with ctx.http_client.stream(
+            "GET", url, follow_redirects=True, timeout=ctx.default_timeout_s
+        ) as response:
+            status = response.status_code
+            chunks: list[bytes] = []
+            total = 0
+            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
+                total += len(chunk)
+                if total > MAX_PDF_BYTES:
+                    logger.warning(
+                        "pdf at %s exceeds %d-byte cap; aborting download", url, MAX_PDF_BYTES
+                    )
+                    return RawTierResult(content="", status=0)
+                chunks.append(chunk)
     except Exception as exc:
         logger.warning("pdf download failed for %s: %s", url, exc)
         return RawTierResult(content="", status=0)
-    pdf_bytes = response.content[:MAX_PDF_BYTES]
-    content = pymupdf_extractor.to_markdown(pdf_bytes)
-    return RawTierResult(content=content, status=response.status_code)
+    content = pymupdf_extractor.to_markdown(b"".join(chunks))
+    return RawTierResult(content=content, status=status)
 
 
 async def _llamaparse_fetch(ctx: FetchContext, url: str) -> RawTierResult:

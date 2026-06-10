@@ -204,17 +204,35 @@ def test_pdf_tier_order_is_pymupdf_then_llamaparse() -> None:
     assert paid.rate_limit_key == "llamaparse"
 
 
-async def test_pdf_free_tier_reads_bytes_then_calls_pymupdf_extractor() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+def _stream_ctxmgr(status_code: int, chunks: list[bytes]):
+    """Build a MagicMock that behaves like httpx.AsyncClient.stream(...).__aenter__()."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    response = MagicMock()
+    response.status_code = status_code
+
+    async def _aiter(chunk_size: int = 64 * 1024):
+        for chunk in chunks:
+            yield chunk
+
+    response.aiter_bytes = _aiter
+
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=response)
+    cm.__aexit__ = AsyncMock(return_value=None)
+    return cm
+
+
+async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> None:
+    from unittest.mock import MagicMock, patch
 
     from fetcher.handlers.pdf import _pymupdf4llm_fetch
 
     ctx = MagicMock()
     ctx.default_timeout_s = 30
-    response = MagicMock()
-    response.status_code = 200
-    response.content = b"%PDF-1.4 fake bytes"
-    ctx.http_client.get = AsyncMock(return_value=response)
+    ctx.http_client.stream = MagicMock(
+        return_value=_stream_ctxmgr(200, [b"%PDF-1.4 ", b"fake bytes"])
+    )
 
     with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md") as render:
         result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
@@ -224,23 +242,24 @@ async def test_pdf_free_tier_reads_bytes_then_calls_pymupdf_extractor() -> None:
     assert result.status == 200
 
 
-async def test_pdf_free_tier_caps_download_at_max_bytes() -> None:
-    from unittest.mock import AsyncMock, MagicMock, patch
+async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
+    from unittest.mock import MagicMock, patch
 
     from fetcher.handlers.pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
 
     ctx = MagicMock()
     ctx.default_timeout_s = 30
-    response = MagicMock()
-    response.status_code = 200
-    response.content = b"x" * (MAX_PDF_BYTES + 1024)
-    ctx.http_client.get = AsyncMock(return_value=response)
+    # Two chunks whose combined size exceeds the cap — the second push trips abort.
+    over_cap = [b"x" * MAX_PDF_BYTES, b"y" * 1024]
+    ctx.http_client.stream = MagicMock(return_value=_stream_ctxmgr(200, over_cap))
 
-    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="ok") as render:
-        await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
+    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown") as render:
+        result = await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
 
-    passed = render.call_args.args[0]
-    assert len(passed) == MAX_PDF_BYTES
+    # Aborted: extractor never called, empty result with status=0 signals tier failure.
+    render.assert_not_called()
+    assert result.content == ""
+    assert result.status == 0
 
 
 async def test_pdf_paid_tier_calls_llamaparse_render_pdf() -> None:
