@@ -7,7 +7,7 @@ import pytest
 from fetcher.extractors import rapidapi_medium
 
 
-async def test_fetch_markdown_posts_to_correct_url_with_headers() -> None:
+async def test_fetch_markdown_gets_correct_url_with_headers() -> None:
     client = MagicMock()
     response = MagicMock()
     response.status_code = 200
