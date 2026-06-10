@@ -69,7 +69,7 @@ def test_fetch_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) -> None:
         can_mock.return_value = CanonicalResult(
             "https://example.com/x", "https://example.com/x", [], []
         )
-        cascade.return_value = CascadeResult("x" * 2500, "jina", [])
+        cascade.return_value = CascadeResult("Real article body. " * 200, "jina", [])
         with TestClient(app) as client:
             first = client.post("/v1/fetch", json={"url": "https://example.com/x"})
             second = client.post("/v1/fetch", json={"url": "https://example.com/x"})
