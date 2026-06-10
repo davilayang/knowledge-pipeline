@@ -61,14 +61,43 @@ class FetcherResource(dg.ConfigurableResource):
     # at run init, parsed at the call site below.
     allow_paid: str
 
+    def _client(self) -> httpx.Client:
+        # trust_env=False keeps the orchestrator → fetcher call off any
+        # HTTP(S)_PROXY the user has set for outbound web fetches. Internal
+        # service-to-service calls should never tunnel through an upstream
+        # proxy — that proxy is for the fetcher's own egress, not for talking
+        # to the fetcher.
+        return httpx.Client(timeout=self.timeout_s, trust_env=False)
+
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
         del content_type  # service matches source by URL
         allow_paid = self.allow_paid.lower() == "true"
-        with httpx.Client(timeout=self.timeout_s) as client:
+        with self._client() as client:
             return _call_service(client, self.service_url, url, allow_paid=allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
         return self.fetch_for_type(url, content_type="Article")
+
+    def structure(self, raw_content: str, *, title: str = "", source_url: str = "") -> FetchResult:
+        endpoint = f"{self.service_url.rstrip('/')}/v1/structure"
+        payload: dict[str, Any] = {"raw_content": raw_content}
+        if title:
+            payload["title"] = title
+        if source_url:
+            payload["source_url"] = source_url
+        with self._client() as client:
+            try:
+                resp = client.post(endpoint, json=payload)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                return FetchResult(error=f"fetcher service unreachable: {exc!r}", transient=True)
+            except httpx.ReadTimeout as exc:
+                return FetchResult(error=f"fetcher request timeout: {exc!r}", transient=True)
+            except httpx.TransportError as exc:
+                return FetchResult(error=f"fetcher transport error: {exc!r}", transient=True)
+
+        if resp.status_code == 200:
+            return _parse_success(resp)
+        return _parse_problem(resp)
 
 
 def _call_service(

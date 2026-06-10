@@ -56,6 +56,10 @@ def poll_notion_for_triage(
         if not existing_added_at:
             added_at_iso = row.get("created_time") or None
 
+        use_body_prop = row.get("properties", {}).get("Use page body as content", {})
+        use_body = bool(use_body_prop.get("checkbox", False))
+        raw_content_override = triage_notion.get_page_body_markdown(page_id) if use_body else ""
+
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
         run_requests.append(
@@ -70,6 +74,7 @@ def poll_notion_for_triage(
                             content_type=existing_ct,
                             name=existing_name,
                             added_at_iso=added_at_iso,
+                            raw_content_override=raw_content_override,
                         ),
                     }
                 ),

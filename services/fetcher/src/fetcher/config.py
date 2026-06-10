@@ -1,6 +1,22 @@
 """Env-driven settings for the fetcher service.
 
-All vars are prefixed ``FETCHER_`` to avoid colliding with host env.
+All vars are prefixed ``FETCHER_`` to avoid colliding with host env. Settings
+split three ways by failure shape when unset:
+
+- **Required** (no default; ``Settings()`` raises at boot, healthz returns 503
+  with the missing-list): ``FETCHER_SOCKS5_URL``, ``FETCHER_LLAMA_PARSE_API_KEY``.
+- **Optional capability** (``str | None`` default ``None``; the dependent tier
+  or endpoint becomes unreachable but the service still boots): Jina, Tavily,
+  RapidAPI/Medium, plus the structurer's OpenAI / Ollama keys
+  (``/v1/structure`` returns 503 ``STRUCTURER_UNCONFIGURED`` when both are
+  unset and the deterministic stages produce nothing).
+- **Tunables** (default-with-override): cache TTL, batch cap, default timeout,
+  LlamaParse tiers, the structurer YAML / prompt paths.
+
+Filesystem-path settings (medium domains, structurer chain config, structurer
+prompt) are loaded once at module import — the corresponding extractor /
+handler module reads ``os.environ.get(...)`` directly rather than waiting for
+``Settings`` so the path is resolved before FastAPI startup runs.
 """
 
 from pydantic import Field
@@ -68,4 +84,27 @@ class Settings(BaseSettings):
             "Path to the YAML file listing Medium-hosted domains. "
             "Relative to the service working dir."
         ),
+    )
+    openai_api_key: str | None = Field(
+        default=None,
+        description=(
+            "OpenAI API key for the /v1/structure cloud LLM chain. "
+            "Optional individually; at least one of openai/ollama is needed for "
+            "the cloud stage to function."
+        ),
+    )
+    ollama_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Ollama Cloud API key for the /v1/structure fallback. "
+            "Used with the OpenAI-compat base_url declared in structurer.yaml."
+        ),
+    )
+    structurer_config_path: str = Field(
+        default="config/structurer.yaml",
+        description="Path to the YAML file declaring the structurer cloud chain.",
+    )
+    structurer_prompt_path: str = Field(
+        default="prompts/structure_v1.md",
+        description="Path to the active /v1/structure system prompt.",
     )

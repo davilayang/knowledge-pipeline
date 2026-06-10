@@ -265,6 +265,98 @@ def test_fetched_fails_when_below_extraction_floor(tmp_path: Path):
         )
 
 
+def _seed_with_override(
+    db_path: Path,
+    page_id: str,
+    override_text: str,
+    *,
+    content_type: str = "Article",
+    url: str = "https://example.com/x",
+) -> None:
+    queue_db.create_schema(db_path=db_path)
+    queue_db.upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url=url,
+        canonical_url=url,
+        content_type=content_type,
+        raw_content_override=override_text,
+    )
+
+
+def test_fetched_calls_structure_when_override_present(tmp_path: Path):
+    db_path = tmp_path / "q.db"
+    override = "# Paste\n\n" + ("body text " * 200)
+    _seed_with_override(db_path, "p-ovr", override)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure.return_value = FetchResult(
+        content="# Clean\n\n" + ("structured body " * 200),
+        tier="structurer:gpt-4.1-mini",
+        tier_log=[{"tier": "structurer:gpt-4.1-mini"}],
+    )
+
+    result = _materialize(
+        fetched,
+        partition_key="p-ovr",
+        resources={"fetcher": fetcher, "store": store},
+        url="https://example.com/x",
+    )
+
+    assert result.success
+    fetcher.structure.assert_called_once()
+    fetcher.fetch_for_type.assert_not_called()
+    call_kwargs = fetcher.structure.call_args
+    assert call_kwargs.args[0] == override
+    assert call_kwargs.kwargs["source_url"] == "https://example.com/x"
+
+    row = store.get_row("p-ovr")
+    assert row is not None
+    assert row["fetch_tier"] == "structurer:gpt-4.1-mini"
+
+
+def test_fetched_falls_through_to_fetch_when_override_empty(tmp_path: Path):
+    db_path = tmp_path / "q.db"
+    _seed_triaged(db_path, "p-1", "Article", url="https://example.com/x")
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.fetch_for_type.return_value = FetchResult(
+        content="article body " * 500, tier="jina", tier_log=[]
+    )
+
+    result = _materialize(
+        fetched,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+        url="https://example.com/x",
+    )
+
+    assert result.success
+    fetcher.fetch_for_type.assert_called_once()
+    fetcher.structure.assert_not_called()
+
+
+def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
+    db_path = tmp_path / "q.db"
+    _seed_with_override(db_path, "p-ovr", "noisy paste " * 500)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure.return_value = FetchResult(
+        error="Structurer cascade exhausted: timeout",
+        transient=True,
+        tier="",
+        tier_log=[{"tier": "structurer", "error": "timeout"}],
+    )
+
+    with pytest.raises(Exception, match="Structurer cascade exhausted|fetch failed"):
+        _materialize(
+            fetched,
+            partition_key="p-ovr",
+            resources={"fetcher": fetcher, "store": store},
+            url="https://example.com/x",
+        )
+
+
 def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube", url="https://youtube.com/watch?v=abc")

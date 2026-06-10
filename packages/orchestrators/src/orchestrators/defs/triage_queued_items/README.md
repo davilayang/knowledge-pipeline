@@ -1,9 +1,11 @@
 # triage_queued_items
 
-Sensor-driven pipeline that classifies Notion-captured URLs by host and routes
-them: Tier A (YouTube, arXiv) → Status=Fetching (extract_complex_contents picks
-up); Tier B (Article, Other) → Status=Ready (newsletter-assistant fetches at
-engagement time).
+Sensor-driven pipeline that classifies Notion-captured URLs by host,
+canonicalises them, and writes Status=Fetching so
+`extract_complex_contents` claims the row on the next tick. The fetcher
+service's handler registry (article handler is the catch-all) determines
+which tier serves the URL; the orchestrator side no longer routes by
+content-type tier.
 
 ## DAG (per partition)
 
@@ -21,11 +23,9 @@ triage_queued_items_job  (partition_key = notion_page_id)
                 │    → Notion Status=Skipped, Error="Duplicate of <other_page_id>"
                 │      (no queue.db write; original cohort stays the single source)
                 │
-                ├──► Tier A (YouTube / arXiv): Notion Status=Fetching
-                │    extract_complex_contents sensor picks up next tick
-                │
-                └──► Tier B (Article / Other): Notion Status=Ready
-                     NA fetches on user engagement
+                └──► Notion Status=Fetching
+                     extract_complex_contents sensor picks up next tick;
+                     fetcher service routes by URL (article = catch-all)
 ```
 
 On any run failure `mark_notion_failed_on_triage` writes
@@ -38,7 +38,7 @@ Status=Failed + Error back to the Notion row.
 | `triage_notion` | `TriageNotionResource` | Reads Queue data source (Status=Queued / empty); writes Content Type + Status. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `notion`. |
 | `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.queue_store.sources`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
 
-Triage never writes Notion's `Name` property — downstream `extract_complex_contents` (Tier A, from LLM extraction) or NA-at-engagement (Tier B) fills it from real content. Empty Name rows in Notion display URL-only until then.
+Triage never writes Notion's `Name` property — downstream `extract_complex_contents` fills it from the LLM-extracted title. Empty Name rows in Notion display URL-only until then.
 
 ## User overrides
 
@@ -71,14 +71,24 @@ The Notion Queue DB must have a `Content Type` SELECT property with options:
 - `arXiv`
 - `Other`
 
-PDF and Podcast options are intentionally absent in v1 — those content types
-fall through to Article (Tier B) until the fetchers land in
-extract_complex_contents and the Notion options are added.
+PDF and Podcast options are intentionally absent in v1 — those URLs fall
+through to Article and the fetcher service's article handler still
+claims them (catch-all match). Add dedicated arms when the Notion options
++ dedicated PDF/Podcast fetcher handlers land.
 
 The Notion Queue DB's native `Status` property must additionally carry a
 `Skipped` option (alongside `Queued` / `Fetching` / `Ready` / `Failed`).
 Triage writes Status=Skipped on duplicate canonical_url detection;
 without the option, the Notion API rejects the update.
+
+The Queue DB also needs a `Use page body as content` **checkbox** property
+(exact spelling — the sensor matches on this string in `sensors.py`).
+When the user ticks it on a row, the sensor fetches the page's block
+children, converts them to markdown via `notion_blocks.blocks_to_markdown`,
+and writes the result into `queue_items.raw_content_override`. The
+`fetched` asset then dispatches to the fetcher service's `/v1/structure`
+endpoint instead of `/v1/fetch`. Default unset = false; rows without
+the property tick fall through to the normal URL-fetch path.
 
 ## Runbooks
 

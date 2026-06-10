@@ -16,6 +16,7 @@ from fetcher.context import make_fetch_context
 from fetcher.endpoints import canonicalize as canonicalize_endpoint
 from fetcher.endpoints import fetch as fetch_endpoint
 from fetcher.endpoints import fetches as fetches_endpoint
+from fetcher.endpoints import structure as structure_endpoint
 from fetcher.endpoints.errors import fetcher_exception_handler
 from fetcher.errors import FetcherError
 from fetcher.registry import REGISTERED_HANDLERS
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
     app.include_router(fetch_endpoint.router)
     app.include_router(canonicalize_endpoint.router)
     app.include_router(fetches_endpoint.router)
+    app.include_router(structure_endpoint.router)
 
     @app.get("/healthz")
     async def healthz() -> Any:

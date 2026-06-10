@@ -25,8 +25,6 @@ ALL_CONTENT_TYPES = {
     CONTENT_TYPE_OTHER,
 }
 
-_TIER_A = {CONTENT_TYPE_YOUTUBE, CONTENT_TYPE_ARXIV, CONTENT_TYPE_PDF, CONTENT_TYPE_PODCAST}
-
 
 def classify_content_type(url: str) -> str:
     """Pure URL → kp Content Type.
@@ -38,10 +36,10 @@ def classify_content_type(url: str) -> str:
 
     PDF and Podcast classifications are intentionally NOT emitted in v1
     — the Notion Content Type SELECT only has Article / YouTube / arXiv
-    / Other options. PDF and Podcast URLs fall through to Article (Tier B
-    treatment; NA fetches at engagement). The PDF/Podcast match arms are
-    left in the source as commented-out stubs, ready to uncomment when
-    the Notion options + fetchers land.
+    / Other options. PDF and Podcast URLs fall through to Article (the
+    fetcher's article handler still claims them via the catch-all match;
+    add dedicated arms here when the Notion options + PDF/Podcast fetcher
+    handlers land).
     """
     parsed = urlparse(url)
     host = (parsed.hostname or "").removeprefix("www.")
@@ -75,9 +73,3 @@ def canonicalize_url(url: str) -> str:
         return urlunparse(parsed._replace(query=query, fragment="")).rstrip("/")
 
     return urlunparse(parsed._replace(query="", fragment="")).rstrip("/")
-
-
-def is_tier_a(content_type: str) -> bool:
-    """Tier A = pipeline does heavy extraction (extract_complex_contents).
-    Tier B = NA fetches on engagement (Article / Other)."""
-    return content_type in _TIER_A

@@ -111,7 +111,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         page_id: str,
         content_type: str,
         canonical_url: str,
-        status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
+        status_after: str,  # "Fetching" — extract_complex_contents claims the row
         name: str | None = None,
         description: str | None = None,
         added_at_iso: str | None = None,
@@ -216,6 +216,31 @@ class NotionQueueResource(dg.ConfigurableResource):
         text = "".join(t.get("plain_text", "") for t in title).strip()
         return text or None
 
+    def get_page_body_markdown(self, page_id: str) -> str:
+        """Fetch all top-level block children of a page and convert to markdown.
+
+        Walks pagination via `has_more` / `next_cursor`. Skips block types that
+        the converter doesn't handle (see notion_blocks.blocks_to_markdown).
+        Empty page → empty string.
+        """
+        from orchestrators.defs.triage_queued_items.notion_blocks import blocks_to_markdown
+
+        client = self._client()
+        results: list[dict[str, Any]] = []
+        cursor: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"block_id": page_id}
+            if cursor:
+                kwargs["start_cursor"] = cursor
+            resp = client.blocks.children.list(**kwargs)
+            results.extend(resp.get("results") or [])
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
+            if not cursor:
+                break
+        return blocks_to_markdown(results)
+
 
 class QueueStoreResource(dg.ConfigurableResource):
     """Thin wrapper over domains.queue_store.sources covering both pipelines.
@@ -241,6 +266,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         url: str,
         canonical_url: str,
         content_type: str,
+        raw_content_override: str = "",
     ) -> None:
         queue_db.upsert_triaged(
             db_path=self._path(),
@@ -248,6 +274,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             url=url,
             canonical_url=canonical_url,
             content_type=content_type,
+            raw_content_override=raw_content_override,
         )
 
     def find_canonical_url_duplicate(

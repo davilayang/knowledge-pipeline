@@ -95,7 +95,11 @@ def fetched(
     if not url:
         raise dg.Failure(description=f"Missing url for page_id={page_id}", allow_retries=False)
 
-    result = fetcher.fetch_for_type(url, content_type=content_type)
+    override = row.get("raw_content_override") or ""
+    if override:
+        result = fetcher.structure(override, source_url=url)
+    else:
+        result = fetcher.fetch_for_type(url, content_type=content_type)
     if result.error:
         raise dg.Failure(
             description=f"{content_type} fetch failed: {result.error}",

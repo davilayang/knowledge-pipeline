@@ -88,7 +88,6 @@ def test_triaged_returns_youtube_for_youtube_url(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "YouTube"
-    assert metadata["tier"].text == "A"
 
 
 def test_triaged_returns_article_for_blog_url(tmp_path: Path):
@@ -101,13 +100,12 @@ def test_triaged_returns_article_for_blog_url(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "Article"
-    assert metadata["tier"].text == "B"
 
 
 # -------- routing side effects --------
 
 
-def test_triaged_writes_status_fetching_for_tier_a(tmp_path: Path):
+def test_triaged_writes_status_fetching_for_youtube(tmp_path: Path):
     resources, notion = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",
@@ -121,7 +119,9 @@ def test_triaged_writes_status_fetching_for_tier_a(tmp_path: Path):
     assert call_kwargs["content_type"] == "YouTube"
 
 
-def test_triaged_writes_status_ready_for_tier_b(tmp_path: Path):
+def test_triaged_writes_status_fetching_for_article(tmp_path: Path):
+    """Single-tier: Article URLs now flow to Fetching too (the fetcher service's
+    article handler claims them via the catch-all match)."""
     resources, notion = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",
@@ -130,7 +130,7 @@ def test_triaged_writes_status_ready_for_tier_b(tmp_path: Path):
     )
     assert result.success
     call_kwargs = notion.write_triaged.call_args.kwargs
-    assert call_kwargs["status_after"] == "Ready"
+    assert call_kwargs["status_after"] == "Fetching"
     assert call_kwargs["content_type"] == "Article"
 
 
@@ -204,7 +204,7 @@ def test_triaged_succeeds_with_empty_meta_on_fetch_failure(tmp_path: Path):
     kwargs = notion.write_triaged.call_args.kwargs
     assert kwargs.get("name") is None
     assert kwargs.get("description") is None
-    assert kwargs["status_after"] == "Ready"
+    assert kwargs["status_after"] == "Fetching"
 
 
 def test_triaged_uses_final_url_for_classification_after_redirect(tmp_path: Path):
@@ -226,7 +226,6 @@ def test_triaged_uses_final_url_for_classification_after_redirect(tmp_path: Path
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "YouTube"
-    assert metadata["tier"].text == "A"
 
 
 # -------- user override --------
@@ -245,7 +244,6 @@ def test_triaged_respects_user_set_content_type(tmp_path: Path):
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "YouTube"
     assert metadata["content_type_source"].text == "notion"
-    assert metadata["tier"].text == "A"  # YouTube is Tier A
     assert notion.write_triaged.call_args.kwargs["status_after"] == "Fetching"
 
 

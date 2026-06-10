@@ -3,7 +3,6 @@ from orchestrators.defs.triage_queued_items.classify import (
     ALL_CONTENT_TYPES,
     canonicalize_url,
     classify_content_type,
-    is_tier_a,
 )
 
 # ---------------------------------------------------------------------------
@@ -108,24 +107,3 @@ def test_classification_returns_value_in_all_content_types_set():
 )
 def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):
     assert canonicalize_url(raw) == expected
-
-
-# ---------------------------------------------------------------------------
-# is_tier_a
-# ---------------------------------------------------------------------------
-
-
-def test_is_tier_a_youtube():
-    assert is_tier_a("YouTube") is True
-
-
-def test_is_tier_a_arxiv():
-    assert is_tier_a("arXiv") is True
-
-
-def test_is_tier_a_article():
-    assert is_tier_a("Article") is False
-
-
-def test_is_tier_a_other():
-    assert is_tier_a("Other") is False

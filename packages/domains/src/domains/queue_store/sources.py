@@ -39,6 +39,7 @@ CREATE TABLE IF NOT EXISTS queue_items (
     canonical_url               TEXT,              -- canonicalize_url() form
     content_type                TEXT,              -- YouTube/arXiv/Article/Other
     raw_content                 TEXT,              -- fetched body
+    raw_content_override        TEXT NOT NULL DEFAULT '',  -- user-pasted body
     fetched_at                  TEXT,              -- ISO-8601 UTC
     fetch_tier                  TEXT,              -- winning fetcher
     fetch_tier_log              TEXT,              -- JSON; per-tier attempts
@@ -189,19 +190,23 @@ def upsert_triaged(
     url: str,
     canonical_url: str,
     content_type: str,
+    raw_content_override: str = "",
 ) -> None:
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO queue_items (notion_page_id, url, canonical_url, content_type)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO queue_items (
+                notion_page_id, url, canonical_url, content_type, raw_content_override
+            )
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 canonical_url = excluded.canonical_url,
                 content_type = excluded.content_type,
+                raw_content_override = excluded.raw_content_override,
                 error_text = NULL
             """,
-            (notion_page_id, url, canonical_url, content_type),
+            (notion_page_id, url, canonical_url, content_type, raw_content_override),
         )
 
 

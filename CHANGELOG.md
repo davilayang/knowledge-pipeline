@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.5] — 2026-06-10
+
+### Added
+
+- **`POST /v1/structure` on the fetcher service** turns noisy user-pasted article bodies into clean markdown via a trafilatura → conservative passthrough → cloud LLM cascade (Ollama Cloud primary, OpenAI fallback). Chain config: `services/fetcher/config/structurer.yaml`; prompt: `services/fetcher/prompts/structure_v1.md`; new envs `FETCHER_OPENAI_API_KEY` / `FETCHER_OLLAMA_API_KEY` (at least one required for the cloud stage).
+- **Ticking Notion's `Use page body as content` checkbox routes the row's pasted body through `/v1/structure` instead of fetching the URL.** Sensor reads the checkbox, converts block children via `notion_blocks.blocks_to_markdown`, and threads the result through new `queue_items.raw_content_override` column. Requires the one-time `scripts/migrations/2026-06-10_queue_items_raw_content_override.sql` against prod queue.db before deploy.
+
+### Changed
+
+- **Triage now routes every supported URL to `Status=Fetching` — the Tier A / Tier B split is gone.** Article and Other rows that previously stopped at `Status=Ready` for NA-at-engagement now flow through `extract_complex_contents.fetched` against the fetcher's article handler (catch-all). `SUPPORTED_CONTENT_TYPES` widened to `{YouTube, arXiv, Article, Other}`; `is_tier_a()` and `_TIER_A` removed.
+- **`FetcherResource` no longer tunnels orchestrator → fetcher calls through `HTTP(S)_PROXY`.** `httpx.Client(trust_env=False)` keeps the internal service-to-service call off the upstream proxy meant for the fetcher's own egress.
+
+---
+
 ## [0.18.4] — 2026-06-10
 
 ### Added

@@ -8,7 +8,7 @@ from orchestrators.defs.shared.queue_resources import (
     QueueStoreResource,
 )
 
-from .classify import ALL_CONTENT_TYPES, canonicalize_url, classify_content_type, is_tier_a
+from .classify import ALL_CONTENT_TYPES, canonicalize_url, classify_content_type
 from .def_config import PIPELINE_TAG, queue_items_partition_def
 from .url_meta import fetch_url_meta
 
@@ -39,6 +39,7 @@ class TriageInput(dg.Config):
     content_type: str | None = None
     name: str | None = None
     added_at_iso: str | None = None
+    raw_content_override: str = ""
 
 
 @dg.asset(
@@ -53,14 +54,16 @@ class TriageInput(dg.Config):
         """
         One row → fetch URL meta (title + short description, redirects
         followed) → classify URL, canonicalize, then commit to local store +
-        Notion. Tier B (Article/Other) → Notion Status=Ready (NA fetches at
-        engagement). Tier A (YouTube/arXiv/PDF/Podcast) → Notion
-        Status=Fetching (extract_complex_contents picks up). Notion Status
-        write is the last API call so partially-triaged states can't be
-        picked up by the extract sensor. Name is seeded from the fetched
-        page title when the user left it blank; extract (Tier A) can still
-        overwrite later with the extracted_title. Description is always
-        written when the fetch produced one (extract overwrites for Tier A).
+        Notion. Every supported content_type → Notion Status=Fetching;
+        extract_complex_contents picks the row up and routes the URL to the
+        fetcher service (its article handler is a catch-all for anything
+        not yt/arxiv/pdf/medium, so Article/Other still land somewhere).
+        Notion Status write is the last API call so partially-triaged
+        states can't be picked up by the extract sensor. Name is seeded
+        from the fetched page title when the user left it blank; extract
+        can still overwrite later with the extracted_title. Description
+        is always written when the fetch produced one (extract overwrites
+        on a hit).
         """
     ),
 )
@@ -127,11 +130,12 @@ def triaged(
         url=config.url,
         canonical_url=canonical,
         content_type=content_type,
+        raw_content_override=config.raw_content_override,
     )
     # Only seed Notion's Name when the user left it blank — never overwrite a
     # user-set title. Description is operational and safe to (re)write.
     name_for_notion = meta.title if (not config.name and meta.title) else None
-    status_after = "Fetching" if is_tier_a(content_type) else "Ready"
+    status_after = "Fetching"
     triage_notion.write_triaged(
         page_id=page_id,
         content_type=content_type,
@@ -152,7 +156,6 @@ def triaged(
             "name": dg.MetadataValue.text(config.name or ""),
             "fetched_title": dg.MetadataValue.text(meta.title or ""),
             "fetched_description": dg.MetadataValue.text(meta.description or ""),
-            "tier": dg.MetadataValue.text("A" if is_tier_a(content_type) else "B"),
             "status_after": dg.MetadataValue.text(status_after),
             "summary": dg.MetadataValue.md(f"**{content_type}** → Notion {status_after}"),
         }
