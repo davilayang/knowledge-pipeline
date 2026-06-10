@@ -49,6 +49,8 @@ class FetchContext:
     llama_parse_tier_pdf: str = "fast"
     tavily_api_key: str | None = None
     rapidapi_key: str | None = None
+    openai_api_key: str | None = None
+    ollama_api_key: str | None = None
 
 
 @dataclass

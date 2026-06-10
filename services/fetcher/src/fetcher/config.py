@@ -69,3 +69,26 @@ class Settings(BaseSettings):
             "Relative to the service working dir."
         ),
     )
+    openai_api_key: str | None = Field(
+        default=None,
+        description=(
+            "OpenAI API key for the /v1/structure cloud LLM chain. "
+            "Optional individually; at least one of openai/ollama is needed for "
+            "the cloud stage to function."
+        ),
+    )
+    ollama_api_key: str | None = Field(
+        default=None,
+        description=(
+            "Ollama Cloud API key for the /v1/structure fallback. "
+            "Used with the OpenAI-compat base_url declared in structurer.yaml."
+        ),
+    )
+    structurer_config_path: str = Field(
+        default="config/structurer.yaml",
+        description="Path to the YAML file declaring the structurer cloud chain.",
+    )
+    structurer_prompt_path: str = Field(
+        default="prompts/structure_v1.md",
+        description="Path to the active /v1/structure system prompt.",
+    )

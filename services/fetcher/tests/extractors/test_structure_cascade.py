@@ -1,11 +1,12 @@
-"""Tests for the structurer cascade (trafilatura → passthrough → cloud chain stub)."""
+"""Tests for the structurer cascade (trafilatura → passthrough → cloud chain)."""
 
-from unittest.mock import AsyncMock, MagicMock
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
 from fetcher.extractors import structure
 from fetcher.extractors.structure import (
+    ChainEntry,
     StructurerCascadeFailed,
     StructurerChainFailed,
 )
@@ -126,3 +127,135 @@ async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     assert err.retryable is True
     assert err.last_error == "all entries failed"
     assert [e.tier for e in err.tier_log] == ["trafilatura", "passthrough", "structurer"]
+
+
+# --- Cloud chain tests (SF4) ---
+
+
+def _openai_entry() -> ChainEntry:
+    return ChainEntry(model="gpt-4.1-mini", provider="openai", attempt_timeout=60.0)
+
+
+def _ollama_entry() -> ChainEntry:
+    return ChainEntry(
+        model="qwen3.5:cloud",
+        provider="ollama",
+        base_url="https://ollama.com/v1",
+        attempt_timeout=20.0,
+    )
+
+
+def _mock_openai_response(content: str) -> MagicMock:
+    msg = MagicMock()
+    msg.content = content
+    choice = MagicMock()
+    choice.message = msg
+    response = MagicMock()
+    response.choices = [choice]
+    return response
+
+
+async def test_call_cloud_chain_uses_openai_primary_when_both_keys_set() -> None:
+    openai_client = MagicMock()
+    openai_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("# clean\n\nbody")
+    )
+
+    with patch("openai.AsyncOpenAI", return_value=openai_client) as ctor:
+        markdown, tier = await structure._call_cloud_chain(
+            "noisy",
+            "SYS",
+            chain=[_openai_entry(), _ollama_entry()],
+            openai_key="sk-openai",
+            ollama_key="sk-ollama",
+        )
+
+    assert markdown == "# clean\n\nbody"
+    assert tier == "structurer:gpt-4.1-mini"
+    # OpenAI was constructed; Ollama was NOT (loop short-circuited on first success)
+    assert ctor.call_count == 1
+    assert ctor.call_args.kwargs["api_key"] == "sk-openai"
+
+
+async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
+    openai_client = MagicMock()
+    openai_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("openai down"))
+    ollama_client = MagicMock()
+    ollama_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("# from ollama")
+    )
+
+    with patch("openai.AsyncOpenAI", side_effect=[openai_client, ollama_client]):
+        markdown, tier = await structure._call_cloud_chain(
+            "noisy",
+            "SYS",
+            chain=[_openai_entry(), _ollama_entry()],
+            openai_key="sk-openai",
+            ollama_key="sk-ollama",
+        )
+
+    assert markdown == "# from ollama"
+    assert tier == "structurer:qwen3.5:cloud"
+
+
+async def test_call_cloud_chain_raises_when_all_entries_exhausted() -> None:
+    openai_client = MagicMock()
+    openai_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("openai down"))
+    ollama_client = MagicMock()
+    ollama_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("ollama down"))
+
+    with patch("openai.AsyncOpenAI", side_effect=[openai_client, ollama_client]):
+        with pytest.raises(StructurerChainFailed) as excinfo:
+            await structure._call_cloud_chain(
+                "noisy",
+                "SYS",
+                chain=[_openai_entry(), _ollama_entry()],
+                openai_key="sk-openai",
+                ollama_key="sk-ollama",
+            )
+
+    assert excinfo.value.retryable is True
+    assert "ollama down" in str(excinfo.value)
+
+
+async def test_call_cloud_chain_raises_retryable_false_when_all_keys_missing() -> None:
+    with pytest.raises(StructurerChainFailed) as excinfo:
+        await structure._call_cloud_chain(
+            "noisy",
+            "SYS",
+            chain=[_openai_entry(), _ollama_entry()],
+            openai_key=None,
+            ollama_key=None,
+        )
+
+    assert excinfo.value.retryable is False
+    assert "no API keys" in str(excinfo.value)
+
+
+async def test_call_cloud_chain_threads_hint_kwargs_into_user_message() -> None:
+    openai_client = MagicMock()
+    openai_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("# out")
+    )
+
+    with patch("openai.AsyncOpenAI", return_value=openai_client):
+        await structure._call_cloud_chain(
+            "raw paste",
+            "SYS",
+            chain=[_openai_entry()],
+            openai_key="sk-openai",
+            ollama_key=None,
+            title="Real Title",
+            content_date="2026-06-01",
+            author_name="Jane Doe",
+        )
+
+    call_kwargs = openai_client.chat.completions.create.await_args.kwargs
+    messages = call_kwargs["messages"]
+    user_msg = next(m for m in messages if m["role"] == "user")
+    assert "Real Title" in user_msg["content"]
+    assert "Jane Doe" in user_msg["content"]
+    assert "2026-06-01" in user_msg["content"]
+    assert "raw paste" in user_msg["content"]
+    system_msg = next(m for m in messages if m["role"] == "system")
+    assert system_msg["content"] == "SYS"

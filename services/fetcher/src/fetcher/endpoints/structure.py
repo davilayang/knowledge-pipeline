@@ -11,6 +11,7 @@ from pydantic import BaseModel
 from fetcher.cache import lookup as cache_lookup, upsert as cache_upsert
 from fetcher.canonicalize import canonicalize
 from fetcher.endpoints.errors import problem_response
+from fetcher.extractors import structure as _structure_extractor
 from fetcher.extractors.structure import (
     StructurerCascadeFailed,
     run_cascade,
@@ -27,9 +28,12 @@ _PROMPT_VERSION = "v1"
 def _chain_head() -> tuple[str, str]:
     """Return the (provider, model) of the structurer chain's primary entry.
 
-    Stubbed for SF3 cache-keying; SF4 replaces with a YAML-driven lookup.
+    Falls back to a placeholder when the chain config is missing so the
+    cache-key shape stays well-defined; the cache miss path still ends in
+    a 503 from the cascade itself.
     """
-    return ("openai", "gpt-4.1-mini")
+    head = _structure_extractor.chain_head()
+    return head if head is not None else ("openai", "gpt-4.1-mini")
 
 
 def _content_sha(raw_content: str) -> str:
@@ -128,7 +132,7 @@ async def structure(req: StructureRequest, request: Request) -> Any:
             title=req.title,
             content_date=req.content_date,
             author_name=req.author_name,
-            prompt="",
+            prompt=_structure_extractor.get_prompt(),
         )
     except StructurerCascadeFailed as exc:
         if not exc.retryable and "no api keys" in exc.last_error.lower():
