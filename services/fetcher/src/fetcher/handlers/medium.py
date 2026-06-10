@@ -17,7 +17,7 @@ logger = logging.getLogger(__name__)
 NAME = "medium"
 STRICT_PAID_TIER = False
 
-_ARTICLE_ID_RE = re.compile(r"-([0-9a-f]{8,})$")
+_ARTICLE_ID_RE = re.compile(r"-([0-9a-f]{8,12})$", re.IGNORECASE)
 
 
 def _load_domains(path: str) -> set[str]:
