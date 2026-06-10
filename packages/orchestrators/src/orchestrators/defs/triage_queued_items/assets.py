@@ -40,7 +40,11 @@ class TriageInput(dg.Config):
     materialization for observability; triage doesn't write it back).
     `added_at_iso` is an Added At backfill — the sensor sets it to the
     Notion page's `created_time` when the row has no Added At (mobile
-    captures often omit it); None means "leave Added At alone."""
+    captures often omit it); None means "leave Added At alone."
+    `raw_content_override` carries the user-pasted Notion page body when
+    the row has `Use page body as content` ticked — sensor converts blocks
+    to markdown and passes them through; default empty string means the
+    downstream fetcher dispatches on the URL instead of the pasted body."""
 
     url: str
     content_type: str | None = None
@@ -61,9 +65,11 @@ class TriageInput(dg.Config):
         """
         One row → fetch URL meta (title + short description, redirects
         followed) → classify URL, canonicalize, then commit to local store +
-        Notion. Every supported content_type → Notion Status=Fetching;
-        extract_complex_contents picks the row up and routes the URL to the
-        fetcher service (its article handler is a catch-all for anything
+        Notion. Two terminal Notion states: Status=Skipped if the canonical
+        URL duplicates an existing queue_items row (queue.db unchanged,
+        original cohort stays the single source); Status=Fetching otherwise,
+        and extract_complex_contents picks the row up and routes the URL to
+        the fetcher service (its article handler is a catch-all for anything
         not yt/arxiv/pdf/medium, so Article/Other still land somewhere).
         Notion Status write is the last API call so partially-triaged
         states can't be picked up by the extract sensor. Name is seeded
@@ -113,7 +119,7 @@ def triaged(
     triage_store.ensure_schema()
 
     # Dedup by canonical_url: a second Notion capture of an already-queued
-    # URL is flagged Failed with a pointer to the original. Excluding the
+    # URL is flagged Skipped with a pointer to the original. Excluding the
     # current page_id keeps re-triage on the same row (Re-Queued from
     # Failed) idempotent. No queue.db row is written for the dup so the
     # original cohort stays the single source of truth.
@@ -169,6 +175,7 @@ def triaged(
     )
 
     metadata: dict[str, dg.MetadataValue] = {
+        "outcome": dg.MetadataValue.text("fetching"),
         "content_type": dg.MetadataValue.text(content_type),
         "content_type_source": dg.MetadataValue.text(content_type_source),
         "canonical_url": dg.MetadataValue.url(canonical),
