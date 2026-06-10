@@ -147,6 +147,13 @@ help = "Fix code linting issues automatically with ruff"
 sequence = ["fmt-fix", "lint-fix"]
 help = "Fix all issues: formatting with black and linting with ruff"
 
+[tool.poe.tasks.lock]
+sequence = [
+    { cmd = "uv lock" },
+    { cmd = "uv lock", cwd = "services/fetcher" },
+]
+help = "Lock workspace + services/fetcher (run after any workspace-member version bump)"
+
 ## Workflows ##
 
 [tool.poe.tasks.wiki-ingest]
