@@ -148,11 +148,6 @@ sequence = ["fmt-fix", "lint-fix"]
 help = "Fix all issues: formatting with black and linting with ruff"
 
 [tool.poe.tasks.lock]
-# Refresh both lockfiles. services/fetcher is not a workspace member
-# (its own pyproject.toml + uv.lock + .venv), so workspace `uv sync` does
-# not roll its embedded knowledge-domains version forward — release flows
-# that forget the second `uv lock` ship a stale fetcher lock, and the
-# fetcher Docker build (`uv sync --locked`) refuses it at deploy time.
 sequence = [
     { cmd = "uv lock" },
     { cmd = "uv lock", cwd = "services/fetcher" },
