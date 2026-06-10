@@ -89,7 +89,7 @@ async def _tavily_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     except ValueError as exc:
         logger.warning("tavily extract failed for %s: %s", url, exc)
         return RawTierResult(content="", status=0)
-    return RawTierResult(content=content, status=200)
+    return RawTierResult(content=content, status=200 if content else 0)
 
 
 TIERS: list[Tier] = [
