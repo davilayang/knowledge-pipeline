@@ -1,10 +1,13 @@
 """URL classification + canonicalization. Pure-Python; no I/O.
 
 Adapted from newsletter-assistant's fetcher/orchestrator.py URL routing,
-with the voice-tuned tier complexity stripped. Output values match kp's
-Notion `Content Type` SELECT options (Article / YouTube / arXiv / Other)
-rather than NA's fetcher-tier names — these get written back to Notion
-as select-property values, so case + spelling must match exactly.
+with the voice-tuned tier complexity stripped. `classify_content_type`
+emits values that match kp's Notion `Content Type` SELECT options
+(Article / YouTube / arXiv / Podcast / Other; PDF is in `ALL_CONTENT_TYPES`
+for user override but never auto-emitted — PDF URLs fall through to
+Article and the fetcher's pdf handler claims them). These get written
+back to Notion as select-property values, so case + spelling must match
+exactly.
 """
 
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse

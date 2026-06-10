@@ -121,6 +121,6 @@ a bumped timestamp generates a fresh RunRequest on the next tick.
 
 ## DAG version
 
-`TRIAGE_QUEUED_ITEMS_DAG_VERSION = "1"` in `orchestrators/config.py`.
+`TRIAGE_QUEUED_ITEMS_DAG_VERSION` in `orchestrators/config.py`.
 Bump when DAG logic changes (asset graph topology, classification logic, routing
 policy). Independent of the package version.
