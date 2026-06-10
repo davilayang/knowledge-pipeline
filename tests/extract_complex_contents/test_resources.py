@@ -553,7 +553,13 @@ def test_fetcher_structure_maps_wire_fields_to_orchestrator_fetch_result():
     resource = _make_service_fetcher()
     tier_log = [
         {"tier": "trafilatura", "status": None, "chars": 0, "error": "empty", "validated": False},
-        {"tier": "structurer:gpt-4.1-mini", "status": None, "chars": 120, "error": None, "validated": True},
+        {
+            "tier": "structurer:gpt-4.1-mini",
+            "status": None,
+            "chars": 120,
+            "error": None,
+            "validated": True,
+        },
     ]
     body = {
         "markdown": "out",
@@ -582,7 +588,13 @@ def test_fetcher_structure_maps_502_problem_to_transient_failure():
         "detail": "openai timeout; ollama down",
         "retryable": True,
         "tier_log": [
-            {"tier": "structurer", "status": None, "chars": 0, "error": "timeout", "validated": False},
+            {
+                "tier": "structurer",
+                "status": None,
+                "chars": 0,
+                "error": "timeout",
+                "validated": False,
+            },
         ],
     }
     with patch("httpx.Client.post", return_value=_fake_response(502, problem)):

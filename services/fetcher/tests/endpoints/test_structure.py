@@ -28,7 +28,9 @@ def _ok_result() -> FetchResult:
         etag="",
         tier_log=[
             TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
-            TierLogEntry(tier="passthrough", status=None, chars=0, error="rejected", validated=False),
+            TierLogEntry(
+                tier="passthrough", status=None, chars=0, error="rejected", validated=False
+            ),
             TierLogEntry(
                 tier="structurer:test-model", status=None, chars=14, error=None, validated=True
             ),
@@ -42,9 +44,7 @@ def test_structure_endpoint_returns_fetchresult_wire_shape(monkeypatch, tmp_db_p
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -82,9 +82,7 @@ def test_structure_endpoint_threads_hint_kwargs_into_cascade(monkeypatch, tmp_db
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -115,9 +113,7 @@ def test_structure_endpoint_canonicalizes_source_url(monkeypatch, tmp_db_path: s
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a?utm_source=x",
@@ -146,9 +142,7 @@ def test_structure_endpoint_handles_missing_source_url(monkeypatch, tmp_db_path:
     result.canonical_url = ""
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         cascade.return_value = result
         with TestClient(app) as client:
@@ -168,13 +162,13 @@ def test_structure_endpoint_returns_502_problem_when_cascade_exhausts_with_trans
     tier_log = [
         TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
         TierLogEntry(tier="passthrough", status=None, chars=0, error="rejected", validated=False),
-        TierLogEntry(tier="structurer", status=None, chars=0, error="upstream timeout", validated=False),
+        TierLogEntry(
+            tier="structurer", status=None, chars=0, error="upstream timeout", validated=False
+        ),
     ]
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -206,9 +200,7 @@ def test_structure_endpoint_returns_503_problem_when_no_api_keys_configured(
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -249,9 +241,7 @@ def test_structure_endpoint_caches_successful_cloud_runs_only(
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -306,9 +296,7 @@ def test_structure_endpoint_does_not_cache_trafilatura(monkeypatch, tmp_db_path:
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
@@ -334,9 +322,7 @@ def test_structure_endpoint_does_not_cache_passthrough(monkeypatch, tmp_db_path:
     app = create_app()
     with (
         patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch(
-            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
-        ) as cascade,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []

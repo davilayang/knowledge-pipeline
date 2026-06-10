@@ -58,9 +58,7 @@ def poll_notion_for_triage(
 
         use_body_prop = row.get("properties", {}).get("Use page body as content", {})
         use_body = bool(use_body_prop.get("checkbox", False))
-        raw_content_override = (
-            triage_notion.get_page_body_markdown(page_id) if use_body else ""
-        )
+        raw_content_override = triage_notion.get_page_body_markdown(page_id) if use_body else ""
 
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)

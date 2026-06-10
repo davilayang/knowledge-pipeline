@@ -86,9 +86,7 @@ _CHAIN: list[ChainEntry] = _load_chain(
 
 
 def _load_prompt() -> str:
-    path = Path(
-        os.environ.get("FETCHER_STRUCTURER_PROMPT_PATH", "prompts/structure_v1.md")
-    )
+    path = Path(os.environ.get("FETCHER_STRUCTURER_PROMPT_PATH", "prompts/structure_v1.md"))
     try:
         return path.read_text()
     except FileNotFoundError:
@@ -371,7 +369,9 @@ async def run_cascade(
         ) from exc
 
     tier_log.append(_log_entry(tier_name, chars=len(markdown), error=None))
-    model_name = tier_name.removeprefix("structurer:") if tier_name.startswith("structurer:") else ""
+    model_name = (
+        tier_name.removeprefix("structurer:") if tier_name.startswith("structurer:") else ""
+    )
     return FetchResult(
         markdown=markdown,
         kind="structured",

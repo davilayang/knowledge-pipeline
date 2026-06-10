@@ -59,25 +59,20 @@ async def test_stage_passthrough_rejects_single_heading_with_no_other_signals() 
 
 async def test_stage_passthrough_rejects_text_with_boilerplate_phrases() -> None:
     text = (
-        "# Title\n\n"
-        + ("A long paragraph of content. " * 60)
-        + "\n\n"
+        "# Title\n\n" + ("A long paragraph of content. " * 60) + "\n\n"
         "## Section\n\n"
         "- One\n- Two\n- Three\n\n"
         "Some **bold** and **other bold** content.\n\n"
         "Subscribe to our newsletter.\n\n"
         "Comments (0)\n\n"
-        "Share this article.\n\n"
-        + ("More content to satisfy the length floor. " * 40)
+        "Share this article.\n\n" + ("More content to satisfy the length floor. " * 40)
     )
     assert structure._stage_passthrough_heuristic(text) is None
 
 
 async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
     text = (
-        "# Title\n\n"
-        + ("A long paragraph of content. " * 60)
-        + "\n\n"
+        "# Title\n\n" + ("A long paragraph of content. " * 60) + "\n\n"
         "## Section<br>\n\n"
         "- One\n- Two\n- Three\n\n"
         "Some **bold** and **other bold** content.<br>\n\n"
@@ -234,9 +229,7 @@ async def test_call_cloud_chain_raises_retryable_false_when_all_keys_missing() -
 
 async def test_call_cloud_chain_threads_hint_kwargs_into_user_message() -> None:
     openai_client = MagicMock()
-    openai_client.chat.completions.create = AsyncMock(
-        return_value=_mock_openai_response("# out")
-    )
+    openai_client.chat.completions.create = AsyncMock(return_value=_mock_openai_response("# out"))
 
     with patch("openai.AsyncOpenAI", return_value=openai_client):
         await structure._call_cloud_chain(
