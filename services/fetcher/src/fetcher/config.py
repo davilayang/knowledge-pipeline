@@ -1,6 +1,22 @@
 """Env-driven settings for the fetcher service.
 
-All vars are prefixed ``FETCHER_`` to avoid colliding with host env.
+All vars are prefixed ``FETCHER_`` to avoid colliding with host env. Settings
+split three ways by failure shape when unset:
+
+- **Required** (no default; ``Settings()`` raises at boot, healthz returns 503
+  with the missing-list): ``FETCHER_SOCKS5_URL``, ``FETCHER_LLAMA_PARSE_API_KEY``.
+- **Optional capability** (``str | None`` default ``None``; the dependent tier
+  or endpoint becomes unreachable but the service still boots): Jina, Tavily,
+  RapidAPI/Medium, plus the structurer's OpenAI / Ollama keys
+  (``/v1/structure`` returns 503 ``STRUCTURER_UNCONFIGURED`` when both are
+  unset and the deterministic stages produce nothing).
+- **Tunables** (default-with-override): cache TTL, batch cap, default timeout,
+  LlamaParse tiers, the structurer YAML / prompt paths.
+
+Filesystem-path settings (medium domains, structurer chain config, structurer
+prompt) are loaded once at module import — the corresponding extractor /
+handler module reads ``os.environ.get(...)`` directly rather than waiting for
+``Settings`` so the path is resolved before FastAPI startup runs.
 """
 
 from pydantic import Field

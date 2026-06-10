@@ -82,14 +82,15 @@ async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
 
 
 async def test_stage_cloud_chain_called_with_mocked_chain(monkeypatch: pytest.MonkeyPatch) -> None:
-    mock_call = AsyncMock(return_value=("# clean md\n\nBody", "structurer:test-model"))
+    usage = {"provider": "openai", "model": "test-model", "tokens_in": 1, "tokens_out": 2}
+    mock_call = AsyncMock(return_value=("# clean md\n\nBody", "structurer:test-model", usage))
     monkeypatch.setattr(structure, "_call_cloud_chain", mock_call)
 
     ctx = _make_ctx()
     ctx.openai_api_key = "sk-test"
     result = await structure._stage_cloud_chain(ctx, "noisy plain text", prompt="SYSTEM PROMPT")
 
-    assert result == ("# clean md\n\nBody", "structurer:test-model")
+    assert result == ("# clean md\n\nBody", "structurer:test-model", usage)
     assert mock_call.await_count == 1
 
 
@@ -157,7 +158,7 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
     )
 
     with patch("openai.AsyncOpenAI", return_value=primary_client) as ctor:
-        markdown, tier = await structure._call_cloud_chain(
+        markdown, tier, usage = await structure._call_cloud_chain(
             "noisy",
             "SYS",
             chain=[_openai_entry(), _ollama_entry()],
@@ -167,6 +168,9 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
 
     assert markdown == "# clean\n\nbody"
     assert tier == "structurer:gpt-4.1-mini"
+    assert usage["provider"] == "openai"
+    assert usage["model"] == "gpt-4.1-mini"
+    assert "duration_ms" in usage
     # Primary entry served; secondary NOT touched (loop short-circuited on first success)
     assert ctor.call_count == 1
     assert ctor.call_args.kwargs["api_key"] == "sk-openai"
@@ -181,7 +185,7 @@ async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
     )
 
     with patch("openai.AsyncOpenAI", side_effect=[openai_client, ollama_client]):
-        markdown, tier = await structure._call_cloud_chain(
+        markdown, tier, usage = await structure._call_cloud_chain(
             "noisy",
             "SYS",
             chain=[_openai_entry(), _ollama_entry()],
@@ -191,6 +195,8 @@ async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
 
     assert markdown == "# from ollama"
     assert tier == "structurer:qwen3.5:cloud"
+    assert usage["provider"] == "ollama"
+    assert usage["model"] == "qwen3.5:cloud"
 
 
 async def test_call_cloud_chain_raises_when_all_entries_exhausted() -> None:

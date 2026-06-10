@@ -8,10 +8,11 @@ import asyncio
 import logging
 import os
 import re
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import TYPE_CHECKING
+from typing import TYPE_CHECKING, Any
 
 import yaml
 
@@ -205,6 +206,30 @@ def _key_for(provider: str, openai_key: str | None, ollama_key: str | None) -> s
     return None
 
 
+def _usage_payload(usage: Any, model: str, provider: str, duration_ms: float) -> dict[str, Any]:
+    """Capture per-call usage in the orchestrator's shape (tokens_in/out/cached).
+
+    OpenAI's `prompt_tokens_details.cached_tokens` may be absent on older
+    response shapes or non-cached models. Returns None for missing fields
+    rather than guessing.
+    """
+    prompt_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
+    completion_tokens = getattr(usage, "completion_tokens", None) if usage is not None else None
+    cached_tokens: int | None = None
+    if usage is not None:
+        details = getattr(usage, "prompt_tokens_details", None)
+        if details is not None:
+            cached_tokens = getattr(details, "cached_tokens", None)
+    return {
+        "provider": provider,
+        "model": model,
+        "tokens_in": prompt_tokens,
+        "tokens_out": completion_tokens,
+        "cached_tokens": cached_tokens,
+        "duration_ms": round(duration_ms, 1),
+    }
+
+
 async def _call_cloud_chain(
     content: str,
     prompt: str,
@@ -215,8 +240,14 @@ async def _call_cloud_chain(
     title: str | None = None,
     content_date: str | None = None,
     author_name: str | None = None,
-) -> tuple[str, str]:
-    """Try each chain entry in order. Returns (markdown, "structurer:<model>")."""
+) -> tuple[str, str, dict[str, Any]]:
+    """Try each chain entry in order.
+
+    Returns (markdown, "structurer:<model>", usage_payload). The usage payload
+    carries per-call provenance (tokens_in/out/cached, duration_ms,
+    provider, model) so the cache row records it for downstream observability —
+    mirrors the orchestrator's `extraction_calls` shape.
+    """
     from openai import AsyncOpenAI
 
     user_message = _build_user_message(
@@ -233,6 +264,7 @@ async def _call_cloud_chain(
     last_retryable = True
     for entry in callable_entries:
         api_key = _key_for(entry.provider, openai_key, ollama_key)
+        t0 = time.monotonic()
         try:
             client = AsyncOpenAI(api_key=api_key, base_url=entry.base_url)
             response = await asyncio.wait_for(
@@ -247,17 +279,34 @@ async def _call_cloud_chain(
                 ),
                 timeout=entry.attempt_timeout,
             )
+            duration_ms = (time.monotonic() - t0) * 1000
             markdown = (response.choices[0].message.content or "").strip()
             if not markdown:
                 raise RuntimeError("empty completion")
-            return markdown, f"structurer:{entry.model}"
+            usage = _usage_payload(
+                getattr(response, "usage", None), entry.model, entry.provider, duration_ms
+            )
+            logger.info(
+                "structurer chain ok: provider=%s model=%s "
+                "tokens_in=%s tokens_out=%s cached_tokens=%s duration_ms=%.0f chars=%d",
+                entry.provider,
+                entry.model,
+                usage["tokens_in"],
+                usage["tokens_out"],
+                usage["cached_tokens"],
+                duration_ms,
+                len(markdown),
+            )
+            return markdown, f"structurer:{entry.model}", usage
         except Exception as exc:  # noqa: BLE001 — bounded fall-through across chain
+            duration_ms = (time.monotonic() - t0) * 1000
             last_exc = exc
             last_retryable = _is_retryable(exc)
             logger.warning(
-                "structurer chain entry %s/%s failed: %s: %.200s",
+                "structurer chain failed: provider=%s model=%s duration_ms=%.0f %s: %.200s",
                 entry.provider,
                 entry.model,
+                duration_ms,
                 type(exc).__name__,
                 exc,
             )
@@ -284,7 +333,7 @@ async def _stage_cloud_chain(
     title: str | None = None,
     content_date: str | None = None,
     author_name: str | None = None,
-) -> tuple[str, str]:
+) -> tuple[str, str, dict[str, Any]]:
     return await _call_cloud_chain(
         raw_content,
         prompt,
@@ -351,7 +400,7 @@ async def run_cascade(
     tier_log.append(_log_entry("passthrough", chars=0, error="heuristic rejected"))
 
     try:
-        markdown, tier_name = await _stage_cloud_chain(
+        markdown, tier_name, usage = await _stage_cloud_chain(
             ctx,
             raw_content,
             prompt=prompt,
@@ -372,6 +421,9 @@ async def run_cascade(
     model_name = (
         tier_name.removeprefix("structurer:") if tier_name.startswith("structurer:") else ""
     )
+    metadata: dict[str, Any] = {"usage": usage}
+    if model_name:
+        metadata["model"] = model_name
     return FetchResult(
         markdown=markdown,
         kind="structured",
@@ -381,5 +433,5 @@ async def run_cascade(
         cache_hit=False,
         etag="",
         tier_log=tier_log,
-        metadata={"model": model_name} if model_name else {},
+        metadata=metadata,
     )
