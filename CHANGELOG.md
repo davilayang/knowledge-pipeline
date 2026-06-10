@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Fetcher now fails the request when no tier returns clean content.** Article and Medium tiers run their output through `is_valid_content` + `is_likely_truncated` (ported from newsletter-assistant) — paywall fragments, JS walls, Cloudflare challenges, and "see more"-truncated bodies no longer surface as silent 200s. When every tier fails validation the cascade returns 502 `UPSTREAM_FAILURE`, leaving the consumer to route to a user-paste fallback.
+- **`FETCHER_LLAMA_PARSE_TIER_PDF` defaults to `fast`** instead of `agentic_plus` to avoid surprise paid spend on incidental `.pdf` URLs. arXiv keeps `agentic_plus` for paper-rendering quality.
+- **Jina requests carry `X-Return-Format: markdown` and `X-Timeout: 20`** so the response shape is explicit and Jina enforces its own timeout below the httpx client's.
+
 ### Added
 
 - **Medium articles now fetch via a dedicated handler.** Jina Reader free tier, then mediumapi.com RapidAPI paywall bypass under `FETCHER_RAPIDAPI_KEY` (optional). Domain set in `services/fetcher/config/medium_domains.yaml`; ships with a seed of well-known Medium-hosted publications, expand from your subscription list. Path overridable via `FETCHER_MEDIUM_DOMAINS_PATH`.
