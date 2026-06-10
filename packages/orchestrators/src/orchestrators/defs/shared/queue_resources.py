@@ -111,7 +111,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         page_id: str,
         content_type: str,
         canonical_url: str,
-        status_after: str,  # "Ready" (Tier B) or "Fetching" (Tier A)
+        status_after: str,  # "Fetching" — extract_complex_contents claims the row
         name: str | None = None,
         description: str | None = None,
         added_at_iso: str | None = None,

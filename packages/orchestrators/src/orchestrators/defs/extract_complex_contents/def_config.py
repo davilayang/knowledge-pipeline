@@ -11,11 +11,12 @@ LIFECYCLE_DRIFT_AGE_MINUTES = 60
 
 JOB_MAX_RETRIES = "1"
 
-# Content Type values that this pipeline supports. Triage routes rows to
-# Status=Fetching only when type ∈ this set; rows with unsupported types
-# fast-track to Status=Ready at triage time. Extend as new fetcher ports
-# land (PDF, Podcast).
-SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv")
+# Content Type values that this pipeline supports. Triage routes every row
+# whose type is in this set to Status=Fetching; the fetcher service's
+# handler registry then claims the URL (article handler is a catch-all for
+# anything not yt/arxiv/pdf/medium, so "Article" and "Other" both reach it
+# safely). Extend as new fetcher ports land (PDF, Podcast).
+SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other")
 
 # Active prompt labels — basenames of the markdown files under prompts/.
 # Code-level constants (not env vars) because prompt versions don't vary

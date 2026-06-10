@@ -4,8 +4,11 @@ Sensor-driven pipeline that turns Notion-captured URLs into extracted Topic
 Cards stored locally for newsletter-assistant to retrieve on engagement.
 
 Picks up rows after triage_queued_items has classified them: sensor filter is
-Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv}).
-Triage also registers the dynamic partition; this pipeline only runs the job.
+Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv,
+Article, Other}). The fetcher service's handler registry routes the URL by
+host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium,
+so Article and Other reach a real fetcher path. Triage also registers the
+dynamic partition; this pipeline only runs the job.
 
 ## DAG (per partition)
 
