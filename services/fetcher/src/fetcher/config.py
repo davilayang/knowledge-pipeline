@@ -45,7 +45,7 @@ class Settings(BaseSettings):
         description="LlamaParse tier used for arXiv PDF rendering.",
     )
     llama_parse_tier_pdf: str = Field(
-        default="agentic_plus",
+        default="fast",
         description="LlamaParse tier used for the generic PDF handler.",
     )
     tavily_api_key: str | None = Field(

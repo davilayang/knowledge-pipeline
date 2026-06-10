@@ -6,11 +6,12 @@ import httpx
 
 
 _JINA_BASE = "https://r.jina.ai/"
+_REQUEST_HEADERS = {"X-Return-Format": "markdown", "X-Timeout": "20"}
 
 
 async def fetch(client: httpx.AsyncClient, url: str) -> tuple[str, int]:
     """Fetch a URL through Jina Reader. Returns (body, status_code)."""
-    response = await client.get(_JINA_BASE + quote(url, safe=""))
+    response = await client.get(_JINA_BASE + quote(url, safe=""), headers=_REQUEST_HEADERS)
     return response.text or "", response.status_code
 
 

@@ -23,6 +23,7 @@ def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.socks5_url == "socks5://127.0.0.1:1080"
     assert settings.llama_parse_api_key == "test-llama-key"
     assert settings.llama_parse_tier_arxiv == "agentic_plus"
+    assert settings.llama_parse_tier_pdf == "fast"
 
 
 def test_settings_raises_when_required_missing(monkeypatch: pytest.MonkeyPatch) -> None:
