@@ -7,6 +7,7 @@ from fetcher.extractors import jina as jina_extractor
 from fetcher.extractors import tavily as tavily_extractor
 from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
+from fetcher.validator import is_acceptable
 
 
 logger = logging.getLogger(__name__)
@@ -34,13 +35,6 @@ def matches(url: str) -> bool:
     if medium_handler.matches(url):
         return False
     return True
-
-
-def _validate_not_js_wall(content: str) -> bool:
-    lowered = content.lower()
-    return (
-        "please enable javascript" not in lowered and "you need to enable javascript" not in lowered
-    )
 
 
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
@@ -99,17 +93,17 @@ TIERS: list[Tier] = [
         2000,
         8000,
         _jina_fetch,
-        validate=_validate_not_js_wall,
+        validate=is_acceptable,
         rate_limit_key="jina",
     ),
-    Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=_validate_not_js_wall),
+    Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=is_acceptable),
     Tier(
         "tavily",
         "paid",
         1500,
         6000,
         _tavily_fetch,
-        validate=_validate_not_js_wall,
+        validate=is_acceptable,
         rate_limit_key="tavily",
     ),
 ]

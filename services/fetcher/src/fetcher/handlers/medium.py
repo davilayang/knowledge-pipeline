@@ -10,6 +10,7 @@ import yaml
 from fetcher.extractors import jina as jina_extractor
 from fetcher.extractors import rapidapi_medium as rapidapi_medium_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
+from fetcher.validator import is_acceptable
 
 
 logger = logging.getLogger(__name__)
@@ -67,13 +68,6 @@ def extract_article_id(url: str) -> str:
     return match.group(1)
 
 
-def _validate_not_js_wall(content: str) -> bool:
-    lowered = content.lower()
-    return (
-        "please enable javascript" not in lowered and "you need to enable javascript" not in lowered
-    )
-
-
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     body, status = await jina_extractor.fetch(ctx.jina_client, url)
     if status >= 400 or jina_extractor.wraps_upstream_error(body):
@@ -106,7 +100,7 @@ TIERS: list[Tier] = [
         2000,
         8000,
         _jina_fetch,
-        validate=_validate_not_js_wall,
+        validate=is_acceptable,
         rate_limit_key="jina",
     ),
     Tier(
