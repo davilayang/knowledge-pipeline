@@ -8,8 +8,15 @@ from orchestrators.defs.shared.queue_resources import (
     QueueStoreResource,
 )
 
-from .classify import ALL_CONTENT_TYPES, canonicalize_url, classify_content_type
+from .classify import (
+    ALL_CONTENT_TYPES,
+    CONTENT_TYPE_PODCAST,
+    CONTENT_TYPE_YOUTUBE,
+    canonicalize_url,
+    classify_content_type,
+)
 from .def_config import PIPELINE_TAG, queue_items_partition_def
+from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import fetch_url_meta
 
 GROUP_NAME = "triage_queued_items"
@@ -88,6 +95,21 @@ def triaged(
         content_type = classify_content_type(canonical)
         content_type_source = "classified"
 
+    # Podcast audio URLs: look up a YouTube equivalent. On hit, substitute
+    # the canonical URL and reclassify as YouTube so downstream fetcher
+    # dispatch returns a free transcript instead of paying for Whisper.
+    podcast_substituted_to: str | None = None
+    if content_type == CONTENT_TYPE_PODCAST:
+        audio_title_for_lookup = config.name or meta.title or ""
+        substituted = maybe_redirect_podcast_to_youtube(
+            audio_url=canonical,
+            audio_title=audio_title_for_lookup,
+        )
+        if substituted:
+            canonical = canonicalize_url(substituted)
+            content_type = CONTENT_TYPE_YOUTUBE
+            podcast_substituted_to = canonical
+
     triage_store.ensure_schema()
 
     # Dedup by canonical_url: a second Notion capture of an already-queued
@@ -146,20 +168,21 @@ def triaged(
         added_at_iso=config.added_at_iso,
     )
 
-    return dg.MaterializeResult(
-        metadata={
-            "content_type": dg.MetadataValue.text(content_type),
-            "content_type_source": dg.MetadataValue.text(content_type_source),
-            "canonical_url": dg.MetadataValue.url(canonical),
-            "original_url": dg.MetadataValue.url(config.url),
-            "final_url": dg.MetadataValue.url(effective_url),
-            "name": dg.MetadataValue.text(config.name or ""),
-            "fetched_title": dg.MetadataValue.text(meta.title or ""),
-            "fetched_description": dg.MetadataValue.text(meta.description or ""),
-            "status_after": dg.MetadataValue.text(status_after),
-            "summary": dg.MetadataValue.md(f"**{content_type}** → Notion {status_after}"),
-        }
-    )
+    metadata: dict[str, dg.MetadataValue] = {
+        "content_type": dg.MetadataValue.text(content_type),
+        "content_type_source": dg.MetadataValue.text(content_type_source),
+        "canonical_url": dg.MetadataValue.url(canonical),
+        "original_url": dg.MetadataValue.url(config.url),
+        "final_url": dg.MetadataValue.url(effective_url),
+        "name": dg.MetadataValue.text(config.name or ""),
+        "fetched_title": dg.MetadataValue.text(meta.title or ""),
+        "fetched_description": dg.MetadataValue.text(meta.description or ""),
+        "status_after": dg.MetadataValue.text(status_after),
+        "summary": dg.MetadataValue.md(f"**{content_type}** → Notion {status_after}"),
+    }
+    if podcast_substituted_to:
+        metadata["podcast_substituted_to"] = dg.MetadataValue.url(podcast_substituted_to)
+    return dg.MaterializeResult(metadata=metadata)
 
 
 all_assets = [triaged]

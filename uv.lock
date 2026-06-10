@@ -2133,6 +2133,7 @@ dependencies = [
     { name = "knowledge-workflows" },
     { name = "notion-client" },
     { name = "poethepoet" },
+    { name = "pyyaml" },
     { name = "tenacity" },
     { name = "trafilatura" },
 ]
@@ -2149,6 +2150,7 @@ requires-dist = [
     { name = "knowledge-workflows", editable = "packages/workflows" },
     { name = "notion-client", specifier = ">=2.2,<3.0" },
     { name = "poethepoet" },
+    { name = "pyyaml", specifier = ">=6.0,<7.0" },
     { name = "tenacity", specifier = ">=9.0,<10.0" },
     { name = "trafilatura", specifier = ">=2.0,<3.0" },
 ]

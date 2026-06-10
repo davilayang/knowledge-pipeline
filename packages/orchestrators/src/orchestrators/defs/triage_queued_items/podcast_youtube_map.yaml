@@ -1,0 +1,25 @@
+# Per-show mapping: podcast audio URL → YouTube playlist for transcript
+# substitution at canonicalize time. When a queue item's URL contains one
+# of `audio_url_substring`, the orchestrator fetches that show's YouTube
+# playlist Atom feed, strips the show prefix from the audio title via
+# `title_strip_pattern`, fuzzy-matches against playlist entry titles, and
+# (on a confident match) substitutes the canonical URL to the matched
+# YouTube video URL. The fetcher service then routes the URL via its
+# youtube handler and returns a free transcript instead of paying for
+# Whisper transcription.
+#
+# Add a row per podcast subscription you'd like to substitute. Each row:
+#   audio_url_substring  — uniquely identifies this show in audio URLs
+#                          (a host token, megaphone path token, etc.)
+#   youtube_playlist_id  — the show's YouTube playlist (PL...) whose
+#                          entries you want to match against
+#   title_strip_pattern  — regex stripping the show prefix from the
+#                          audio title so what's left is the episode title
+#   match_threshold      — minimum SequenceMatcher ratio (0–100) to accept
+#                          a match; 80 is a reasonable default
+mappings:
+  - name: super_data_science
+    audio_url_substring: SUPERDATASCIENCEPTYLTD
+    youtube_playlist_id: PLS3615GtilzBoe1fmujEOh8PsKUdnFZco
+    title_strip_pattern: '^.*?:\s*\d+:\s*'
+    match_threshold: 80

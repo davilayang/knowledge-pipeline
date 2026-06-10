@@ -481,3 +481,79 @@ def test_triaged_passes_none_added_at_when_unset(tmp_path: Path):
     )
     assert result.success
     assert notion.write_triaged.call_args.kwargs["added_at_iso"] is None
+
+
+# -------- podcast → YouTube substitution --------
+
+
+def test_triaged_substitutes_podcast_url_to_youtube_on_match(tmp_path: Path):
+    """When classify yields Podcast and the canonicalize lookup finds a
+    YouTube equivalent, the canonical URL written to queue.db + Notion is
+    the YouTube URL and content_type is reclassified to YouTube. The
+    fetcher service downstream gets a free transcript instead of paying
+    for Whisper."""
+    resources, notion = _resources(tmp_path)
+    podcast_url = "https://traffic.megaphone.fm/SUPERDATASCIENCEPTYLTD7992118381.mp3"
+    youtube_url = "https://www.youtube.com/watch?v=vi6UILzThgo"
+    with patch(
+        "orchestrators.defs.triage_queued_items.assets.maybe_redirect_podcast_to_youtube",
+        return_value=youtube_url,
+    ):
+        result = _materialize(
+            partition_key="p-pod",
+            resources=resources,
+            url=podcast_url,
+            name="Super Data Science: ML & AI Podcast with Jon Krohn: 999: What's Left to Build",
+        )
+
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "YouTube"
+    assert metadata["canonical_url"].url == youtube_url
+    assert metadata["podcast_substituted_to"].url == youtube_url
+    write_kwargs = notion.write_triaged.call_args.kwargs
+    assert write_kwargs["content_type"] == "YouTube"
+    assert write_kwargs["canonical_url"] == youtube_url
+
+
+def test_triaged_keeps_podcast_classification_when_no_substitution(tmp_path: Path):
+    """When no YouTube equivalent is found, the row stays Podcast with
+    the original audio URL — fetcher service will handle it via the
+    podcast handler (Phase 5b) or fall through to article handler today."""
+    resources, notion = _resources(tmp_path)
+    podcast_url = "https://traffic.libsyn.com/unknown-show/episode.mp3"
+    with patch(
+        "orchestrators.defs.triage_queued_items.assets.maybe_redirect_podcast_to_youtube",
+        return_value=None,
+    ):
+        result = _materialize(
+            partition_key="p-pod",
+            resources=resources,
+            url=podcast_url,
+        )
+
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "Podcast"
+    assert metadata["canonical_url"].url == podcast_url
+    assert "podcast_substituted_to" not in metadata
+    write_kwargs = notion.write_triaged.call_args.kwargs
+    assert write_kwargs["content_type"] == "Podcast"
+    assert write_kwargs["canonical_url"] == podcast_url
+
+
+def test_triaged_skips_substitution_for_non_podcast_url(tmp_path: Path):
+    """maybe_redirect_podcast_to_youtube is NOT called for non-podcast
+    URLs — guards against accidental lookup latency on every queue item."""
+    resources, _ = _resources(tmp_path)
+    with patch(
+        "orchestrators.defs.triage_queued_items.assets.maybe_redirect_podcast_to_youtube"
+    ) as fake_lookup:
+        result = _materialize(
+            partition_key="p-art",
+            resources=resources,
+            url="https://blog.example.com/post",
+        )
+
+    assert result.success
+    fake_lookup.assert_not_called()

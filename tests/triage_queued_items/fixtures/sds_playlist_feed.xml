@@ -1,0 +1,564 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns:yt="http://www.youtube.com/xml/schemas/2015" xmlns:media="http://search.yahoo.com/mrss/" xmlns="http://www.w3.org/2005/Atom">
+ <link rel="self" href="http://www.youtube.com/feeds/videos.xml?playlist_id=PLS3615GtilzBoe1fmujEOh8PsKUdnFZco"/>
+ <id>yt:playlist:PLS3615GtilzBoe1fmujEOh8PsKUdnFZco</id>
+ <yt:playlistId>PLS3615GtilzBoe1fmujEOh8PsKUdnFZco</yt:playlistId>
+ <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+ <title>Data Science</title>
+ <author>
+  <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+  <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+ </author>
+ <published>2020-05-20T16:25:26+00:00</published>
+ <entry>
+  <id>yt:video:vi6UILzThgo</id>
+  <yt:videoId>vi6UILzThgo</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>What's Left to Build When Software Is Free (with Chip Huyen)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=vi6UILzThgo"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-06-09T11:00:21+00:00</published>
+  <updated>2026-06-10T06:46:50+00:00</updated>
+  <media:group>
+   <media:title>What's Left to Build When Software Is Free (with Chip Huyen)</media:title>
+   <media:content url="https://www.youtube.com/v/vi6UILzThgo?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/vi6UILzThgo/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AIengineering #MachineLearning #FoundationModels 
+
+Chip Huyen joins host @JonKrohnLearns for this milestone episode 999 to talk about her record-breaking book &quot;AI Engineering&quot; the most-read title on the O'Reilly platform last year and how the AI landscape has shifted since her last appearance. Chip breaks down what separates AI engineering from machine learning engineering, makes the case for a &quot;start simple&quot; workflow, gets candid about the real costs of running LLMs in production, and shares why she's now fascinated by physical AI, robotics, and world models and why the durable problems worth solving are increasingly human ones. Jon Krohn guides the conversation from the practical content of the book through to where the field is heading next.
+
+This episode is brought to you by: 
+• Cisco: https://outshift.cisco.com
+• Acceldata: https://www.acceldata.io
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:06:48) What separates AI engineering from machine learning engineering
+• (00:14:44) The “start simple” approach: prompting, then RAG, then fine-tuning
+• (00:18:19) Why web search is so painfully expensive in production
+• (00:35:21) Is the “ChatGPT moment” for physical AI really here?
+• (00:53:08) Why the durable problems left to solve are people problems
+
+Additional materials: https://www.superdatascience.com/999</media:description>
+   <media:community>
+    <media:starRating count="11" average="5.00" min="1" max="5"/>
+    <media:statistics views="419"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:fVnBlF8JuUk</id>
+  <yt:videoId>fVnBlF8JuUk</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>How This Text-to-Video-Game AI Startup Hit 20M Users (Ep. 997 with Andrey Kurenkov)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=fVnBlF8JuUk"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-06-02T11:00:23+00:00</published>
+  <updated>2026-06-10T12:04:58+00:00</updated>
+  <media:group>
+   <media:title>How This Text-to-Video-Game AI Startup Hit 20M Users (Ep. 997 with Andrey Kurenkov)</media:title>
+   <media:content url="https://www.youtube.com/v/fVnBlF8JuUk?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/fVnBlF8JuUk/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#aigames #vibecoding #B2Cstartup
+
+Dr. Andrey Kurenkov returns to the show to talk about Astrocade's astronomical growth from pre-alpha to over 20 million engaged users, what it actually takes to build a vibe-coding platform that scales, and how the broader AI landscape has shifted since his last appearance. Andrey shares behind-the-scenes lessons from building B2C user-generated content products, why the real moat is community rather than tech, and his current thinking on humanoid robotics, AGI, and the AI risks people actually overlook.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: https://acceldata.io/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:02:11) The Astrocade elevator pitch and how it grew to 20M users
+• (00:16:47) Why there's no secret sauce behind the platform
+• (00:25:47) UGC as the real moat, not the AI
+• (00:48:48) Why household humanoid robots are now 2–3 years away
+• (00:58:33) What AGI actually means, and why Andrey is an ASI skeptic
+
+Additional materials: https://www.superdatascience.com/997</media:description>
+   <media:community>
+    <media:starRating count="9" average="5.00" min="1" max="5"/>
+    <media:statistics views="2494"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:5YD90FJZGpk</id>
+  <yt:videoId>5YD90FJZGpk</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>TrueFoundry’s Nikunj Bajaj on How to Get $100M Returns on AI Agent Deployments (Ep. 996)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=5YD90FJZGpk"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-05-29T11:18:44+00:00</published>
+  <updated>2026-06-10T12:03:10+00:00</updated>
+  <media:group>
+   <media:title>TrueFoundry’s Nikunj Bajaj on How to Get $100M Returns on AI Agent Deployments (Ep. 996)</media:title>
+   <media:content url="https://www.youtube.com/v/5YD90FJZGpk?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/5YD90FJZGpk/hqdefault.jpg" width="480" height="360"/>
+   <media:description>TrueFoundry co-founder and CEO Nikunj Bajaj speaks to @JonKrohnLearns about how enterprises like Nvidia and Siemens are realizing returns of over $100 million from single agent deployments, the AI gateway architecture that makes it possible to connect, observe, and govern agents at scale, and why the familiar advice to “start small” is the wrong way to roll out AI agents inside a large organization.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:01:21) What TrueFoundry does and why agents in production need a control plane
+• (00:06:32) Breaking down the AI gateway: the model, MCP, and agent gateways
+• (00:16:47) Taming tool sprawl with scoped, read-only MCP access
+• (00:19:10) Why the agent gateway is the hard part and the kill switch most teams lack
+• (00:22:24) The five-workflow framework behind $100M agent deployments
+
+Additional materials: https://www.superdatascience.com/996</media:description>
+   <media:community>
+    <media:starRating count="23" average="5.00" min="1" max="5"/>
+    <media:statistics views="9525"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:zNIb2jEmGG8</id>
+  <yt:videoId>zNIb2jEmGG8</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Stop Throwing Compute at Bad Data (Ep. 995 with Jazmia Henry)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=zNIb2jEmGG8"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-05-26T11:00:18+00:00</published>
+  <updated>2026-06-10T12:02:15+00:00</updated>
+  <media:group>
+   <media:title>Stop Throwing Compute at Bad Data (Ep. 995 with Jazmia Henry)</media:title>
+   <media:content url="https://www.youtube.com/v/zNIb2jEmGG8?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i3.ytimg.com/vi/zNIb2jEmGG8/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#foundationmodels #ai #datascience 
+
+Jazmia Henry joins @JonKrohnLearns to break down what it actually takes to build end-to-end foundation models for the energy industry. From wrangling decades of handwritten oil-and-gas documents into usable training data, to bespoke tokenizers, reinforcement learning, and inference at scale, Jazmia walks through every stage of the stack. Along the way she explains why reinforcement learning models are &quot;bursty,&quot; what reward hacking is and how her Grounded Continuous Evaluation framework fixes it, and revisits the 2023 NeurIPS paper that argued, to widespread skepticism at the time, that scaling bad data degrades model performance.
+
+This episode is brought to you by: 
+• Acceldata: https://acceldata.io/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:03:25) Why oil and gas needs AI
+• (00:12:19) The four stages of foundation model building
+• (00:20:13) Why reinforcement learning models are &quot;bursty&quot;
+• (00:34:02) Reward hacking and the GCE framework
+• (00:48:12) Why scaling bad data makes models worse
+
+Additional materials: https://www.superdatascience.com/995</media:description>
+   <media:community>
+    <media:starRating count="17" average="5.00" min="1" max="5"/>
+    <media:statistics views="11739"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:SwN81LN59Hc</id>
+  <yt:videoId>SwN81LN59Hc</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>How to Build AI-First Organizations (Ep. 993 with Jacob Miller and Jeremy Mumford)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=SwN81LN59Hc"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-05-19T11:00:00+00:00</published>
+  <updated>2026-06-10T11:59:13+00:00</updated>
+  <media:group>
+   <media:title>How to Build AI-First Organizations (Ep. 993 with Jacob Miller and Jeremy Mumford)</media:title>
+   <media:content url="https://www.youtube.com/v/SwN81LN59Hc?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/SwN81LN59Hc/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AIengineering #AIpodcast #AIagents 
+
+For years, AI content has come in the form of “use this library, use this tool” tutorials that age out within months. Jacob Miller and Jeremy Mumford, co-authors of the brand new Wiley book Architected Intelligence, wanted to write something different, a guide to the higher-level principles of building AI products and AI-first organizations that will still be relevant in five or ten years. In this episode, the two Pattern engineers walk @JonKrohnLearns through the core ideas of their book: why you should design products and processes so they can be executed by a human, an AI agent, or any hybrid combination; why most companies are still treating hallucinations as a model problem when they’re actually a data curation problem; why the natural progression of AI development goes skills, workflows, agents, not straight to agents; and why velocity, not models or data, is the only durable competitive advantage left.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: https://acceldata.io/
+• SuperDataScience: https://superdatascience.com/challenge
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:10:06) The User Agnosticism Tenet
+• (00:20:02) The Zillow Offers parable
+• (00:33:52) Why data engineering is the bedrock of AI
+• (00:54:41) Why velocity is the only durable moat
+
+Additional materials: https://www.superdatascience.com/993</media:description>
+   <media:community>
+    <media:starRating count="25" average="5.00" min="1" max="5"/>
+    <media:statistics views="22891"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:K791Yk7noyo</id>
+  <yt:videoId>K791Yk7noyo</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Pair Programming with AI in Your Python Notebook (Ep. 991 with Dr. Trevor Manz)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=K791Yk7noyo"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-05-12T11:00:27+00:00</published>
+  <updated>2026-06-10T11:57:42+00:00</updated>
+  <media:group>
+   <media:title>Pair Programming with AI in Your Python Notebook (Ep. 991 with Dr. Trevor Manz)</media:title>
+   <media:content url="https://www.youtube.com/v/K791Yk7noyo?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/K791Yk7noyo/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#DataScience #Python #ClaudeCode  
+
+Dr. Trevor Manz of Marimo talks to @JonKrohnLearns about Marimo Pair, an open-source agent skill that teaches coding agents like Claude Code how to drive a reactive Python notebook, reading cell state, running Python in the kernel, taking screenshots of cells, and iterating on data tasks the way agents iterate on traditional software. Trevor also unpacks recursive language models, his AnyWidget project that bridges Python and the web, and his journey from a Wisconsin small town and Harvard bioinformatics research to founding-engineer life at Marimo. Listen to the episode to hear why no matter where AI takes us, curiosity and going deep on a topic will always be valuable.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: go.acceldata.io/autonomous26 
+• Y Carrot: https://www.ycarrot.com/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:07:04) What Marimo Pair is and how it teaches agents to use notebooks as a tool          
+• (00:13:03) How agent skills work as folders of markdown files
+• (00:24:44) Trevor's day-to-day workflow combining Claude Code and Marimo Pair
+• (00:33:08) Recursive language models and why they could be the future of agentic reasoning
+• (00:58:55) Career advice on curiosity, going deep, and becoming a domain expert
+
+Additional materials: https://www.superdatascience.com/991</media:description>
+   <media:community>
+    <media:starRating count="34" average="5.00" min="1" max="5"/>
+    <media:statistics views="37528"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:XIc55lHjDtA</id>
+  <yt:videoId>XIc55lHjDtA</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>The AI Model Anthropic Refuses to Release (Ep. 989 with Cal Al-Dhubaib and Anneka Gupta)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=XIc55lHjDtA"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-05-05T11:01:01+00:00</published>
+  <updated>2026-06-10T11:56:35+00:00</updated>
+  <media:group>
+   <media:title>The AI Model Anthropic Refuses to Release (Ep. 989 with Cal Al-Dhubaib and Anneka Gupta)</media:title>
+   <media:content url="https://www.youtube.com/v/XIc55lHjDtA?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/XIc55lHjDtA/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#Rubrik #AIcybersecurity #AIsecurity 
+
+Rubrik’s Anneka Gupta and Cal Al-Dhubaib speak to Jon Krohn about cybersecurity measures, the risks AI in business might pose for malicious attacks, and why AI should be kept “boring.” Find out how Rubrik safeguards client data, what zero trust is in the context of cybersecurity, and why cyber-resilience needs to be a top priority for companies looking to adopt AI.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: go.acceldata.io/autonomous26 
+• Y Carrot: https://www.ycarrot.com/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:02:25) All about Rubrik           
+• (00:08:51) The announcement of Claude Mythos    
+• (00:27:25) Utilizing zero trust   
+• (00:46:05) About the Rubrik agent cloud  
+
+Additional materials: https://www.superdatascience.com/989</media:description>
+   <media:community>
+    <media:starRating count="41" average="5.00" min="1" max="5"/>
+    <media:statistics views="106530"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:Hd7ePBbuQRI</id>
+  <yt:videoId>Hd7ePBbuQRI</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Ex-Anyscale: 1-Person Billion-Dollar Companies Are Coming (Ep. 987 with Linda Haviv)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=Hd7ePBbuQRI"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-04-28T11:00:33+00:00</published>
+  <updated>2026-06-10T11:54:24+00:00</updated>
+  <media:group>
+   <media:title>Ex-Anyscale: 1-Person Billion-Dollar Companies Are Coming (Ep. 987 with Linda Haviv)</media:title>
+   <media:content url="https://www.youtube.com/v/Hd7ePBbuQRI?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/Hd7ePBbuQRI/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AIinfrastructure #OpenSourceAI #AIcareers 
+
+Linda Haviv talks to @JonKrohnLearns about staying current on AI matters, why open-source technology is narrowing the gap in its race with proprietary models, and how being a content creator in tech is key to career growth and longevity. She emphasizes that non-linear pathways to a career in tech can give applicants an edge, and stresses the importance of continuous upskilling to “stay relevant.” In her view, systems thinking is becoming more important than coding skills. Hear why in this episode.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: go.acceldata.io/autonomous26 
+• Y Carrot: https://www.ycarrot.com/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:03:43) Linda Haviv on AI education    
+• (00:13:16) The future of coding
+• (00:27:59) Having a side hustle in today’s economy 
+• (00:32:50) On becoming a content creator for tech
+• (1:03:13) How open source could disrupt the AI landscape
+
+Additional materials: https://www.superdatascience.com/987</media:description>
+   <media:community>
+    <media:starRating count="30" average="5.00" min="1" max="5"/>
+    <media:statistics views="7821"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:MMvzPaSre-I</id>
+  <yt:videoId>MMvzPaSre-I</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Building Hardware is Hard but AI Agents Help (Ep. 986 with Kishore Subramanian)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=MMvzPaSre-I"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-04-24T11:00:43+00:00</published>
+  <updated>2026-06-10T11:53:34+00:00</updated>
+  <media:group>
+   <media:title>Building Hardware is Hard but AI Agents Help (Ep. 986 with Kishore Subramanian)</media:title>
+   <media:content url="https://www.youtube.com/v/MMvzPaSre-I?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i2.ytimg.com/vi/MMvzPaSre-I/hqdefault.jpg" width="480" height="360"/>
+   <media:description>CTO of Propel Software Kishore Subramanian talks to @JonKrohnLearns about how product lifecycle management (PLM) software and quality management systems (QMS) help ensure compliance, record management, and quality assurance. Listen to the episode to hear Kishore Subramanian talk about best practices for getting started with Agentforce 360, his top tips for deploying AI projects, and why yoga and meditation could make you better at building AI products!
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:05:21) How Propel Software meets its customers’ demands
+• (00:07:57) About Propel One AI 
+• (00:13:31) A case study for Salesforce’s Agentforce 360 Platform
+• (00:17:08) How to build an enterprise-ready agent with Agentforce 360
+• (00:19:21) How to get your AI tool into production
+
+Additional materials: https://www.superdatascience.com/986</media:description>
+   <media:community>
+    <media:starRating count="14" average="5.00" min="1" max="5"/>
+    <media:statistics views="44314"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:hiuozSx9dWM</id>
+  <yt:videoId>hiuozSx9dWM</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>The Four Types of Memory Every AI Agent Needs (Ep. 985 with Richmond Alake)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=hiuozSx9dWM"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-04-21T11:01:09+00:00</published>
+  <updated>2026-06-10T11:53:04+00:00</updated>
+  <media:group>
+   <media:title>The Four Types of Memory Every AI Agent Needs (Ep. 985 with Richmond Alake)</media:title>
+   <media:content url="https://www.youtube.com/v/hiuozSx9dWM?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i1.ytimg.com/vi/hiuozSx9dWM/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AgentMemory #AIagents #AI
+
+Oracle’s Director of AI Developer Experience Richmond Alake returns to the show to talk to @JonKrohnLearns about agent memory; the network of systems, models, databases and LLMs that enable AI agents to learn and adapt over time. Listen to the episode to hear about Richmond’s “100 Days of Agent Memory” initiative, retrieval-augmented generation’s (RAG) limitations with AI agents, the layers of the AI agent stack, and what makes the Oracle AI database so useful to developers.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: go.acceldata.io/autonomous26 
+• Y Carrot: https://www.ycarrot.com/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:03:15) What agent memory is and why it’s important
+• (00:29:26) RAG’s limitations for AI agents 
+• (00:36:51) What matters in the AI agent stack beyond memory
+• (00:43:14) Why memory was undervalued in the AI agent stack
+
+Additional materials: https://www.superdatascience.com/985</media:description>
+   <media:community>
+    <media:starRating count="66" average="5.00" min="1" max="5"/>
+    <media:statistics views="149014"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:GOhaoqeJF_c</id>
+  <yt:videoId>GOhaoqeJF_c</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Building AI Agents Where 99.9% Accuracy Isn't Good Enough (Ep. 984 with Raju Malhotra)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=GOhaoqeJF_c"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-04-17T11:00:29+00:00</published>
+  <updated>2026-06-10T11:52:21+00:00</updated>
+  <media:group>
+   <media:title>Building AI Agents Where 99.9% Accuracy Isn't Good Enough (Ep. 984 with Raju Malhotra)</media:title>
+   <media:content url="https://www.youtube.com/v/GOhaoqeJF_c?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/GOhaoqeJF_c/hqdefault.jpg" width="480" height="360"/>
+   <media:description>Raju Malhotra, Chief Product and Technology Officer at Certinia, talks to @JonKrohnLearns about the so-called SaaSpocalypse and how agentic AI is proving the doomsayers wrong. Listen to the episode to hear more about Certinia’s work with Salesforce and building with Agentforce 360, the three elements required for enterprise-grade agents, how AI agents have benefitted Certinia’s customers, and how to keep your work portfolio fresh and interesting to recruiters.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:01:24) What Certinia does for professional services companies
+• (00:08:45) Why the &quot;SaaSpocalypse&quot; is wrong
+• (00:13:19) Agentforce 360 and how Certinia builds on it
+• (00:15:06) The three elements required for enterprise-grade agents
+• (00:18:02) How AI agents have impacted Certinia's customers
+
+Additional materials: https://www.superdatascience.com/984</media:description>
+   <media:community>
+    <media:starRating count="17" average="5.00" min="1" max="5"/>
+    <media:statistics views="46870"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:kSyzemwrOaI</id>
+  <yt:videoId>kSyzemwrOaI</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Ex-Goldman, Ex-Snowflake: AI Will Replace Junior Hires (Ep. 981 with Matt Glickman)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=kSyzemwrOaI"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-04-07T11:01:17+00:00</published>
+  <updated>2026-06-10T11:50:26+00:00</updated>
+  <media:group>
+   <media:title>Ex-Goldman, Ex-Snowflake: AI Will Replace Junior Hires (Ep. 981 with Matt Glickman)</media:title>
+   <media:content url="https://www.youtube.com/v/kSyzemwrOaI?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/kSyzemwrOaI/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#agenticai #dataengineering #aiagents 
+
+Matt Glickman talks to @JonKrohnLearns about co-founding the agentic-platform startup, Genesis Computing, how his experience at Goldman Sachs paved the way for developing AI agents, and where he thinks agentic AI has just as much value as a company’s human employees. This February, Genesis Computing revealed how its platform can offer the guardrails so crucial to businesses, alongside increased capabilities that help execute entire workflows from research to deployment.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: go.acceldata.io/autonomous26
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:12:56) Cloud adoption in finance and healthcare
+• (00:19:12) How Genesis Computing uses AI agents 
+• (00:31:05) AI agents replacing humans in the workplace  
+• (00:56:30) An argument for encouraging enterprises to use AI     
+
+Additional materials: https://www.superdatascience.com/981</media:description>
+   <media:community>
+    <media:starRating count="42" average="5.00" min="1" max="5"/>
+    <media:statistics views="43422"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:3_zXMWkpCcg</id>
+  <yt:videoId>3_zXMWkpCcg</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Acceldata CEO: Enterprise Data Will Grow 10X Soon (Ep. 979 with Rohit Choudhary)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=3_zXMWkpCcg"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-03-31T11:00:00+00:00</published>
+  <updated>2026-06-10T11:49:25+00:00</updated>
+  <media:group>
+   <media:title>Acceldata CEO: Enterprise Data Will Grow 10X Soon (Ep. 979 with Rohit Choudhary)</media:title>
+   <media:content url="https://www.youtube.com/v/3_zXMWkpCcg?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/3_zXMWkpCcg/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AIproblems #EnterpriseData #EnterpriseAI
+
+For years, @JonKrohnLearns has been quoting the stat that the world's data is roughly doubling every year. His guest today says that’s way too conservative, he’s seeing enterprise data soon growing at close to 10x per year. And most organizations are nowhere near ready for what that means. In this episode, Rohit Choudhary, founder and CEO of Acceldata, explains how the agentic data management platform his team has built helps enterprises make their increasingly vast amounts of data self-aware, self-optimizing, and AI-ready. He breaks down why governance needs to be operational and real-time rather than a one-time compliance exercise, and shares his view on why the most valuable professionals in the age of AI won’t be the best programmers, they’ll be the ones with the clearest thinking and the deepest domain expertise.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• ODSC, the Open Data Science Conference⁠: https://odsc.ai/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:03:26) How Rohit coined the term “data observability”
+• (00:06:04) Agentic data management use cases
+• (00:12:46) Why fixing data at the point of consumption is 1000x more expensive
+• (00:31:39) Career paths and skills for the age of AI
+• (00:43:52) Why enterprise data will soon grow at nearly 10x per year
+
+Additional materials: https://www.superdatascience.com/979</media:description>
+   <media:community>
+    <media:starRating count="42" average="5.00" min="1" max="5"/>
+    <media:statistics views="104433"/>
+   </media:community>
+  </media:group>
+ </entry>
+ <entry>
+  <id>yt:video:wnLvucyIHvs</id>
+  <yt:videoId>wnLvucyIHvs</yt:videoId>
+  <yt:channelId>UCMbtqTGdSsxYYhhTpV4lSTQ</yt:channelId>
+  <title>Attention Co-Inventor: AI's Next Leap Isn't More Data (Ep. 977 with Kyunghyun Cho)</title>
+  <link rel="alternate" href="https://www.youtube.com/watch?v=wnLvucyIHvs"/>
+  <author>
+   <name>Super Data Science: ML &amp; AI Podcast with Jon Krohn</name>
+   <uri>https://www.youtube.com/channel/UCMbtqTGdSsxYYhhTpV4lSTQ</uri>
+  </author>
+  <published>2026-03-24T11:01:40+00:00</published>
+  <updated>2026-06-10T11:47:33+00:00</updated>
+  <media:group>
+   <media:title>Attention Co-Inventor: AI's Next Leap Isn't More Data (Ep. 977 with Kyunghyun Cho)</media:title>
+   <media:content url="https://www.youtube.com/v/wnLvucyIHvs?version=3" type="application/x-shockwave-flash" width="640" height="390"/>
+   <media:thumbnail url="https://i4.ytimg.com/vi/wnLvucyIHvs/hqdefault.jpg" width="480" height="360"/>
+   <media:description>#AI #MachineLearning  #DeepLearning 
+
+What’s going to be the next big step function that blasts us forward in AI capabilities? To find out, @JonKrohnLearns sits down with Professor Kyunghyun Cho, whose 200,000 citations and co-authorship of the first paper on attention place him among the most influential AI researchers in the world. In this episode, Kyunghyun explains why today’s models have already captured most correlations in passive data, making the real challenge about actively choosing which data to collect. He also weighs in on the open debate around world models, whether AI needs high-fidelity, step-by-step imagination or whether a high-level latent representation that lets it skip ahead is sufficient and shares the surprising discovery that 80% of his 200 computer science students had never installed a coding agent.
+
+This episode is brought to you by: 
+• Cisco: https://agntcy.org/
+• Acceldata: https://www.acceldata.io/free-trial
+• ODSC, the Open Data Science Conference⁠: https://odsc.ai/
+
+Interested in sponsoring a SuperDataScience Podcast episode? Email natalie@superdatascience.com for sponsorship information.
+
+In this episode you will learn:
+• (00:00:00) Introduction
+• (00:06:43) The story behind the attention mechanism
+• (00:27:24) Sample efficiency and active data collection
+• (00:41:00) World models and latent planning
+• (00:51:00) Teaching undergrads with coding agents
+• (00:59:58) Reranking, multi-stage ranking, and the foundations of RAG
+
+Additional materials: https://www.superdatascience.com/977</media:description>
+   <media:community>
+    <media:starRating count="504" average="5.00" min="1" max="5"/>
+    <media:statistics views="117993"/>
+   </media:community>
+  </media:group>
+ </entry>
+</feed>
