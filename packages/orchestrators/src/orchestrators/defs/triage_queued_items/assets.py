@@ -39,6 +39,7 @@ class TriageInput(dg.Config):
     content_type: str | None = None
     name: str | None = None
     added_at_iso: str | None = None
+    raw_content_override: str = ""
 
 
 @dg.asset(
@@ -127,6 +128,7 @@ def triaged(
         url=config.url,
         canonical_url=canonical,
         content_type=content_type,
+        raw_content_override=config.raw_content_override,
     )
     # Only seed Notion's Name when the user left it blank — never overwrite a
     # user-set title. Description is operational and safe to (re)write.

@@ -515,3 +515,95 @@ def test_fetcher_passes_content_type_without_using_it():
     payloads = [call.kwargs["json"] for call in post.call_args_list]
     assert payloads[0] == payloads[1] == payloads[2]
     assert "source" not in payloads[0]
+
+
+# -------- FetcherResource.structure() --------
+
+
+def test_fetcher_structure_calls_v1_structure_endpoint():
+    resource = _make_service_fetcher()
+    body = {
+        "markdown": "# Clean\n\nbody",
+        "kind": "structured",
+        "canonical_url": "https://example.com/a",
+        "tier_used": "structurer:gpt-4.1-mini",
+        "fetched_at": "2026-06-10T00:00:00Z",
+        "cache_hit": False,
+        "etag": "",
+        "tier_log": [],
+        "metadata": {"model": "gpt-4.1-mini", "prompt_version": "v1"},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)) as post:
+        result = resource.structure(
+            "raw paste text", title="Real Title", source_url="https://example.com/a"
+        )
+    assert post.called
+    endpoint = post.call_args.args[0]
+    assert endpoint.endswith("/v1/structure")
+    sent = post.call_args.kwargs["json"]
+    assert sent["raw_content"] == "raw paste text"
+    assert sent["title"] == "Real Title"
+    assert sent["source_url"] == "https://example.com/a"
+    assert result.content == "# Clean\n\nbody"
+    assert result.tier == "structurer:gpt-4.1-mini"
+
+
+def test_fetcher_structure_maps_wire_fields_to_orchestrator_fetch_result():
+    """Round-trip the tier_log entries field-for-field, not just length-equal."""
+    resource = _make_service_fetcher()
+    tier_log = [
+        {"tier": "trafilatura", "status": None, "chars": 0, "error": "empty", "validated": False},
+        {"tier": "structurer:gpt-4.1-mini", "status": None, "chars": 120, "error": None, "validated": True},
+    ]
+    body = {
+        "markdown": "out",
+        "kind": "structured",
+        "canonical_url": "https://example.com/a",
+        "tier_used": "structurer:gpt-4.1-mini",
+        "fetched_at": "2026-06-10T00:00:00Z",
+        "cache_hit": False,
+        "etag": "",
+        "tier_log": tier_log,
+        "metadata": {"model": "gpt-4.1-mini", "prompt_version": "v1"},
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)):
+        result = resource.structure("raw", source_url="https://example.com/a")
+    assert result.tier_log == tier_log
+    assert result.tier_log[0]["error"] == "empty"
+    assert result.tier_log[1]["chars"] == 120
+
+
+def test_fetcher_structure_maps_502_problem_to_transient_failure():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Structurer cascade exhausted",
+        "status": 502,
+        "code": "STRUCTURER_UPSTREAM_FAILURE",
+        "detail": "openai timeout; ollama down",
+        "retryable": True,
+        "tier_log": [
+            {"tier": "structurer", "status": None, "chars": 0, "error": "timeout", "validated": False},
+        ],
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(502, problem)):
+        result = resource.structure("raw", source_url="https://example.com/a")
+    assert result.content == ""
+    assert result.transient is True
+    assert "Structurer cascade exhausted" in result.error
+    assert result.tier_log == problem["tier_log"]
+
+
+def test_fetcher_structure_maps_503_problem_to_permanent_failure():
+    resource = _make_service_fetcher()
+    problem = {
+        "title": "Structurer not configured",
+        "status": 503,
+        "code": "STRUCTURER_UNCONFIGURED",
+        "detail": "no API keys configured",
+        "retryable": False,
+        "tier_log": [],
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(503, problem)):
+        result = resource.structure("raw", source_url="https://example.com/a")
+    assert result.transient is False
+    assert "Structurer not configured" in result.error

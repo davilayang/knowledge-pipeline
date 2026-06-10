@@ -15,6 +15,7 @@ def _notion_row(
     content_type: str | None = None,
     name: str = "",
     added_at: str | None = None,
+    use_page_body: bool | None = None,
 ) -> dict:
     props: dict = {"URL": {"url": url}}
     if content_type is not None:
@@ -23,6 +24,8 @@ def _notion_row(
         props["Name"] = {"title": [{"plain_text": name}]}
     if added_at is not None:
         props["Added At"] = {"date": {"start": added_at}}
+    if use_page_body is not None:
+        props["Use page body as content"] = {"checkbox": use_page_body}
     return {
         "id": page_id,
         "last_edited_time": last_edited,
@@ -143,3 +146,37 @@ def test_sensor_tags_carry_only_notion_page_id():
     ]
     result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
     assert result.run_requests[0].tags == {"notion_page_id": "p-1"}
+
+
+def test_sensor_reads_use_page_body_checkbox_and_skips_block_fetch_when_false() -> None:
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a", use_page_body=False),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    notion.get_page_body_markdown.assert_not_called()
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg.get("raw_content_override", "") == ""
+
+
+def test_sensor_defaults_use_page_body_to_false_when_unset() -> None:
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    notion.get_page_body_markdown.assert_not_called()
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg.get("raw_content_override", "") == ""
+
+
+def test_sensor_fetches_blocks_and_converts_when_checkbox_set() -> None:
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a", use_page_body=True),
+    ]
+    notion.get_page_body_markdown.return_value = "# Pasted\n\nlong body content."
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    notion.get_page_body_markdown.assert_called_once_with("p-1")
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg["raw_content_override"] == "# Pasted\n\nlong body content."

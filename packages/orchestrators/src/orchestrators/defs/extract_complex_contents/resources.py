@@ -70,6 +70,27 @@ class FetcherResource(dg.ConfigurableResource):
     def fetch(self, url: str) -> FetchResult:
         return self.fetch_for_type(url, content_type="Article")
 
+    def structure(self, raw_content: str, *, title: str = "", source_url: str = "") -> FetchResult:
+        endpoint = f"{self.service_url.rstrip('/')}/v1/structure"
+        payload: dict[str, Any] = {"raw_content": raw_content}
+        if title:
+            payload["title"] = title
+        if source_url:
+            payload["source_url"] = source_url
+        with httpx.Client(timeout=self.timeout_s) as client:
+            try:
+                resp = client.post(endpoint, json=payload)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                return FetchResult(error=f"fetcher service unreachable: {exc!r}", transient=True)
+            except httpx.ReadTimeout as exc:
+                return FetchResult(error=f"fetcher request timeout: {exc!r}", transient=True)
+            except httpx.TransportError as exc:
+                return FetchResult(error=f"fetcher transport error: {exc!r}", transient=True)
+
+        if resp.status_code == 200:
+            return _parse_success(resp)
+        return _parse_problem(resp)
+
 
 def _call_service(
     client: httpx.Client,
