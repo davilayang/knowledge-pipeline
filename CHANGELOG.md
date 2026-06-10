@@ -6,20 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Changed
+---
 
-- **Fetcher now fails the request when no tier returns clean content.** Article and Medium tiers run their output through `is_valid_content` + `is_likely_truncated` (ported from newsletter-assistant) — paywall fragments, JS walls, Cloudflare challenges, and "see more"-truncated bodies no longer surface as silent 200s. When every tier fails validation the cascade returns 502 `UPSTREAM_FAILURE`, leaving the consumer to route to a user-paste fallback.
-- **`FETCHER_LLAMA_PARSE_TIER_PDF` defaults to `fast`** instead of `agentic_plus` to avoid surprise paid spend on incidental `.pdf` URLs. arXiv keeps `agentic_plus` for paper-rendering quality.
-- **Jina requests carry `X-Return-Format: markdown` and `X-Timeout: 20`** so the response shape is explicit and Jina enforces its own timeout below the httpx client's.
+## [0.18.4] — 2026-06-10
 
 ### Added
 
-- **Medium articles now fetch via a dedicated handler.** Jina Reader free tier, then mediumapi.com RapidAPI paywall bypass under `FETCHER_RAPIDAPI_KEY` (optional). Domain set in `services/fetcher/config/medium_domains.yaml`; ships with a seed of well-known Medium-hosted publications, expand from your subscription list. Path overridable via `FETCHER_MEDIUM_DOMAINS_PATH`.
-- **Generic-PDF URLs now route to a dedicated `pdf` handler** instead of falling to article's curl_cffi tier. Free tier: pymupdf4llm with a 50MB download cap. Paid tier: LlamaParse `agentic_plus` (overridable via `FETCHER_LLAMA_PARSE_TIER_PDF`). arXiv PDFs still go to the arxiv handler.
-- **Article handler gains a paid third tier (Tavily Extract API).** Runs when Jina and curl_cffi+trafilatura both fail the JavaScript-wall validator. `FETCHER_TAVILY_API_KEY` is optional; tier becomes unreachable when unset.
+- **Medium articles now fetch via a dedicated handler.** Jina free tier, then mediumapi.com RapidAPI paywall bypass under optional `FETCHER_RAPIDAPI_KEY`. Domain set in `services/fetcher/config/medium_domains.yaml`; path overridable via `FETCHER_MEDIUM_DOMAINS_PATH`.
+- **Generic PDF URLs now route to a dedicated `pdf` handler.** Free tier: pymupdf4llm with a 50 MB download cap. Paid tier: LlamaParse via `FETCHER_LLAMA_PARSE_TIER_PDF` (defaults to `fast`). arXiv PDFs still go to the arxiv handler.
+- **Article handler gains a paid Tavily Extract tier.** Runs when Jina and curl_cffi+trafilatura both fail validation. `FETCHER_TAVILY_API_KEY` is optional; tier is unreachable when unset.
 
 ### Changed
 
+- **Fetcher returns 502 `UPSTREAM_FAILURE` when no tier produces clean content.** Article and Medium tiers run output through `is_valid_content` + `is_likely_truncated` (`services/fetcher/src/fetcher/validator.py`) — paywall fragments, JS walls, Cloudflare challenges, and truncated bodies no longer surface as silent 200s.
+- **Jina requests now carry `X-Return-Format: markdown` and `X-Timeout: 20`** so the response shape is explicit and Jina enforces its own timeout below the httpx client's.
 - **`CLAUDE.md` @-imports now resolve again** — directory renamed `personal-knowledge-os/` → `knowledge-os/` upstream (data-context-builder PR #47). Updated absolute paths plus a stray test-fixture tag in `tests/domains/queue_store/test_sources.py`.
 
 ---
