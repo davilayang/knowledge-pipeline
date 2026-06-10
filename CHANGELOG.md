@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Article structurer for user-pasted content via new `POST /v1/structure` endpoint.** Three-stage cascade — trafilatura → conservative markdown passthrough → OpenAI/Ollama Cloud chain — turns noisy paste into clean markdown; failure surfaces as `application/problem+json` (502 transient, 503 unconfigured). Chain config in `services/fetcher/config/structurer.yaml`; prompt in `services/fetcher/prompts/structure_v1.md`. New envs: `FETCHER_OPENAI_API_KEY`, `FETCHER_OLLAMA_API_KEY` (optional individually; at least one needed for the cloud stage).
+- **Article structurer for user-pasted content via new `POST /v1/structure` endpoint.** Three-stage cascade — trafilatura → conservative markdown passthrough → Ollama Cloud (primary) / OpenAI (fallback) chain — turns noisy paste into clean markdown; failure surfaces as `application/problem+json` (502 transient, 503 unconfigured). Chain config in `services/fetcher/config/structurer.yaml`; prompt in `services/fetcher/prompts/structure_v1.md`. New envs: `FETCHER_OLLAMA_API_KEY`, `FETCHER_OPENAI_API_KEY` (optional individually; at least one needed for the cloud stage).
 - **Orchestrator's `fetched` asset auto-dispatches to `/v1/structure` when the Notion `Use page body as content` checkbox is set** on a Queue row. The sensor fetches block children, converts via `blocks_to_markdown`, and threads the result through `queue_items.raw_content_override` (new column). Failures route through the existing `dg.Failure(allow_retries=result.transient)` path. Prod migration: `scripts/migrations/2026-06-10_queue_items_raw_content_override.sql` — run once on prod queue.db before deploy.
 
 ---

@@ -150,13 +150,13 @@ def _mock_openai_response(content: str) -> MagicMock:
     return response
 
 
-async def test_call_cloud_chain_uses_openai_primary_when_both_keys_set() -> None:
-    openai_client = MagicMock()
-    openai_client.chat.completions.create = AsyncMock(
+async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
+    primary_client = MagicMock()
+    primary_client.chat.completions.create = AsyncMock(
         return_value=_mock_openai_response("# clean\n\nbody")
     )
 
-    with patch("openai.AsyncOpenAI", return_value=openai_client) as ctor:
+    with patch("openai.AsyncOpenAI", return_value=primary_client) as ctor:
         markdown, tier = await structure._call_cloud_chain(
             "noisy",
             "SYS",
@@ -167,7 +167,7 @@ async def test_call_cloud_chain_uses_openai_primary_when_both_keys_set() -> None
 
     assert markdown == "# clean\n\nbody"
     assert tier == "structurer:gpt-4.1-mini"
-    # OpenAI was constructed; Ollama was NOT (loop short-circuited on first success)
+    # Primary entry served; secondary NOT touched (loop short-circuited on first success)
     assert ctor.call_count == 1
     assert ctor.call_args.kwargs["api_key"] == "sk-openai"
 
