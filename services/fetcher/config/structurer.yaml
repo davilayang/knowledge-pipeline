@@ -7,7 +7,7 @@
 # attempt_timeout is per-entry wall-clock seconds.
 
 chain:
-  - model: qwen3.5:cloud
+  - model: gemma4:31b
     provider: ollama
     base_url: https://ollama.com/v1
     attempt_timeout: 60.0
