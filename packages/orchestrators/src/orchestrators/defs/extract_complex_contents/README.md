@@ -30,8 +30,12 @@ fetched ──► extracted ──► published
    └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
 
-`fetched` calls the standalone `fetcher` service (POST /v1/fetch) over
-dagster_network; the service is authoritative for source matching
+`fetched` calls the standalone `fetcher` service over dagster_network —
+POST `/v1/fetch` for normal URLs, or POST `/v1/structure` when the
+queue_items row has `raw_content_override` set (user ticked
+`Use page body as content` in Notion; see `FetcherResource.structure`
+in `resources.py` and the override branch in `assets.fetched`). For
+`/v1/fetch`, the service is authoritative for source matching
 (article / arxiv / youtube) and quality-floor enforcement. `extracted`
 runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetched +
 extracted include `content_preview` / `narrative_preview` / `topic_card_preview`
@@ -75,8 +79,10 @@ dg launch --job extract_complex_contents --partition <notion_page_id>
   Notion workspace; share the Queue DB with it.
 - **`NOTION_QUEUE_DB_ID`** — the database id (with or without dashes).
 - **Notion DB schema** — see `.env.example` for the required envs; the DB
-  must have a `Status` select property with options
-  `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`,
+  must have a native `Status` property (Notion's status property type,
+  not a select) with options
+  `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`
+  (triage additionally requires `Skipped`),
   a `URL` url property, a `Content Type` select property (YouTube, arXiv, …),
   and an `Error` rich-text property.
 - **Fetcher service** — `FETCHER_URL` must point to a reachable

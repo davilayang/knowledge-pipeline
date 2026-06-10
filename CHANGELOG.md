@@ -6,14 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.5] — 2026-06-10
+
 ### Added
 
-- **Article structurer for user-pasted content via new `POST /v1/structure` endpoint.** Three-stage cascade — trafilatura → conservative markdown passthrough → Ollama Cloud (primary) / OpenAI (fallback) chain — turns noisy paste into clean markdown; failure surfaces as `application/problem+json` (502 transient, 503 unconfigured). Chain config in `services/fetcher/config/structurer.yaml`; prompt in `services/fetcher/prompts/structure_v1.md`. New envs: `FETCHER_OLLAMA_API_KEY`, `FETCHER_OPENAI_API_KEY` (optional individually; at least one needed for the cloud stage).
-- **Orchestrator's `fetched` asset auto-dispatches to `/v1/structure` when the Notion `Use page body as content` checkbox is set** on a Queue row. The sensor fetches block children, converts via `blocks_to_markdown`, and threads the result through `queue_items.raw_content_override` (new column). Failures route through the existing `dg.Failure(allow_retries=result.transient)` path. Prod migration: `scripts/migrations/2026-06-10_queue_items_raw_content_override.sql` — run once on prod queue.db before deploy.
+- **`POST /v1/structure` on the fetcher service** turns noisy user-pasted article bodies into clean markdown via a trafilatura → conservative passthrough → cloud LLM cascade (Ollama Cloud primary, OpenAI fallback). Chain config: `services/fetcher/config/structurer.yaml`; prompt: `services/fetcher/prompts/structure_v1.md`; new envs `FETCHER_OPENAI_API_KEY` / `FETCHER_OLLAMA_API_KEY` (at least one required for the cloud stage).
+- **Ticking Notion's `Use page body as content` checkbox routes the row's pasted body through `/v1/structure` instead of fetching the URL.** Sensor reads the checkbox, converts block children via `notion_blocks.blocks_to_markdown`, and threads the result through new `queue_items.raw_content_override` column. Requires the one-time `scripts/migrations/2026-06-10_queue_items_raw_content_override.sql` against prod queue.db before deploy.
 
 ### Changed
 
-- **Triage now routes every supported URL to `Status=Fetching` (single-tier pipeline).** The Tier A / Tier B split is removed — `is_tier_a()` and `_TIER_A` are gone, `SUPPORTED_CONTENT_TYPES` in `extract_complex_contents/def_config.py` now spans `{YouTube, arXiv, Article, Other}`. Article-content rows that previously stopped at `Status=Ready` (NA-at-engagement) now flow through `extract_complex_contents.fetched` against the fetcher's article handler (catch-all for anything not yt/arxiv/pdf/medium). Operational consequence: kp now does the heavy extraction work for Articles too.
+- **Triage now routes every supported URL to `Status=Fetching` — the Tier A / Tier B split is gone.** Article and Other rows that previously stopped at `Status=Ready` for NA-at-engagement now flow through `extract_complex_contents.fetched` against the fetcher's article handler (catch-all). `SUPPORTED_CONTENT_TYPES` widened to `{YouTube, arXiv, Article, Other}`; `is_tier_a()` and `_TIER_A` removed.
+- **`FetcherResource` no longer tunnels orchestrator → fetcher calls through `HTTP(S)_PROXY`.** `httpx.Client(trust_env=False)` keeps the internal service-to-service call off the upstream proxy meant for the fetcher's own egress.
 
 ---
 
