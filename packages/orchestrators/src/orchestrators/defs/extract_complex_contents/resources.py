@@ -61,10 +61,18 @@ class FetcherResource(dg.ConfigurableResource):
     # at run init, parsed at the call site below.
     allow_paid: str
 
+    def _client(self) -> httpx.Client:
+        # trust_env=False keeps the orchestrator → fetcher call off any
+        # HTTP(S)_PROXY the user has set for outbound web fetches. Internal
+        # service-to-service calls should never tunnel through an upstream
+        # proxy — that proxy is for the fetcher's own egress, not for talking
+        # to the fetcher.
+        return httpx.Client(timeout=self.timeout_s, trust_env=False)
+
     def fetch_for_type(self, url: str, *, content_type: str) -> FetchResult:
         del content_type  # service matches source by URL
         allow_paid = self.allow_paid.lower() == "true"
-        with httpx.Client(timeout=self.timeout_s) as client:
+        with self._client() as client:
             return _call_service(client, self.service_url, url, allow_paid=allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
@@ -77,7 +85,7 @@ class FetcherResource(dg.ConfigurableResource):
             payload["title"] = title
         if source_url:
             payload["source_url"] = source_url
-        with httpx.Client(timeout=self.timeout_s) as client:
+        with self._client() as client:
             try:
                 resp = client.post(endpoint, json=payload)
             except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
