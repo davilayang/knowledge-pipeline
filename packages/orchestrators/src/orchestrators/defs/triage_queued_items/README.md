@@ -81,6 +81,15 @@ The Notion Queue DB's native `Status` property must additionally carry a
 Triage writes Status=Skipped on duplicate canonical_url detection;
 without the option, the Notion API rejects the update.
 
+The Queue DB also needs a `Use page body as content` **checkbox** property
+(exact spelling — the sensor matches on this string in `sensors.py`).
+When the user ticks it on a row, the sensor fetches the page's block
+children, converts them to markdown via `notion_blocks.blocks_to_markdown`,
+and writes the result into `queue_items.raw_content_override`. The
+`fetched` asset then dispatches to the fetcher service's `/v1/structure`
+endpoint instead of `/v1/fetch`. Default unset = false; rows without
+the property tick fall through to the normal URL-fetch path.
+
 ## Runbooks
 
 **Row stuck in Status=Queued forever:**
