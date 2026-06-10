@@ -1,10 +1,10 @@
 """URL-handler registry: maps URLs to handler modules."""
 
-from fetcher.handlers import article, arxiv, youtube
+from fetcher.handlers import article, arxiv, medium, pdf, youtube
 from fetcher.types import URLHandler
 
 
-REGISTERED_HANDLERS: list[URLHandler] = [arxiv, youtube, article]  # type: ignore[list-item]
+REGISTERED_HANDLERS: list[URLHandler] = [arxiv, youtube, medium, pdf, article]  # type: ignore[list-item]
 
 
 def find_handler(url: str) -> URLHandler | None:

@@ -1,7 +1,17 @@
-"""Tests for source matching and tier metadata."""
+"""Tests for handler matching and tier metadata."""
 
-from fetcher.handlers import article, arxiv, youtube
-from fetcher.handlers.article import _jina_wraps_upstream_error
+import pytest
+
+from fetcher.extractors.jina import wraps_upstream_error as _jina_wraps_upstream_error
+from fetcher.handlers import article, arxiv, medium, pdf, youtube
+
+
+@pytest.fixture
+def medium_domains(monkeypatch: pytest.MonkeyPatch) -> set[str]:
+    """Pin the medium handler's domain set for deterministic match tests."""
+    pinned = {"medium.com", "towardsdatascience.com", "betterprogramming.pub"}
+    monkeypatch.setattr(medium, "_MEDIUM_DOMAINS", pinned)
+    return pinned
 
 
 def test_article_matches_generic_http_only() -> None:
@@ -25,12 +35,291 @@ def test_youtube_extracts_video_ids() -> None:
 
 
 def test_tier_order_and_strict_flags() -> None:
-    assert [tier.name for tier in article.TIERS] == ["jina", "curl_cffi"]
+    assert [tier.name for tier in article.TIERS] == ["jina", "curl_cffi", "tavily"]
     assert [tier.name for tier in arxiv.TIERS] == ["pymupdf4llm", "llamaparse"]
     assert [tier.name for tier in youtube.TIERS] == ["transcript_api"]
     assert article.STRICT_PAID_TIER is False
     assert arxiv.STRICT_PAID_TIER is True
     assert youtube.STRICT_PAID_TIER is False
+
+
+def test_article_tavily_tier_metadata() -> None:
+    tavily_tier = next(tier for tier in article.TIERS if tier.name == "tavily")
+    assert tavily_tier.cost == "paid"
+    assert tavily_tier.rate_limit_key == "tavily"
+
+
+async def test_article_tavily_skipped_when_key_unset() -> None:
+    from unittest.mock import MagicMock
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = None
+
+    result = await _tavily_fetch(ctx, "https://example.com")
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_article_tavily_calls_extractor_when_key_set() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = "k"
+    with patch(
+        "fetcher.handlers.article.tavily_extractor.extract", new=AsyncMock(return_value="# md")
+    ):
+        result = await _tavily_fetch(ctx, "https://example.com")
+
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+def test_medium_matches_configured_domain(medium_domains: set[str]) -> None:
+    assert medium.matches("https://medium.com/@author/title-abc123def456") is True
+    assert medium.matches("https://towardsdatascience.com/title-abc123def456") is True
+    assert medium.matches("https://www.towardsdatascience.com/title-abc123def456") is True
+    assert medium.matches("https://example.com/post-abc123def456") is False
+    assert medium.matches("mailto:x@y.com") is False
+
+
+def test_medium_strict_paid_tier_is_false(medium_domains: set[str]) -> None:
+    assert medium.STRICT_PAID_TIER is False
+
+
+def test_medium_tier_order_jina_then_rapidapi(medium_domains: set[str]) -> None:
+    assert [tier.name for tier in medium.TIERS] == ["jina", "rapidapi"]
+    paid = next(tier for tier in medium.TIERS if tier.name == "rapidapi")
+    assert paid.cost == "paid"
+    assert paid.rate_limit_key == "rapidapi"
+
+
+def test_medium_extract_article_id_from_url() -> None:
+    assert (
+        medium.extract_article_id("https://towardsdatascience.com/some-cool-title-abc123def456")
+        == "abc123def456"
+    )
+    assert (
+        medium.extract_article_id("https://medium.com/@author/another-title-deadbeef1234")
+        == "deadbeef1234"
+    )
+    assert (
+        medium.extract_article_id(
+            "https://medium.com/publication-name/yet-another-1a2b3c4d5e6f?source=rss"
+        )
+        == "1a2b3c4d5e6f"
+    )
+    with pytest.raises(ValueError):
+        medium.extract_article_id("https://medium.com/no-trailing-id-here")
+
+
+def test_medium_load_domains_lowercases_and_strips_www(tmp_path) -> None:
+    yaml_path = tmp_path / "domains.yaml"
+    yaml_path.write_text(
+        "medium_domains:\n"
+        "  - Medium.com\n"
+        "  - www.TowardsDataScience.com\n"
+        "  - betterprogramming.pub\n"
+    )
+    domains = medium._load_domains(str(yaml_path))
+    assert domains == {
+        "medium.com",
+        "towardsdatascience.com",
+        "betterprogramming.pub",
+    }
+
+
+async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) -> None:
+    from unittest.mock import MagicMock
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = None
+
+    result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_medium_rapidapi_calls_extractor_when_key_set(medium_domains: set[str]) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = "k"
+    with patch(
+        "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
+        new=AsyncMock(return_value="# md"),
+    ) as fetch:
+        result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
+
+    fetch.assert_called_once_with(ctx.http_client, article_id="abc123def456", api_key="k")
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+async def test_medium_rapidapi_demotes_extractor_failure(medium_domains: set[str]) -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.medium import _rapidapi_fetch
+
+    ctx = MagicMock()
+    ctx.rapidapi_key = "k"
+    with patch(
+        "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
+        new=AsyncMock(side_effect=ValueError("boom")),
+    ):
+        result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
+    assert result.content == ""
+    assert result.status == 0
+
+
+def test_article_matches_excludes_medium_host(medium_domains: set[str]) -> None:
+    assert article.matches("https://medium.com/@author/x-abc123def456") is False
+    assert article.matches("https://towardsdatascience.com/x-abc123def456") is False
+
+
+def test_pdf_matches_pdf_url_not_arxiv() -> None:
+    assert pdf.matches("https://example.com/paper.pdf") is True
+    assert pdf.matches("https://example.com/path/file.PDF") is True
+    assert pdf.matches("https://arxiv.org/pdf/2401.00001v2.pdf") is False
+    assert pdf.matches("https://export.arxiv.org/pdf/2401.00001.pdf") is False
+    assert pdf.matches("https://example.com/article") is False
+    assert pdf.matches("mailto:x@y.com") is False
+
+
+def test_pdf_strict_paid_tier_is_false() -> None:
+    assert pdf.STRICT_PAID_TIER is False
+
+
+def test_pdf_tier_order_is_pymupdf_then_llamaparse() -> None:
+    assert [tier.name for tier in pdf.TIERS] == ["pymupdf4llm", "llamaparse"]
+    paid = next(tier for tier in pdf.TIERS if tier.name == "llamaparse")
+    assert paid.cost == "paid"
+    assert paid.rate_limit_key == "llamaparse"
+
+
+def _stream_ctxmgr(status_code: int, chunks: list[bytes]):
+    """Build a MagicMock that behaves like httpx.AsyncClient.stream(...).__aenter__()."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    response = MagicMock()
+    response.status_code = status_code
+
+    async def _aiter(chunk_size: int = 64 * 1024):
+        for chunk in chunks:
+            yield chunk
+
+    response.aiter_bytes = _aiter
+
+    cm = MagicMock()
+    cm.__aenter__ = AsyncMock(return_value=response)
+    cm.__aexit__ = AsyncMock(return_value=None)
+    return cm
+
+
+async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from fetcher.handlers.pdf import _pymupdf4llm_fetch
+
+    ctx = MagicMock()
+    ctx.default_timeout_s = 30
+    ctx.http_client.stream = MagicMock(
+        return_value=_stream_ctxmgr(200, [b"%PDF-1.4 ", b"fake bytes"])
+    )
+
+    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md") as render:
+        result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
+
+    render.assert_called_once_with(b"%PDF-1.4 fake bytes")
+    assert result.content == "# md"
+    assert result.status == 200
+
+
+async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
+    from unittest.mock import MagicMock, patch
+
+    from fetcher.handlers.pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
+
+    ctx = MagicMock()
+    ctx.default_timeout_s = 30
+    # Two chunks whose combined size exceeds the cap — the second push trips abort.
+    over_cap = [b"x" * MAX_PDF_BYTES, b"y" * 1024]
+    ctx.http_client.stream = MagicMock(return_value=_stream_ctxmgr(200, over_cap))
+
+    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown") as render:
+        result = await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
+
+    # Aborted: extractor never called, empty result with status=0 signals tier failure.
+    render.assert_not_called()
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_pdf_paid_tier_calls_llamaparse_render_pdf() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import _llamaparse_fetch
+
+    ctx = MagicMock()
+    ctx.llama_parse_api_key = "k"
+    ctx.llama_parse_tier_pdf = "agentic_plus"
+
+    with patch(
+        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        new=AsyncMock(return_value="# heavy md"),
+    ) as render:
+        result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")
+
+    render.assert_called_once_with(
+        ctx.http_client,
+        pdf_url="https://example.com/paper.pdf",
+        api_key="k",
+        tier="agentic_plus",
+    )
+    assert result.content == "# heavy md"
+    assert result.status == 200
+
+
+async def test_pdf_paid_tier_demotes_extractor_failure() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.pdf import _llamaparse_fetch
+
+    ctx = MagicMock()
+    ctx.llama_parse_api_key = "k"
+    ctx.llama_parse_tier_pdf = "agentic_plus"
+    with patch(
+        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        new=AsyncMock(side_effect=ValueError("boom")),
+    ):
+        result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")
+
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_article_tavily_demotes_extractor_failure() -> None:
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.article import _tavily_fetch
+
+    ctx = MagicMock()
+    ctx.tavily_api_key = "k"
+    with patch(
+        "fetcher.handlers.article.tavily_extractor.extract",
+        new=AsyncMock(side_effect=ValueError("Tavily extract HTTP 500: boom")),
+    ):
+        result = await _tavily_fetch(ctx, "https://example.com")
+
+    assert result.content == ""
+    assert result.status == 0
 
 
 async def test_article_jina_4xx_returns_empty_content() -> None:

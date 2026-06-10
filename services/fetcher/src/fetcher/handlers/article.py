@@ -1,17 +1,19 @@
-"""Article handler: Jina Reader, then curl_cffi plus trafilatura."""
+"""Article handler: Jina Reader, then curl_cffi plus trafilatura, then Tavily Extract."""
 
 import logging
-from urllib.parse import quote, urlparse
+from urllib.parse import urlparse
 
+from fetcher.extractors import jina as jina_extractor
+from fetcher.extractors import tavily as tavily_extractor
 from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
+from fetcher.validator import is_acceptable
 
 
 logger = logging.getLogger(__name__)
 
 NAME = "article"
 STRICT_PAID_TIER = False
-_JINA_BASE = "https://r.jina.ai/"
 
 
 def matches(url: str) -> bool:
@@ -28,31 +30,18 @@ def matches(url: str) -> bool:
         return False
     if host in {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}:
         return False
+    from fetcher.handlers import medium as medium_handler
+
+    if medium_handler.matches(url):
+        return False
     return True
 
 
-def _validate_not_js_wall(content: str) -> bool:
-    lowered = content.lower()
-    return (
-        "please enable javascript" not in lowered and "you need to enable javascript" not in lowered
-    )
-
-
-def _jina_wraps_upstream_error(body: str) -> bool:
-    """Jina Reader returns HTTP 200 even when the upstream URL 4xx/5xx'd.
-
-    The body carries a 'Warning: Target URL returned error <code>:' marker
-    that we use to demote the response to a tier failure.
-    """
-    return "Warning: Target URL returned error" in body
-
-
 async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
-    response = await ctx.jina_client.get(_JINA_BASE + quote(url, safe=""))
-    body = response.text or ""
-    if response.status_code >= 400 or _jina_wraps_upstream_error(body):
-        return RawTierResult(content="", status=response.status_code)
-    return RawTierResult(content=body, status=response.status_code)
+    body, status = await jina_extractor.fetch(ctx.jina_client, url)
+    if status >= 400 or jina_extractor.wraps_upstream_error(body):
+        return RawTierResult(content="", status=status)
+    return RawTierResult(content=body, status=status)
 
 
 async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
@@ -84,6 +73,19 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(content=trafilatura_extractor.extract(html), status=status)
 
 
+async def _tavily_fetch(ctx: FetchContext, url: str) -> RawTierResult:
+    if not ctx.tavily_api_key:
+        return RawTierResult(content="", status=0)
+    try:
+        content = await tavily_extractor.extract(
+            ctx.http_client, url=url, api_key=ctx.tavily_api_key
+        )
+    except ValueError as exc:
+        logger.warning("tavily extract failed for %s: %s", url, exc)
+        return RawTierResult(content="", status=0)
+    return RawTierResult(content=content, status=200 if content else 0)
+
+
 TIERS: list[Tier] = [
     Tier(
         "jina",
@@ -91,8 +93,17 @@ TIERS: list[Tier] = [
         2000,
         8000,
         _jina_fetch,
-        validate=_validate_not_js_wall,
+        validate=is_acceptable,
         rate_limit_key="jina",
     ),
-    Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=_validate_not_js_wall),
+    Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=is_acceptable),
+    Tier(
+        "tavily",
+        "paid",
+        1500,
+        6000,
+        _tavily_fetch,
+        validate=is_acceptable,
+        rate_limit_key="tavily",
+    ),
 ]

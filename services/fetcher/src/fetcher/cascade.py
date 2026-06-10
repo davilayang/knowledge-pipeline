@@ -65,7 +65,7 @@ async def run_cascade(
         )
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
-        if best_result is None or len(raw.content) > len(best_result[1].content):
+        if validated and (best_result is None or len(raw.content) > len(best_result[1].content)):
             best_result = (tier, raw)
 
     if allow_paid:
@@ -98,7 +98,9 @@ async def run_cascade(
             )
             if _tier_meets_floor(tier, raw.content, quality):
                 return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
-            if best_result is None or len(raw.content) > len(best_result[1].content):
+            if validated and (
+                best_result is None or len(raw.content) > len(best_result[1].content)
+            ):
                 best_result = (tier, raw)
 
     if best_result is not None:
