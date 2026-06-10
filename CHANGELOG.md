@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.6] — 2026-06-10
+
+### Added
+
+- **Podcast audio URLs are now auto-substituted to YouTube at triage time.** When a queued item resolves to an audio file (`.mp3`, `.m4a`, etc.) and the show is in `podcast_youtube_map.yaml`, the triage asset fetches the show's YouTube playlist feed, fuzzy-matches the episode title, and replaces the canonical URL with the matched YouTube URL — routing the item through the YouTube fetcher for a free transcript instead of Whisper.
+
+### Changed
+
+- **`classify_content_type` now emits `"Podcast"` for direct audio file URLs.** Previously those fell through to `"Article"`; they now get a distinct type so the substitution step can intercept them.
+
+---
+
 ## [0.18.5] — 2026-06-10
 
 ### Added

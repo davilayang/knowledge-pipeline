@@ -17,7 +17,8 @@ poll_notion_for_triage (sensor, every 15min)
 triage_queued_items_job  (partition_key = notion_page_id)
         │
         └──► triaged  (resolve Content Type (Notion override > URL classifier),
-                       canonicalize URL, commit to local store + Notion)
+                       canonicalize URL; Podcast → YouTube substitution via
+                       podcast_canonicalize.py on map hit, commit to local store + Notion)
                 │
                 ├──► canonical_url matches an existing queue_items row?
                 │    → Notion Status=Skipped, Error="Duplicate of <other_page_id>"
@@ -69,12 +70,17 @@ The Notion Queue DB must have a `Content Type` SELECT property with options:
 - `Article`
 - `YouTube`
 - `arXiv`
+- `Podcast`
 - `Other`
 
-PDF and Podcast options are intentionally absent in v1 — those URLs fall
-through to Article and the fetcher service's article handler still
-claims them (catch-all match). Add dedicated arms when the Notion options
-+ dedicated PDF/Podcast fetcher handlers land.
+`PDF` is intentionally absent — `classify_content_type` never emits it; PDF
+URLs fall through to `Article` and the fetcher's pdf handler claims them via
+the registry catch-all. `Podcast` must now be present: audio-suffix URLs
+(`.mp3` / `.m4a` / `.ogg` / `.wav` / `.opus`) are classified as Podcast, and
+`podcast_canonicalize.py` may then substitute a YouTube URL on a map hit
+(reclassifying the row to YouTube before it reaches the store). Without the
+Podcast option the Notion API rejects Content Type writes for audio items
+that don't hit the substitution map.
 
 The Notion Queue DB's native `Status` property must additionally carry a
 `Skipped` option (alongside `Queued` / `Fetching` / `Ready` / `Failed`).
