@@ -58,6 +58,21 @@ def test_apple_podcast_falls_through_to_article():
     assert classify_content_type("https://podcasts.apple.com/us/podcast/foo/id123") == "Article"
 
 
+@pytest.mark.parametrize(
+    "url",
+    [
+        "https://www.podtrac.com/pts/redirect.mp3/chrt.fm/track/E581B9/foo.mp3",
+        "https://traffic.libsyn.com/show/episode.MP3",
+        "https://example.com/episode.m4a",
+        "https://example.com/episode.ogg",
+        "https://example.com/episode.wav",
+        "https://example.com/episode.opus",
+    ],
+)
+def test_audio_suffix_classifies_as_podcast(url: str):
+    assert classify_content_type(url) == "Podcast"
+
+
 def test_classification_returns_value_in_all_content_types_set():
     urls = [
         "https://youtube.com/watch?v=abc123",

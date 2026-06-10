@@ -1,10 +1,13 @@
 """URL classification + canonicalization. Pure-Python; no I/O.
 
 Adapted from newsletter-assistant's fetcher/orchestrator.py URL routing,
-with the voice-tuned tier complexity stripped. Output values match kp's
-Notion `Content Type` SELECT options (Article / YouTube / arXiv / Other)
-rather than NA's fetcher-tier names — these get written back to Notion
-as select-property values, so case + spelling must match exactly.
+with the voice-tuned tier complexity stripped. `classify_content_type`
+emits values that match kp's Notion `Content Type` SELECT options
+(Article / YouTube / arXiv / Podcast / Other; PDF is in `ALL_CONTENT_TYPES`
+for user override but never auto-emitted — PDF URLs fall through to
+Article and the fetcher's pdf handler claims them). These get written
+back to Notion as select-property values, so case + spelling must match
+exactly.
 """
 
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
@@ -26,36 +29,34 @@ ALL_CONTENT_TYPES = {
 }
 
 
+_AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus")
+
+
 def classify_content_type(url: str) -> str:
     """Pure URL → kp Content Type.
 
     Returns one of:
       - "YouTube" for youtube.com / youtu.be / m.youtube.com / music.youtube.com
       - "arXiv" for arxiv.org and any subdomain ending in .arxiv.org
+      - "Podcast" for audio file suffixes (.mp3 / .m4a / .ogg / .wav / .opus)
+        — covers podtrac redirects, libsyn, megaphone, etc.
       - "Article" as the default fallback for any other host
 
-    PDF and Podcast classifications are intentionally NOT emitted in v1
-    — the Notion Content Type SELECT only has Article / YouTube / arXiv
-    / Other options. PDF and Podcast URLs fall through to Article (the
-    fetcher's article handler still claims them via the catch-all match;
-    add dedicated arms here when the Notion options + PDF/Podcast fetcher
-    handlers land).
+    PDF classification is intentionally NOT emitted — the Notion Content
+    Type SELECT does not have a PDF option. PDF URLs fall through to
+    Article (the fetcher's pdf handler still claims them via the registry).
     """
     parsed = urlparse(url)
     host = (parsed.hostname or "").removeprefix("www.")
+    path = (parsed.path or "").lower()
 
     match host:
         case "youtube.com" | "m.youtube.com" | "music.youtube.com" | "youtu.be":
             return CONTENT_TYPE_YOUTUBE
         case h if h == "arxiv.org" or h.endswith(".arxiv.org"):
             return CONTENT_TYPE_ARXIV
-        # PDF + Podcast options don't exist on Notion yet — fall through to Article.
-        # case _ if (parsed.path or "").lower().endswith(".pdf"):
-        #     return CONTENT_TYPE_PDF
-        # case "podcasts.apple.com" if "/podcast/" in (parsed.path or "").lower():
-        #     return CONTENT_TYPE_PODCAST
-        # case "open.spotify.com" if (parsed.path or "").lower().startswith("/episode/"):
-        #     return CONTENT_TYPE_PODCAST
+        case _ if path.endswith(_AUDIO_SUFFIXES):
+            return CONTENT_TYPE_PODCAST
         case _:
             return CONTENT_TYPE_ARTICLE
 

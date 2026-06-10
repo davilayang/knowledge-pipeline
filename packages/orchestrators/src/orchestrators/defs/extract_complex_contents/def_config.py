@@ -15,7 +15,9 @@ JOB_MAX_RETRIES = "1"
 # whose type is in this set to Status=Fetching; the fetcher service's
 # handler registry then claims the URL (article handler is a catch-all for
 # anything not yt/arxiv/pdf/medium, so "Article" and "Other" both reach it
-# safely). Extend as new fetcher ports land (PDF, Podcast).
+# safely). Podcast is handled upstream — triage substitutes audio URLs to
+# YouTube via `podcast_canonicalize.py` so this pipeline never sees the
+# Podcast type. Extend when the PDF fetcher port lands.
 SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other")
 
 # Active prompt labels — basenames of the markdown files under prompts/.
