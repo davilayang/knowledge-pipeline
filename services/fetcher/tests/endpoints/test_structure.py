@@ -240,3 +240,142 @@ def test_structure_endpoint_returns_400_problem_on_empty_raw_content(
         response = client.post("/v1/structure", json={"raw_content": ""})
     assert response.status_code == 400
     assert response.json()["code"] == "BAD_REQUEST"
+
+
+def test_structure_endpoint_caches_successful_cloud_runs_only(
+    monkeypatch, tmp_db_path: str
+) -> None:
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch(
+            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
+        ) as cascade,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _ok_result()
+        with TestClient(app) as client:
+            first = client.post(
+                "/v1/structure",
+                json={"raw_content": "noisy paste", "source_url": "https://example.com/a"},
+            )
+            second = client.post(
+                "/v1/structure",
+                json={"raw_content": "noisy paste", "source_url": "https://example.com/a"},
+            )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["cache_hit"] is False
+    assert second.json()["cache_hit"] is True
+    assert second.json()["markdown"] == first.json()["markdown"]
+    assert second.json()["tier_used"] == "structurer:test-model"
+    assert cascade.await_count == 1
+
+
+def _trafilatura_result() -> FetchResult:
+    return FetchResult(
+        markdown="# T\n\nbody",
+        kind="structured",
+        canonical_url="https://example.com/a",
+        tier_used="trafilatura",
+        fetched_at="2026-06-10T00:00:00Z",
+        cache_hit=False,
+        etag="",
+        tier_log=[
+            TierLogEntry(tier="trafilatura", status=None, chars=8, error=None, validated=True),
+        ],
+        metadata={},
+    )
+
+
+def _passthrough_result() -> FetchResult:
+    r = _trafilatura_result()
+    r.tier_used = "passthrough"
+    r.tier_log = [
+        TierLogEntry(tier="passthrough", status=None, chars=8, error=None, validated=True),
+    ]
+    return r
+
+
+def test_structure_endpoint_does_not_cache_trafilatura(monkeypatch, tmp_db_path: str) -> None:
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch(
+            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
+        ) as cascade,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _trafilatura_result()
+        with TestClient(app) as client:
+            first = client.post(
+                "/v1/structure",
+                json={"raw_content": "<html>...</html>", "source_url": "https://example.com/a"},
+            )
+            second = client.post(
+                "/v1/structure",
+                json={"raw_content": "<html>...</html>", "source_url": "https://example.com/a"},
+            )
+
+    assert first.json()["cache_hit"] is False
+    assert second.json()["cache_hit"] is False
+    assert cascade.await_count == 2
+
+
+def test_structure_endpoint_does_not_cache_passthrough(monkeypatch, tmp_db_path: str) -> None:
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch(
+            "fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock
+        ) as cascade,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _passthrough_result()
+        with TestClient(app) as client:
+            client.post(
+                "/v1/structure",
+                json={"raw_content": "clean md", "source_url": "https://example.com/a"},
+            )
+            client.post(
+                "/v1/structure",
+                json={"raw_content": "clean md", "source_url": "https://example.com/a"},
+            )
+
+    assert cascade.await_count == 2
+
+
+def test_structure_cache_key_isolated_from_url_keys(monkeypatch, tmp_db_path: str) -> None:
+    """Inserting a /v1/fetch row at a URL key must not satisfy a structurer lookup."""
+    from pathlib import Path
+
+    from domains.fetches_store.sources import create_schema
+    from fetcher.cache import lookup, upsert
+
+    _setup_envs(monkeypatch, tmp_db_path)
+    db_path = Path(tmp_db_path)
+    create_schema(db_path=db_path)
+
+    upsert(
+        db_path=db_path,
+        canonical_url="https://example.com/a",
+        source_type="article",
+        markdown="from /v1/fetch",
+        tier_used="jina",
+        metadata={},
+        tier_log=[],
+        ttl_days=365,
+    )
+
+    structurer_key = "structure:v1:openai:gpt-4.1-mini:v1:abcdef"
+    assert lookup(db_path=db_path, canonical_url=structurer_key) is None
