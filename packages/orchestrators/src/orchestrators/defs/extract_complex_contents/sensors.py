@@ -21,7 +21,7 @@ def poll_notion_for_extract(
     context: dg.SensorEvaluationContext, notion: NotionQueueResource
 ) -> dg.SensorResult:
 
-    # Return rows ready to be fetched
+    context.log.info("polling Notion queue_db_id=%s for Status=Fetching", notion.queue_db_id)
     rows = notion.query_for_extract(
         page_size=MAX_TO_EXTRACT_PER_TICK,
         supported_content_types=SUPPORTED_CONTENT_TYPES,

@@ -145,7 +145,7 @@ def test_fetched_fails_when_row_missing(tmp_path: Path):
     store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     store.ensure_schema()
     fetcher = MagicMock()
-    with pytest.raises(Exception, match="No queue_items row"):
+    with pytest.raises(Exception, match="No local queue_items row"):
         _materialize(
             fetched,
             partition_key="p-missing",
@@ -168,7 +168,7 @@ def test_fetched_fails_when_content_type_null(tmp_path: Path):
     )
     store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
-    with pytest.raises(Exception, match="no content_type"):
+    with pytest.raises(Exception, match="no Content Type"):
         _materialize(
             fetched,
             partition_key="p-1",
