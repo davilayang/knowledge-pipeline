@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.7] — 2026-06-11
+
+### Changed
+
+- **Extract pipeline guard failures now include a clickable Notion page URL.** Both failure paths — missing `queue_items` row and missing Content Type — surface the Notion URL as a `dg.MetadataValue.url` link in the Dagster UI event and as plain text in container logs and the Notion row's Error column, cutting triage time from "which partition failed?" to one click.
+- **Poll sensor logs `queue_db_id` on every tick.** The configured Notion database ID appears in Dozzle logs at the start of each sensor evaluation, making `NOTION_QUEUE_DB_ID` misroutes visible immediately rather than hours into a silent incident.
+
+---
+
 ## [0.18.6] — 2026-06-10
 
 ### Added
