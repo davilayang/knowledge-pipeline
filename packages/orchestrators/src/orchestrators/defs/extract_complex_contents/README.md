@@ -8,7 +8,10 @@ Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv,
 Article, Other}). The fetcher service's handler registry routes the URL by
 host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium,
 so Article and Other reach a real fetcher path. Triage also registers the
-dynamic partition; this pipeline only runs the job.
+dynamic partition; this pipeline only runs the job. Triage is therefore the
+sole writer to `queue_items` partition state — a Notion row reaching
+Status=Fetching without going through triage (manual edit, env misroute,
+restored queue.db) fails fast in `fetched` with a clickable Notion URL.
 
 ## DAG (per partition)
 
