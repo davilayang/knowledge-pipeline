@@ -60,18 +60,37 @@ def fetched(
     store: QueueStoreResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
+    notion_url = f"https://www.notion.so/{page_id.replace('-', '')}"
     store.ensure_schema()
     row = store.get_row(page_id)
     if not row:
         raise dg.Failure(
-            description=f"No queue_items row for partition {page_id}; triage must run first.",
+            description=(
+                f"Notion Status=Fetching but no local queue_items row for {page_id}. "
+                f"Open {notion_url} — typical causes: triage was skipped (manual "
+                f"Status flip, or the row belongs to a different Notion DB than "
+                f"NOTION_QUEUE_DB_ID points at), or data/queue.db was wiped/restored "
+                f"since triage last ran for this page."
+            ),
             allow_retries=False,
+            metadata={
+                "notion_url": dg.MetadataValue.url(notion_url),
+                "notion_page_id": dg.MetadataValue.text(page_id),
+            },
         )
     content_type = row.get("content_type")
     if not content_type:
         raise dg.Failure(
-            description=f"queue_items row for {page_id} has no content_type; triage incomplete.",
+            description=(
+                f"queue_items row for {page_id} has no Content Type. Open "
+                f"{notion_url} and set a Content Type, or flip Status back to Queued "
+                f"so triage reclassifies."
+            ),
             allow_retries=False,
+            metadata={
+                "notion_url": dg.MetadataValue.url(notion_url),
+                "notion_page_id": dg.MetadataValue.text(page_id),
+            },
         )
 
     if row.get("raw_content") and row.get("url"):
