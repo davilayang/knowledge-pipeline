@@ -227,12 +227,22 @@ def snapshot_queue(
     description="Daily Drive usage observation; co-emits the threshold check.",
 )
 def storage_capacity(context: dg.AssetExecutionContext, rclone: RcloneResource):
-    out = subprocess.run(
-        ["rclone", "about", "--json", f"{rclone.remote_name}:"],
-        capture_output=True,
-        text=True,
-        check=True,
-    )
+    cmd = ["rclone", "about", "--json", f"{rclone.remote_name}:"]
+    out = subprocess.run(cmd, capture_output=True, text=True)
+    if out.returncode != 0:
+        # capture_output swallows rclone's stderr; surface it so the next
+        # failure names the actual cause (expired OAuth, missing remote, etc.)
+        raise dg.Failure(
+            description=(
+                f"rclone about failed for remote '{rclone.remote_name}:' "
+                f"(exit {out.returncode}). stderr: {out.stderr.strip() or '<empty>'}"
+            ),
+            metadata={
+                "remote": dg.MetadataValue.text(rclone.remote_name),
+                "exit_code": dg.MetadataValue.int(out.returncode),
+                "stderr": dg.MetadataValue.text(out.stderr.strip() or "<empty>"),
+            },
+        )
     quota = json.loads(out.stdout)
     total = int(quota.get("total", 0))
     used = int(quota.get("used", 0))

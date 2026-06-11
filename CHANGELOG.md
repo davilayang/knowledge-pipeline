@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.9] — 2026-06-11
+
+### Changed
+
+- **Backup pipeline's `storage_capacity` asset now surfaces rclone's stderr in the Dagster failure.** Previously `subprocess.run(..., capture_output=True, check=True)` swallowed stderr — `rclone about gdrive:` failures (expired OAuth, missing remote, network) appeared only as `CalledProcessError` with no diagnostic. Now raises `dg.Failure` with stderr in description + metadata (`remote`, `exit_code`, `stderr`).
+
+---
+
 ## [0.18.8] — 2026-06-11
 
 ### Changed
