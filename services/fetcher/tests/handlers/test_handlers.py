@@ -21,10 +21,15 @@ def test_article_matches_generic_http_only() -> None:
     assert article.matches("https://example.com/paper.pdf") is False
 
 
-def test_arxiv_matches_abs_and_pdf() -> None:
+def test_arxiv_matches_abs_pdf_and_html() -> None:
     assert arxiv.matches("https://arxiv.org/abs/2401.00001") is True
     assert arxiv.matches("https://arxiv.org/pdf/2401.00001v2.pdf") is True
+    assert arxiv.matches("https://arxiv.org/html/2606.09498v1") is True
     assert arxiv.matches("https://example.com/x") is False
+
+
+def test_arxiv_extracts_id_from_html_path() -> None:
+    assert arxiv.extract_arxiv_id("https://arxiv.org/html/2606.09498v1") == "2606.09498"
 
 
 def test_youtube_extracts_video_ids() -> None:
