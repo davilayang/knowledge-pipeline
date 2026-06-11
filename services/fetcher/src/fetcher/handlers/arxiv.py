@@ -17,6 +17,7 @@ NAME = "arxiv"
 STRICT_PAID_TIER = True
 
 _ARXIV_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
+_ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
 _NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
 _OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
 
@@ -40,7 +41,7 @@ def matches(url: str) -> bool:
     path = parsed.path.strip("/")
     if not path:
         return False
-    if path.startswith(("abs/", "pdf/")):
+    if path.startswith(_ARXIV_PATH_PREFIXES):
         path = path.split("/", 1)[1]
     return _looks_like_id(_strip_pdf_suffix(path))
 
@@ -48,7 +49,7 @@ def matches(url: str) -> bool:
 def extract_arxiv_id(url: str) -> str:
     parsed = urlparse(url)
     path = parsed.path.strip("/")
-    if path.startswith(("abs/", "pdf/")):
+    if path.startswith(_ARXIV_PATH_PREFIXES):
         path = path.split("/", 1)[1]
     path = _strip_pdf_suffix(path)
     match = _NEW_ID_RE.match(path) or _OLD_ID_RE.match(path)
