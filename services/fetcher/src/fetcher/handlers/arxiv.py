@@ -90,7 +90,7 @@ async def _fetch_metadata(url: str) -> tuple[str, arxiv_pypi.Result] | None:
 
 
 async def _download_pdf(ctx: FetchContext, pdf_url: str) -> bytes:
-    response = await ctx.http_client.get(pdf_url, timeout=ctx.default_timeout_s)
+    response = await ctx.http_client.get(pdf_url, timeout=ctx.upstream_timeout_s)
     response.raise_for_status()
     return response.content
 

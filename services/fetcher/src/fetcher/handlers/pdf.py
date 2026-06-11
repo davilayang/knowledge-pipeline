@@ -34,7 +34,7 @@ def matches(url: str) -> bool:
 async def _pymupdf4llm_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     try:
         async with ctx.http_client.stream(
-            "GET", url, follow_redirects=True, timeout=ctx.default_timeout_s
+            "GET", url, follow_redirects=True, timeout=ctx.upstream_timeout_s
         ) as response:
             status = response.status_code
             chunks: list[bytes] = []

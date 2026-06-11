@@ -12,7 +12,7 @@ from .schedules import populate_vector_store_job, run_populate_vector_store
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
-        "sources": SourcesResource(backup_source_dir=dg.EnvVar("BACKUP_SOURCE_DIR")),
+        "sources": SourcesResource(backup_source_dir=dg.EnvVar("BACKUP_SRC_DIR")),
         "vector_store": VectorStoreResource(
             chroma_host=dg.EnvVar("CHROMA_HOST"),
             chroma_port=dg.EnvVar.int("CHROMA_PORT"),

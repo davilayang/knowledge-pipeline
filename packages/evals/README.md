@@ -154,10 +154,10 @@ If you add a new embedder or a new vector store, copy the sub-batch discipline â
 ```bash
 # Default: text-embedding-3-small @ 1536, current chunkers, eval-set auto-resolves
 uv run eval-retrieval \
-  --raw-store-db   "$BACKUP_SOURCE_DIR/raw_store.db" \
-  --sessions-db    "$BACKUP_SOURCE_DIR/sessions.db" \
-  --research-db    "$BACKUP_SOURCE_DIR/research.db" \
-  --notes-dir      "$BACKUP_SOURCE_DIR/notes"
+  --raw-store-db   "$BACKUP_SRC_DIR/raw_store.db" \
+  --sessions-db    "$BACKUP_SRC_DIR/sessions.db" \
+  --research-db    "$BACKUP_SRC_DIR/research.db" \
+  --notes-dir      "$BACKUP_SRC_DIR/notes"
 
 # Compare a candidate config â€” bigger embedder, swap session chunker
 uv run eval-retrieval \
@@ -165,7 +165,7 @@ uv run eval-retrieval \
   --chunker-sessions turn_grouping
 
 # Partial run for iteration on one source
-uv run eval-retrieval --raw-store-db "$BACKUP_SOURCE_DIR/raw_store.db" --limit 50
+uv run eval-retrieval --raw-store-db "$BACKUP_SRC_DIR/raw_store.db" --limit 50
 ```
 
 Requires:

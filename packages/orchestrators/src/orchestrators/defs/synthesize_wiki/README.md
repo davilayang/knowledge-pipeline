@@ -15,7 +15,7 @@ schedule run_daily_synthesize_wiki   (cron 0 6 * * *)
   ▼
 wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   │  dep: snapshots/raw_store (default IdentityPartitionMapping — same key)
-  │  reads BACKUP_DIR/<partition_key>/raw_store.db; raises dg.Failure if
+  │  reads BACKUP_DST_DIR/<partition_key>/raw_store.db; raises dg.Failure if
   │  the file is absent (backup_readings hasn't materialised that partition).
   │  Filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
   │  "medium::" only — current prompts assume article-shape inputs);

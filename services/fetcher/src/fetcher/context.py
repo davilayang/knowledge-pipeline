@@ -12,7 +12,7 @@ from fetcher.types import FetchContext
 @asynccontextmanager
 async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
     """Yield a FetchContext and close its clients on exit."""
-    timeout = httpx.Timeout(float(settings.default_timeout_s))
+    timeout = httpx.Timeout(float(settings.upstream_timeout_s))
     default = httpx.AsyncClient(timeout=timeout)
     # Jina free tier works without auth; only set Authorization if a key is configured.
     jina_headers = (
@@ -27,7 +27,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             llama_parse_api_key=settings.llama_parse_api_key,
             llama_parse_tier_arxiv=settings.llama_parse_tier_arxiv,
             llama_parse_tier_pdf=settings.llama_parse_tier_pdf,
-            default_timeout_s=settings.default_timeout_s,
+            upstream_timeout_s=settings.upstream_timeout_s,
             tavily_api_key=settings.tavily_api_key,
             rapidapi_key=settings.rapidapi_key,
             openai_api_key=settings.openai_api_key,

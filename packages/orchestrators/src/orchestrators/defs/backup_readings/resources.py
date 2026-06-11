@@ -53,8 +53,8 @@ class HealthcheckResource(dg.ConfigurableResource):
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "backup": BackupResource(
-            source_data_dir=dg.EnvVar("BACKUP_SOURCE_DIR"),
-            backup_dir=dg.EnvVar("BACKUP_DIR"),
+            source_data_dir=dg.EnvVar("BACKUP_SRC_DIR"),
+            backup_dir=dg.EnvVar("BACKUP_DST_DIR"),
         ),
         "rclone": RcloneResource(
             remote_name=dg.EnvVar("DRIVE_REMOTE"),

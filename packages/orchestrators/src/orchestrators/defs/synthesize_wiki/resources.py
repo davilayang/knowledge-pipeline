@@ -43,7 +43,7 @@ class WikiResource(dg.ConfigurableResource):
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "wiki": WikiResource(
-            backup_dir=dg.EnvVar("BACKUP_DIR"),
+            backup_dir=dg.EnvVar("BACKUP_DST_DIR"),
             database_url=dg.EnvVar("DATABASE_URL"),
         ),
     }

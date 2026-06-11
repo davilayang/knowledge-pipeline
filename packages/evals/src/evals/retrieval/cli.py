@@ -7,10 +7,10 @@ Drives the retrieval eval harness end-to-end:
       --chunker-raw-store markdown --chunker-notes markdown \\
       --chunker-sessions turn_grouping --chunker-research markdown \\
       --chroma-host localhost --chroma-port 8000 \\
-      --raw-store-db ${BACKUP_SOURCE_DIR}/raw_store.db \\
-      --sessions-db ${BACKUP_SOURCE_DIR}/sessions.db \\
-      --research-db ${BACKUP_SOURCE_DIR}/research.db \\
-      --notes-dir   ${BACKUP_SOURCE_DIR}/notes
+      --raw-store-db ${BACKUP_SRC_DIR}/raw_store.db \\
+      --sessions-db ${BACKUP_SRC_DIR}/sessions.db \\
+      --research-db ${BACKUP_SRC_DIR}/research.db \\
+      --notes-dir   ${BACKUP_SRC_DIR}/notes
 
 Sources without a path argument are skipped — handy for partial eval runs
 while iterating on chunker config for a single source.

@@ -18,7 +18,7 @@ def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
     assert settings.db_path == "/app/data/fetches.db"
     assert settings.cache_ttl_days == 365
     assert settings.batch_max == 100
-    assert settings.default_timeout_s == 30
+    assert settings.upstream_timeout_s == 30
     assert settings.jina_api_key == "test-jina-key"
     assert settings.socks5_url == "socks5://127.0.0.1:1080"
     assert settings.llama_parse_api_key == "test-llama-key"

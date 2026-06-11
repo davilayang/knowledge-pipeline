@@ -45,7 +45,7 @@ class FetchContext:
     socks5_url: str
     llama_parse_api_key: str
     llama_parse_tier_arxiv: str
-    default_timeout_s: int
+    upstream_timeout_s: int
     llama_parse_tier_pdf: str = "fast"
     tavily_api_key: str | None = None
     rapidapi_key: str | None = None

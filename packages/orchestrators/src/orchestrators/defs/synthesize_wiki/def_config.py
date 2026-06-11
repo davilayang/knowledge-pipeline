@@ -1,8 +1,6 @@
 # Definition-time config for the synthesize_wiki pipeline. Static path config
-# (DATA_DIR) lives in orchestrators.config; per-host paths (BACKUP_DIR,
+# (DATA_DIR) lives in orchestrators.config; per-host paths (BACKUP_DST_DIR,
 # DATABASE_URL) are required dg.EnvVar fields on WikiResource.
-
-import os
 
 import dagster as dg
 
@@ -19,8 +17,8 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 
 # Cap on items processed per scheduled tick. Limits per-run LLM spend and
 # OpenAI rate-limit pressure; wiki/pending slices `eligible[:WIKI_MAX_PER_TICK]`.
-# Override via WIKI_MAX_PER_TICK env in deploy `.env`; 0 = no cap.
-WIKI_MAX_PER_TICK = int(os.getenv("WIKI_MAX_PER_TICK", "30"))
+# 0 = no cap.
+WIKI_MAX_PER_TICK = 30
 
 
 SOURCE_RAW_STORE = "raw_store"

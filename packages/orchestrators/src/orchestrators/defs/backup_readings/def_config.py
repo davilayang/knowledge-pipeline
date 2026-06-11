@@ -7,7 +7,7 @@ import dagster as dg
 
 # Daily partition start date — anything before this would have nothing to back up.
 # The partition_key is an ISO date string (e.g. "2026-05-06") and becomes the
-# subdirectory name under BACKUP_DIR and on the Drive remote — single source of
+# subdirectory name under BACKUP_DST_DIR and on the Drive remote — single source of
 # truth for "which day's snapshot."
 PARTITION_START_DATE = "2026-05-01"
 daily_partition_def = dg.DailyPartitionsDefinition(start_date=PARTITION_START_DATE)
@@ -15,7 +15,7 @@ daily_partition_def = dg.DailyPartitionsDefinition(start_date=PARTITION_START_DA
 
 # ---------- retention ----------
 
-# Local snapshot retention — newest N partition dirs kept under BACKUP_DIR.
+# Local snapshot retention — newest N partition dirs kept under BACKUP_DST_DIR.
 # Local is the recent-restore cache; Drive is the long-term archive.
 MAX_LOCAL_BACKUPS = 14
 

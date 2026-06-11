@@ -88,7 +88,7 @@ services:
     environment:
       DAGSTER_CURRENT_IMAGE: ${DOCKER_USER:-local}/kp-dagster-code
       DATABASE_URL: postgresql://${DAGSTER_PG_USERNAME}:${DAGSTER_PG_PASSWORD}@postgres:5432/knowledge_pipeline
-      BACKUP_SOURCE_DIR: /app/source # Used by app in container
+      BACKUP_SRC_DIR: /app/source # Used by app in container
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       FETCHER_URL: http://fetcher:8000  # override .env's localhost for laptop dev
@@ -98,7 +98,7 @@ services:
       - ./backups:/app/backups
       - ./logs:/app/logs # Per-step compute logs (uid 1001 must own ./logs on host)
       - ./.rclone:/home/dagster/.config/rclone:ro # Mount rclone config
-      - ${BACKUP_SOURCE_DIR:-./data}:/app/source:ro # Mount source data folder at container
+      - ${BACKUP_SRC_DIR:-./data}:/app/source:ro # Mount source data folder at container
     networks:
       - dagster_network
     restart: on-failure
