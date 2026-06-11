@@ -35,6 +35,7 @@ COPY packages/domains/src/ packages/domains/src/
 COPY packages/workflows/src/ packages/workflows/src/
 COPY packages/retrievers/src/ packages/retrievers/src/
 COPY packages/orchestrators/src/ packages/orchestrators/src/
+COPY prompts/ prompts/
 
 # Install workspace packages (editable) after source is copied.
 RUN --mount=type=cache,target=/root/.cache/uv \
