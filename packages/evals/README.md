@@ -32,10 +32,9 @@ packages/evals/
 │   └── retrieval/                # ✅ active retrieval eval harness
 │       ├── types.py              # EvalPair, EvalConfig, SourceMetrics, EvalRunResult
 │       ├── dataset.py            # load_eval_set, group_by_source (strict JSONL parse)
-│       ├── embedder.py           # Embedder Protocol + OpenAIEmbedder + Fake
 │       ├── cache.py              # disk-backed embedding cache
 │       ├── metrics.py            # hit_at_k / mrr_at_k / ndcg_at_k
-│       ├── runner.py             # index → query → metrics orchestration
+│       ├── runner.py             # index → query → metrics orchestration (uses retrievers.embedding.OpenAIEmbedder)
 │       └── cli.py                # eval-retrieval console script
 └── pyproject.toml
 ```

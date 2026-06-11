@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.7] — 2026-06-11
+
+### Changed
+
+- **Extract pipeline now owns its own `extract_queue_items` dynamic-partitions registry**, decoupled from triage's `queue_items` def. Sensor registers each `Status=Fetching` row it sees, so a manual Notion Status flip or partition wipe no longer strands an extract tick. `EXTRACT_COMPLEX_CONTENTS_DAG_VERSION` bumped 4 → 5 — prior materializations surface as stale in the Dagster UI.
+
+---
+
 ## [0.18.6] — 2026-06-10
 
 ### Added
