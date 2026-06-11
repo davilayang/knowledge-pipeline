@@ -194,6 +194,94 @@ async def test_cascade_invalid_tier_does_not_compete_for_longest() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cascade_tier_log_records_below_floor_with_floor_and_detail() -> None:
+    """A passing tier that sits below the floor records error_kind=below_floor + the floor."""
+    ctx = MagicMock(spec=FetchContext)
+    below = Tier(
+        "below",
+        "free",
+        1500,
+        10000,
+        AsyncMock(return_value=RawTierResult(content="x" * 1187, status=200)),
+        validate=lambda _c: True,
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [below]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert len(result.tier_log) == 1
+    entry = result.tier_log[0]
+    assert entry.tier == "below"
+    assert entry.chars == 1187
+    assert entry.floor == 1500
+    assert entry.error_kind == "below_floor"
+    assert entry.detail and "1187" in entry.detail and "1500" in entry.detail
+
+
+@pytest.mark.asyncio
+async def test_cascade_tier_log_records_http_error_and_preserves_handler_detail() -> None:
+    """Handler-supplied RawTierResult.detail flows through to TierLogEntry.detail."""
+    ctx = MagicMock(spec=FetchContext)
+    http_401 = Tier(
+        "jina",
+        "free",
+        1500,
+        10000,
+        AsyncMock(return_value=RawTierResult(content="", status=401, detail="jina HTTP 401: nope")),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [http_401]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert len(result.tier_log) == 1
+    entry = result.tier_log[0]
+    assert entry.status == 401
+    assert entry.error_kind == "http_error"
+    assert entry.detail == "jina HTTP 401: nope"
+    assert entry.duration_ms >= 0
+
+
+@pytest.mark.asyncio
+async def test_cascade_tier_log_records_exception_kind() -> None:
+    ctx = MagicMock(spec=FetchContext)
+    boom = Tier(
+        "explodes",
+        "free",
+        10,
+        100,
+        AsyncMock(side_effect=RuntimeError("kaboom")),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [boom]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    entry = result.tier_log[0]
+    assert entry.error_kind == "exception"
+    assert entry.detail and "RuntimeError" in entry.detail and "kaboom" in entry.detail
+
+
+@pytest.mark.asyncio
 async def test_cascade_strict_paid_tier_raises() -> None:
     ctx = MagicMock(spec=FetchContext)
     free = Tier(

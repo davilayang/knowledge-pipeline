@@ -32,6 +32,10 @@ def _tier_log_payload(tier_log: list[TierLogEntry]) -> list[dict[str, Any]]:
             "chars": entry.chars,
             "error": entry.error,
             "validated": entry.validated,
+            "duration_ms": entry.duration_ms,
+            "floor": entry.floor,
+            "error_kind": entry.error_kind,
+            "detail": entry.detail,
         }
         for entry in tier_log
     ]

@@ -26,6 +26,19 @@ class TierLogEntry:
     chars: int
     error: str | None
     validated: bool
+    # Added so failure diagnostics don't require expanding metadata + cross-
+    # referencing fetcher logs. New fields are optional + default-safe so old
+    # cached JSON (`_tier_log_from_json`) keeps deserializing.
+    duration_ms: int = 0
+    floor: int | None = None
+    # Categorical outcome — one of: "ok", "below_floor", "validation_failed",
+    # "http_error", "exception", "empty", "skipped_no_credential". Lets the
+    # caller render a one-line per-tier headline without parsing `error`.
+    error_kind: str | None = None
+    # Short upstream detail string (4xx body slice, swallowed exception text,
+    # extractor reason). Distinct from `error` which is a sentinel; this is
+    # the human-readable "why".
+    detail: str | None = None
 
 
 @dataclass(frozen=True)
@@ -60,6 +73,10 @@ class RawTierResult:
     content: str
     status: int
     metadata: dict[str, Any] = field(default_factory=dict)
+    # Short upstream-side reason when the tier couldn't produce content:
+    # 4xx body slice (jina), exception message a handler swallowed, etc.
+    # Cascade copies this into TierLogEntry.detail.
+    detail: str | None = None
 
 
 @dataclass

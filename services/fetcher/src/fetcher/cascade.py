@@ -1,6 +1,7 @@
 """Cascade engine: runs handler tiers in order until a result meets the quality floor."""
 
 import logging
+import time
 
 from fetcher.rate_limits import get_semaphore
 from fetcher.types import (
@@ -16,9 +17,12 @@ from fetcher.types import (
 logger = logging.getLogger(__name__)
 
 
+def _floor_for_quality(tier: Tier, quality: str) -> int:
+    return tier.min_chars if quality == "fast" else tier.high_chars
+
+
 def _tier_meets_floor(tier: Tier, content: str, quality: str) -> bool:
-    floor = tier.min_chars if quality == "fast" else tier.high_chars
-    if len(content) < floor:
+    if len(content) < _floor_for_quality(tier, quality):
         return False
     return tier.validate is None or tier.validate(content)
 
@@ -28,6 +32,61 @@ async def _run_tier(handler: URLHandler, ctx: FetchContext, tier: Tier, url: str
     semaphore = get_semaphore(key)
     async with semaphore:
         return await tier.run(ctx, url)
+
+
+def _classify_outcome(
+    tier: Tier, raw: RawTierResult, *, validated: bool, quality: str
+) -> tuple[str, str | None]:
+    """Return (error_kind, error_sentinel) for a tier that returned a RawTierResult.
+
+    error_kind is the categorical reason (one of: ok, http_error, empty,
+    validation_failed, below_floor). error_sentinel keeps the original
+    "empty" / None values that older log readers expect."""
+    if _tier_meets_floor(tier, raw.content, quality):
+        return "ok", None
+    if not raw.content:
+        if raw.status and raw.status >= 400:
+            return "http_error", "empty"
+        return "empty", "empty"
+    if not validated:
+        return "validation_failed", None
+    return "below_floor", None
+
+
+def _exception_entry(
+    tier: Tier, exc: BaseException, *, quality: str, duration_ms: int
+) -> TierLogEntry:
+    return TierLogEntry(
+        tier=tier.name,
+        status=0,
+        chars=0,
+        error=str(exc),
+        validated=False,
+        duration_ms=duration_ms,
+        floor=_floor_for_quality(tier, quality),
+        error_kind="exception",
+        detail=f"{type(exc).__name__}: {exc}"[:500],
+    )
+
+
+def _result_entry(
+    tier: Tier, raw: RawTierResult, *, validated: bool, quality: str, duration_ms: int
+) -> TierLogEntry:
+    error_kind, error_sentinel = _classify_outcome(tier, raw, validated=validated, quality=quality)
+    detail = raw.detail
+    if detail is None and error_kind == "below_floor":
+        detail = f"got {len(raw.content)} chars, floor {_floor_for_quality(tier, quality)}"
+    return TierLogEntry(
+        tier=tier.name,
+        status=raw.status,
+        chars=len(raw.content),
+        error=error_sentinel,
+        validated=validated,
+        duration_ms=duration_ms,
+        floor=_floor_for_quality(tier, quality),
+        error_kind=error_kind,
+        detail=detail,
+    )
 
 
 async def run_cascade(
@@ -47,6 +106,7 @@ async def run_cascade(
             continue
         if tier.applies is not None and not tier.applies(url):
             continue
+        started = time.monotonic()
         try:
             match tier:
                 case Tier():
@@ -55,13 +115,16 @@ async def run_cascade(
                     logger.warning("unknown tier kind: %s", type(tier))
                     continue
         except Exception as exc:
-            tier_log.append(TierLogEntry(tier.name, 0, 0, str(exc), False))
+            tier_log.append(
+                _exception_entry(
+                    tier, exc, quality=quality, duration_ms=int((time.monotonic() - started) * 1000)
+                )
+            )
             continue
+        duration_ms = int((time.monotonic() - started) * 1000)
         validated = tier.validate is None or tier.validate(raw.content)
         tier_log.append(
-            TierLogEntry(
-                tier.name, raw.status, len(raw.content), None if raw.content else "empty", validated
-            )
+            _result_entry(tier, raw, validated=validated, quality=quality, duration_ms=duration_ms)
         )
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
@@ -74,6 +137,7 @@ async def run_cascade(
                 continue
             if tier.applies is not None and not tier.applies(url):
                 continue
+            started = time.monotonic()
             try:
                 match tier:
                     case Tier():
@@ -82,18 +146,22 @@ async def run_cascade(
                         logger.warning("unknown tier kind: %s", type(tier))
                         continue
             except Exception as exc:
-                tier_log.append(TierLogEntry(tier.name, 0, 0, str(exc), False))
+                tier_log.append(
+                    _exception_entry(
+                        tier,
+                        exc,
+                        quality=quality,
+                        duration_ms=int((time.monotonic() - started) * 1000),
+                    )
+                )
                 if handler.STRICT_PAID_TIER:
                     raise
                 continue
+            duration_ms = int((time.monotonic() - started) * 1000)
             validated = tier.validate is None or tier.validate(raw.content)
             tier_log.append(
-                TierLogEntry(
-                    tier.name,
-                    raw.status,
-                    len(raw.content),
-                    None if raw.content else "empty",
-                    validated,
+                _result_entry(
+                    tier, raw, validated=validated, quality=quality, duration_ms=duration_ms
                 )
             )
             if _tier_meets_floor(tier, raw.content, quality):

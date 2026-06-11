@@ -54,6 +54,10 @@ def _tier_log_to_json(tier_log: list[TierLogEntry]) -> str:
                 "chars": entry.chars,
                 "error": entry.error,
                 "validated": entry.validated,
+                "duration_ms": entry.duration_ms,
+                "floor": entry.floor,
+                "error_kind": entry.error_kind,
+                "detail": entry.detail,
             }
             for entry in tier_log
         ]
@@ -61,6 +65,8 @@ def _tier_log_to_json(tier_log: list[TierLogEntry]) -> str:
 
 
 def _tier_log_from_json(raw: str) -> list[TierLogEntry]:
+    # `.get(...)` on the enriched fields so rows written by older builds
+    # still deserialize. Defaults match the dataclass defaults.
     return [
         TierLogEntry(
             tier=entry["tier"],
@@ -68,6 +74,10 @@ def _tier_log_from_json(raw: str) -> list[TierLogEntry]:
             chars=entry["chars"],
             error=entry["error"],
             validated=entry["validated"],
+            duration_ms=entry.get("duration_ms", 0),
+            floor=entry.get("floor"),
+            error_kind=entry.get("error_kind"),
+            detail=entry.get("detail"),
         )
         for entry in json.loads(raw)
     ]

@@ -137,6 +137,22 @@ def test_medium_load_domains_lowercases_and_strips_www(tmp_path) -> None:
     }
 
 
+def test_medium_load_domains_raises_on_missing_file(tmp_path) -> None:
+    # Silent empty-set fallback masked a Dockerfile bug for months — the medium
+    # handler became unreachable in prod whenever the YAML wasn't packaged.
+    # Fail-fast at module import is the right blast-radius for a missing file.
+    missing = tmp_path / "does-not-exist.yaml"
+    with pytest.raises(FileNotFoundError):
+        medium._load_domains(str(missing))
+
+
+def test_medium_load_domains_raises_on_empty_set(tmp_path) -> None:
+    yaml_path = tmp_path / "empty.yaml"
+    yaml_path.write_text("medium_domains: []\n")
+    with pytest.raises(RuntimeError, match="empty domain set"):
+        medium._load_domains(str(yaml_path))
+
+
 async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) -> None:
     from unittest.mock import MagicMock
 

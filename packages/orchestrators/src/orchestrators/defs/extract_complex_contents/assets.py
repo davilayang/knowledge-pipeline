@@ -1,5 +1,6 @@
 import hashlib
 import textwrap
+from typing import Any
 
 import dagster as dg
 
@@ -36,6 +37,45 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
         return content
     omitted = len(content) - head - tail
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
+
+
+def _format_tier_log(tier_log: list[dict[str, Any]]) -> str:
+    """Render the fetcher's tier_log as a multi-line headline for dg.Failure.
+
+    The raw list is still stored in metadata; this version is what shows up
+    in the description so you don't have to expand the event to learn why
+    each tier failed. Each entry is one line, e.g.
+        jina:      HTTP 401, 0 chars, 312ms — jina HTTP 401: <body…>
+        curl_cffi: HTTP 200, 1187 chars (below 1500 floor), 2.1s
+        tavily:    status 0, 0 chars (empty), 850ms — tavily returned …
+    """
+    if not tier_log:
+        return "  (no tier log)"
+    lines: list[str] = []
+    name_width = max((len(str(e.get("tier") or "?")) for e in tier_log), default=0)
+    for entry in tier_log:
+        tier = str(entry.get("tier") or "?").ljust(name_width)
+        status = entry.get("status")
+        chars = entry.get("chars", 0)
+        floor = entry.get("floor")
+        kind = entry.get("error_kind") or entry.get("error") or ""
+        duration_ms = entry.get("duration_ms") or 0
+        detail = entry.get("detail")
+
+        status_part = f"HTTP {status}" if status else "status 0"
+        chars_part = f"{chars} chars"
+        if kind == "below_floor" and floor:
+            chars_part = f"{chars} chars (below {floor} floor)"
+        elif kind == "validation_failed":
+            chars_part = f"{chars} chars (validation failed)"
+        elif kind == "empty" or chars == 0:
+            chars_part = "0 chars (empty)"
+        duration_part = f"{duration_ms}ms" if duration_ms < 1000 else f"{duration_ms / 1000:.1f}s"
+        head = f"  {tier}: {status_part}, {chars_part}, {duration_part}"
+        if detail:
+            head += f" — {detail}"
+        lines.append(head)
+    return "\n".join(lines)
 
 
 @dg.asset(
@@ -92,10 +132,12 @@ def fetched(
 
     if row.get("raw_content") and row.get("url"):
         url = row["url"]
+        canonical = row.get("canonical_url") or ""
         return dg.MaterializeResult(
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),
+                "canonical_url": dg.MetadataValue.text(canonical),
                 "fetch_skipped": dg.MetadataValue.bool(True),
                 "existing_content_chars": dg.MetadataValue.int(
                     row.get("fetched_content_char_count") or 0
@@ -118,7 +160,10 @@ def fetched(
         result = fetcher.fetch_for_type(url, content_type=content_type)
     if result.error:
         raise dg.Failure(
-            description=f"{content_type} fetch failed: {result.error}",
+            description=(
+                f"{content_type} fetch failed for {url}: {result.error}\n"
+                f"{_format_tier_log(result.tier_log)}"
+            ),
             allow_retries=result.transient,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
@@ -134,7 +179,11 @@ def fetched(
     # content. Guard the extractor against degenerate inputs before persist.
     if char_count < 500:
         raise dg.Failure(
-            description=f"{content_type} fetch below extraction floor: {char_count} chars",
+            description=(
+                f"{content_type} fetch below extraction floor for {url}: "
+                f"{char_count} chars from tier '{result.tier}'\n"
+                f"{_format_tier_log(result.tier_log)}"
+            ),
             allow_retries=False,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
@@ -159,6 +208,7 @@ def fetched(
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),
         "url": dg.MetadataValue.url(url),
+        "canonical_url": dg.MetadataValue.text(row.get("canonical_url") or ""),
         "fetch_tier": dg.MetadataValue.text(result.tier),
         "content_chars": dg.MetadataValue.int(char_count),
         "tier_log": dg.MetadataValue.json(result.tier_log),
