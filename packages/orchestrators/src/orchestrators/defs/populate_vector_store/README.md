@@ -73,13 +73,14 @@ Every upserted chunk carries this metadata:
 
 | Var | Required | Purpose |
 |---|---|---|
-| `BACKUP_SOURCE_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `research.db`, and `notes/`. Bound to `SourcesResource.backup_source_dir`. |
+| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `research.db`, and `notes/`. Bound to `SourcesResource.backup_source_dir`. |
 | `OPENAI_API_KEY` | yes | OpenAI embeddings calls. |
 | `CHROMA_HOST` | yes | Chroma HTTP host — `chroma` in compose; `localhost` for local `poe dagster-dev` against an external `chroma run`. |
 | `CHROMA_PORT` | yes | Chroma HTTP port (8000 default). |
-| `OPENAI_EMBEDDING_MODEL` | no | Default `text-embedding-3-small`. |
-| `OPENAI_EMBEDDING_DIMS` | no | Default `1536`. Matches the eval-winning baseline. |
-| `VECTOR_STORE_MAX_PER_TICK` | no | Per-source cap (default 50). Raise for backfill. |
+
+Embedding model + dims (`text-embedding-3-small`, 1536) and the per-source
+cap (50) are code constants in `def_config.py` — they're coupled to the
+existing vectors and don't vary per deploy.
 
 ## Operations
 
@@ -131,10 +132,10 @@ The per-source `MAX_PER_TICK_DEFAULT=50` cap with a 30-min schedule drains
 9600 items/day across the four sources. If `pending_by_source` keeps growing:
 
 - Check `OPENAI_API_KEY` quota / 429 patterns in run logs.
-- Confirm `BACKUP_SOURCE_DIR` is the up-to-date backup landing (the four
+- Confirm `BACKUP_SRC_DIR` is the up-to-date backup landing (the four
   sources read from the live mount, not a partition snapshot).
-- One-shot backfill: bump `VECTOR_STORE_MAX_PER_TICK` to a large number
-  and launch a single partition manually.
+- One-shot backfill: bump `MAX_PER_TICK_DEFAULT` in `def_config.py` and
+  launch a single partition manually.
 
 ### Re-embed a single item
 
@@ -181,7 +182,7 @@ c.delete_collection('contents')
 
 ## Future optimizations
 
-These aren't needed at the current `VECTOR_STORE_MAX_PER_TICK=50` and 30-min
+These aren't needed at the current `MAX_PER_TICK_DEFAULT=50` and 30-min
 cadence (each tick is well under a minute). If per-tick latency ever becomes
 a constraint, the highest-leverage change is **cross-item embedding batching**:
 today each ingest asset makes one OpenAI request per item (so up to 50

@@ -292,8 +292,8 @@ value; an unset env var fails fast at run init.
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "backup": BackupResource(
-            source_data_dir=dg.EnvVar("BACKUP_SOURCE_DIR"),
-            backup_dir=dg.EnvVar("BACKUP_DIR"),
+            source_data_dir=dg.EnvVar("BACKUP_SRC_DIR"),
+            backup_dir=dg.EnvVar("BACKUP_DST_DIR"),
         ),
         "rclone": RcloneResource(
             remote_name=dg.EnvVar("DRIVE_REMOTE"),
@@ -389,7 +389,7 @@ daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-01-01")
 
 No env reads, no functions, no I/O. Tunables that ship with the code (and are
 the same across deployments). Per-deployment values live on resources via
-`dg.EnvVar` (e.g. `BACKUP_DIR`, `DATABASE_URL`); shared static paths
+`dg.EnvVar` (e.g. `BACKUP_DST_DIR`, `DATABASE_URL`); shared static paths
 (e.g. `DATA_DIR`) go in `orchestrators/config.py`.
 
 Why this split: tunables ship with the code (versioned), env vars are

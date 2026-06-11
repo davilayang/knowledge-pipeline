@@ -79,19 +79,19 @@ has fewer files than expected after `rclone copy`. The metadata records
 
 Local (SQLite DBs):
 ```bash
-cp backups/<date>/raw_store.db <BACKUP_SOURCE_DIR>/raw_store.db
+cp backups/<date>/raw_store.db <BACKUP_SRC_DIR>/raw_store.db
 ```
 
 Local (tgz archives — extract back over the source dir):
 ```bash
-tar -xzf backups/<date>/notes.tgz -C <BACKUP_SOURCE_DIR>
+tar -xzf backups/<date>/notes.tgz -C <BACKUP_SRC_DIR>
 ```
 
 From Drive:
 ```bash
-rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SOURCE_DIR>/
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SRC_DIR>/
 rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/notes.tgz /tmp/ \
-  && tar -xzf /tmp/notes.tgz -C <BACKUP_SOURCE_DIR>
+  && tar -xzf /tmp/notes.tgz -C <BACKUP_SRC_DIR>
 ```
 
 ## External setup
@@ -103,8 +103,8 @@ All resolved via `dg.EnvVar` at run init — unset → fail fast with a clear
 
 | Var | Purpose |
 |---|---|
-| `BACKUP_SOURCE_DIR` | Absolute path to the source DB dir (e.g. `~/newsletter-assistant/data` on laptop, bind-mounted to `/app/source` in compose) |
-| `BACKUP_DIR` | Absolute path where partition snapshots land locally |
+| `BACKUP_SRC_DIR` | Absolute path to the source DB dir (e.g. `~/newsletter-assistant/data` on laptop, bind-mounted to `/app/source` in compose) |
+| `BACKUP_DST_DIR` | Absolute path where partition snapshots land locally |
 | `DRIVE_REMOTE` | rclone remote name (e.g. `gdrive`) |
 | `DRIVE_BACKUP_ROOT` | Drive folder under the remote (e.g. `knowledge-pipeline/backups`) |
 | `HEALTHCHECK_PING_URL` | healthchecks.io ping URL |

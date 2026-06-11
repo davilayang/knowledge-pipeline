@@ -2,8 +2,8 @@
 # DBs with optional Drive offload (rclone) and healthchecks.io success ping.
 #
 # Env vars:
-#   BACKUP_SOURCE_DIR     — required; absolute path to source DB dir
-#   BACKUP_DIR            — required; absolute path to local snapshot landing dir
+#   BACKUP_SRC_DIR        — required; absolute path to source DB dir
+#   BACKUP_DST_DIR        — required; absolute path to local snapshot landing dir
 #   DRIVE_REMOTE          — rclone remote name; unset disables Drive flow
 #   HEALTHCHECK_PING_URL  — full ping URL; unset disables success ping
 

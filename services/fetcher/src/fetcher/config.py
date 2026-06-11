@@ -42,7 +42,7 @@ class Settings(BaseSettings):
         default=100,
         description="Maximum number of URLs accepted in a batch fetch request.",
     )
-    default_timeout_s: int = Field(
+    upstream_timeout_s: int = Field(
         default=30,
         description="Default upstream request timeout in seconds.",
     )

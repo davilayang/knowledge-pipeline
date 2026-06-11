@@ -52,7 +52,7 @@ def _snapshot_one_db(
 ) -> dg.MaterializeResult:
     """Snapshot the SQLite file at `source` into the partition's backup dir.
 
-    Most kp backup assets read from `BACKUP_SOURCE_DIR` (newsletter-assistant's
+    Most kp backup assets read from `BACKUP_SRC_DIR` (newsletter-assistant's
     data directory, bind-mounted in compose). queue.db is the exception —
     it's owned by this repo, lives in kp's own data dir, and is passed in
     directly via `LOCAL_QUEUE_DB`."""
@@ -195,7 +195,7 @@ def snapshot_queue(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
     # queue.db is owned by kp (written by triage/extract). Read from kp's
-    # own data dir, NOT BACKUP_SOURCE_DIR which points at NA's data dir on
+    # own data dir, NOT BACKUP_SRC_DIR which points at NA's data dir on
     # prod.
     return _snapshot_one_db(context, backup, LOCAL_QUEUE_DB)
 

@@ -229,7 +229,7 @@ async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> Non
     from fetcher.handlers.pdf import _pymupdf4llm_fetch
 
     ctx = MagicMock()
-    ctx.default_timeout_s = 30
+    ctx.upstream_timeout_s = 30
     ctx.http_client.stream = MagicMock(
         return_value=_stream_ctxmgr(200, [b"%PDF-1.4 ", b"fake bytes"])
     )
@@ -248,7 +248,7 @@ async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
     from fetcher.handlers.pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
 
     ctx = MagicMock()
-    ctx.default_timeout_s = 30
+    ctx.upstream_timeout_s = 30
     # Two chunks whose combined size exceeds the cap — the second push trips abort.
     over_cap = [b"x" * MAX_PDF_BYTES, b"y" * 1024]
     ctx.http_client.stream = MagicMock(return_value=_stream_ctxmgr(200, over_cap))

@@ -39,7 +39,7 @@ TRIAGE_QUEUED_ITEMS_DAG_VERSION = "5"
 # Backup settings
 DB_FILES = ["raw_store.db", "sessions.db", "research.db", "queue.db"]
 
-# Per-partition tarballs of flat-file directories under BACKUP_SOURCE_DIR.
+# Per-partition tarballs of flat-file directories under BACKUP_SRC_DIR.
 # Each entry: (source subdir name, archive file name).
 ARCHIVE_DIRS: list[tuple[str, str]] = [
     ("notes", "notes.tgz"),

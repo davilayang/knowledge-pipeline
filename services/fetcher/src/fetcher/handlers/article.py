@@ -50,7 +50,7 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     proxies = {"https": ctx.socks5_url, "http": ctx.socks5_url} if ctx.socks5_url else None
     try:
         async with AsyncSession(impersonate="safari17_0") as session:
-            response = await session.get(url, proxies=proxies, timeout=ctx.default_timeout_s)
+            response = await session.get(url, proxies=proxies, timeout=ctx.upstream_timeout_s)
             html = response.text or ""
             status = response.status_code
     except Exception as exc:
@@ -60,7 +60,7 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
         logger.warning("curl_cffi proxied fetch failed for %s, retrying direct: %s", url, exc)
         try:
             async with AsyncSession(impersonate="safari17_0") as session:
-                response = await session.get(url, timeout=ctx.default_timeout_s)
+                response = await session.get(url, timeout=ctx.upstream_timeout_s)
                 html = response.text or ""
                 status = response.status_code
         except Exception as direct_exc:
