@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Medium-hosted articles now route through the medium handler in prod.** `docker/fetcher/Dockerfile` previously didn't ship `services/fetcher/config/medium_domains.yaml`; `medium._load_domains` silently returned an empty set and every Medium URL fell through to the article handler, never reaching the rapidapi paywall-bypass tier. Dockerfile now COPYs the config and pins `FETCHER_MEDIUM_DOMAINS_PATH`; `_load_domains` fails fast on missing/empty file so the next regression surfaces at fetcher startup.
+- **Fetch failures now carry a per-tier rollup in the Dagster failure description.** `extract_complex_contents.fetched` formats the fetcher's `tier_log` as a multi-line headline (status, chars, floor, duration, upstream detail) inside `dg.Failure(description=...)` — operators read why each tier failed without expanding metadata. `TierLogEntry` gains `duration_ms` / `floor` / `error_kind` / `detail`; handlers populate `RawTierResult.detail` with 4xx body slices, swallowed exception text, and other upstream reasons. Cache reads stay back-compat via `.get(...)` defaults.
+- **Fetched-asset metadata now includes `canonical_url`.** The cross-repo contract value (NA's `kp_queue_cache` lookup key) was previously invisible in the Dagster materialization metadata, hiding silent canonicalisation mismatches.
+
 ---
 
 ## [0.18.11] — 2026-06-11
