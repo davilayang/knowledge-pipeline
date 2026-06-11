@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.10] — 2026-06-11
+
+### Changed
+
+- **arXiv URLs at `arxiv.org/html/<id>` now route through the arxiv fetcher handler.** The handler previously matched only `abs/` and `pdf/` path prefixes; `html/`-form URLs fell through to the generic article handler and surfaced as ``no handler matches URL``. The handler still resolves the canonical PDF via the metadata API, so the html surface is purely a new entry point — same downstream extraction.
+
+---
+
 ## [0.18.9] — 2026-06-11
 
 ### Changed
