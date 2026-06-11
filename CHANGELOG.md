@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.11] — 2026-06-11
+
+### Changed
+
+- **arXiv URLs canonicalise to `/abs/<id>` at triage time.** `canonicalize_url` previously passed arXiv URLs through unchanged, leaving every arXiv row's `queue_items.canonical_url` mismatched against NA's `normalize_url` — silent NA→kp `kp_queue_cache` miss since arXiv ingestion existed. Now collapses `abs`/`pdf`/`html`/bare-ID forms to `<scheme>://<netloc>/abs/<id>` (version stripped), mirroring NA's existing abs/pdf canonicalisation. The `html/` extension is one-sided pending a coordinated NA-side change to `is_arxiv_url`.
+
+---
+
 ## [0.18.10] — 2026-06-11
 
 ### Changed
