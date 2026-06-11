@@ -34,10 +34,13 @@ _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus")
 
 _ARXIV_HOSTS = ("arxiv.org", "www.arxiv.org", "export.arxiv.org")
 _ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
-# Mirrors newsletter-assistant's arxiv_fetcher regexes; group(1) returns the
-# version-stripped canonical ID. Duplicated here because classify.py is in
-# `orchestrators` and the fetcher arxiv handler lives in a separate
-# (non-workspace) service.
+# Mirrors NA's `arxiv_fetcher._NEW_ID_RE` / `_OLD_ID_RE` and kp fetcher's
+# `services/fetcher/src/fetcher/handlers/arxiv.py` — three copies of the
+# same regex, all required to match byte-for-byte. Update all three on any
+# arxiv ID-format change; group(1) returns the version-stripped canonical
+# ID. Duplicated rather than shared because the fetcher service is not a
+# kp workspace member, and `classify.py` (in `orchestrators`) cannot depend
+# on NA at all.
 _NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
 _OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
 
