@@ -105,11 +105,17 @@ def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability
     assert result.run_requests[0].run_key == "queue-p-1-2026-05-31T10:00:00.000Z"
 
 
-def test_sensor_does_not_register_dynamic_partitions():
+def test_sensor_registers_into_its_own_partitions_def():
     notion = MagicMock()
-    notion.query_for_extract.return_value = [_notion_row("p-1", "https://example.com/a")]
+    notion.query_for_extract.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+        _notion_row("p-2", "https://example.com/b"),
+    ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
-    assert result.dynamic_partitions_requests == []
+    assert len(result.dynamic_partitions_requests) == 1
+    request = result.dynamic_partitions_requests[0]
+    assert request.partitions_def_name == "extract_queue_items"
+    assert request.partition_keys == ["p-1", "p-2"]
 
 
 def test_sensor_run_request_carries_content_type_tag():

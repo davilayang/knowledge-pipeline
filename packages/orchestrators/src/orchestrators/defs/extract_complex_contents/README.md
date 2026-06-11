@@ -7,15 +7,19 @@ Picks up rows after triage_queued_items has classified them: sensor filter is
 Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv,
 Article, Other}). The fetcher service's handler registry routes the URL by
 host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium,
-so Article and Other reach a real fetcher path. Triage also registers the
-dynamic partition; this pipeline only runs the job.
+so Article and Other reach a real fetcher path. The sensor owns its own
+`extract_queue_items` dynamic partitions definition — independent from
+triage's `queue_items` — and registers each Status=Fetching row it sees, so a
+manual Status flip in Notion or a triage-partition wipe never strands the
+tick on an unknown partition key.
 
 ## DAG (per partition)
 
 ```
 poll_notion_for_extract (sensor, every 15min)
         │  per Status=Fetching + Content Type ∈ SUPPORTED_CONTENT_TYPES row,
-        │  MAX_TO_EXTRACT_PER_TICK cap; triage_queued_items registers partition
+        │  MAX_TO_EXTRACT_PER_TICK cap; registers each row's notion_page_id
+        │  under the extract_queue_items dynamic partition
         ▼
 extract_complex_contents_job  (partition_key = notion_page_id)
         │

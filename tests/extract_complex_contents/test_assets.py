@@ -20,7 +20,7 @@ from orchestrators.defs.extract_complex_contents.assets import (
     published,
 )
 from orchestrators.defs.extract_complex_contents.def_config import (
-    queue_items_partition_def,
+    extract_queue_items_partition_def,
 )
 from orchestrators.defs.extract_complex_contents.resources import FetchResult
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
@@ -28,7 +28,7 @@ from orchestrators.defs.shared.queue_resources import QueueStoreResource
 
 def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
     instance = dg.DagsterInstance.ephemeral()
-    instance.add_dynamic_partitions(queue_items_partition_def.name, [page_id])
+    instance.add_dynamic_partitions(extract_queue_items_partition_def.name, [page_id])
     return instance
 
 

@@ -8,7 +8,7 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource, Queue
 
 from .def_config import (
     PIPELINE_TAG,
-    queue_items_partition_def,
+    extract_queue_items_partition_def,
 )
 from .resources import ExtractorRegistry, FetcherResource
 
@@ -43,7 +43,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     group_name=GROUP_NAME,
     compute_kind="http",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
-    partitions_def=queue_items_partition_def,
+    partitions_def=extract_queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     retry_policy=dg.RetryPolicy(max_retries=1, delay=120),
     description=_oneline(
@@ -166,7 +166,7 @@ def fetched(
     group_name=GROUP_NAME,
     compute_kind="openai",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
-    partitions_def=queue_items_partition_def,
+    partitions_def=extract_queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     deps=[dg.AssetDep(["extract_complex_contents", "fetched"])],
     check_specs=[
@@ -297,7 +297,7 @@ def extracted(
     group_name=GROUP_NAME,
     compute_kind="notion",
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
-    partitions_def=queue_items_partition_def,
+    partitions_def=extract_queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     deps=[dg.AssetDep(["extract_complex_contents", "extracted"])],
     description=_oneline(

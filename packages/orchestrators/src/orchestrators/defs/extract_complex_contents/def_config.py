@@ -1,4 +1,4 @@
-from orchestrators.defs.shared.partitions import queue_items_partition_def
+from orchestrators.defs.shared.partitions import extract_queue_items_partition_def
 
 PIPELINE_TAG = "extract-complex-contents"
 
@@ -39,5 +39,5 @@ __all__ = [
     "PROMPT_LABEL_TOPIC_CARD",
     "SENSOR_MIN_INTERVAL_S",
     "SUPPORTED_CONTENT_TYPES",
-    "queue_items_partition_def",
+    "extract_queue_items_partition_def",
 ]

@@ -1,5 +1,6 @@
 import dagster as dg
 
+from orchestrators.defs.shared.partitions import extract_queue_items_partition_def
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
 from orchestrators.defs.shared.run_failure import mark_notion_failed_from_run
 
@@ -12,9 +13,10 @@ from .schedules import extract_complex_contents_job
     minimum_interval_seconds=SENSOR_MIN_INTERVAL_S,
     description=(
         "Polls Notion Knowledge OS Queue for Status=Fetching rows with Content Type ∈ "
-        "SUPPORTED_CONTENT_TYPES; triggers extract_complex_contents partitioned on "
-        "notion_page_id. Bounded by MAX_TO_EXTRACT_PER_TICK. Triage registers the dynamic "
-        "partition before this pipeline picks up."
+        "SUPPORTED_CONTENT_TYPES; registers each row's notion_page_id under the "
+        "extract_queue_items dynamic partition and triggers extract_complex_contents. "
+        "Bounded by MAX_TO_EXTRACT_PER_TICK. Owns its own partition lifecycle so a "
+        "manual Status flip in Notion or a triage-partition wipe cannot strand a tick."
     ),
 )
 def poll_notion_for_extract(
@@ -27,6 +29,7 @@ def poll_notion_for_extract(
         supported_content_types=SUPPORTED_CONTENT_TYPES,
     )
     run_requests: list[dg.RunRequest] = []
+    page_ids: list[str] = []
     for row in rows:
         page_id = row.get("id")
         if not page_id:
@@ -42,6 +45,7 @@ def poll_notion_for_extract(
             context.log.warning("Skipping page_id=%s with missing Content Type", page_id)
             continue
         last_edited = row.get("last_edited_time") or ""
+        page_ids.append(page_id)
         run_requests.append(
             dg.RunRequest(
                 run_key=f"queue-{page_id}-{last_edited}",
@@ -50,7 +54,13 @@ def poll_notion_for_extract(
             )
         )
 
-    return dg.SensorResult(run_requests=run_requests)
+    dynamic_requests = (
+        [extract_queue_items_partition_def.build_add_request(page_ids)] if page_ids else []
+    )
+    return dg.SensorResult(
+        run_requests=run_requests,
+        dynamic_partitions_requests=dynamic_requests,
+    )
 
 
 @dg.run_failure_sensor(
