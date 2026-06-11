@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.8] — 2026-06-11
+
+### Changed
+
+- **Three env vars must be renamed in your deploy `.env`.** `BACKUP_SOURCE_DIR` → `BACKUP_SRC_DIR`, `BACKUP_DIR` → `BACKUP_DST_DIR` (backup pipeline), and `FETCHER_DEFAULT_TIMEOUT_S` → `FETCHER_UPSTREAM_TIMEOUT_S` (fetcher service). Old names will cause a failed run init or silent misconfiguration.
+- **Four env vars can be removed from your deploy `.env`.** `OPENAI_EMBEDDING_MODEL`, `OPENAI_EMBEDDING_DIMS`, `VECTOR_STORE_MAX_PER_TICK`, and `WIKI_MAX_PER_TICK` are now code constants in `def_config.py`; they are coupled to existing Chroma vectors and do not vary per deploy.
+
+---
+
 ## [0.18.7] — 2026-06-11
 
 ### Changed
