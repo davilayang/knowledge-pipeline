@@ -118,6 +118,12 @@ def test_classification_returns_value_in_all_content_types_set():
         ),
         ("https://example.com/post#section-2", "https://example.com/post"),
         ("https://arxiv.org/abs/2305.14283", "https://arxiv.org/abs/2305.14283"),
+        # arXiv: pdf, html, bare-ID, versioned, and host variants all collapse to /abs/<id>.
+        ("https://arxiv.org/pdf/2305.14283v2.pdf", "https://arxiv.org/abs/2305.14283"),
+        ("https://arxiv.org/html/2606.09498v1", "https://arxiv.org/abs/2606.09498"),
+        ("https://www.arxiv.org/abs/2305.14283v3", "https://www.arxiv.org/abs/2305.14283"),
+        ("https://export.arxiv.org/pdf/2305.14283", "https://export.arxiv.org/abs/2305.14283"),
+        ("https://arxiv.org/abs/2305.14283?utm=x#sec", "https://arxiv.org/abs/2305.14283"),
     ],
 )
 def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):

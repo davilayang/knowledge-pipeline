@@ -10,6 +10,7 @@ back to Notion as select-property values, so case + spelling must match
 exactly.
 """
 
+import re
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 CONTENT_TYPE_ARTICLE = "Article"
@@ -30,6 +31,34 @@ ALL_CONTENT_TYPES = {
 
 
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus")
+
+_ARXIV_HOSTS = ("arxiv.org", "www.arxiv.org", "export.arxiv.org")
+_ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
+# Mirrors newsletter-assistant's arxiv_fetcher regexes; group(1) returns the
+# version-stripped canonical ID. Duplicated here because classify.py is in
+# `orchestrators` and the fetcher arxiv handler lives in a separate
+# (non-workspace) service.
+_NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
+_OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
+
+
+def _strip_pdf_suffix(value: str) -> str:
+    return value[:-4] if value.endswith(".pdf") else value
+
+
+def _extract_arxiv_id(url: str) -> str | None:
+    parsed = urlparse(url)
+    host = (parsed.hostname or "").lower()
+    if host not in _ARXIV_HOSTS:
+        return None
+    path = parsed.path.strip("/")
+    if not path:
+        return None
+    if path.startswith(_ARXIV_PATH_PREFIXES):
+        path = path.split("/", 1)[1]
+    path = _strip_pdf_suffix(path)
+    match = _NEW_ID_RE.match(path) or _OLD_ID_RE.match(path)
+    return match.group(1) if match else None
 
 
 def classify_content_type(url: str) -> str:
@@ -64,7 +93,15 @@ def classify_content_type(url: str) -> str:
 def canonicalize_url(url: str) -> str:
     """Output must equal newsletter-assistant's `normalize_url`
     (`packages/knowledge/src/knowledge/fetcher/orchestrator.py`) — NA's
-    `kp_queue_cache` looks up by this exact string; drift = silent miss."""
+    `kp_queue_cache` looks up by this exact string; drift = silent miss.
+
+    arXiv: any of /abs, /pdf, /html, or bare-ID forms collapse to
+    `<scheme>://<netloc>/abs/<id>` (version suffix dropped). Mirrors NA's
+    abs/pdf/bare behavior; the html/ surface is a kp extension — NA's
+    `is_arxiv_url` does not yet recognise html/, so html-form lookups
+    via NA continue to fall through to the generic path until NA
+    catches up. New html ingestion paths reach kp via direct Notion
+    paste, not NA, so the temporary drift is one-sided."""
     parsed = urlparse(url)
     hostname = (parsed.hostname or "").removeprefix("www.")
 
@@ -72,5 +109,16 @@ def canonicalize_url(url: str) -> str:
         v = parse_qs(parsed.query).get("v", [""])[0]
         query = urlencode({"v": v}) if v else ""
         return urlunparse(parsed._replace(query=query, fragment="")).rstrip("/")
+
+    arxiv_id = _extract_arxiv_id(url)
+    if arxiv_id is not None:
+        return urlunparse(
+            parsed._replace(
+                netloc=(parsed.netloc or "").lower(),
+                path=f"/abs/{arxiv_id}",
+                query="",
+                fragment="",
+            )
+        ).rstrip("/")
 
     return urlunparse(parsed._replace(query="", fragment="")).rstrip("/")
