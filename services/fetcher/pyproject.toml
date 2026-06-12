@@ -38,6 +38,10 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/fetcher"]
+# Ship package data (medium_domains.yaml, etc.) alongside the .py modules so
+# Path(__file__)-relative lookups resolve inside the installed venv.
+# Hatchling's default include pattern is .py only.
+force-include = { "src/fetcher/data" = "fetcher/data" }
 
 [tool.uv.sources]
 knowledge-domains = { path = "../../packages/domains" }

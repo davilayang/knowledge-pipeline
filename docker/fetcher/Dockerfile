@@ -22,7 +22,6 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-install-project --no-dev --no-editable
 
 COPY services/fetcher/src /app/services/fetcher/src
-COPY services/fetcher/config /app/services/fetcher/config
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --no-dev --no-editable
 
@@ -32,14 +31,9 @@ FROM python:3.13-slim AS runtime
 RUN useradd --create-home --uid 1000 fetcher
 
 COPY --from=builder --chown=fetcher:fetcher /app/.venv /app/.venv
-# Ship runtime-data config (medium_domains.yaml etc.) alongside the venv.
-# `medium.py` reads FETCHER_MEDIUM_DOMAINS_PATH (set below) at import time
-# and now fails fast if the file is missing or empty.
-COPY --from=builder --chown=fetcher:fetcher /app/services/fetcher/config /app/services/fetcher/config
 
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1 \
-    FETCHER_MEDIUM_DOMAINS_PATH=/app/services/fetcher/config/medium_domains.yaml
+    PYTHONUNBUFFERED=1
 
 RUN mkdir -p /app/data && chown fetcher:fetcher /app/data
 

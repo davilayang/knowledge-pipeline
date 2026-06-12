@@ -1,8 +1,8 @@
 """Medium handler: Jina Reader free tier, then RapidAPI paywall bypass."""
 
 import logging
-import os
 import re
+from pathlib import Path
 from urllib.parse import urlparse
 
 import yaml
@@ -20,8 +20,14 @@ STRICT_PAID_TIER = False
 
 _ARTICLE_ID_RE = re.compile(r"-([0-9a-f]{8,12})$", re.IGNORECASE)
 
+# medium_domains.yaml ships inside the `fetcher` package (src/fetcher/data/)
+# so it travels with the wheel into the venv. Anchored via __file__ so the
+# same path resolves identically in dev, tests, and the Docker runtime —
+# no env var, no Dockerfile COPY of a sibling config dir.
+_DEFAULT_DOMAINS_PATH = Path(__file__).resolve().parent.parent / "data" / "medium_domains.yaml"
 
-def _load_domains(path: str) -> set[str]:
+
+def _load_domains(path: str | Path) -> set[str]:
     """Read the medium domains YAML and return a lowercased, www-stripped set.
 
     Fails fast on missing/empty file. A silent empty set (the previous
@@ -46,9 +52,7 @@ def _load_domains(path: str) -> set[str]:
     return result
 
 
-_MEDIUM_DOMAINS: set[str] = _load_domains(
-    os.environ.get("FETCHER_MEDIUM_DOMAINS_PATH", "config/medium_domains.yaml")
-)
+_MEDIUM_DOMAINS: set[str] = _load_domains(_DEFAULT_DOMAINS_PATH)
 
 
 def matches(url: str) -> bool:

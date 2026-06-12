@@ -153,6 +153,19 @@ def test_medium_load_domains_raises_on_empty_set(tmp_path) -> None:
         medium._load_domains(str(yaml_path))
 
 
+def test_medium_default_domains_path_resolves_inside_package() -> None:
+    # Anchored via __file__ so the file ships with the wheel; if a future move
+    # breaks this, fetcher startup fails fast (module-level `_load_domains`
+    # call) — but a cheap test catches it before that.
+    assert medium._DEFAULT_DOMAINS_PATH.is_file()
+    assert medium._DEFAULT_DOMAINS_PATH.name == "medium_domains.yaml"
+    # Loading the shipped file should produce the same well-known set the
+    # handler boots with — sanity check it's not empty / not the placeholder.
+    domains = medium._load_domains(medium._DEFAULT_DOMAINS_PATH)
+    assert "medium.com" in domains
+    assert "pub.towardsai.net" in domains
+
+
 async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) -> None:
     from unittest.mock import MagicMock
 
