@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.13] — 2026-06-12
+
 ### Changed
 
 - **Re-triaging a Notion row now invalidates the prior cohort's fetched + extracted state.** `queue_store.upsert_triaged` ON CONFLICT clears `raw_content` / `fetched_*` / `extracted_*` cohort fields and deletes the row's `extraction_calls`. Previously a re-queue against a row with cached `raw_content` short-circuited the `fetched` cache check, running extraction on stale content — the symptom that forced a manual `DELETE FROM queue_items` after the PR #109 Medium-handler fix.

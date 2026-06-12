@@ -39,7 +39,7 @@ Status=Failed + Error back to the Notion row.
 | `triage_notion` | `TriageNotionResource` | Reads Queue data source (Status=Queued / empty); writes Content Type + Status. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `notion`. |
 | `triage_store` | `TriageQueueStore` | Writes to `data/queue.db` (kp local SQLite) via `domains.queue_store.sources`. Pipeline-scoped key to avoid collision with `extract_complex_contents`'s `store`. |
 
-Triage never writes Notion's `Name` property — downstream `extract_complex_contents` fills it from the LLM-extracted title. Empty Name rows in Notion display URL-only until then.
+Triage seeds Notion's `Name` from the fetched page title (via `fetch_url_meta`) only when the user left Name blank — never overwrites a user-set title. Downstream `extract_complex_contents.published` later upgrades Name to `topic_card.extracted_title` once the LLM has produced a sharper read.
 
 ## User overrides
 
@@ -49,7 +49,7 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 |---|---|
 | `URL` | Required input. Asset fails fast if missing. |
 | `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`Article`/`YouTube`/`arXiv`/`PDF`/`Podcast`/`Other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
-| `Name` (title) | Metadata-only passthrough. Asset surfaces it in the run materialization for observability but does not write it back to Notion or persist it to the local store. |
+| `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `extract_complex_contents.published` later overwrites Name with `topic_card.extracted_title`. |
 
 `Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
 
