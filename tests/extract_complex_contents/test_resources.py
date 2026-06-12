@@ -133,6 +133,46 @@ def test_notion_update_status_omits_description_when_not_provided():
     assert "Description" not in props
 
 
+def test_notion_update_status_writes_name_when_provided():
+    resource = NotionQueueResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.update_status("page-id", "Ready", name="Sharper Title from Extractor")
+    props = fake_client.pages.update.call_args.kwargs["properties"]
+    assert props["Status"] == {"status": {"name": "Ready"}}
+    assert props["Name"]["title"][0]["text"]["content"] == "Sharper Title from Extractor"
+
+
+def test_notion_update_status_strips_name_and_skips_when_empty():
+    resource = NotionQueueResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.update_status("page-id", "Ready", name="   \n  ")
+    props = fake_client.pages.update.call_args.kwargs["properties"]
+    assert "Name" not in props
+
+
+def test_notion_update_status_omits_name_when_not_provided():
+    resource = NotionQueueResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.update_status("page-id", "Ready", description="d")
+    props = fake_client.pages.update.call_args.kwargs["properties"]
+    assert "Name" not in props
+
+
 def test_notion_update_status_failed_writes_status_and_error():
     resource = NotionQueueResource(
         integration_token="secret_x",

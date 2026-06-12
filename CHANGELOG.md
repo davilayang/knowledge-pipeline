@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.13] — 2026-06-12
+
+### Changed
+
+- **Re-triaging a Notion row now invalidates the prior cohort's fetched + extracted state.** `queue_store.upsert_triaged` ON CONFLICT clears `raw_content` / `fetched_*` / `extracted_*` cohort fields and deletes the row's `extraction_calls`. Previously a re-queue against a row with cached `raw_content` short-circuited the `fetched` cache check, running extraction on stale content — the symptom that forced a manual `DELETE FROM queue_items` after the PR #109 Medium-handler fix.
+- **`published` now overwrites Notion `Name` with `topic_card.extracted_title`** alongside the existing `Description` write — the LLM's title is materially sharper than the trafilatura HTML meta triage seeded ("Welcome to Medium" → "Why I Quit My Job at Google"). `NotionQueueResource.update_status` gains an optional `name` parameter with the same strip-and-skip-on-empty discipline as `description`.
+
+---
+
 ## [0.18.12] — 2026-06-12
 
 ### Changed

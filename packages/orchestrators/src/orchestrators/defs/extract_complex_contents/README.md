@@ -25,7 +25,8 @@ extract_complex_contents_job  (partition_key = notion_page_id)
         ▼
 fetched ──► extracted ──► published
    │           │              │
-   │           │              └──► Notion: Status=Ready
+   │           │              └──► Notion: Status=Ready + Name (extracted_title)
+   │           │                   + Description (core_mechanism)
    │           │
    │           └─ on failure (LLM error / required-fields check):
    │              run_failure_sensor → Notion: Status=Failed + Error
@@ -96,5 +97,7 @@ dg launch --job extract_complex_contents --partition <notion_page_id>
   `FETCHER_URL=http://localhost:8000`.
 - **Notion AI training opt-out** — `Notion Workspace Settings → Notion AI
   → Manage data → "Don't use my workspace data to train models"` must be
-  ON. Lifecycle-only Notion writes are intentional (raw content + Topic
-  Cards stay in kp's local store).
+  ON. The only LLM-derived content written back to Notion is the
+  `published` asset's Name (`topic_card.extracted_title`) and
+  Description (`topic_card.core_mechanism`) — the full narrative, the
+  Topic Card JSON, and raw_content stay in kp's local store.

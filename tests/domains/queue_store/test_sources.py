@@ -412,6 +412,63 @@ def test_find_canonical_url_duplicate_ignores_other_urls(db_path: Path):
     )
 
 
+def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):
+    """Re-triage is a cohort boundary: a row that already has fetched +
+    extracted state from a prior cycle must lose all of it on re-triage so
+    the `fetched` cache check doesn't short-circuit on stale content (the
+    Medium-handler PR #109 incident shape) and `get_queue_extraction` does
+    not serve last-cohort Topic Cards while the row is back at Fetching."""
+    page_id = "t-stale"
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    _insert_fetched(db_path, page_id=page_id)
+    _record_three_call(db_path, page_id=page_id)
+
+    pre = get_row(db_path=db_path, notion_page_id=page_id)
+    assert pre is not None
+    assert pre["raw_content"] is not None
+    assert pre["extracted_at"] is not None
+
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x?utm=2",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+
+    post = get_row(db_path=db_path, notion_page_id=page_id)
+    assert post is not None
+    assert post["url"] == "https://example.com/x?utm=2"
+    for col in (
+        "raw_content",
+        "fetched_at",
+        "fetch_tier",
+        "fetch_tier_log",
+        "fetched_content_char_count",
+        "content_hash",
+        "extracted_at",
+        "extraction_model",
+        "extractor_label",
+        "extractor_sha256",
+        "tokens_in_total",
+        "tokens_out_total",
+        "error_text",
+    ):
+        assert post[col] is None, f"{col} should be cleared on re-triage, got {post[col]!r}"
+
+    with sqlite3.connect(db_path) as conn:
+        remaining = conn.execute(
+            "SELECT COUNT(*) FROM extraction_calls WHERE notion_page_id=?", (page_id,)
+        ).fetchone()[0]
+    assert remaining == 0
+
+
 def test_upsert_triaged_then_fetched_keeps_single_row(db_path: Path):
     upsert_triaged(
         db_path=db_path,
