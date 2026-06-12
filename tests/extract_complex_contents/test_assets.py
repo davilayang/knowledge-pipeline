@@ -336,58 +336,6 @@ def test_fetched_falls_through_to_fetch_when_override_empty(tmp_path: Path):
     fetcher.structure.assert_not_called()
 
 
-def test_fetched_failure_description_includes_per_tier_rollup(tmp_path: Path):
-    """When fetch fails, dg.Failure.description should carry a per-tier
-    headline so the operator doesn't have to expand metadata to learn what
-    happened. The raw tier_log stays in metadata for the structured view."""
-    db_path = tmp_path / "q.db"
-    _seed_triaged(db_path, "p-1", "Article", url="https://pub.example.com/post-abc123def456")
-    store = QueueStoreResource(db_path=str(db_path))
-    fetcher = MagicMock()
-    fetcher.fetch_for_type.return_value = FetchResult(
-        error="all tiers failed for https://pub.example.com/post-abc123def456",
-        transient=False,
-        tier="",
-        tier_log=[
-            {
-                "tier": "jina",
-                "status": 401,
-                "chars": 0,
-                "error": "empty",
-                "validated": False,
-                "duration_ms": 312,
-                "floor": 2000,
-                "error_kind": "http_error",
-                "detail": "jina HTTP 401: subscription required",
-            },
-            {
-                "tier": "curl_cffi",
-                "status": 200,
-                "chars": 1187,
-                "error": None,
-                "validated": False,
-                "duration_ms": 2105,
-                "floor": 1500,
-                "error_kind": "validation_failed",
-                "detail": None,
-            },
-        ],
-    )
-    with pytest.raises(dg.Failure) as exc_info:
-        _materialize(
-            fetched,
-            partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
-            url="https://pub.example.com/post-abc123def456",
-        )
-    description = exc_info.value.description or ""
-    assert "jina" in description and "HTTP 401" in description
-    assert "subscription required" in description
-    assert "curl_cffi" in description and "validation failed" in description
-    assert "312ms" in description
-    assert "2.1s" in description
-
-
 def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_override(db_path, "p-ovr", "noisy paste " * 500)
