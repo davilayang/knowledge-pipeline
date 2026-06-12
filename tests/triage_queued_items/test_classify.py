@@ -1,8 +1,8 @@
 import pytest
 from orchestrators.defs.triage_queued_items.classify import (
     ALL_CONTENT_TYPES,
-    canonicalize_url,
     classify_content_type,
+    normalize_url,
 )
 
 # ---------------------------------------------------------------------------
@@ -85,7 +85,7 @@ def test_classification_returns_value_in_all_content_types_set():
         assert classify_content_type(url) in ALL_CONTENT_TYPES
 
 
-# canonicalize_url — CONTRACT with newsletter-assistant's normalize_url.
+# normalize_url — CONTRACT with newsletter-assistant's normalize_url.
 
 
 @pytest.mark.parametrize(
@@ -126,5 +126,5 @@ def test_classification_returns_value_in_all_content_types_set():
         ("https://arxiv.org/abs/2305.14283?utm=x#sec", "https://arxiv.org/abs/2305.14283"),
     ],
 )
-def test_canonicalize_matches_na_normalize_url(raw: str, expected: str):
-    assert canonicalize_url(raw) == expected
+def test_normalize_url_matches_na_normalize_url(raw: str, expected: str):
+    assert normalize_url(raw) == expected

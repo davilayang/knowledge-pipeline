@@ -36,7 +36,7 @@ _SCHEMA = """
 CREATE TABLE IF NOT EXISTS queue_items (
     notion_page_id              TEXT PRIMARY KEY,  -- pipeline partition key
     url                         TEXT NOT NULL,     -- captured Notion Queue URL
-    canonical_url               TEXT,              -- canonicalize_url() form
+    canonical_url               TEXT,              -- normalize_url() output
     content_type                TEXT,              -- YouTube/arXiv/Article/Other
     raw_content                 TEXT,              -- fetched body
     raw_content_override        TEXT NOT NULL DEFAULT '',  -- user-pasted body
