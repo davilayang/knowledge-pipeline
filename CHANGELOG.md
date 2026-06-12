@@ -6,11 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.12] — 2026-06-12
+
 ### Changed
 
-- **Medium-hosted articles now route through the medium handler in prod.** `medium_domains.yaml` moved into the package at `services/fetcher/src/fetcher/data/` and is loaded via a `Path(__file__)`-relative default — the same path resolves in dev, tests, and the Docker runtime, so no env var or sibling-config COPY is needed. Previously the file lived in `services/fetcher/config/`, wasn't shipped by the Dockerfile, and `_load_domains` silently returned an empty set — every Medium URL had been falling through to the article handler since the YAML was introduced, never reaching the rapidapi paywall-bypass tier. `_load_domains` now fails fast on missing/empty file so the next regression surfaces at fetcher startup.
-- **Fetcher's `tier_log` now carries enough detail to diagnose per-tier failures.** `TierLogEntry` gains `duration_ms` / `floor` / `error_kind` (categorical: `ok` / `below_floor` / `validation_failed` / `http_error` / `empty` / `exception`) / `detail`; handlers populate `RawTierResult.detail` with 4xx body slices, swallowed exception text, and upstream reasons (jina 401 body, curl_cffi exception names, tavily/rapidapi/arxiv errors). The Dagster fetched-asset metadata already renders `tier_log` as JSON; the upstream enrichment is what was missing. Cache reads stay back-compat via `.get(...)` defaults.
-- **Fetched-asset metadata now includes `canonical_url`.** The cross-repo contract value (NA's `kp_queue_cache` lookup key) was previously invisible in the Dagster materialization metadata, hiding silent canonicalisation mismatches.
+- **Medium URLs now route through the medium handler in prod.** `medium_domains.yaml` moved into the package at `src/fetcher/data/`, loaded via a `Path(__file__)`-relative default — ships with the wheel, no Dockerfile data COPY or env var. `_load_domains` fails fast on missing/empty file so the next regression surfaces at fetcher startup, not silently.
+- **Fetcher `tier_log` now carries per-tier diagnostic detail.** `TierLogEntry` gains `duration_ms` / `floor` / `error_kind` / `detail`; handlers populate `RawTierResult.detail` with 4xx body slices, exception text, and upstream reasons (jina 401, curl_cffi failures, tavily/rapidapi/arxiv errors). Cache reads stay back-compat via `.get(...)` defaults.
+- **Fetched-asset metadata now includes `canonical_url`** — the cross-repo `kp_queue_cache` lookup key was previously invisible in the Dagster materialization view.
+- **`canonicalize_url` renamed to `normalize_url`** in `triage_queued_items/classify.py`, matching NA's function name so the byte-for-byte parity contract is self-documenting. Disambiguates from the fetcher service's HEAD-follow `canonicalize()`. DB column `queue_items.canonical_url` keeps its name.
 
 ---
 

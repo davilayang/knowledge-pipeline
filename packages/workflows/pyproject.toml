@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-workflows"
-version = "0.18.11"
+version = "0.18.12"
 description = "LangGraph agentic workflows and agent primitives"
 requires-python = ">=3.13"
 dependencies = [
