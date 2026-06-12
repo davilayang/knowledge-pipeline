@@ -518,7 +518,7 @@ def _record_three_call_extraction(
     )
 
 
-def test_published_flips_notion_and_writes_core_mechanism_to_description(tmp_path: Path):
+def test_published_flips_notion_and_writes_topic_card_to_name_and_description(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     _record_three_call_extraction(db_path, "p-1", core_mechanism="Distilled mechanism summary.")
@@ -531,7 +531,10 @@ def test_published_flips_notion_and_writes_core_mechanism_to_description(tmp_pat
     )
     assert result.success
     notion.update_status.assert_called_once_with(
-        "p-1", "Ready", description="Distilled mechanism summary."
+        "p-1",
+        "Ready",
+        description="Distilled mechanism summary.",
+        name="T",
     )
 
 
@@ -563,7 +566,7 @@ def test_published_skips_description_when_no_topic_card_row(tmp_path: Path):
         resources={"notion": notion, "store": store},
     )
     assert result.success
-    notion.update_status.assert_called_once_with("p-1", "Ready", description=None)
+    notion.update_status.assert_called_once_with("p-1", "Ready", description=None, name=None)
 
 
 def test_published_fails_when_no_extraction(tmp_path: Path):

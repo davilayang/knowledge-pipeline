@@ -192,6 +192,15 @@ def upsert_triaged(
     content_type: str,
     raw_content_override: str = "",
 ) -> None:
+    """Re-triage is a cohort boundary: clear every downstream-produced column
+    so `fetched` / `extracted` re-run on the fresh routing. Without this, the
+    `fetched` cache check (`if row.get("raw_content") and row.get("url")`)
+    short-circuits when a row already has a body — even when the URL changed
+    or the fetcher started routing it differently (the Medium-handler PR #109
+    incident: stale paywall preview survived the re-queue). Extraction cohort
+    fields and FK'd extraction_calls rows go too — readers of
+    `get_queue_extraction` would otherwise serve last-cohort Topic Cards while
+    the row is back at Status=Fetching."""
     with _connect(db_path) as conn:
         conn.execute(
             """
@@ -204,9 +213,29 @@ def upsert_triaged(
                 canonical_url = excluded.canonical_url,
                 content_type = excluded.content_type,
                 raw_content_override = excluded.raw_content_override,
+                raw_content = NULL,
+                fetched_at = NULL,
+                fetch_tier = NULL,
+                fetch_tier_log = NULL,
+                fetched_content_char_count = NULL,
+                content_hash = NULL,
+                extracted_at = NULL,
+                extraction_model = NULL,
+                extractor_label = NULL,
+                extractor_sha256 = NULL,
+                tokens_in_total = NULL,
+                tokens_out_total = NULL,
+                langfuse_trace_id = NULL,
                 error_text = NULL
             """,
             (notion_page_id, url, canonical_url, content_type, raw_content_override),
+        )
+        # FK CASCADE on extraction_calls.notion_page_id only fires on DELETE of
+        # the parent row, not on UPDATE. Wipe explicitly so a re-triage doesn't
+        # leave the previous cohort's per-call rows hanging behind a stale FK.
+        conn.execute(
+            "DELETE FROM extraction_calls WHERE notion_page_id = ?",
+            (notion_page_id,),
         )
 
 

@@ -321,8 +321,9 @@ def extracted(
     deps=[dg.AssetDep(["extract_complex_contents", "extracted"])],
     description=_oneline(
         """
-        Flips Notion Status=Ready and overwrites Description with the
-        extracted core_mechanism (sharper than the triage-seeded HTML meta).
+        Flips Notion Status=Ready and overwrites Name with the extracted
+        title + Description with the extracted core_mechanism — both
+        materially sharper than the trafilatura HTML meta triage seeded.
         Isolated from extraction so a Notion API hiccup can be retried
         without re-spending an OpenAI extraction. Verifies
         queue_items.extracted_at is set as a guard against bad ordering.
@@ -347,12 +348,19 @@ def published(
         )
     topic_card = store.get_latest_topic_card(page_id)
     core_mechanism = topic_card.core_mechanism if topic_card else None
-    notion.update_status(page_id, "Ready", description=core_mechanism)
+    extracted_title = topic_card.extracted_title if topic_card else None
+    notion.update_status(
+        page_id,
+        "Ready",
+        description=core_mechanism,
+        name=extracted_title,
+    )
     return dg.MaterializeResult(
         metadata={
             "notion_page_id": dg.MetadataValue.text(page_id),
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
             "extracted_at": dg.MetadataValue.text(row.get("extracted_at") or ""),
+            "extracted_title": dg.MetadataValue.text(extracted_title or ""),
             "core_mechanism": dg.MetadataValue.text(core_mechanism or ""),
             "summary": dg.MetadataValue.md("Notion → Ready"),
         }

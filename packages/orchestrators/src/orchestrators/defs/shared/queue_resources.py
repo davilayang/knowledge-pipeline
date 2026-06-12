@@ -163,18 +163,32 @@ class NotionQueueResource(dg.ConfigurableResource):
         status: str,
         *,
         description: str | None = None,
+        name: str | None = None,
     ) -> None:
         """Lifecycle Status flip used by extract `published`. Optional
-        `description` overwrites Notion's Description property in the same
-        call — kept optional so the failure-handling path can call this
-        without touching Description. Strips both ends; an empty string after
-        strip is treated as "don't write" so a no-op extraction never blanks
-        a description previously seeded by triage."""
+        `description` and `name` overwrite Notion's Description / Name
+        properties in the same call — both kept optional so the
+        failure-handling path can call this without touching either. Strips
+        both ends on each; an empty string after strip is treated as "don't
+        write" so a no-op extraction never blanks a value previously seeded
+        by triage.
+
+        `name` carries the extractor's `topic_card.extracted_title` — a
+        materially sharper title than the trafilatura HTML meta triage
+        seeded (which often resolves to the site name or a generic "Welcome
+        to X"). Triage's name discipline (only seed when blank) is the
+        first-touch rule; published runs after the user has had time to see
+        the row and the extractor has had time to produce a better title,
+        so this is the upgrade pass."""
         properties: dict[str, dict] = {"Status": {"status": {"name": status}}}
         if description is not None:
             clean = description.strip()
             if clean:
                 properties["Description"] = {"rich_text": [{"text": {"content": clean}}]}
+        if name is not None:
+            clean_name = name.strip()
+            if clean_name:
+                properties["Name"] = {"title": [{"text": {"content": clean_name}}]}
         self._client().pages.update(page_id=page_id, properties=properties)
 
     def update_status_failed(self, page_id: str, error: str) -> None:

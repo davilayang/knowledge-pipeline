@@ -73,10 +73,10 @@ class TriageInput(dg.Config):
         not yt/arxiv/pdf/medium, so Article/Other still land somewhere).
         Notion Status write is the last API call so partially-triaged
         states can't be picked up by the extract sensor. Name is seeded
-        from the fetched page title when the user left it blank; extract
-        can still overwrite later with the extracted_title. Description
-        is always written when the fetch produced one (extract overwrites
-        on a hit).
+        from the fetched page title when the user left it blank — extract's
+        `published` later upgrades it to `topic_card.extracted_title` once
+        the LLM has produced a sharper read. Description is always written
+        when the fetch produced one (extract overwrites on a hit).
         """
     ),
 )
