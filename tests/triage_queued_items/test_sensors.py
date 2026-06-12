@@ -86,6 +86,19 @@ def test_sensor_carries_url_in_run_config():
     assert triaged_cfg.get("name") is None
 
 
+def test_sensor_carries_url_to_enriched_op():
+    """Phase 2 split: `enriched` runs in parallel with `triaged` and needs its
+    own config with the same URL."""
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    ops_config = result.run_requests[0].run_config["ops"]
+    enriched_cfg = ops_config["triage_queued_items__enriched"]["config"]
+    assert enriched_cfg["url"] == "https://example.com/a"
+
+
 def test_sensor_reads_user_set_content_type():
     notion = MagicMock()
     notion.query_for_triage.return_value = [

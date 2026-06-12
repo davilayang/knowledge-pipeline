@@ -3,7 +3,7 @@ import dagster as dg
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
 from orchestrators.defs.shared.run_failure import mark_notion_failed_from_run
 
-from .assets import TriageInput
+from .assets import EnrichedInput, TriageInput
 from .def_config import MAX_QUEUED_PER_TICK, SENSOR_MIN_INTERVAL_S, queue_items_partition_def
 from .schedules import triage_queued_items_job
 
@@ -69,6 +69,7 @@ def poll_notion_for_triage(
                 tags={"notion_page_id": page_id},
                 run_config=dg.RunConfig(
                     ops={
+                        "triage_queued_items__enriched": EnrichedInput(url=url),
                         "triage_queued_items__triaged": TriageInput(
                             url=url,
                             content_type=existing_ct,
