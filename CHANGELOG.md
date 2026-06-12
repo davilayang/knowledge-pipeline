@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.15] — 2026-06-13
+
 ### Added
 
 - **`enriched` triage asset caches per-source URL signals for content-shape classification.** New asset runs in parallel with `triaged` per partition: YouTube oEmbed → channel + title, arXiv Atom API → title + abstract + categories, article → `fetch_url_meta` passthrough; result lands as `enrichment_json` on `queue_items`. Failure-tolerant — any HTTP error collapses to empty signals; never blocks triage. Phase 3 wires the cache into `classify_content_shape`.
