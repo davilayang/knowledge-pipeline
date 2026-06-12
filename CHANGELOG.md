@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`queue_items` carries `content_shape` + `enrichment_json` columns** (Phase 1 of the content-shape rollout). `upsert_triaged` accepts an optional `content_shape` keyword; `upsert_enriched` lands the signals cache from the upcoming `enriched` asset; `get_content_shape` is the consumer-facing reader that coalesces NULL → `"unknown"` so per-shape extractor routing always falls through to the generic bundle. No asset wiring yet — schema landing only. Prod DBs migrate via `scripts/migrations/2026-06-12_queue_items_content_shape.sql` (idempotent ALTER TABLE).
+
 ---
 
 ## [0.18.13] — 2026-06-12

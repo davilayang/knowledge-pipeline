@@ -16,11 +16,13 @@ from domains.queue_store.sources import (
     checkpoint_wal,
     create_schema,
     find_canonical_url_duplicate,
+    get_content_shape,
     get_latest_extraction_calls,
     get_queue_extraction,
     get_row,
     list_with_stale_extraction,
     record_extraction_calls,
+    upsert_enriched,
     upsert_fetched,
     upsert_triaged,
 )
@@ -410,6 +412,104 @@ def test_find_canonical_url_duplicate_ignores_other_urls(db_path: Path):
         )
         is None
     )
+
+
+def test_schema_includes_content_shape_columns(db_path: Path):
+    """Phase 1 schema landing: queue_items carries content_shape (extractor
+    routing) + enrichment_json (signals cache) alongside content_type. NULL
+    until triage/enrich materialise — `"unknown"` is the consumer-facing
+    coalesce, not a column default."""
+    with sqlite3.connect(db_path) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    assert "content_shape" in cols
+    assert "enrichment_json" in cols
+
+
+def test_create_schema_idempotent_with_content_shape_columns(tmp_path: Path):
+    """Second call to create_schema on a DB that already has content_shape /
+    enrichment_json must not raise — ALTER TABLE ADD COLUMN reruns are the
+    failure mode this guards against on prod redeploys."""
+    p = tmp_path / "q.db"
+    create_schema(db_path=p)
+    create_schema(db_path=p)
+    with sqlite3.connect(p) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    assert "content_shape" in cols
+    assert "enrichment_json" in cols
+
+
+def test_upsert_enriched_stores_json_and_overwrites_on_conflict(db_path: Path):
+    """`enriched` asset is idempotent by page_id — re-materialising overwrites
+    the prior enrichment_json. No append-only growth, no orphan rows for the
+    same page_id."""
+    page_id = "p-enrich"
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    upsert_enriched(db_path=db_path, notion_page_id=page_id, enrichment_json='{"a":1}')
+    upsert_enriched(db_path=db_path, notion_page_id=page_id, enrichment_json='{"a":2}')
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert row["enrichment_json"] == '{"a":2}'
+
+
+def test_upsert_triaged_accepts_content_shape(db_path: Path):
+    """Phase 1 extends `upsert_triaged` to land `content_shape` for the
+    extractor's per-shape prompt routing. Phase 3 will wire the classifier;
+    Phase 1 just makes the column writable."""
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-cs",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+        content_shape="opinion_essay",
+    )
+    row = get_row(db_path=db_path, notion_page_id="p-cs")
+    assert row is not None
+    assert row["content_shape"] == "opinion_essay"
+
+
+def test_get_content_shape_coalesces_null_to_unknown(db_path: Path):
+    """Rows triaged before content_shape landed carry NULL. Consumers MUST
+    see `"unknown"` so the extractor's per-shape prompt lookup falls through
+    to the generic fallback bundle instead of KeyError'ing on None."""
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-null",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    # Sanity: column was left NULL since no content_shape was passed.
+    with sqlite3.connect(db_path) as conn:
+        raw = conn.execute(
+            "SELECT content_shape FROM queue_items WHERE notion_page_id=?",
+            ("p-null",),
+        ).fetchone()[0]
+    assert raw is None
+
+    assert get_content_shape(db_path=db_path, notion_page_id="p-null") == "unknown"
+
+
+def test_get_content_shape_returns_unknown_for_missing_page(db_path: Path):
+    assert get_content_shape(db_path=db_path, notion_page_id="missing") == "unknown"
+
+
+def test_get_content_shape_returns_stored_value_when_set(db_path: Path):
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-set",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+        content_shape="tutorial",
+    )
+    assert get_content_shape(db_path=db_path, notion_page_id="p-set") == "tutorial"
 
 
 def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):
