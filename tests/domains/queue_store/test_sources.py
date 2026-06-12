@@ -450,11 +450,56 @@ def test_upsert_enriched_stores_json_and_overwrites_on_conflict(db_path: Path):
         canonical_url="https://example.com/x",
         content_type="Article",
     )
-    upsert_enriched(db_path=db_path, notion_page_id=page_id, enrichment_json='{"a":1}')
-    upsert_enriched(db_path=db_path, notion_page_id=page_id, enrichment_json='{"a":2}')
+    upsert_enriched(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        enrichment_json='{"a":1}',
+    )
+    upsert_enriched(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        enrichment_json='{"a":2}',
+    )
     row = get_row(db_path=db_path, notion_page_id=page_id)
     assert row is not None
     assert row["enrichment_json"] == '{"a":2}'
+
+
+def test_upsert_enriched_creates_row_when_no_triaged_yet(db_path: Path):
+    """Phase 2 sequence: `enriched` runs before `triaged`, so `upsert_enriched`
+    must create the row with the captured URL (not an empty placeholder). When
+    `triaged` lands after, ON CONFLICT overwrites the identity columns it owns
+    (url / canonical_url / content_type) while enrichment_json survives."""
+    page_id = "p-enrich-first"
+    upsert_enriched(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/raw",
+        enrichment_json='{"a":1}',
+    )
+    pre = get_row(db_path=db_path, notion_page_id=page_id)
+    assert pre is not None
+    assert pre["url"] == "https://example.com/raw"
+    assert pre["enrichment_json"] == '{"a":1}'
+    assert pre["canonical_url"] is None
+    assert pre["content_type"] is None
+
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/raw",
+        canonical_url="https://example.com/raw",
+        content_type="Article",
+    )
+    post = get_row(db_path=db_path, notion_page_id=page_id)
+    assert post is not None
+    assert post["url"] == "https://example.com/raw"
+    assert post["canonical_url"] == "https://example.com/raw"
+    assert post["content_type"] == "Article"
+    # enrichment_json survives the re-triage write.
+    assert post["enrichment_json"] == '{"a":1}'
 
 
 def test_upsert_triaged_accepts_content_shape(db_path: Path):

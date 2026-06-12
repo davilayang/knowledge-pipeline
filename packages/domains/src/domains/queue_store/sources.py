@@ -263,22 +263,29 @@ def upsert_enriched(
     *,
     db_path: Path,
     notion_page_id: str,
+    url: str,
     enrichment_json: str,
 ) -> None:
     """Land the `enriched` asset's signals cache. Idempotent by page_id —
-    re-materialising overwrites. The row is keyed by the same page_id triage
-    uses, so dedup-skipped pages will retain an orphan enrichment_json row by
-    design (cheap, useful on re-queue). Does NOT touch routing or fetch
-    columns; `upsert_triaged` owns those."""
+    re-materialising overwrites. Phase 2 wires `enriched` BEFORE `triaged`,
+    so this often creates the row. `url` is required to satisfy the NOT NULL
+    column constraint and to let any reader in the enriched-but-not-yet-
+    triaged window see the captured URL instead of an empty placeholder. When
+    `triaged` lands after, its ON CONFLICT overwrites url / canonical_url /
+    content_type; enrichment_json is preserved across that re-write.
+
+    Dedup-skipped pages retain an orphan enrichment_json row by design
+    (cheap, useful on re-queue). Does NOT touch routing or fetch columns;
+    `upsert_triaged` owns those."""
     with _connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO queue_items (notion_page_id, url, enrichment_json)
-            VALUES (?, '', ?)
+            VALUES (?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 enrichment_json = excluded.enrichment_json
             """,
-            (notion_page_id, enrichment_json),
+            (notion_page_id, url, enrichment_json),
         )
 
 
