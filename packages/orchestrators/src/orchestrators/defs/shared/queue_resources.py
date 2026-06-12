@@ -280,6 +280,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         url: str,
         canonical_url: str,
         content_type: str,
+        content_shape: str | None = None,
         raw_content_override: str = "",
     ) -> None:
         queue_db.upsert_triaged(
@@ -288,6 +289,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             url=url,
             canonical_url=canonical_url,
             content_type=content_type,
+            content_shape=content_shape,
             raw_content_override=raw_content_override,
         )
 
