@@ -16,9 +16,9 @@ tutorial channels, podcast shows, research-blog hosts, etc.).
 
 import json
 from dataclasses import asdict, dataclass
-from xml.etree import ElementTree as ET
 
 import httpx
+from defusedxml import ElementTree as ET
 
 from .classify import (
     CONTENT_TYPE_ARTICLE,
