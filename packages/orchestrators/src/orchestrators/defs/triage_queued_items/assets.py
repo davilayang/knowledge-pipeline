@@ -12,8 +12,8 @@ from .classify import (
     ALL_CONTENT_TYPES,
     CONTENT_TYPE_PODCAST,
     CONTENT_TYPE_YOUTUBE,
-    canonicalize_url,
     classify_content_type,
+    normalize_url,
 )
 from .def_config import PIPELINE_TAG, queue_items_partition_def
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
@@ -92,7 +92,7 @@ def triaged(
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
     effective_url = meta.final_url or config.url
-    canonical = canonicalize_url(effective_url)
+    canonical = normalize_url(effective_url)
     # User override wins if set + valid; typo / empty → URL classifier.
     if config.content_type and config.content_type in ALL_CONTENT_TYPES:
         content_type = config.content_type
@@ -112,7 +112,7 @@ def triaged(
             audio_title=audio_title_for_lookup,
         )
         if substituted:
-            canonical = canonicalize_url(substituted)
+            canonical = normalize_url(substituted)
             content_type = CONTENT_TYPE_YOUTUBE
             podcast_substituted_to = canonical
 

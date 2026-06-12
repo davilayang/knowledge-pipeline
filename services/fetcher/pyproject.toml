@@ -39,6 +39,16 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["src/fetcher"]
 
+# Ship package data (medium_domains.yaml, etc.) alongside the .py modules so
+# Path(__file__)-relative lookups resolve inside the installed venv.
+# Use `artifacts` (not `force-include`): the repo .gitignore matches `data/`
+# everywhere, which makes hatchling skip the directory during local builds.
+# `artifacts` opts files back in without double-adding when the build context
+# doesn't have the .gitignore (Docker), which `force-include` did, breaking
+# the wheel build with "second file at same path".
+[tool.hatch.build]
+artifacts = ["src/fetcher/data/*.yaml"]
+
 [tool.uv.sources]
 knowledge-domains = { path = "../../packages/domains" }
 

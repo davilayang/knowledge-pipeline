@@ -92,10 +92,12 @@ def fetched(
 
     if row.get("raw_content") and row.get("url"):
         url = row["url"]
+        canonical = row.get("canonical_url") or ""
         return dg.MaterializeResult(
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),
+                "canonical_url": dg.MetadataValue.text(canonical),
                 "fetch_skipped": dg.MetadataValue.bool(True),
                 "existing_content_chars": dg.MetadataValue.int(
                     row.get("fetched_content_char_count") or 0
@@ -159,6 +161,7 @@ def fetched(
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),
         "url": dg.MetadataValue.url(url),
+        "canonical_url": dg.MetadataValue.text(row.get("canonical_url") or ""),
         "fetch_tier": dg.MetadataValue.text(result.tier),
         "content_chars": dg.MetadataValue.int(char_count),
         "tier_log": dg.MetadataValue.json(result.tier_log),

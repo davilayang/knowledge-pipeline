@@ -93,10 +93,16 @@ def classify_content_type(url: str) -> str:
             return CONTENT_TYPE_ARTICLE
 
 
-def canonicalize_url(url: str) -> str:
-    """Output must equal newsletter-assistant's `normalize_url`
-    (`packages/knowledge/src/knowledge/fetcher/orchestrator.py`) — NA's
-    `kp_queue_cache` looks up by this exact string; drift = silent miss.
+def normalize_url(url: str) -> str:
+    """Pure URL normalization — must equal newsletter-assistant's
+    `normalize_url` (`packages/knowledge/src/knowledge/fetcher/orchestrator.py`)
+    byte-for-byte. NA's `kp_queue_cache` looks up by this exact string;
+    drift = silent miss. Name kept identical across both repos so the
+    contract is self-documenting.
+
+    Distinct from the fetcher service's `canonicalize()` — that one is a
+    network-bound HEAD-follow used as an internal cache key. This function
+    is pure (no I/O), deterministic, and produces the cross-repo identifier.
 
     arXiv: any of /abs, /pdf, /html, or bare-ID forms collapse to
     `<scheme>://<netloc>/abs/<id>` (version suffix dropped). Mirrors NA's

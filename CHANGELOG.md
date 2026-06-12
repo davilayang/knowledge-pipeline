@@ -8,6 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.12] — 2026-06-12
+
+### Changed
+
+- **Medium URLs now route through the medium handler in prod.** `medium_domains.yaml` moved into the package at `src/fetcher/data/`, loaded via a `Path(__file__)`-relative default — ships with the wheel, no Dockerfile data COPY or env var. `_load_domains` fails fast on missing/empty file so the next regression surfaces at fetcher startup, not silently.
+- **Fetcher `tier_log` now carries per-tier diagnostic detail.** `TierLogEntry` gains `duration_ms` / `floor` / `error_kind` / `detail`; handlers populate `RawTierResult.detail` with 4xx body slices, exception text, and upstream reasons (jina 401, curl_cffi failures, tavily/rapidapi/arxiv errors). Cache reads stay back-compat via `.get(...)` defaults.
+- **Fetched-asset metadata now includes `canonical_url`** — the cross-repo `kp_queue_cache` lookup key was previously invisible in the Dagster materialization view.
+- **`canonicalize_url` renamed to `normalize_url`** in `triage_queued_items/classify.py`, matching NA's function name so the byte-for-byte parity contract is self-documenting. Disambiguates from the fetcher service's HEAD-follow `canonicalize()`. DB column `queue_items.canonical_url` keeps its name.
+
+---
+
 ## [0.18.11] — 2026-06-11
 
 ### Changed

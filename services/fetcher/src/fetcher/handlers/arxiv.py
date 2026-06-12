@@ -104,18 +104,24 @@ async def _download_pdf(ctx: FetchContext, pdf_url: str) -> bytes:
 async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     metadata = await _fetch_metadata(url)
     if metadata is None:
-        return RawTierResult(content="", status=0)
+        return RawTierResult(content="", status=0, detail=f"arxiv metadata unresolvable for {url}")
     arxiv_id, paper = metadata
     if not paper.pdf_url:
-        return RawTierResult(content="", status=0)
+        return RawTierResult(content="", status=0, detail=f"arxiv paper {arxiv_id} has no pdf_url")
     try:
         pdf_bytes = await _download_pdf(ctx, paper.pdf_url)
     except Exception as exc:
         logger.warning("arxiv PDF download failed for %s: %s", paper.pdf_url, exc)
-        return RawTierResult(content="", status=0)
+        return RawTierResult(
+            content="",
+            status=0,
+            detail=f"arxiv pdf download failed: {type(exc).__name__}: {exc}"[:500],
+        )
     body = pymupdf_extractor.to_markdown(pdf_bytes)
     if not body:
-        return RawTierResult(content="", status=0)
+        return RawTierResult(
+            content="", status=0, detail=f"pymupdf produced empty markdown for {arxiv_id}"
+        )
     return RawTierResult(content=_format_header(paper, arxiv_id) + body, status=200)
 
 
