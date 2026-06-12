@@ -16,6 +16,12 @@ poll_notion_for_triage (sensor, every 15min)
         ▼
 triage_queued_items_job  (partition_key = notion_page_id)
         │
+        ├──► enriched  (pure-I/O: YouTube oEmbed / arXiv Atom API / article HTML
+        │              meta → enrichment_json on queue_items. Failure-tolerant;
+        │              empty signals on per-source HTTP error. Phase 3 wires
+        │              this into content_shape classification — for now runs
+        │              in parallel with `triaged` and the output is unread.)
+        │
         └──► triaged  (resolve Content Type (Notion override > URL classifier),
                        canonicalize URL; Podcast → YouTube substitution via
                        podcast_canonicalize.py on map hit, commit to local store + Notion)

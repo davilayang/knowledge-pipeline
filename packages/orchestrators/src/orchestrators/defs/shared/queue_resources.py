@@ -291,6 +291,20 @@ class QueueStoreResource(dg.ConfigurableResource):
             raw_content_override=raw_content_override,
         )
 
+    def upsert_enriched(
+        self,
+        *,
+        notion_page_id: str,
+        url: str,
+        enrichment_json: str,
+    ) -> None:
+        queue_db.upsert_enriched(
+            db_path=self._path(),
+            notion_page_id=notion_page_id,
+            url=url,
+            enrichment_json=enrichment_json,
+        )
+
     def find_canonical_url_duplicate(
         self, *, canonical_url: str, excluding_page_id: str
     ) -> str | None:

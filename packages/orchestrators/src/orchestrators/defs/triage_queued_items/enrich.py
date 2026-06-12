@@ -1,0 +1,164 @@
+"""URL → enrichment signals for content_shape classification.
+
+Per-source HTTP probes dispatched by `content_type`:
+
+- YouTube → oEmbed (channel + title; no API key)
+- arXiv → public Atom API (title + abstract + categories)
+- Article → reuses `url_meta.fetch_url_meta` (final_url + title + description)
+- Podcast / Other → empty signals (Phase 2b adds HEAD-sniff for podcasts)
+
+Failure-tolerant: any per-source HTTP / parse error collapses to empty
+signals for that source. `enrich_url` never raises; triage must not fail
+on enrichment. Phase 3 wires the output into `classify_content_shape` to
+drive the extractor's per-shape prompt selection (conference channels,
+tutorial channels, podcast shows, research-blog hosts, etc.).
+"""
+
+import json
+from dataclasses import asdict, dataclass
+
+import httpx
+from defusedxml import ElementTree as ET
+
+from .classify import (
+    CONTENT_TYPE_ARTICLE,
+    CONTENT_TYPE_ARXIV,
+    CONTENT_TYPE_YOUTUBE,
+    _extract_arxiv_id,
+)
+from .url_meta import fetch_url_meta
+
+_TIMEOUT_S = 10.0
+_OEMBED_URL = "https://www.youtube.com/oembed"
+_ARXIV_API = "http://export.arxiv.org/api/query"
+
+_ATOM_NS = {
+    "atom": "http://www.w3.org/2005/Atom",
+    "arxiv": "http://arxiv.org/schemas/atom",
+}
+
+
+@dataclass(frozen=True)
+class YoutubeSignals:
+    channel: str | None = None
+    title: str | None = None
+
+
+@dataclass(frozen=True)
+class ArxivSignals:
+    title: str | None = None
+    abstract: str | None = None
+    categories: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class ArticleSignals:
+    final_url: str | None = None
+    title: str | None = None
+    description: str | None = None
+
+
+@dataclass(frozen=True)
+class EnrichmentSignals:
+    """Per-source enrichment captured for content_shape classification.
+
+    An "empty" `EnrichmentSignals()` is a valid signal meaning "we tried
+    and got nothing", distinct from "we haven't enriched yet" (which is
+    `enrichment_json IS NULL` in queue.db). Only populated sub-signals
+    serialise — keeps the JSON tight and the classifier's reads narrow.
+    """
+
+    youtube: YoutubeSignals | None = None
+    arxiv: ArxivSignals | None = None
+    article: ArticleSignals | None = None
+
+    def to_json(self) -> str:
+        payload: dict[str, dict] = {}
+        if self.youtube is not None:
+            payload["youtube"] = asdict(self.youtube)
+        if self.arxiv is not None:
+            payload["arxiv"] = asdict(self.arxiv)
+        if self.article is not None:
+            payload["article"] = asdict(self.article)
+        return json.dumps(payload, separators=(",", ":"))
+
+
+def _norm(value: str | None) -> str | None:
+    if value is None:
+        return None
+    stripped = " ".join(value.split())
+    return stripped or None
+
+
+def _youtube_signals(url: str, *, timeout: float = _TIMEOUT_S) -> YoutubeSignals:
+    try:
+        resp = httpx.get(
+            _OEMBED_URL,
+            params={"url": url, "format": "json"},
+            timeout=timeout,
+        )
+        if resp.status_code >= 400:
+            return YoutubeSignals()
+        data = resp.json()
+    except (httpx.HTTPError, ValueError):
+        return YoutubeSignals()
+    return YoutubeSignals(
+        channel=_norm(data.get("author_name")),
+        title=_norm(data.get("title")),
+    )
+
+
+def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
+    arxiv_id = _extract_arxiv_id(url)
+    if arxiv_id is None:
+        return ArxivSignals()
+    try:
+        resp = httpx.get(_ARXIV_API, params={"id_list": arxiv_id}, timeout=timeout)
+        if resp.status_code >= 400:
+            return ArxivSignals()
+        root = ET.fromstring(resp.text)
+    except (httpx.HTTPError, ET.ParseError):
+        return ArxivSignals()
+
+    entry = root.find("atom:entry", _ATOM_NS)
+    if entry is None:
+        return ArxivSignals()
+    title_el = entry.find("atom:title", _ATOM_NS)
+    summary_el = entry.find("atom:summary", _ATOM_NS)
+    categories = tuple(
+        term for c in entry.findall("atom:category", _ATOM_NS) if (term := c.attrib.get("term"))
+    )
+    return ArxivSignals(
+        title=_norm(title_el.text if title_el is not None else None),
+        abstract=_norm(summary_el.text if summary_el is not None else None),
+        categories=categories,
+    )
+
+
+def _article_signals(url: str) -> ArticleSignals:
+    meta = fetch_url_meta(url)
+    return ArticleSignals(
+        final_url=meta.final_url,
+        title=meta.title,
+        description=meta.description,
+    )
+
+
+def enrich_url(url: str, content_type: str) -> EnrichmentSignals:
+    """Dispatch enrichment by `content_type`. Never raises.
+
+    Returns `EnrichmentSignals()` (all-None) for `Podcast` / `Other` content
+    types — Phase 2a leaves those for follow-up PRs. Any unexpected exception
+    from a per-source helper is swallowed and collapses to empty signals so
+    triage stays unblocked.
+    """
+    try:
+        if content_type == CONTENT_TYPE_YOUTUBE:
+            return EnrichmentSignals(youtube=_youtube_signals(url))
+        if content_type == CONTENT_TYPE_ARXIV:
+            return EnrichmentSignals(arxiv=_arxiv_signals(url))
+        if content_type == CONTENT_TYPE_ARTICLE:
+            return EnrichmentSignals(article=_article_signals(url))
+        return EnrichmentSignals()
+    except Exception:
+        return EnrichmentSignals()

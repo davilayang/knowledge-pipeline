@@ -1,3 +1,4 @@
+import json
 import textwrap
 
 import dagster as dg
@@ -16,6 +17,7 @@ from .classify import (
     normalize_url,
 )
 from .def_config import PIPELINE_TAG, queue_items_partition_def
+from .enrich import enrich_url
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import fetch_url_meta
 
@@ -28,6 +30,72 @@ def _oneline(s: str) -> str:
     Lets us write Dagster `description=` blocks as readable multi-line source
     while the rendered string in the Dagster UI stays a single paragraph."""
     return " ".join(textwrap.dedent(s).split())
+
+
+class EnrichedInput(dg.Config):
+    """Typed input for the `enriched` asset. Sensor populates from Notion's
+    URL property; manual UI launches must supply via the Launchpad. Same
+    `url` as `TriageInput` — kept as a separate Config so each asset's
+    Launchpad form is minimal and each op's contract is explicit."""
+
+    url: str
+
+
+@dg.asset(
+    key=["triage_queued_items", "enriched"],
+    group_name=GROUP_NAME,
+    compute_kind="http",
+    code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
+    partitions_def=queue_items_partition_def,
+    deps=[dg.AssetDep("notion_queue")],
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=_oneline(
+        """
+        Pure-I/O enrichment per page: HTTP-fetch signals from the URL's
+        source (YouTube oEmbed, arXiv Atom API, article HTML meta) and
+        cache as enrichment_json on the queue_items row. Failure-tolerant
+        — any per-source HTTP error collapses to empty signals; the asset
+        always succeeds. Phase 3 wires the cached signals into the
+        content_shape classifier; for now `triaged` runs in parallel and
+        ignores this output.
+        """
+    ),
+)
+def enriched(
+    context: dg.AssetExecutionContext,
+    config: EnrichedInput,
+    triage_store: QueueStoreResource,
+) -> dg.MaterializeResult:
+    page_id = context.partition_key
+    content_type = classify_content_type(config.url)
+    signals = enrich_url(config.url, content_type)
+
+    triage_store.ensure_schema()
+    enrichment_json = signals.to_json()
+    triage_store.upsert_enriched(
+        notion_page_id=page_id,
+        url=config.url,
+        enrichment_json=enrichment_json,
+    )
+
+    fetched = [
+        name
+        for name, src in (
+            ("youtube", signals.youtube),
+            ("arxiv", signals.arxiv),
+            ("article", signals.article),
+        )
+        if src is not None
+    ]
+    return dg.MaterializeResult(
+        metadata={
+            "url": dg.MetadataValue.url(config.url),
+            "content_type": dg.MetadataValue.text(content_type),
+            "signals_fetched": dg.MetadataValue.text(", ".join(fetched) or "(none)"),
+            "enrichment_chars": dg.MetadataValue.int(len(enrichment_json)),
+            "enrichment_json": dg.MetadataValue.json(json.loads(enrichment_json)),
+        }
+    )
 
 
 class TriageInput(dg.Config):
@@ -192,4 +260,4 @@ def triaged(
     return dg.MaterializeResult(metadata=metadata)
 
 
-all_assets = [triaged]
+all_assets = [enriched, triaged]

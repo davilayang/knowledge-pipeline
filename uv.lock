@@ -2109,7 +2109,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.18.14"
+version = "0.18.15"
 source = { editable = "packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
@@ -2128,7 +2128,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-evals"
-version = "0.18.14"
+version = "0.18.15"
 source = { editable = "packages/evals" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2149,13 +2149,14 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-orchestrators"
-version = "0.18.14"
+version = "0.18.15"
 source = { editable = "packages/orchestrators" }
 dependencies = [
     { name = "dagster" },
     { name = "dagster-dg-cli" },
     { name = "dagster-postgres" },
     { name = "dagster-webserver" },
+    { name = "defusedxml" },
     { name = "httpx" },
     { name = "knowledge-domains" },
     { name = "knowledge-retrievers" },
@@ -2173,6 +2174,7 @@ requires-dist = [
     { name = "dagster-dg-cli" },
     { name = "dagster-postgres" },
     { name = "dagster-webserver" },
+    { name = "defusedxml", specifier = ">=0.7,<1.0" },
     { name = "httpx", specifier = ">=0.27,<1.0" },
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
@@ -2186,7 +2188,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-pipeline"
-version = "0.18.14"
+version = "0.18.15"
 source = { virtual = "." }
 dependencies = [
     { name = "knowledge-domains" },
@@ -2248,7 +2250,7 @@ dev = [
 
 [[package]]
 name = "knowledge-retrievers"
-version = "0.18.14"
+version = "0.18.15"
 source = { editable = "packages/retrievers" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2271,7 +2273,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-workflows"
-version = "0.18.14"
+version = "0.18.15"
 source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },

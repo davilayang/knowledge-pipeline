@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-orchestrators"
-version = "0.18.14"
+version = "0.18.15"
 description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
 requires-python = ">=3.13"
 dependencies = [
@@ -16,6 +16,7 @@ dependencies = [
     "trafilatura>=2.0,<3.0",
     "tenacity>=9.0,<10.0",
     "httpx>=0.27,<1.0",
+    "defusedxml>=0.7,<1.0",
     "pyyaml>=6.0,<7.0",
 ]
 
