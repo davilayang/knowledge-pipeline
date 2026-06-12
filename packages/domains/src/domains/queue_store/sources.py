@@ -38,6 +38,8 @@ CREATE TABLE IF NOT EXISTS queue_items (
     url                         TEXT NOT NULL,     -- captured Notion Queue URL
     canonical_url               TEXT,              -- normalize_url() output
     content_type                TEXT,              -- YouTube/arXiv/Article/Other
+    content_shape               TEXT,              -- conference_talk/... NULL→"unknown"
+    enrichment_json             TEXT,              -- JSON; signals cache from `enriched` asset
     raw_content                 TEXT,              -- fetched body
     raw_content_override        TEXT NOT NULL DEFAULT '',  -- user-pasted body
     fetched_at                  TEXT,              -- ISO-8601 UTC
@@ -144,6 +146,8 @@ def create_schema(*, db_path: Path) -> None:
         for ddl in (
             "ALTER TABLE queue_items ADD COLUMN canonical_url TEXT",
             "ALTER TABLE queue_items ADD COLUMN content_type TEXT",
+            "ALTER TABLE queue_items ADD COLUMN content_shape TEXT",
+            "ALTER TABLE queue_items ADD COLUMN enrichment_json TEXT",
             "ALTER TABLE queue_items ADD COLUMN extractor_label TEXT",
             "ALTER TABLE queue_items ADD COLUMN extractor_sha256 TEXT",
             "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
@@ -190,6 +194,7 @@ def upsert_triaged(
     url: str,
     canonical_url: str,
     content_type: str,
+    content_shape: str | None = None,
     raw_content_override: str = "",
 ) -> None:
     """Re-triage is a cohort boundary: clear every downstream-produced column
@@ -200,18 +205,26 @@ def upsert_triaged(
     incident: stale paywall preview survived the re-queue). Extraction cohort
     fields and FK'd extraction_calls rows go too — readers of
     `get_queue_extraction` would otherwise serve last-cohort Topic Cards while
-    the row is back at Status=Fetching."""
+    the row is back at Status=Fetching.
+
+    `content_shape` is the orthogonal extractor-routing axis introduced in
+    Phase 1 of the content-shape rollout. `None` writes NULL — `get_content_shape`
+    coalesces NULL → `"unknown"` so the extractor's per-shape lookup falls
+    through to the generic fallback bundle. Phase 3 wires the classifier;
+    until then triage continues passing None and downstream stays generic."""
     with _connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO queue_items (
-                notion_page_id, url, canonical_url, content_type, raw_content_override
+                notion_page_id, url, canonical_url, content_type, content_shape,
+                raw_content_override
             )
-            VALUES (?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 canonical_url = excluded.canonical_url,
                 content_type = excluded.content_type,
+                content_shape = excluded.content_shape,
                 raw_content_override = excluded.raw_content_override,
                 raw_content = NULL,
                 fetched_at = NULL,
@@ -228,7 +241,14 @@ def upsert_triaged(
                 langfuse_trace_id = NULL,
                 error_text = NULL
             """,
-            (notion_page_id, url, canonical_url, content_type, raw_content_override),
+            (
+                notion_page_id,
+                url,
+                canonical_url,
+                content_type,
+                content_shape,
+                raw_content_override,
+            ),
         )
         # FK CASCADE on extraction_calls.notion_page_id only fires on DELETE of
         # the parent row, not on UPDATE. Wipe explicitly so a re-triage doesn't
@@ -237,6 +257,51 @@ def upsert_triaged(
             "DELETE FROM extraction_calls WHERE notion_page_id = ?",
             (notion_page_id,),
         )
+
+
+def upsert_enriched(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    url: str,
+    enrichment_json: str,
+) -> None:
+    """Land the `enriched` asset's signals cache. Idempotent by page_id —
+    re-materialising overwrites. Phase 2 wires `enriched` BEFORE `triaged`,
+    so this often creates the row. `url` is required to satisfy the NOT NULL
+    column constraint and to let any reader in the enriched-but-not-yet-
+    triaged window see the captured URL instead of an empty placeholder. When
+    `triaged` lands after, its ON CONFLICT overwrites url / canonical_url /
+    content_type; enrichment_json is preserved across that re-write.
+
+    Dedup-skipped pages retain an orphan enrichment_json row by design
+    (cheap, useful on re-queue). Does NOT touch routing or fetch columns;
+    `upsert_triaged` owns those."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO queue_items (notion_page_id, url, enrichment_json)
+            VALUES (?, ?, ?)
+            ON CONFLICT(notion_page_id) DO UPDATE SET
+                enrichment_json = excluded.enrichment_json
+            """,
+            (notion_page_id, url, enrichment_json),
+        )
+
+
+def get_content_shape(*, db_path: Path, notion_page_id: str) -> str:
+    """Single source of truth for "NULL → unknown". Consumers MUST go through
+    this rather than read `content_shape` off `get_row` so the extractor's
+    per-shape prompt routing never KeyErrors on a None left over from a row
+    triaged before Phase 1 landed."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            "SELECT content_shape FROM queue_items WHERE notion_page_id = ?",
+            (notion_page_id,),
+        ).fetchone()
+    if row is None:
+        return "unknown"
+    return row["content_shape"] or "unknown"
 
 
 def find_canonical_url_duplicate(
