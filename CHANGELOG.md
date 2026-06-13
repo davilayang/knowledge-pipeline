@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **`content_shape` now classified at triage time and stored on `queue_items`.** New rules-only classifier `classify_content_shape` reads cached enrichment + URL → one of `conference_talk` / `podcast_episode` / `tutorial` / `opinion_essay` / `research_summary` / `unknown`. Seed rules in `conference_channels.yaml` / `youtube_channel_rules.yaml` / `article_host_rules.yaml`. `triaged` now depends on `enriched`. Notion property write and extractor prompt routing land in later phases.
+- **`Content Shape` Notion SELECT now written by `triaged` and overridable by the user.** Sensor reads user-set value; classifier fires when empty / typo'd (mirrors `Content Type` semantics). `unknown` shape is left blank on Notion so pre-populated overrides aren't stomped. **Manual prep:** add `Content Shape` SELECT with options `conference_talk` / `podcast_episode` / `tutorial` / `opinion_essay` / `research_summary` to the Queue DB before deploy.
 
 ---
 

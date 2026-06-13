@@ -174,6 +174,56 @@ def test_triage_notion_write_triaged_omits_description_when_not_provided():
         assert "Description" not in call.kwargs["properties"]
 
 
+def test_triage_notion_write_triaged_writes_content_shape_when_classified():
+    """content_shape="conference_talk" → batched into the first call as a
+    SELECT property, same shape as Content Type."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="YouTube",
+            content_shape="conference_talk",
+            canonical_url="https://youtu.be/abc",
+            status_after="Fetching",
+        )
+    first_call_props = fake_client.pages.update.call_args_list[0].kwargs["properties"]
+    assert first_call_props["Content Shape"] == {"select": {"name": "conference_talk"}}
+
+
+def test_triage_notion_write_triaged_omits_content_shape_when_unknown():
+    """content_shape="unknown" → no Notion write. Leaves the property blank so
+    users can pre-populate it as an override without triage stomping the value."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            content_shape="unknown",
+            canonical_url="https://example.com",
+            status_after="Fetching",
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Content Shape" not in call.kwargs["properties"]
+
+
+def test_triage_notion_write_triaged_omits_content_shape_when_not_provided():
+    """content_shape=None (default) → no Notion write. Backwards-compatible for
+    callers from before Phase 4."""
+    resource = _make_notion()
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.write_triaged(
+            page_id="p-1",
+            content_type="Article",
+            canonical_url="https://example.com",
+            status_after="Fetching",
+        )
+    for call in fake_client.pages.update.call_args_list:
+        assert "Content Shape" not in call.kwargs["properties"]
+
+
 def test_triage_notion_write_triaged_strips_name_whitespace_and_newlines():
     """Name with leading/trailing whitespace + newlines → stripped before Notion."""
     resource = _make_notion()

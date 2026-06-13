@@ -56,6 +56,7 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 |---|---|
 | `URL` | Required input. Asset fails fast if missing. |
 | `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`Article`/`YouTube`/`arXiv`/`PDF`/`Podcast`/`Other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
+| `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls back to the rules classifier in `content_shape.py`. Metadata field `content_shape_source` records which path was taken. When the classifier returns `unknown`, triage skips the Notion write so a pre-populated override isn't stomped on the next tick. |
 | `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `extract_complex_contents.published` later overwrites Name with `topic_card.extracted_title`. |
 
 `Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
@@ -88,6 +89,20 @@ the registry catch-all. `Podcast` must now be present: audio-suffix URLs
 (reclassifying the row to YouTube before it reaches the store). Without the
 Podcast option the Notion API rejects Content Type writes for audio items
 that don't hit the substitution map.
+
+A `Content Shape` SELECT property is also required, with options:
+
+- `conference_talk`
+- `podcast_episode`
+- `tutorial`
+- `opinion_essay`
+- `research_summary`
+
+`unknown` is intentionally NOT a Notion option — when the rules classifier
+can't pick a shape, triage skips the Notion write so pre-populated overrides
+aren't stomped. If any of the five SELECT options above are missing on the
+Notion DB, Notion's API rejects the `update_page` call and the run failure
+sensor surfaces the error.
 
 The Notion Queue DB's native `Status` property must additionally carry a
 `Skipped` option (alongside `Queued` / `Fetching` / `Ready` / `Failed`).

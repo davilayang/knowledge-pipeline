@@ -112,6 +112,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         content_type: str,
         canonical_url: str,
         status_after: str,  # "Fetching" — extract_complex_contents claims the row
+        content_shape: str | None = None,
         name: str | None = None,
         description: str | None = None,
         added_at_iso: str | None = None,
@@ -138,6 +139,14 @@ class NotionQueueResource(dg.ConfigurableResource):
             "Content Type": {"select": {"name": content_type}},
             "Canonical URL": {"rich_text": [{"text": {"content": canonical_url}}]},
         }
+        # Content Shape is the orthogonal extractor-routing axis (Phase 4 of
+        # the content-shape rollout). Skipped when `unknown` — leaves the
+        # Notion property empty so users can pre-populate it as an override
+        # without triage stomping on it next tick. SELECT options must exist
+        # on the Notion DB; absence surfaces as a Notion API validation error
+        # via update_page, which the run_failure_sensor writes back as Failed.
+        if content_shape and content_shape != "unknown":
+            properties["Content Shape"] = {"select": {"name": content_shape}}
         # Strip both ends — incoming title/description may include trailing
         # newlines from HTML metadata or padding from upstream writers. A value
         # that strips to empty is treated as "don't write" (don't blank a

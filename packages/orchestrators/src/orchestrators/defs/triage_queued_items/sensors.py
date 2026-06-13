@@ -41,6 +41,11 @@ def poll_notion_for_triage(
         ct_prop = row.get("properties", {}).get("Content Type", {}).get("select")
         existing_ct = ct_prop.get("name") if ct_prop else None
 
+        # User-set Content Shape SELECT (None if unset); asset validates +
+        # falls back to rules classifier on typos. Symmetric to Content Type.
+        cs_prop = row.get("properties", {}).get("Content Shape", {}).get("select")
+        existing_cs = cs_prop.get("name") if cs_prop else None
+
         # User-set Name (None if unset); metadata-only passthrough.
         name_chunks = row.get("properties", {}).get("Name", {}).get("title") or []
         existing_name = "".join(c.get("plain_text") or "" for c in name_chunks).strip() or None
@@ -73,6 +78,7 @@ def poll_notion_for_triage(
                         "triage_queued_items__triaged": TriageInput(
                             url=url,
                             content_type=existing_ct,
+                            content_shape=existing_cs,
                             name=existing_name,
                             added_at_iso=added_at_iso,
                             raw_content_override=raw_content_override,

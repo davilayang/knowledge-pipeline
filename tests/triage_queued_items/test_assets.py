@@ -659,6 +659,64 @@ def test_triaged_classifies_opinion_essay_for_substack_host(tmp_path: Path):
     assert metadata["content_shape"].text == "opinion_essay"
 
 
+def test_triaged_respects_user_set_content_shape(tmp_path: Path):
+    """User-set Content Shape on the Notion row wins over the classifier.
+    The asset passes the override straight through and tags
+    content_shape_source = "notion" for observability."""
+    resources, notion = _resources(tmp_path)
+    instance = _instance_with_partition("p-1")
+    result = dg.materialize(
+        [triaged],
+        partition_key="p-1",
+        resources=resources,
+        instance=instance,
+        tags={"notion_page_id": "p-1"},
+        run_config={
+            "ops": {
+                "triage_queued_items__triaged": {
+                    "config": {
+                        "url": "https://random.example.com/post",
+                        "content_shape": "tutorial",
+                    }
+                }
+            }
+        },
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "tutorial"
+    assert metadata["content_shape_source"].text == "notion"
+    assert notion.write_triaged.call_args.kwargs["content_shape"] == "tutorial"
+
+
+def test_triaged_falls_back_to_classifier_on_typo_content_shape(tmp_path: Path):
+    """Typo'd Content Shape (not in ALL_CONTENT_SHAPES) → rules classifier
+    fires. Source = "classified"."""
+    resources, _ = _resources(tmp_path)
+    instance = _instance_with_partition("p-1")
+    result = dg.materialize(
+        [triaged],
+        partition_key="p-1",
+        resources=resources,
+        instance=instance,
+        tags={"notion_page_id": "p-1"},
+        run_config={
+            "ops": {
+                "triage_queued_items__triaged": {
+                    "config": {
+                        "url": "https://random.example.com/post",
+                        "content_shape": "conferenc_talk",  # typo
+                    }
+                }
+            }
+        },
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "unknown"
+    assert metadata["content_shape_source"].text == "classified"
+
+
 def test_triaged_survives_malformed_enrichment_json(tmp_path: Path):
     """Defensive: a malformed enrichment_json (e.g. partial write) falls
     through to empty signals → unknown shape; asset still succeeds."""
