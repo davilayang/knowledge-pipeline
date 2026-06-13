@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.17] — 2026-06-13
+
 ### Changed
 
 - **`ThreeCallOpenAIExtractor` now routes prompts by `content_shape`.** Constructor takes `prompt_sets: dict[str, PromptBundle]` (the `"unknown"` bundle is the generic fallback, required); `extract()` and `bundle_sha256()` both take a `content_shape` kwarg and resolve to the selected bundle (so adding a new shape's prompts doesn't invalidate prior shapes' rows). Cohort `bundle_label` bumps `3call_v1` → `3call_v2_shape_routed` to flag existing rows as stale on the next sensor sweep.
