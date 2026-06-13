@@ -15,9 +15,9 @@ Priority (first match wins):
 4. Article URL host match against `article_host_rules.yaml`.
 5. Fallback → `unknown`.
 
-Drives the extractor's per-shape prompt routing (Phase 5). YAML seed values
-came from a 200-item Phase 0 corpus analysis; refresh quarterly per the
-discovery-pass runbook documented in the README.
+Drives the extractor's per-shape prompt routing. YAML seed values came
+from a 200-item corpus analysis; refresh quarterly per the discovery-pass
+runbook documented in the README.
 """
 
 from pathlib import Path

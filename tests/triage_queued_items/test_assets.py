@@ -13,11 +13,11 @@ from orchestrators.defs.triage_queued_items.url_meta import UrlMeta
 
 @pytest.fixture(autouse=True)
 def _no_network():
-    """Default: url_meta returns empty UrlMeta with final_url = input. Tests
+    """Default: url_meta returns empty UrlMeta with redirected_url = input. Tests
     that want a specific UrlMeta should override via _patch_fetch."""
 
     def _empty(url: str, **kwargs):
-        return UrlMeta(final_url=url, title=None, description=None)
+        return UrlMeta(redirected_url=url, title=None, description=None)
 
     with patch(
         "orchestrators.defs.triage_queued_items.assets.fetch_url_meta",
@@ -138,7 +138,7 @@ def test_triaged_writes_fetched_title_to_notion_when_config_name_empty(tmp_path:
     """config.name unset + fetched title present → triage seeds Name in Notion."""
     resources, notion = _resources(tmp_path)
     meta = UrlMeta(
-        final_url="https://blog.example.com/post",
+        redirected_url="https://blog.example.com/post",
         title="Fetched Title",
         description=None,
     )
@@ -157,7 +157,7 @@ def test_triaged_does_not_overwrite_existing_name(tmp_path: Path):
     """config.name set → triage leaves Notion's Name alone, regardless of fetch."""
     resources, notion = _resources(tmp_path)
     meta = UrlMeta(
-        final_url="https://blog.example.com/post",
+        redirected_url="https://blog.example.com/post",
         title="Fetched Title",
         description=None,
     )
@@ -173,10 +173,73 @@ def test_triaged_does_not_overwrite_existing_name(tmp_path: Path):
     assert kwargs.get("name") is None
 
 
+def test_triaged_seeds_name_when_notion_default_new_page_pattern(tmp_path: Path):
+    """Notion auto-assigns "New <db_name> page" to fresh rows — treat that
+    as blank-equivalent so triage replaces it with the fetched title."""
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        redirected_url="https://blog.example.com/post",
+        title="Real Title",
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+            name="New queued page",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") == "Real Title"
+
+
+def test_triaged_seeds_name_when_notion_default_untitled(tmp_path: Path):
+    """The other common Notion auto-default — "Untitled" — also counts as blank."""
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        redirected_url="https://blog.example.com/post",
+        title="Real Title",
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+            name="Untitled",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") == "Real Title"
+
+
+def test_triaged_preserves_real_name_that_starts_with_new(tmp_path: Path):
+    """Defensive: don't false-positive on user-typed names that happen to
+    start with "New" (e.g. "New trends in voice agents"). The
+    "New <word> page" pattern only matches when the WHOLE string fits."""
+    resources, notion = _resources(tmp_path)
+    meta = UrlMeta(
+        redirected_url="https://blog.example.com/post",
+        title="Different Fetched Title",
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://blog.example.com/post",
+            name="New trends in voice agents",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") is None
+
+
 def test_triaged_writes_fetched_description_to_notion(tmp_path: Path):
     resources, notion = _resources(tmp_path)
     meta = UrlMeta(
-        final_url="https://blog.example.com/post",
+        redirected_url="https://blog.example.com/post",
         title=None,
         description="A short blurb of the post.",
     )
@@ -207,13 +270,13 @@ def test_triaged_succeeds_with_empty_meta_on_fetch_failure(tmp_path: Path):
     assert kwargs["status_after"] == "Fetching"
 
 
-def test_triaged_uses_final_url_for_classification_after_redirect(tmp_path: Path):
+def test_triaged_uses_redirected_url_for_classification_after_redirect(tmp_path: Path):
     """A click-tracker URL that redirects to youtube.com → classified as YouTube,
     not Article. The redirect resolution happens in url_meta; triage consumes
-    final_url for downstream classification + canonicalization."""
+    redirected_url for downstream classification + canonicalization."""
     resources, _ = _resources(tmp_path)
     meta = UrlMeta(
-        final_url="https://youtube.com/watch?v=abc123",
+        redirected_url="https://youtube.com/watch?v=abc123",
         title=None,
         description=None,
     )
@@ -519,7 +582,7 @@ def test_triaged_substitutes_podcast_url_to_youtube_on_match(tmp_path: Path):
 def test_triaged_keeps_podcast_classification_when_no_substitution(tmp_path: Path):
     """When no YouTube equivalent is found, the row stays Podcast with
     the original audio URL — fetcher service will handle it via the
-    podcast handler (Phase 5b) or fall through to article handler today."""
+    podcast handler (when wired) or fall through to article handler today."""
     resources, notion = _resources(tmp_path)
     podcast_url = "https://traffic.libsyn.com/unknown-show/episode.mp3"
     with patch(
@@ -604,7 +667,7 @@ def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_pa
 def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
     """No prior `enriched` materialization → from_json(None) → empty signals
     → unknown shape. Asset must not crash and must write `unknown` to
-    queue.db (Phase 5 extractor will fall back to generic prompt)."""
+    queue.db (extractor will fall back to generic prompt for unknown)."""
     resources, _ = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",
@@ -647,7 +710,7 @@ def test_triaged_classifies_opinion_essay_for_substack_host(tmp_path: Path):
         resources["triage_store"],
         page_id="p-1",
         url="https://ontologist.substack.com/p/essay",
-        payload='{"article":{"final_url":"https://ontologist.substack.com/p/essay","title":"x","description":"y"}}',
+        payload='{"article":{"redirected_url":"https://ontologist.substack.com/p/essay","title":"x","description":"y"}}',
     )
     result = _materialize(
         partition_key="p-1",

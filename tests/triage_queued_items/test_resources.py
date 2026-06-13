@@ -210,7 +210,7 @@ def test_triage_notion_write_triaged_omits_content_shape_when_unknown():
 
 def test_triage_notion_write_triaged_omits_content_shape_when_not_provided():
     """content_shape=None (default) → no Notion write. Backwards-compatible for
-    callers from before Phase 4."""
+    callers from before the parameter was added."""
     resource = _make_notion()
     fake_client = MagicMock()
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):

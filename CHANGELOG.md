@@ -6,9 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.18] — 2026-06-13
+
 ### Changed
 
-- **`ThreeCallOpenAIExtractor` now routes prompts by `content_shape`.** Constructor takes `prompt_sets: dict[str, PromptBundle]` (the `"unknown"` bundle is the generic fallback, required); `extract()` and `bundle_sha256()` both take a `content_shape` kwarg and resolve to the selected bundle (so adding a new shape's prompts doesn't invalidate prior shapes' rows). Cohort `bundle_label` bumps `3call_v1` → `3call_v2_shape_routed` to flag existing rows as stale on the next sensor sweep. Production behaviour unchanged this release — assets pass `content_shape="unknown"`; shape-wiring lands in Phase 5b.
+- **Triage now seeds Notion `Name` over auto-default titles.** `"New <db_name> page"` (Notion's default for fresh rows) and `"Untitled"` were treated as user-set names and preserved; new `_is_user_set_name` helper filters them so the fetched page title lands instead.
+- **`final_url` renamed to `redirected_url`** on `UrlMeta`, `ArticleSignals`, and the `triaged` materialization metadata key — distinguishes "post-HTTP-redirect URL" from `canonical_url` (dedup key) and `original_url` (raw input). `enrich._build_article` reads both the new and old keys so rows enriched before the rename still parse.
+- **`poll_notion_for_extract` self-heals dynamic partitions.** Previously assumed triage had pre-registered every page_id's partition; orphan rows (DAGSTER_HOME reset, prior-deploy carryover) crashed the run launch with `DagsterUnknownPartitionError`. Sensor now registers each polled page_id idempotently in the same `SensorResult`.
+
+---
+
+## [0.18.17] — 2026-06-13
+
+### Changed
+
+- **`ThreeCallOpenAIExtractor` now routes prompts by `content_shape`.** Constructor takes `prompt_sets: dict[str, PromptBundle]` (the `"unknown"` bundle is the generic fallback, required); `extract()` and `bundle_sha256()` both take a `content_shape` kwarg and resolve to the selected bundle (so adding a new shape's prompts doesn't invalidate prior shapes' rows). Cohort `bundle_label` bumps `3call_v1` → `3call_v2_shape_routed` to flag existing rows as stale on the next sensor sweep.
+- **`extracted` asset now passes the queue row's `content_shape` to the extractor.** Bundle selection fires per-row using the value triage wrote in Phase 3 (NULL → `"unknown"`). New `prompt_set_shape` column on `extraction_calls` records which PromptBundle actually ran (selected shape, after fallback) so downstream eval queries can group by it. Prod migration: `scripts/migrations/2026-06-13_extraction_calls_prompt_set_shape.sql`. No per-shape prompts registered yet — every row still hits the `unknown` bundle until Phase 6 evaluates lift and per-shape prompt files are added.
 
 ---
 

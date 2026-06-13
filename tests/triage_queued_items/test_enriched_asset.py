@@ -143,7 +143,9 @@ def test_enriched_classifies_content_type_from_url(tmp_path: Path):
     """The asset re-runs `classify_content_type` to dispatch enrichment. The
     classified type lands in metadata so the operator can spot mis-routing."""
     store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
-    signals = EnrichmentSignals(article=ArticleSignals(final_url="https://blog.example.com/post"))
+    signals = EnrichmentSignals(
+        article=ArticleSignals(redirected_url="https://blog.example.com/post")
+    )
     with _patch_enrich(signals):
         result = _materialize(
             partition_key="p-1",

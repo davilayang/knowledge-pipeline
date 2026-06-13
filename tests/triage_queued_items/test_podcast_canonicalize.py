@@ -196,7 +196,7 @@ def test_returns_none_when_no_mapping_matches_audio_url() -> None:
 
 
 def test_sds_999_chip_huyen_redirects_to_youtube_video() -> None:
-    """GOLDEN: the load-bearing case Phase 5a was built for.
+    """GOLDEN: the load-bearing case this matcher was built for.
 
     Notion queue row captured 2026-06-10 (DEV DB, page 37bd130d-...):
       Name: Super Data Science: ML & AI Podcast with Jon Krohn: 999: ...

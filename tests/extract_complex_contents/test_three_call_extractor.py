@@ -328,6 +328,43 @@ def test_extract_falls_back_to_unknown_for_unregistered_shape():
     assert by_kind["narrative"].prompt_label == "narrative_generic"
 
 
+def test_extract_records_carry_prompt_set_shape_for_registered_shape():
+    """Each ExtractionCallRecord records which shape's bundle fired —
+    so downstream eval queries can group by `prompt_set_shape` independent
+    of the queue_items.content_shape value at query time."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={
+            "unknown": _bundle(),
+            "conference_talk": _bundle(narrative_label="narrative_ct_v1"),
+        },
+    )
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        _, calls = ex.extract(
+            content="raw", content_type="YouTube", content_shape="conference_talk"
+        )
+    for c in calls:
+        assert c.prompt_set_shape == "conference_talk"
+
+
+def test_extract_records_prompt_set_shape_as_unknown_on_fallback():
+    """Unregistered shape resolves to the `unknown` bundle — the record's
+    `prompt_set_shape` reflects the bundle that ACTUALLY ran, not what the
+    caller requested. Lets eval queries reason about provenance honestly."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={"unknown": _bundle()},
+    )
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        _, calls = ex.extract(content="raw", content_type="YouTube", content_shape="tutorial")
+    for c in calls:
+        assert c.prompt_set_shape == "unknown"
+
+
 def test_bundle_sha256_falls_back_to_unknown_for_unregistered_shape():
     """Symmetric to extract's fallback — sha for an unregistered shape
     equals sha for the unknown bundle. Lets staleness comparisons stay

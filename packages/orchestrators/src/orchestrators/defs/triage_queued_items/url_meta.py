@@ -1,9 +1,9 @@
-"""Best-effort URL → (final_url, title, description) for triage display.
+"""Best-effort URL → (redirected_url, title, description) for triage display.
 
 Used by the `triaged` asset to seed Notion's Name (if user left it blank) and
 Description fields. Never raises — network errors, non-HTML responses, or
-missing tags collapse to an empty UrlMeta with final_url = input_url. Triage
-must not fail on enrichment.
+missing tags collapse to an empty UrlMeta with redirected_url = input_url.
+Triage must not fail on enrichment.
 """
 
 from dataclasses import dataclass
@@ -29,7 +29,12 @@ _HEADERS = {
 
 @dataclass(frozen=True)
 class UrlMeta:
-    final_url: str
+    """URL after HTTP redirect resolution + page-level meta. `redirected_url`
+    is the post-redirect URL (the URL the browser would land on); distinct
+    from `canonical_url` (the normalized identity used for dedup) and from
+    `original_url` (the raw input)."""
+
+    redirected_url: str
     title: str | None
     description: str | None
 
@@ -49,25 +54,25 @@ def fetch_url_meta(url: str, *, timeout: float = _TIMEOUT_S) -> UrlMeta:
     try:
         resp = httpx.get(url, follow_redirects=True, timeout=timeout, headers=_HEADERS)
     except httpx.HTTPError:
-        return UrlMeta(final_url=url, title=None, description=None)
+        return UrlMeta(redirected_url=url, title=None, description=None)
 
-    final_url = str(resp.url) or url
+    redirected_url = str(resp.url) or url
 
     if resp.status_code >= 400:
-        return UrlMeta(final_url=final_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
 
     content_type = (resp.headers.get("content-type") or "").lower()
     if "html" not in content_type:
-        return UrlMeta(final_url=final_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
 
     try:
         metadata = trafilatura.extract_metadata(resp.text)
     except Exception:
-        return UrlMeta(final_url=final_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
 
     title = _normalize(getattr(metadata, "title", None) if metadata else None)
     description = _normalize(
         getattr(metadata, "description", None) if metadata else None,
         max_chars=_DESCRIPTION_MAX_CHARS,
     )
-    return UrlMeta(final_url=final_url, title=title, description=description)
+    return UrlMeta(redirected_url=redirected_url, title=title, description=description)

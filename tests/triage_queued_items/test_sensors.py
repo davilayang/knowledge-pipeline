@@ -90,7 +90,7 @@ def test_sensor_carries_url_in_run_config():
 
 
 def test_sensor_carries_url_to_enriched_op():
-    """Phase 2 split: `enriched` runs in parallel with `triaged` and needs its
+    """`enriched` runs alongside `triaged` in the same run and needs its
     own config with the same URL."""
     notion = MagicMock()
     notion.query_for_triage.return_value = [

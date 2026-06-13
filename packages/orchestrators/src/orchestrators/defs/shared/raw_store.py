@@ -16,7 +16,7 @@ ASSET_TAGS = {"domain": "knowledge"}
 
 @dg.asset(
     group_name="shared",
-    compute_kind="filesystem",
+    kinds={"file"},
     owners=ASSET_OWNERS,
     tags=ASSET_TAGS,
     code_version="1",

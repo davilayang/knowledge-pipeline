@@ -53,7 +53,11 @@ def _materialization_metadata(result) -> dict:
 
 
 def _seed_triaged(
-    db_path: Path, page_id: str, content_type: str, url: str = "https://example.com/x"
+    db_path: Path,
+    page_id: str,
+    content_type: str,
+    url: str = "https://example.com/x",
+    content_shape: str | None = None,
 ) -> None:
     queue_db.create_schema(db_path=db_path)
     queue_db.upsert_triaged(
@@ -62,6 +66,7 @@ def _seed_triaged(
         url=url,
         canonical_url=url,
         content_type=content_type,
+        content_shape=content_shape,
     )
 
 
@@ -71,8 +76,9 @@ def _seed_with_raw_content(
     content_type: str,
     raw_content: str,
     url: str = "https://example.com/x",
+    content_shape: str | None = None,
 ) -> None:
-    _seed_triaged(db_path, page_id, content_type, url)
+    _seed_triaged(db_path, page_id, content_type, url, content_shape=content_shape)
     queue_db.upsert_fetched(
         db_path=db_path,
         notion_page_id=page_id,
@@ -444,8 +450,42 @@ def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
     ex_instance = extractor.build.return_value
     ex_instance.extract.assert_called_once()
     assert ex_instance.extract.call_args.kwargs["content_type"] == "arXiv"
-    # Phase 5a: content_shape is hardcoded to "unknown" until 5b wires it
-    # from the queue row. Asset must pass it through to the extractor.
+
+
+def test_extracted_passes_content_shape_from_queue_row(tmp_path: Path):
+    """asset reads content_shape from queue_items and passes it
+    through to the extractor + bundle_sha256, so the per-shape PromptBundle
+    fires."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000, content_shape="conference_talk")
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = _mock_extractor(title="A talk")
+    _materialize(
+        extracted,
+        partition_key="p-1",
+        resources={"extractor": extractor, "store": store},
+    )
+    ex_instance = extractor.build.return_value
+    assert ex_instance.extract.call_args.kwargs["content_shape"] == "conference_talk"
+    # bundle_sha256 also receives the same shape so the per-row cohort sha
+    # reflects the selected bundle, not the unknown fallback.
+    ex_instance.bundle_sha256.assert_called_with("conference_talk")
+
+
+def test_extracted_falls_back_to_unknown_when_content_shape_null(tmp_path: Path):
+    """Pre-Phase-3 rows (or rows the classifier flagged as unknown) write
+    NULL into queue_items.content_shape; asset must coalesce to the
+    extractor's generic fallback so the call still fires."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "Article", "a" * 5000, content_shape=None)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = _mock_extractor(title="Article")
+    _materialize(
+        extracted,
+        partition_key="p-1",
+        resources={"extractor": extractor, "store": store},
+    )
+    ex_instance = extractor.build.return_value
     assert ex_instance.extract.call_args.kwargs["content_shape"] == "unknown"
 
 

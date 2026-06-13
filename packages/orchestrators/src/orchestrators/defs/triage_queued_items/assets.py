@@ -1,4 +1,5 @@
 import json
+import re
 import textwrap
 
 import dagster as dg
@@ -25,6 +26,29 @@ from .url_meta import fetch_url_meta
 GROUP_NAME = "triage_queued_items"
 
 
+# Notion auto-assigns a default title to fresh rows: "Untitled", or for
+# database rows the locale-specific "New <db_name> page" pattern (e.g.
+# "New queued page" for a "Queue" database). Treat these as blank so
+# triage seeds the Name from the fetched page title — without this guard,
+# the auto-default counts as a user-set title and triage refuses to
+# overwrite it.
+_NOTION_AUTO_NAMES = {"untitled"}
+_NOTION_NEW_PAGE_RE = re.compile(r"^new\s+\S.*\s+page$", re.IGNORECASE)
+
+
+def _is_user_set_name(name: str | None) -> bool:
+    if not name:
+        return False
+    stripped = name.strip()
+    if not stripped:
+        return False
+    if stripped.lower() in _NOTION_AUTO_NAMES:
+        return False
+    if _NOTION_NEW_PAGE_RE.match(stripped):
+        return False
+    return True
+
+
 def _oneline(s: str) -> str:
     """Collapse a multi-line source string into a single-paragraph string.
 
@@ -45,7 +69,7 @@ class EnrichedInput(dg.Config):
 @dg.asset(
     key=["triage_queued_items", "enriched"],
     group_name=GROUP_NAME,
-    compute_kind="http",
+    kinds={"http", "sqlite"},
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     deps=[dg.AssetDep("notion_queue")],
@@ -56,9 +80,8 @@ class EnrichedInput(dg.Config):
         source (YouTube oEmbed, arXiv Atom API, article HTML meta) and
         cache as enrichment_json on the queue_items row. Failure-tolerant
         — any per-source HTTP error collapses to empty signals; the asset
-        always succeeds. Phase 3 wires the cached signals into the
-        content_shape classifier; for now `triaged` runs in parallel and
-        ignores this output.
+        always succeeds. Consumed by `triaged` for content_shape
+        classification.
         """
     ),
 )
@@ -128,7 +151,7 @@ class TriageInput(dg.Config):
 @dg.asset(
     key=["triage_queued_items", "triaged"],
     group_name=GROUP_NAME,
-    compute_kind="notion",
+    kinds={"notion", "sqlite"},
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     deps=[
@@ -138,26 +161,13 @@ class TriageInput(dg.Config):
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=_oneline(
         """
-        One row → fetch URL meta (title + short description, redirects
-        followed) → classify URL, canonicalize, then commit to local store +
-        Notion. Reads `enrichment_json` cached by the `enriched` sibling
-        asset to classify `content_shape` (drives the extractor's per-shape
-        prompt routing in Phase 5). Notion gets a `Content Shape` SELECT
-        write next to `Content Type`; user override on either property
-        wins over the classifier on the next triage. Two terminal
-        Notion states: Status=Skipped if the canonical URL duplicates an
-        existing queue_items row (queue.db unchanged, original cohort
-        stays the single source); Status=Fetching otherwise, and
-        extract_complex_contents picks the row up and routes the URL to
-        the fetcher service (its article handler is a catch-all for
-        anything not yt/arxiv/pdf/medium, so Article/Other still land
-        somewhere). Notion Status write is the last API call so
-        partially-triaged states can't be picked up by the extract
-        sensor. Name is seeded from the fetched page title when the user
-        left it blank — extract's `published` later upgrades it to
-        `topic_card.extracted_title` once the LLM has produced a sharper
-        read. Description is always written when the fetch produced one
-        (extract overwrites on a hit).
+        Per-row: fetch URL meta → classify content_type + content_shape
+        (consumes `enriched`'s cache) → dedup → commit to queue.db + Notion.
+        User can override Content Type / Content Shape SELECTs on the
+        Notion row; valid overrides win over the classifier. Notion Status
+        write is the last API call so the extract sensor never sees a
+        partially-triaged row. See the pipeline README for the state
+        machine + dedup / Name-seeding semantics.
         """
     ),
 )
@@ -172,7 +182,7 @@ def triaged(
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
-    effective_url = meta.final_url or config.url
+    effective_url = meta.redirected_url or config.url
     canonical = normalize_url(effective_url)
     # User override wins if set + valid; typo / empty → URL classifier.
     if config.content_type and config.content_type in ALL_CONTENT_TYPES:
@@ -234,16 +244,10 @@ def triaged(
             }
         )
 
-    # Load enrichment cached by the `enriched` sibling asset and classify
-    # content_shape. `enriched` always lands a row first (same partition,
-    # asset dep), so `get_row` will hit; defensive `from_json` collapses
-    # any malformed / missing payload to empty signals → `unknown` shape.
     existing_row = triage_store.get_row(notion_page_id=page_id)
     enrichment_json = (existing_row or {}).get("enrichment_json")
     enrichment = EnrichmentSignals.from_json(enrichment_json)
-    # User override wins if set + valid; typo / empty → rules classifier.
-    # Mirrors the content_type override semantics so Notion edits behave
-    # the same on both axes.
+    # Same override-vs-classifier shape as content_type above.
     if config.content_shape and config.content_shape in ALL_CONTENT_SHAPES:
         content_shape = config.content_shape
         content_shape_source = "notion"
@@ -264,8 +268,10 @@ def triaged(
         raw_content_override=config.raw_content_override,
     )
     # Only seed Notion's Name when the user left it blank — never overwrite a
-    # user-set title. Description is operational and safe to (re)write.
-    name_for_notion = meta.title if (not config.name and meta.title) else None
+    # user-set title. Notion's auto-default ("New queued page", "Untitled")
+    # counts as blank so triage can replace it with the real page title.
+    # Description is operational and safe to (re)write.
+    name_for_notion = meta.title if (not _is_user_set_name(config.name) and meta.title) else None
     status_after = "Fetching"
     triage_notion.write_triaged(
         page_id=page_id,
@@ -286,7 +292,7 @@ def triaged(
         "content_shape_source": dg.MetadataValue.text(content_shape_source),
         "canonical_url": dg.MetadataValue.url(canonical),
         "original_url": dg.MetadataValue.url(config.url),
-        "final_url": dg.MetadataValue.url(effective_url),
+        "redirected_url": dg.MetadataValue.url(effective_url),
         "name": dg.MetadataValue.text(config.name or ""),
         "fetched_title": dg.MetadataValue.text(meta.title or ""),
         "fetched_description": dg.MetadataValue.text(meta.description or ""),

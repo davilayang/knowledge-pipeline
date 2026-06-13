@@ -69,21 +69,22 @@ CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
     ON queue_items(extractor_label);
 
 CREATE TABLE IF NOT EXISTS extraction_calls (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
-    notion_page_id  TEXT NOT NULL                       -- FK; cohort link
-                    REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
-    call_kind       TEXT NOT NULL,                      -- narrative/topic_card/followups
-    prompt_label    TEXT NOT NULL,                      -- e.g. "topic_card_v1"
-    prompt_sha256   TEXT NOT NULL,                      -- per-call staleness
-    schema_name     TEXT,                               -- "TopicCard"/"Followups"/NULL
-    model           TEXT NOT NULL,                      -- per-call model
-    output          TEXT NOT NULL,                      -- markdown or pydantic-JSON
-    tokens_in       INTEGER NOT NULL,
-    tokens_out      INTEGER NOT NULL,
-    cached_tokens   INTEGER,                            -- nullable; prefix-cache hits
-    duration_ms     REAL,                               -- per-call latency
-    extracted_at    TEXT NOT NULL,                      -- ISO-8601 UTC
-    node_metadata   TEXT                                -- nullable JSON; LangGraph
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
+    notion_page_id    TEXT NOT NULL                       -- FK; cohort link
+                      REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
+    call_kind         TEXT NOT NULL,                      -- narrative/topic_card/followups
+    prompt_label      TEXT NOT NULL,                      -- e.g. "topic_card_v1"
+    prompt_sha256     TEXT NOT NULL,                      -- per-call staleness
+    prompt_set_shape  TEXT,                               -- bundle shape; NULL→"unknown"
+    schema_name       TEXT,                               -- "TopicCard"/"Followups"/NULL
+    model             TEXT NOT NULL,                      -- per-call model
+    output            TEXT NOT NULL,                      -- markdown or pydantic-JSON
+    tokens_in         INTEGER NOT NULL,
+    tokens_out        INTEGER NOT NULL,
+    cached_tokens     INTEGER,                            -- nullable; prefix-cache hits
+    duration_ms       REAL,                               -- per-call latency
+    extracted_at      TEXT NOT NULL,                      -- ISO-8601 UTC
+    node_metadata     TEXT                                -- nullable JSON; LangGraph
 );
 
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
@@ -153,6 +154,7 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
+            "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
 
@@ -207,11 +209,9 @@ def upsert_triaged(
     `get_queue_extraction` would otherwise serve last-cohort Topic Cards while
     the row is back at Status=Fetching.
 
-    `content_shape` is the orthogonal extractor-routing axis introduced in
-    Phase 1 of the content-shape rollout. `None` writes NULL — `get_content_shape`
-    coalesces NULL → `"unknown"` so the extractor's per-shape lookup falls
-    through to the generic fallback bundle. Phase 3 wires the classifier;
-    until then triage continues passing None and downstream stays generic."""
+    `content_shape` is the orthogonal extractor-routing axis. `None` writes
+    NULL; `get_content_shape` coalesces NULL → `"unknown"` so the extractor's
+    per-shape lookup falls through to the generic fallback bundle."""
     with _connect(db_path) as conn:
         conn.execute(
             """
@@ -267,12 +267,13 @@ def upsert_enriched(
     enrichment_json: str,
 ) -> None:
     """Land the `enriched` asset's signals cache. Idempotent by page_id —
-    re-materialising overwrites. Phase 2 wires `enriched` BEFORE `triaged`,
-    so this often creates the row. `url` is required to satisfy the NOT NULL
-    column constraint and to let any reader in the enriched-but-not-yet-
-    triaged window see the captured URL instead of an empty placeholder. When
-    `triaged` lands after, its ON CONFLICT overwrites url / canonical_url /
-    content_type; enrichment_json is preserved across that re-write.
+    re-materialising overwrites. `enriched` runs before `triaged` in the
+    asset graph, so this often creates the row. `url` is required to satisfy
+    the NOT NULL column constraint and to let any reader in the enriched-
+    but-not-yet-triaged window see the captured URL instead of an empty
+    placeholder. When `triaged` lands after, its ON CONFLICT overwrites
+    url / canonical_url / content_type; enrichment_json is preserved across
+    that re-write.
 
     Dedup-skipped pages retain an orphan enrichment_json row by design
     (cheap, useful on re-queue). Does NOT touch routing or fetch columns;
@@ -293,7 +294,7 @@ def get_content_shape(*, db_path: Path, notion_page_id: str) -> str:
     """Single source of truth for "NULL → unknown". Consumers MUST go through
     this rather than read `content_shape` off `get_row` so the extractor's
     per-shape prompt routing never KeyErrors on a None left over from a row
-    triaged before Phase 1 landed."""
+    triaged before the column existed."""
     with _connect(db_path) as conn:
         row = conn.execute(
             "SELECT content_shape FROM queue_items WHERE notion_page_id = ?",
@@ -424,15 +425,17 @@ def record_extraction_calls(
                 """
                 INSERT INTO extraction_calls (
                     notion_page_id, call_kind, prompt_label, prompt_sha256,
-                    schema_name, model, output, tokens_in, tokens_out,
-                    cached_tokens, duration_ms, extracted_at, node_metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prompt_set_shape, schema_name, model, output, tokens_in,
+                    tokens_out, cached_tokens, duration_ms, extracted_at,
+                    node_metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     notion_page_id,
                     c.call_kind,
                     c.prompt_label,
                     c.prompt_sha256,
+                    c.prompt_set_shape,
                     c.schema_name,
                     model,
                     c.output,
@@ -479,9 +482,9 @@ def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[s
     with _connect(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT call_kind, prompt_label, prompt_sha256, schema_name,
-                   model, output, tokens_in, tokens_out, cached_tokens,
-                   duration_ms, extracted_at, node_metadata
+            SELECT call_kind, prompt_label, prompt_sha256, prompt_set_shape,
+                   schema_name, model, output, tokens_in, tokens_out,
+                   cached_tokens, duration_ms, extracted_at, node_metadata
               FROM extraction_calls
              WHERE notion_page_id = ?
              ORDER BY call_kind, extracted_at DESC, id DESC

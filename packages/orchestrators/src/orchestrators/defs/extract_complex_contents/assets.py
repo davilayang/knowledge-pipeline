@@ -41,7 +41,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 @dg.asset(
     key=["extract_complex_contents", "fetched"],
     group_name=GROUP_NAME,
-    compute_kind="http",
+    kinds={"http", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -183,7 +183,7 @@ def fetched(
 @dg.asset(
     key=["extract_complex_contents", "extracted"],
     group_name=GROUP_NAME,
-    compute_kind="openai",
+    kinds={"openai", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -229,10 +229,11 @@ def extracted(
     # `bundle_sha256` / `model` below are property accesses on this
     # instance — no extra client construction.
     ex = extractor.build()
-    # Phase 5a: content_shape hardcoded to "unknown" until Phase 5b wires it
-    # from the queue row. Behaviour identical to v1 — single generic bundle,
-    # always selected.
-    content_shape = "unknown"
+    # Read the user-visible / classifier-emitted content_shape written by
+    # the triaged asset. NULL (legacy rows, or rows the classifier returned
+    # `unknown` for) falls back to the unknown bundle inside the extractor
+    # — bundle selection is the extractor's concern.
+    content_shape = row.get("content_shape") or "unknown"
     payload, calls = ex.extract(
         content=row["raw_content"],
         content_type=content_type,
@@ -278,6 +279,7 @@ def extracted(
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
+            "content_shape": dg.MetadataValue.text(content_shape),
             "extractor_label": dg.MetadataValue.text(ex.bundle_label),
             "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256(content_shape)[:12]),
             "extraction_model": dg.MetadataValue.text(ex.model),
@@ -322,7 +324,7 @@ def extracted(
 @dg.asset(
     key=["extract_complex_contents", "published"],
     group_name=GROUP_NAME,
-    compute_kind="notion",
+    kinds={"notion", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},

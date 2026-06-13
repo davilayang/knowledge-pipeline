@@ -137,7 +137,7 @@ def test_arxiv_signals_returns_empty_on_malformed_xml():
 
 def test_article_signals_passes_through_url_meta():
     meta = UrlMeta(
-        final_url="https://example.com/post?utm=x",
+        redirected_url="https://example.com/post?utm=x",
         title="Hello",
         description="A short description.",
     )
@@ -147,21 +147,21 @@ def test_article_signals_passes_through_url_meta():
     ):
         signals = enrich_url("https://example.com/post", "Article")
     assert signals.article == ArticleSignals(
-        final_url="https://example.com/post?utm=x",
+        redirected_url="https://example.com/post?utm=x",
         title="Hello",
         description="A short description.",
     )
 
 
 def test_article_signals_empty_when_url_meta_returns_nothing():
-    meta = UrlMeta(final_url="https://example.com", title=None, description=None)
+    meta = UrlMeta(redirected_url="https://example.com", title=None, description=None)
     with patch(
         "orchestrators.defs.triage_queued_items.enrich.fetch_url_meta",
         return_value=meta,
     ):
         signals = enrich_url("https://example.com", "Article")
     assert signals.article == ArticleSignals(
-        final_url="https://example.com",
+        redirected_url="https://example.com",
         title=None,
         description=None,
     )
@@ -171,7 +171,7 @@ def test_article_signals_empty_when_url_meta_returns_nothing():
 
 
 def test_enrich_url_returns_empty_signals_for_podcast():
-    """Phase 2a doesn't enrich podcast URLs — covered by Phase 2b."""
+    """Podcast URLs aren't enriched in `enrich_url` — out of scope here."""
     with patch("orchestrators.defs.triage_queued_items.enrich.httpx.get") as fake:
         signals = enrich_url("https://podtrac.example.com/show.mp3", "Podcast")
     assert signals == EnrichmentSignals()
@@ -217,7 +217,7 @@ def test_signals_roundtrip_through_json():
     original = EnrichmentSignals(
         youtube=YoutubeSignals(channel="AI Engineer", title="A talk"),
         arxiv=ArxivSignals(title="t", abstract="a", categories=("cs.LG", "stat.ML")),
-        article=ArticleSignals(final_url="https://x.com", title="X", description="d"),
+        article=ArticleSignals(redirected_url="https://x.com", title="X", description="d"),
     )
     assert EnrichmentSignals.from_json(original.to_json()) == original
 
@@ -232,6 +232,20 @@ def test_signals_from_none_returns_empty():
 
 def test_signals_from_malformed_json_returns_empty():
     assert EnrichmentSignals.from_json("not json") == EnrichmentSignals()
+
+
+def test_signals_from_json_accepts_legacy_final_url_key():
+    """Rows enriched before the redirected_url rename wrote `final_url`
+    into enrichment_json. The reader still parses them — back-compat."""
+    legacy_payload = (
+        '{"article":{"final_url":"https://x.com/legacy","title":"t","description":"d"}}'
+    )
+    parsed = EnrichmentSignals.from_json(legacy_payload)
+    assert parsed.article == ArticleSignals(
+        redirected_url="https://x.com/legacy",
+        title="t",
+        description="d",
+    )
 
 
 def test_signals_from_partial_payload_only_builds_present_sources():
