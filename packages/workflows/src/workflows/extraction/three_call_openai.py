@@ -159,10 +159,15 @@ class ThreeCallOpenAIExtractor:
     async def _extract_async(
         self, *, content: str, content_type: str, content_shape: str
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
-        bundle = self._prompt_sets.get(content_shape) or self._prompt_sets[_GENERIC_SHAPE]
+        # Record the shape that actually drove the bundle selection — when
+        # the caller passes an unregistered shape (e.g. a future
+        # `research_summary` row hitting an older deploy), this resolves to
+        # `unknown` so the per-row provenance matches the bundle that ran.
+        resolved_shape = content_shape if content_shape in self._prompt_sets else _GENERIC_SHAPE
+        bundle = self._prompt_sets[resolved_shape]
         try:
             narrative_record = await self._narrative_call(
-                content, content_type, bundle["narrative"]
+                content, content_type, bundle["narrative"], resolved_shape
             )
 
             topic_result, followups_result = await asyncio.gather(
@@ -172,6 +177,7 @@ class ThreeCallOpenAIExtractor:
                     bundle["topic_card"],
                     TopicCard,
                     "topic_card",
+                    resolved_shape,
                 ),
                 self._structured_call(
                     content,
@@ -179,6 +185,7 @@ class ThreeCallOpenAIExtractor:
                     bundle["followups"],
                     Followups,
                     "followups",
+                    resolved_shape,
                 ),
                 return_exceptions=True,
             )
@@ -206,7 +213,11 @@ class ThreeCallOpenAIExtractor:
             await self._client.close()
 
     async def _narrative_call(
-        self, content: str, content_type: str, prompt_triple: _RoleTriple
+        self,
+        content: str,
+        content_type: str,
+        prompt_triple: _RoleTriple,
+        resolved_shape: str,
     ) -> ExtractionCallRecord:
         prompt_text, prompt_label, prompt_sha = prompt_triple
         t0 = time.monotonic()
@@ -233,6 +244,7 @@ class ThreeCallOpenAIExtractor:
             cached_tokens=_cached_tokens(resp.usage),
             duration_ms=duration_ms,
             extracted_at=_now_iso(),
+            prompt_set_shape=resolved_shape,
         )
 
     async def _structured_call(
@@ -242,6 +254,7 @@ class ThreeCallOpenAIExtractor:
         prompt_triple: _RoleTriple,
         schema: type,
         call_kind: str,
+        resolved_shape: str,
     ) -> tuple[Any, ExtractionCallRecord]:
         prompt_text, prompt_label, prompt_sha = prompt_triple
         t0 = time.monotonic()
@@ -270,5 +283,6 @@ class ThreeCallOpenAIExtractor:
             cached_tokens=_cached_tokens(resp.usage),
             duration_ms=duration_ms,
             extracted_at=_now_iso(),
+            prompt_set_shape=resolved_shape,
         )
         return parsed, record

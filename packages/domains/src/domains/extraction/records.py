@@ -42,3 +42,8 @@ class ExtractionCallRecord:
     node_metadata: dict[str, Any] | None = None
     """LangGraph extras (node_id, parent_node_id, revision_count). Serialised
     to JSON on write; None for the v1 three-call shape."""
+
+    prompt_set_shape: str | None = None
+    """Which content_shape's PromptBundle the extractor selected for this
+    call. NULL on rows written before Phase 5b landed; downstream eval
+    queries should coalesce to `"unknown"` for grouping."""

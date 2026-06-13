@@ -174,6 +174,51 @@ def test_get_latest_extraction_calls_returns_empty_for_unknown_page(db_path: Pat
     assert get_latest_extraction_calls(db_path=db_path, notion_page_id="never-seen") == {}
 
 
+def test_record_extraction_calls_persists_prompt_set_shape(db_path: Path):
+    """Phase 5b: each call carries the PromptBundle shape that fired.
+    Reader returns it so downstream eval queries can group runs by
+    `prompt_set_shape` without re-deriving from sha lookups."""
+    record_extraction_calls(
+        db_path=db_path,
+        notion_page_id="p-1",
+        extractor_label="3call_v2_shape_routed",
+        extractor_sha256="bundle_sha",
+        model="gpt-4.1-mini",
+        calls=[
+            _call("narrative", "n", prompt_set_shape="conference_talk"),
+            _call("topic_card", "t", prompt_set_shape="conference_talk"),
+            _call("followups", "f", prompt_set_shape="conference_talk"),
+        ],
+        tokens_in_total=300,
+        tokens_out_total=150,
+    )
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
+    assert latest["narrative"]["prompt_set_shape"] == "conference_talk"
+    assert latest["topic_card"]["prompt_set_shape"] == "conference_talk"
+    assert latest["followups"]["prompt_set_shape"] == "conference_talk"
+
+
+def test_record_extraction_calls_allows_null_prompt_set_shape(db_path: Path):
+    """`prompt_set_shape` is nullable — pre-Phase-5b rows (and tests that
+    don't bother setting it) land NULL without breaking the writer."""
+    record_extraction_calls(
+        db_path=db_path,
+        notion_page_id="p-1",
+        extractor_label="3call_v2_shape_routed",
+        extractor_sha256="bundle_sha",
+        model="gpt-4.1-mini",
+        calls=[
+            _call("narrative", "n"),
+            _call("topic_card", "t"),
+            _call("followups", "f"),
+        ],
+        tokens_in_total=300,
+        tokens_out_total=150,
+    )
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
+    assert latest["narrative"]["prompt_set_shape"] is None
+
+
 def test_create_schema_idempotent_for_extraction_calls_columns(db_path: Path):
     """Re-running create_schema on a DB that already has the new columns is a
     no-op (no `duplicate column` error escapes)."""

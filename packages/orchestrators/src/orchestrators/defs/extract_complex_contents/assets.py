@@ -229,10 +229,11 @@ def extracted(
     # `bundle_sha256` / `model` below are property accesses on this
     # instance — no extra client construction.
     ex = extractor.build()
-    # Phase 5a: content_shape hardcoded to "unknown" until Phase 5b wires it
-    # from the queue row. Behaviour identical to v1 — single generic bundle,
-    # always selected.
-    content_shape = "unknown"
+    # Read the user-visible / classifier-emitted content_shape written by
+    # the triaged asset (Phase 3). NULL pre-Phase-3 rows (or any row where
+    # the classifier returned "unknown") fall back to the unknown bundle
+    # inside the extractor — bundle selection is the extractor's concern.
+    content_shape = row.get("content_shape") or "unknown"
     payload, calls = ex.extract(
         content=row["raw_content"],
         content_type=content_type,
@@ -278,6 +279,7 @@ def extracted(
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
+            "content_shape": dg.MetadataValue.text(content_shape),
             "extractor_label": dg.MetadataValue.text(ex.bundle_label),
             "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256(content_shape)[:12]),
             "extraction_model": dg.MetadataValue.text(ex.model),

@@ -69,21 +69,22 @@ CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
     ON queue_items(extractor_label);
 
 CREATE TABLE IF NOT EXISTS extraction_calls (
-    id              INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
-    notion_page_id  TEXT NOT NULL                       -- FK; cohort link
-                    REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
-    call_kind       TEXT NOT NULL,                      -- narrative/topic_card/followups
-    prompt_label    TEXT NOT NULL,                      -- e.g. "topic_card_v1"
-    prompt_sha256   TEXT NOT NULL,                      -- per-call staleness
-    schema_name     TEXT,                               -- "TopicCard"/"Followups"/NULL
-    model           TEXT NOT NULL,                      -- per-call model
-    output          TEXT NOT NULL,                      -- markdown or pydantic-JSON
-    tokens_in       INTEGER NOT NULL,
-    tokens_out      INTEGER NOT NULL,
-    cached_tokens   INTEGER,                            -- nullable; prefix-cache hits
-    duration_ms     REAL,                               -- per-call latency
-    extracted_at    TEXT NOT NULL,                      -- ISO-8601 UTC
-    node_metadata   TEXT                                -- nullable JSON; LangGraph
+    id                INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
+    notion_page_id    TEXT NOT NULL                       -- FK; cohort link
+                      REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
+    call_kind         TEXT NOT NULL,                      -- narrative/topic_card/followups
+    prompt_label      TEXT NOT NULL,                      -- e.g. "topic_card_v1"
+    prompt_sha256     TEXT NOT NULL,                      -- per-call staleness
+    prompt_set_shape  TEXT,                               -- bundle shape; NULL→"unknown"
+    schema_name       TEXT,                               -- "TopicCard"/"Followups"/NULL
+    model             TEXT NOT NULL,                      -- per-call model
+    output            TEXT NOT NULL,                      -- markdown or pydantic-JSON
+    tokens_in         INTEGER NOT NULL,
+    tokens_out        INTEGER NOT NULL,
+    cached_tokens     INTEGER,                            -- nullable; prefix-cache hits
+    duration_ms       REAL,                               -- per-call latency
+    extracted_at      TEXT NOT NULL,                      -- ISO-8601 UTC
+    node_metadata     TEXT                                -- nullable JSON; LangGraph
 );
 
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
@@ -153,6 +154,7 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
+            "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
 
@@ -424,15 +426,17 @@ def record_extraction_calls(
                 """
                 INSERT INTO extraction_calls (
                     notion_page_id, call_kind, prompt_label, prompt_sha256,
-                    schema_name, model, output, tokens_in, tokens_out,
-                    cached_tokens, duration_ms, extracted_at, node_metadata
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    prompt_set_shape, schema_name, model, output, tokens_in,
+                    tokens_out, cached_tokens, duration_ms, extracted_at,
+                    node_metadata
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     notion_page_id,
                     c.call_kind,
                     c.prompt_label,
                     c.prompt_sha256,
+                    c.prompt_set_shape,
                     c.schema_name,
                     model,
                     c.output,
@@ -479,9 +483,9 @@ def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[s
     with _connect(db_path) as conn:
         rows = conn.execute(
             """
-            SELECT call_kind, prompt_label, prompt_sha256, schema_name,
-                   model, output, tokens_in, tokens_out, cached_tokens,
-                   duration_ms, extracted_at, node_metadata
+            SELECT call_kind, prompt_label, prompt_sha256, prompt_set_shape,
+                   schema_name, model, output, tokens_in, tokens_out,
+                   cached_tokens, duration_ms, extracted_at, node_metadata
               FROM extraction_calls
              WHERE notion_page_id = ?
              ORDER BY call_kind, extracted_at DESC, id DESC

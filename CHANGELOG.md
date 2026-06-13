@@ -8,7 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **`ThreeCallOpenAIExtractor` now routes prompts by `content_shape`.** Constructor takes `prompt_sets: dict[str, PromptBundle]` (the `"unknown"` bundle is the generic fallback, required); `extract()` and `bundle_sha256()` both take a `content_shape` kwarg and resolve to the selected bundle (so adding a new shape's prompts doesn't invalidate prior shapes' rows). Cohort `bundle_label` bumps `3call_v1` → `3call_v2_shape_routed` to flag existing rows as stale on the next sensor sweep. Production behaviour unchanged this release — assets pass `content_shape="unknown"`; shape-wiring lands in Phase 5b.
+- **`ThreeCallOpenAIExtractor` now routes prompts by `content_shape`.** Constructor takes `prompt_sets: dict[str, PromptBundle]` (the `"unknown"` bundle is the generic fallback, required); `extract()` and `bundle_sha256()` both take a `content_shape` kwarg and resolve to the selected bundle (so adding a new shape's prompts doesn't invalidate prior shapes' rows). Cohort `bundle_label` bumps `3call_v1` → `3call_v2_shape_routed` to flag existing rows as stale on the next sensor sweep.
+- **`extracted` asset now passes the queue row's `content_shape` to the extractor.** Bundle selection fires per-row using the value triage wrote in Phase 3 (NULL → `"unknown"`). New `prompt_set_shape` column on `extraction_calls` records which PromptBundle actually ran (selected shape, after fallback) so downstream eval queries can group by it. Prod migration: `scripts/migrations/2026-06-13_extraction_calls_prompt_set_shape.sql`. No per-shape prompts registered yet — every row still hits the `unknown` bundle until Phase 6 evaluates lift and per-shape prompt files are added.
 
 ---
 
