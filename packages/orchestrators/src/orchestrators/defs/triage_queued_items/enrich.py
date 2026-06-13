@@ -82,6 +82,51 @@ class EnrichmentSignals:
             payload["article"] = asdict(self.article)
         return json.dumps(payload, separators=(",", ":"))
 
+    @classmethod
+    def from_json(cls, raw: str | None) -> "EnrichmentSignals":
+        """Inverse of `to_json`. `None` / empty / malformed input → empty
+        signals — same failure-tolerance contract as `enrich_url`."""
+        if not raw:
+            return cls()
+        try:
+            payload = json.loads(raw)
+        except (TypeError, ValueError):
+            return cls()
+        if not isinstance(payload, dict):
+            return cls()
+        return cls(
+            youtube=_build_youtube(payload.get("youtube")),
+            arxiv=_build_arxiv(payload.get("arxiv")),
+            article=_build_article(payload.get("article")),
+        )
+
+
+def _build_youtube(data: dict | None) -> YoutubeSignals | None:
+    if not isinstance(data, dict):
+        return None
+    return YoutubeSignals(channel=data.get("channel"), title=data.get("title"))
+
+
+def _build_arxiv(data: dict | None) -> ArxivSignals | None:
+    if not isinstance(data, dict):
+        return None
+    cats = data.get("categories") or []
+    return ArxivSignals(
+        title=data.get("title"),
+        abstract=data.get("abstract"),
+        categories=tuple(c for c in cats if isinstance(c, str)),
+    )
+
+
+def _build_article(data: dict | None) -> ArticleSignals | None:
+    if not isinstance(data, dict):
+        return None
+    return ArticleSignals(
+        final_url=data.get("final_url"),
+        title=data.get("title"),
+        description=data.get("description"),
+    )
+
 
 def _norm(value: str | None) -> str | None:
     if value is None:

@@ -212,6 +212,36 @@ def test_signals_serialise_only_populated_sources():
     assert "article" not in payload
 
 
+def test_signals_roundtrip_through_json():
+    """to_json + from_json composes to identity for populated signals."""
+    original = EnrichmentSignals(
+        youtube=YoutubeSignals(channel="AI Engineer", title="A talk"),
+        arxiv=ArxivSignals(title="t", abstract="a", categories=("cs.LG", "stat.ML")),
+        article=ArticleSignals(final_url="https://x.com", title="X", description="d"),
+    )
+    assert EnrichmentSignals.from_json(original.to_json()) == original
+
+
+def test_signals_from_empty_json_returns_empty():
+    assert EnrichmentSignals.from_json("{}") == EnrichmentSignals()
+
+
+def test_signals_from_none_returns_empty():
+    assert EnrichmentSignals.from_json(None) == EnrichmentSignals()
+
+
+def test_signals_from_malformed_json_returns_empty():
+    assert EnrichmentSignals.from_json("not json") == EnrichmentSignals()
+
+
+def test_signals_from_partial_payload_only_builds_present_sources():
+    payload = '{"youtube":{"channel":"X","title":"Y"}}'
+    parsed = EnrichmentSignals.from_json(payload)
+    assert parsed.youtube == YoutubeSignals(channel="X", title="Y")
+    assert parsed.arxiv is None
+    assert parsed.article is None
+
+
 def test_signals_serialise_categories_as_list():
     """tuple → JSON list (json.dumps does this by default; lock the shape)."""
     signals = EnrichmentSignals(

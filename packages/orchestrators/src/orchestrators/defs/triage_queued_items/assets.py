@@ -16,8 +16,9 @@ from .classify import (
     classify_content_type,
     normalize_url,
 )
+from .content_shape import classify_content_shape
 from .def_config import PIPELINE_TAG, queue_items_partition_def
-from .enrich import enrich_url
+from .enrich import EnrichmentSignals, enrich_url
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import fetch_url_meta
 
@@ -127,24 +128,32 @@ class TriageInput(dg.Config):
     compute_kind="notion",
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
-    deps=[dg.AssetDep("notion_queue")],
+    deps=[
+        dg.AssetDep("notion_queue"),
+        dg.AssetDep(["triage_queued_items", "enriched"]),
+    ],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=_oneline(
         """
         One row → fetch URL meta (title + short description, redirects
         followed) → classify URL, canonicalize, then commit to local store +
-        Notion. Two terminal Notion states: Status=Skipped if the canonical
-        URL duplicates an existing queue_items row (queue.db unchanged,
-        original cohort stays the single source); Status=Fetching otherwise,
-        and extract_complex_contents picks the row up and routes the URL to
-        the fetcher service (its article handler is a catch-all for anything
-        not yt/arxiv/pdf/medium, so Article/Other still land somewhere).
-        Notion Status write is the last API call so partially-triaged
-        states can't be picked up by the extract sensor. Name is seeded
-        from the fetched page title when the user left it blank — extract's
-        `published` later upgrades it to `topic_card.extracted_title` once
-        the LLM has produced a sharper read. Description is always written
-        when the fetch produced one (extract overwrites on a hit).
+        Notion. Reads `enrichment_json` cached by the `enriched` sibling
+        asset to classify `content_shape` (drives the extractor's per-shape
+        prompt routing in Phase 5; written to queue.db only this phase —
+        Notion Content Shape property lands in Phase 4). Two terminal
+        Notion states: Status=Skipped if the canonical URL duplicates an
+        existing queue_items row (queue.db unchanged, original cohort
+        stays the single source); Status=Fetching otherwise, and
+        extract_complex_contents picks the row up and routes the URL to
+        the fetcher service (its article handler is a catch-all for
+        anything not yt/arxiv/pdf/medium, so Article/Other still land
+        somewhere). Notion Status write is the last API call so
+        partially-triaged states can't be picked up by the extract
+        sensor. Name is seeded from the fetched page title when the user
+        left it blank — extract's `published` later upgrades it to
+        `topic_card.extracted_title` once the LLM has produced a sharper
+        read. Description is always written when the fetch produced one
+        (extract overwrites on a hit).
         """
     ),
 )
@@ -221,11 +230,25 @@ def triaged(
             }
         )
 
+    # Load enrichment cached by the `enriched` sibling asset and classify
+    # content_shape. `enriched` always lands a row first (same partition,
+    # asset dep), so `get_row` will hit; defensive `from_json` collapses
+    # any malformed / missing payload to empty signals → `unknown` shape.
+    existing_row = triage_store.get_row(notion_page_id=page_id)
+    enrichment_json = (existing_row or {}).get("enrichment_json")
+    enrichment = EnrichmentSignals.from_json(enrichment_json)
+    content_shape = classify_content_shape(
+        enrichment=enrichment,
+        content_type=content_type,
+        url=canonical,
+    )
+
     triage_store.upsert_triaged(
         notion_page_id=page_id,
         url=config.url,
         canonical_url=canonical,
         content_type=content_type,
+        content_shape=content_shape,
         raw_content_override=config.raw_content_override,
     )
     # Only seed Notion's Name when the user left it blank — never overwrite a
@@ -246,6 +269,7 @@ def triaged(
         "outcome": dg.MetadataValue.text("fetching"),
         "content_type": dg.MetadataValue.text(content_type),
         "content_type_source": dg.MetadataValue.text(content_type_source),
+        "content_shape": dg.MetadataValue.text(content_shape),
         "canonical_url": dg.MetadataValue.url(canonical),
         "original_url": dg.MetadataValue.url(config.url),
         "final_url": dg.MetadataValue.url(effective_url),
@@ -253,7 +277,9 @@ def triaged(
         "fetched_title": dg.MetadataValue.text(meta.title or ""),
         "fetched_description": dg.MetadataValue.text(meta.description or ""),
         "status_after": dg.MetadataValue.text(status_after),
-        "summary": dg.MetadataValue.md(f"**{content_type}** → Notion {status_after}"),
+        "summary": dg.MetadataValue.md(
+            f"**{content_type}** / {content_shape} → Notion {status_after}"
+        ),
     }
     if podcast_substituted_to:
         metadata["podcast_substituted_to"] = dg.MetadataValue.url(podcast_substituted_to)

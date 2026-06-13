@@ -557,3 +557,122 @@ def test_triaged_skips_substitution_for_non_podcast_url(tmp_path: Path):
 
     assert result.success
     fake_lookup.assert_not_called()
+
+
+# -------- content_shape --------
+
+
+def _seed_enrichment(store: QueueStoreResource, *, page_id: str, url: str, payload: str) -> None:
+    """Pre-populate queue_items.enrichment_json as the `enriched` sibling
+    asset would. Lets the triaged-asset tests cover the cross-asset wiring
+    without orchestrating a full two-asset materialization."""
+    from domains.queue_store import sources as queue_db
+
+    queue_db.create_schema(db_path=Path(store.db_path))
+    queue_db.upsert_enriched(
+        db_path=Path(store.db_path),
+        notion_page_id=page_id,
+        url=url,
+        enrichment_json=payload,
+    )
+
+
+def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_path: Path):
+    """YouTube row with `AI Engineer` channel enriched → triaged writes
+    `content_shape="conference_talk"` to queue.db."""
+    resources, _ = _resources(tmp_path)
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://www.youtube.com/watch?v=abc",
+        payload='{"youtube":{"channel":"AI Engineer","title":"A talk"}}',
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://www.youtube.com/watch?v=abc",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "conference_talk"
+    from domains.queue_store import sources as queue_db
+
+    row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
+    assert row["content_shape"] == "conference_talk"
+
+
+def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
+    """No prior `enriched` materialization → from_json(None) → empty signals
+    → unknown shape. Asset must not crash and must write `unknown` to
+    queue.db (Phase 5 extractor will fall back to generic prompt)."""
+    resources, _ = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://random.example.com/post",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "unknown"
+    from domains.queue_store import sources as queue_db
+
+    row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
+    assert row["content_shape"] == "unknown"
+
+
+def test_triaged_classifies_research_summary_for_arxiv_without_enrichment(tmp_path: Path):
+    """arXiv host trumps enrichment — even an empty `enriched` row still
+    classifies as research_summary."""
+    resources, _ = _resources(tmp_path)
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://arxiv.org/abs/2105.04663",
+        payload="{}",
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://arxiv.org/abs/2105.04663",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "research_summary"
+
+
+def test_triaged_classifies_opinion_essay_for_substack_host(tmp_path: Path):
+    """Article host rule fires when YouTube channel match doesn't."""
+    resources, _ = _resources(tmp_path)
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://ontologist.substack.com/p/essay",
+        payload='{"article":{"final_url":"https://ontologist.substack.com/p/essay","title":"x","description":"y"}}',
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://ontologist.substack.com/p/essay",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "opinion_essay"
+
+
+def test_triaged_survives_malformed_enrichment_json(tmp_path: Path):
+    """Defensive: a malformed enrichment_json (e.g. partial write) falls
+    through to empty signals → unknown shape; asset still succeeds."""
+    resources, _ = _resources(tmp_path)
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://example.com/post",
+        payload="not json",
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/post",
+    )
+    assert result.success
+    assert _get_metadata(result)["content_shape"].text == "unknown"
