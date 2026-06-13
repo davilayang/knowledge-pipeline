@@ -1,6 +1,6 @@
 """Tests for domains.queue_store.sources — the queue_items SQLite layer.
 
-Backs the deferred-learning queue pipeline (extract_complex_contents). The
+Backs the deferred-learning queue pipeline (fetch_extract_queue). The
 schema + writes are owned by the orchestrator; NA reads via
 `get_queue_extraction` against the same SQLite file in mode=ro.
 """

@@ -17,7 +17,7 @@ Multiple rows per ``(notion_page_id, call_kind)`` are allowed — future
 LangGraph refinement loops accumulate history; readers take the most-recent
 via ``ORDER BY extracted_at DESC, id DESC``.
 
-The orchestrator's ``extract_complex_contents`` pipeline owns the writes
+The orchestrator's ``fetch_extract_queue`` pipeline owns the writes
 (``upsert_fetched`` + ``record_extraction_calls``); newsletter-assistant
 reads ``get_queue_extraction`` (flat dict view, composed from the latest
 ``topic_card`` row) or directly against ``extraction_calls`` on the same

@@ -71,7 +71,7 @@ queue_store_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "knowledge-pipeline SQLite — `queue_items` + `extraction_calls` "
-        "tables. Written by triage_queued_items and extract_complex_contents "
+        "tables. Written by triage_knowledge_queue and fetch_extract_queue "
         "assets in this repo. Consumed by snapshot_queue (backup_readings)."
     ),
     metadata={
@@ -85,7 +85,7 @@ notion_queue_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "Notion 'Knowledge OS Queue' database — user-facing capture surface. "
-        "Read by triage_queued_items/triaged."
+        "Read by triage_knowledge_queue/triaged."
     ),
     metadata={
         "owner": dg.MetadataValue.text("user"),
