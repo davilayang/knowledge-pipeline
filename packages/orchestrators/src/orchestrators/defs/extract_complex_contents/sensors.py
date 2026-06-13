@@ -3,7 +3,12 @@ import dagster as dg
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
 from orchestrators.defs.shared.run_failure import mark_notion_failed_from_run
 
-from .def_config import MAX_TO_EXTRACT_PER_TICK, SENSOR_MIN_INTERVAL_S, SUPPORTED_CONTENT_TYPES
+from .def_config import (
+    MAX_TO_EXTRACT_PER_TICK,
+    SENSOR_MIN_INTERVAL_S,
+    SUPPORTED_CONTENT_TYPES,
+    queue_items_partition_def,
+)
 from .schedules import extract_complex_contents_job
 
 
@@ -13,8 +18,9 @@ from .schedules import extract_complex_contents_job
     description=(
         "Polls Notion Knowledge OS Queue for Status=Fetching rows with Content Type ∈ "
         "SUPPORTED_CONTENT_TYPES; triggers extract_complex_contents partitioned on "
-        "notion_page_id. Bounded by MAX_TO_EXTRACT_PER_TICK. Triage registers the dynamic "
-        "partition before this pipeline picks up."
+        "notion_page_id. Bounded by MAX_TO_EXTRACT_PER_TICK. Re-registers the dynamic "
+        "partition for each row so orphan partitions (lost on DAGSTER_HOME reset or "
+        "carried over from a prior deploy) don't crash the run launch."
     ),
 )
 def poll_notion_for_extract(
@@ -27,6 +33,7 @@ def poll_notion_for_extract(
         supported_content_types=SUPPORTED_CONTENT_TYPES,
     )
     run_requests: list[dg.RunRequest] = []
+    page_ids: list[str] = []
     for row in rows:
         page_id = row.get("id")
         if not page_id:
@@ -42,6 +49,7 @@ def poll_notion_for_extract(
             context.log.warning("Skipping page_id=%s with missing Content Type", page_id)
             continue
         last_edited = row.get("last_edited_time") or ""
+        page_ids.append(page_id)
         run_requests.append(
             dg.RunRequest(
                 run_key=f"queue-{page_id}-{last_edited}",
@@ -50,7 +58,16 @@ def poll_notion_for_extract(
             )
         )
 
-    return dg.SensorResult(run_requests=run_requests)
+    # Register the dynamic partition for every row we're about to launch.
+    # Idempotent — already-registered keys are skipped by Dagster. Triage
+    # normally registers first, but a DAGSTER_HOME reset (local dev) or a
+    # row triaged on a prior deploy leaves orphan page_ids that crash the
+    # run launch with DagsterUnknownPartitionError without this self-heal.
+    dynamic_requests = [queue_items_partition_def.build_add_request(page_ids)] if page_ids else []
+    return dg.SensorResult(
+        run_requests=run_requests,
+        dynamic_partitions_requests=dynamic_requests,
+    )
 
 
 @dg.run_failure_sensor(

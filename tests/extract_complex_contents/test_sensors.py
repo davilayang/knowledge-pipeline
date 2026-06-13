@@ -105,10 +105,30 @@ def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability
     assert result.run_requests[0].run_key == "queue-p-1-2026-05-31T10:00:00.000Z"
 
 
-def test_sensor_does_not_register_dynamic_partitions():
+def test_sensor_registers_dynamic_partitions_for_self_heal():
+    """Self-heal against orphan partitions: if a Notion row is at
+    Status=Fetching but its dynamic partition was lost (DAGSTER_HOME reset)
+    or never existed (re-deploy), the sensor must register it before the
+    RunRequest. Otherwise the run launch crashes with
+    DagsterUnknownPartitionError. Triage's pre-registration alone isn't
+    enough — this self-heal closes the gap."""
     notion = MagicMock()
-    notion.query_for_extract.return_value = [_notion_row("p-1", "https://example.com/a")]
+    notion.query_for_extract.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+        _notion_row("p-2", "https://example.com/b"),
+    ]
     result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    assert len(result.dynamic_partitions_requests) == 1
+    assert set(result.dynamic_partitions_requests[0].partition_keys) == {"p-1", "p-2"}
+
+
+def test_sensor_emits_no_partition_requests_when_no_rows():
+    """No Fetching rows → no run requests AND no partition-add requests
+    (empty list, not an add-request with empty keys)."""
+    notion = MagicMock()
+    notion.query_for_extract.return_value = []
+    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    assert result.run_requests == []
     assert result.dynamic_partitions_requests == []
 
 
