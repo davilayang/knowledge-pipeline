@@ -45,6 +45,8 @@ backups/
 # Environment variables
 .env
 .env.deploy
+!.env*.example
+.env*
 
 # Kubernetes secrets with real values
 k8s/secret.yaml

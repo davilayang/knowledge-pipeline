@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.18] — 2026-06-13
+
 ### Changed
 
 - **Triage now seeds Notion `Name` over auto-default titles.** `"New <db_name> page"` (Notion's default for fresh rows) and `"Untitled"` were treated as user-set names and preserved; new `_is_user_set_name` helper filters them so the fetched page title lands instead.
