@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Fetcher Swagger UI now reachable on the Tailnet at `https://<tailnet>/fetcher/docs`.** NA's Caddy reverse-proxies `/fetcher/*` to the `kp-fetcher` alias on `kos_network`; the fetcher container starts with `uvicorn --root-path /fetcher` so Swagger generates the right `openapi.json` URL through the prefix. Internal callers (`http://fetcher:8000/v1/*`, `http://kp-fetcher:8000/v1/*`) are unchanged — the app still listens at `/`. Companion Caddyfile + compose changes land in newsletter-assistant.
+
 ---
 
 ## [0.18.18] — 2026-06-13
