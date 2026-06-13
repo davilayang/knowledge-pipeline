@@ -229,7 +229,15 @@ def extracted(
     # `bundle_sha256` / `model` below are property accesses on this
     # instance — no extra client construction.
     ex = extractor.build()
-    payload, calls = ex.extract(content=row["raw_content"], content_type=content_type)
+    # Phase 5a: content_shape hardcoded to "unknown" until Phase 5b wires it
+    # from the queue row. Behaviour identical to v1 — single generic bundle,
+    # always selected.
+    content_shape = "unknown"
+    payload, calls = ex.extract(
+        content=row["raw_content"],
+        content_type=content_type,
+        content_shape=content_shape,
+    )
 
     tokens_in_total = sum(c.tokens_in for c in calls)
     tokens_out_total = sum(c.tokens_out for c in calls)
@@ -250,7 +258,7 @@ def extracted(
     store.record_extraction_calls(
         notion_page_id=page_id,
         extractor_label=ex.bundle_label,
-        extractor_sha256=ex.bundle_sha256,
+        extractor_sha256=ex.bundle_sha256(content_shape),
         model=ex.model,
         calls=calls,
         tokens_in_total=tokens_in_total,
@@ -271,7 +279,7 @@ def extracted(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
             "extractor_label": dg.MetadataValue.text(ex.bundle_label),
-            "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256[:12]),
+            "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256(content_shape)[:12]),
             "extraction_model": dg.MetadataValue.text(ex.model),
             "extracted_title": dg.MetadataValue.text(topic_card.extracted_title),
             "narrative_chars": dg.MetadataValue.int(len(payload.narrative_md)),

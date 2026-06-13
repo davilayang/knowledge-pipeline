@@ -9,6 +9,7 @@ def test_public_api_importable():
     from workflows.extraction import (
         ExtractionUsage,
         ExtractorProtocol,
+        PromptBundle,
         ThreeCallOpenAIExtractor,
     )
 
@@ -16,23 +17,22 @@ def test_public_api_importable():
     assert ThreeCallOpenAIExtractor.__name__ == "ThreeCallOpenAIExtractor"
     assert ExtractorProtocol.__name__ == "ExtractorProtocol"
     assert ExtractionUsage.__name__ == "ExtractionUsage"
+    assert PromptBundle.__name__ == "PromptBundle"
 
 
-def test_three_call_accepts_per_role_prompts():
-    """Contract: ThreeCallOpenAIExtractor.__init__ takes per-role *_prompt: str
-    arguments directly. No file/label resolution inside the extractor — that's
-    an orchestration concern.
-    """
+def test_three_call_accepts_prompt_sets():
+    """Contract: `ThreeCallOpenAIExtractor.__init__` takes `prompt_sets:
+    dict[str, PromptBundle]`. Per-shape routing requires registering bundles
+    by content_shape; no file / label resolution inside the extractor —
+    that's an orchestration concern."""
     import inspect
 
     from workflows.extraction import ThreeCallOpenAIExtractor
 
     sig = inspect.signature(ThreeCallOpenAIExtractor.__init__)
-    for kwarg in ("narrative_prompt", "topic_card_prompt", "followups_prompt"):
-        assert kwarg in sig.parameters, (
-            f"Expected '{kwarg}' kwarg in {sig}; "
-            "extractor must accept prompt content as a string, not a label."
-        )
+    assert "prompt_sets" in sig.parameters, (
+        f"Expected 'prompt_sets' kwarg in {sig}; " "extractor must accept per-shape PromptBundles."
+    )
 
 
 def test_no_dagster_import_in_workflows_extraction():

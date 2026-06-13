@@ -14,7 +14,7 @@ from typing import Any
 
 import dagster as dg
 import httpx
-from workflows.extraction import ThreeCallOpenAIExtractor
+from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
@@ -200,15 +200,18 @@ class ExtractorRegistry(dg.ConfigurableResource):
         return (_PROMPTS_DIR / f"{label}.md").read_text()
 
     def build(self) -> ThreeCallOpenAIExtractor:
+        # Phase 5a: one bundle registered as the generic fallback. Per-shape
+        # bundles land alongside in Phase 5b once we have lift evidence —
+        # registering more shapes is a single-line addition here.
+        generic_bundle = PromptBundle(
+            narrative=(self._prompt_text(PROMPT_LABEL_NARRATIVE), PROMPT_LABEL_NARRATIVE),
+            topic_card=(self._prompt_text(PROMPT_LABEL_TOPIC_CARD), PROMPT_LABEL_TOPIC_CARD),
+            followups=(self._prompt_text(PROMPT_LABEL_FOLLOWUPS), PROMPT_LABEL_FOLLOWUPS),
+        )
         return ThreeCallOpenAIExtractor(
             api_key=self.openai_api_key,
             model=self.model,
-            narrative_prompt=self._prompt_text(PROMPT_LABEL_NARRATIVE),
-            narrative_prompt_label=PROMPT_LABEL_NARRATIVE,
-            topic_card_prompt=self._prompt_text(PROMPT_LABEL_TOPIC_CARD),
-            topic_card_prompt_label=PROMPT_LABEL_TOPIC_CARD,
-            followups_prompt=self._prompt_text(PROMPT_LABEL_FOLLOWUPS),
-            followups_prompt_label=PROMPT_LABEL_FOLLOWUPS,
+            prompt_sets={"unknown": generic_bundle},
             max_tokens=self.max_tokens,
         )
 

@@ -16,13 +16,18 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from workflows.extraction import ThreeCallOpenAIExtractor
+from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
 from evals.core import FixtureRun, RunStatus, Variant, VariantProvenance
 from evals.extraction.types import ExtractionFixture
 
 
-def _call_extractor(extractor: ThreeCallOpenAIExtractor, content: str, content_type: str) -> Any:
+def _call_extractor(
+    extractor: ThreeCallOpenAIExtractor,
+    content: str,
+    content_type: str,
+    content_shape: str,
+) -> Any:
     """Invoke the extractor regardless of whether a loop is already running.
 
     ThreeCallOpenAIExtractor.extract() wraps its async pipeline with asyncio.run(),
@@ -33,9 +38,14 @@ def _call_extractor(extractor: ThreeCallOpenAIExtractor, content: str, content_t
     try:
         asyncio.get_running_loop()
     except RuntimeError:
-        return extractor.extract(content, content_type=content_type)
+        return extractor.extract(content, content_type=content_type, content_shape=content_shape)
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(extractor.extract, content, content_type=content_type).result()
+        return pool.submit(
+            extractor.extract,
+            content,
+            content_type=content_type,
+            content_shape=content_shape,
+        ).result()
 
 
 def make_three_call_variant(
@@ -76,19 +86,24 @@ def make_three_call_variant(
     cost_fn = cost_estimator or (lambda _in, _out: 0.0)
 
     def _run(fixture: ExtractionFixture) -> FixtureRun:
+        bundle = PromptBundle(
+            narrative=(narrative_prompt_text, prompt_versions.get("narrative", "unknown")),
+            topic_card=(topic_card_prompt_text, prompt_versions.get("topic_card", "unknown")),
+            followups=(followups_prompt_text, prompt_versions.get("followups", "unknown")),
+        )
         extractor = ThreeCallOpenAIExtractor(
             api_key=api_key,
             model=model,
-            narrative_prompt=narrative_prompt_text,
-            narrative_prompt_label=prompt_versions.get("narrative", "unknown"),
-            topic_card_prompt=topic_card_prompt_text,
-            topic_card_prompt_label=prompt_versions.get("topic_card", "unknown"),
-            followups_prompt=followups_prompt_text,
-            followups_prompt_label=prompt_versions.get("followups", "unknown"),
+            prompt_sets={"unknown": bundle},
         )
         t0 = time.monotonic()
         try:
-            payload, records = _call_extractor(extractor, fixture.content, fixture.content_type)
+            payload, records = _call_extractor(
+                extractor,
+                fixture.content,
+                fixture.content_type,
+                content_shape="unknown",
+            )
         except Exception as e:
             duration_ms = int((time.monotonic() - t0) * 1000)
             return FixtureRun(
