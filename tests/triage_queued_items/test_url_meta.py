@@ -1,7 +1,7 @@
-"""Tests for the lightweight URL → (final_url, title, description) fetcher.
+"""Tests for the lightweight URL → (redirected_url, title, description) fetcher.
 
 The fetcher is best-effort: any network or parse error returns an empty
-UrlMeta with final_url = input_url and title/description = None. Triage
+UrlMeta with redirected_url = input_url and title/description = None. Triage
 must not fail on a fetch error.
 """
 
@@ -61,7 +61,7 @@ def test_returns_title_and_description_from_html():
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_META)
     with _patch_get(resp):
         meta = fetch_url_meta("https://example.com/post")
-    assert meta.final_url == "https://example.com/post"
+    assert meta.redirected_url == "https://example.com/post"
     assert meta.title == "Hello World"
     assert meta.description == "A short description of the post."
 
@@ -73,7 +73,7 @@ def test_falls_back_to_og_description_when_meta_description_missing():
     assert meta.description == "OG-only description"
 
 
-def test_returns_final_url_after_redirect():
+def test_returns_redirected_url_after_redirect():
     """httpx exposes the post-redirect URL via resp.url when follow_redirects=True."""
     resp = _fake_response(
         url="https://example.com/final?utm_source=newsletter",
@@ -81,7 +81,7 @@ def test_returns_final_url_after_redirect():
     )
     with _patch_get(resp):
         meta = fetch_url_meta("https://t.co/abc123")
-    assert meta.final_url == "https://example.com/final?utm_source=newsletter"
+    assert meta.redirected_url == "https://example.com/final?utm_source=newsletter"
 
 
 def test_returns_empty_meta_on_non_html_response():
@@ -93,22 +93,22 @@ def test_returns_empty_meta_on_non_html_response():
     )
     with _patch_get(resp):
         meta = fetch_url_meta("https://example.com/paper.pdf")
-    assert meta.final_url == "https://example.com/paper.pdf"
+    assert meta.redirected_url == "https://example.com/paper.pdf"
     assert meta.title is None
     assert meta.description is None
 
 
 def test_returns_empty_meta_on_network_error():
-    """Any httpx exception → empty meta, final_url = input. Does NOT raise."""
+    """Any httpx exception → empty meta, redirected_url = input. Does NOT raise."""
     with _patch_get(exc=httpx.ConnectError("connection refused")):
         meta = fetch_url_meta("https://broken.example.com")
-    assert meta.final_url == "https://broken.example.com"
+    assert meta.redirected_url == "https://broken.example.com"
     assert meta.title is None
     assert meta.description is None
 
 
 def test_returns_empty_meta_on_non_2xx_status():
-    """5xx / 4xx → no parsing; final_url still captured if available."""
+    """5xx / 4xx → no parsing; redirected_url still captured if available."""
     resp = _fake_response(
         url="https://example.com/missing",
         text="<html></html>",
@@ -150,6 +150,6 @@ def test_empty_title_normalized_to_none():
 
 
 def test_returns_immutable_dataclass():
-    meta = UrlMeta(final_url="x", title=None, description=None)
+    meta = UrlMeta(redirected_url="x", title=None, description=None)
     with pytest.raises(Exception):
-        meta.final_url = "y"  # type: ignore[misc]
+        meta.redirected_url = "y"  # type: ignore[misc]

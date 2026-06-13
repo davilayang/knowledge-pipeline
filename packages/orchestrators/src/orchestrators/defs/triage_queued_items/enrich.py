@@ -4,7 +4,7 @@ Per-source HTTP probes dispatched by `content_type`:
 
 - YouTube → oEmbed (channel + title; no API key)
 - arXiv → public Atom API (title + abstract + categories)
-- Article → reuses `url_meta.fetch_url_meta` (final_url + title + description)
+- Article → reuses `url_meta.fetch_url_meta` (redirected_url + title + description)
 - Podcast / Other → empty signals (Phase 2b adds HEAD-sniff for podcasts)
 
 Failure-tolerant: any per-source HTTP / parse error collapses to empty
@@ -53,7 +53,7 @@ class ArxivSignals:
 
 @dataclass(frozen=True)
 class ArticleSignals:
-    final_url: str | None = None
+    redirected_url: str | None = None
     title: str | None = None
     description: str | None = None
 
@@ -121,8 +121,11 @@ def _build_arxiv(data: dict | None) -> ArxivSignals | None:
 def _build_article(data: dict | None) -> ArticleSignals | None:
     if not isinstance(data, dict):
         return None
+    # Accept the old `final_url` key from rows enriched before the rename so
+    # `enrichment_json` payloads written by pre-rename builds still parse.
+    redirected_url = data.get("redirected_url") or data.get("final_url")
     return ArticleSignals(
-        final_url=data.get("final_url"),
+        redirected_url=redirected_url,
         title=data.get("title"),
         description=data.get("description"),
     )
@@ -183,7 +186,7 @@ def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
 def _article_signals(url: str) -> ArticleSignals:
     meta = fetch_url_meta(url)
     return ArticleSignals(
-        final_url=meta.final_url,
+        redirected_url=meta.redirected_url,
         title=meta.title,
         description=meta.description,
     )

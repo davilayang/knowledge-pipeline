@@ -1,4 +1,5 @@
 import json
+import re
 import textwrap
 
 import dagster as dg
@@ -23,6 +24,29 @@ from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import fetch_url_meta
 
 GROUP_NAME = "triage_queued_items"
+
+
+# Notion auto-assigns a default title to fresh rows: "Untitled", or for
+# database rows the locale-specific "New <db_name> page" pattern (e.g.
+# "New queued page" for a "Queue" database). Treat these as blank so
+# triage seeds the Name from the fetched page title — without this guard,
+# the auto-default counts as a user-set title and triage refuses to
+# overwrite it.
+_NOTION_AUTO_NAMES = {"untitled"}
+_NOTION_NEW_PAGE_RE = re.compile(r"^new\s+\S.*\s+page$", re.IGNORECASE)
+
+
+def _is_user_set_name(name: str | None) -> bool:
+    if not name:
+        return False
+    stripped = name.strip()
+    if not stripped:
+        return False
+    if stripped.lower() in _NOTION_AUTO_NAMES:
+        return False
+    if _NOTION_NEW_PAGE_RE.match(stripped):
+        return False
+    return True
 
 
 def _oneline(s: str) -> str:
@@ -172,7 +196,7 @@ def triaged(
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
-    effective_url = meta.final_url or config.url
+    effective_url = meta.redirected_url or config.url
     canonical = normalize_url(effective_url)
     # User override wins if set + valid; typo / empty → URL classifier.
     if config.content_type and config.content_type in ALL_CONTENT_TYPES:
@@ -264,8 +288,10 @@ def triaged(
         raw_content_override=config.raw_content_override,
     )
     # Only seed Notion's Name when the user left it blank — never overwrite a
-    # user-set title. Description is operational and safe to (re)write.
-    name_for_notion = meta.title if (not config.name and meta.title) else None
+    # user-set title. Notion's auto-default ("New queued page", "Untitled")
+    # counts as blank so triage can replace it with the real page title.
+    # Description is operational and safe to (re)write.
+    name_for_notion = meta.title if (not _is_user_set_name(config.name) and meta.title) else None
     status_after = "Fetching"
     triage_notion.write_triaged(
         page_id=page_id,
@@ -286,7 +312,7 @@ def triaged(
         "content_shape_source": dg.MetadataValue.text(content_shape_source),
         "canonical_url": dg.MetadataValue.url(canonical),
         "original_url": dg.MetadataValue.url(config.url),
-        "final_url": dg.MetadataValue.url(effective_url),
+        "redirected_url": dg.MetadataValue.url(effective_url),
         "name": dg.MetadataValue.text(config.name or ""),
         "fetched_title": dg.MetadataValue.text(meta.title or ""),
         "fetched_description": dg.MetadataValue.text(meta.description or ""),
