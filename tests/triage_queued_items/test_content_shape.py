@@ -209,3 +209,30 @@ def test_audio_url_beats_article_host_rule():
         url="https://ontologist.substack.com/audio.mp3",
     )
     assert shape == "podcast_episode"
+
+
+# ---------------- punctuation folding ----------------
+
+
+def test_curly_apostrophe_in_channel_matches_ascii_yaml_entry():
+    """YouTube oEmbed sometimes returns U+2019 (right single quote) where the
+    YAML uses ASCII U+0027 — channel must still match its shape."""
+    shape = classify_content_shape(
+        enrichment=EnrichmentSignals(youtube=YoutubeSignals(channel="Lenny’s Podcast")),
+        content_type="YouTube",
+        url="https://www.youtube.com/watch?v=abc",
+    )
+    assert shape == "podcast_episode"
+
+
+def test_curly_double_quote_in_channel_folds_to_ascii():
+    """Defensive: if oEmbed ever wraps a channel name in U+201C / U+201D,
+    the fold collapses them to the ASCII double quote. (No matching channel
+    in seed YAML, but the fold path must not crash and must still let the
+    classifier reach the fall-through.)"""
+    shape = classify_content_shape(
+        enrichment=EnrichmentSignals(youtube=YoutubeSignals(channel="“Quoted Channel”")),
+        content_type="YouTube",
+        url="https://www.youtube.com/watch?v=abc",
+    )
+    assert shape == "unknown"

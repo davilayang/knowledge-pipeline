@@ -70,6 +70,24 @@ def _host_of(url: str) -> str:
     return (urlparse(url).hostname or "").lower().removeprefix("www.")
 
 
+# YouTube oEmbed sometimes returns typographic quotes (e.g. "Lenny's Podcast"
+# with U+2019) where the YAML lookup tables use the ASCII forms — without
+# folding, the channel silently falls through to `unknown`. `unicodedata.NFKC`
+# does NOT collapse curly → straight apostrophes, so the mapping is explicit.
+_PUNCTUATION_FOLD = str.maketrans(
+    {
+        "‘": "'",  # left single quote
+        "’": "'",  # right single quote (apostrophe)
+        "“": '"',  # left double quote
+        "”": '"',  # right double quote
+    }
+)
+
+
+def _normalize_channel(channel: str) -> str:
+    return channel.translate(_PUNCTUATION_FOLD)
+
+
 def classify_content_shape(
     *,
     enrichment: EnrichmentSignals,
@@ -89,7 +107,7 @@ def classify_content_shape(
 
     # 3. YouTube channel match.
     if enrichment.youtube is not None and enrichment.youtube.channel:
-        channel = enrichment.youtube.channel
+        channel = _normalize_channel(enrichment.youtube.channel)
         if channel in _CONFERENCE_CHANNELS:
             return SHAPE_CONFERENCE_TALK
         if channel in _TUTORIAL_CHANNELS:
