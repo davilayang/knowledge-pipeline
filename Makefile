@@ -17,7 +17,8 @@ dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot)
 	FETCHER_DB_PATH=$(CURDIR)/data/fetches.db uv run --project services/fetcher --env-file .env \
 	  uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) &
 	FETCHER_PID=$$!
-	uv run --env-file .env dagster dev --port 3030 -m orchestrators.definitions
+	mkdir -p .dagster_home
+	DAGSTER_HOME=$(CURDIR)/.dagster_home uv run --env-file .env dagster dev --port 3030 -m orchestrators.definitions
 
 dagster-dev:  ## Start only Dagster local service
 	pkill -f dagster 2>/dev/null || true
