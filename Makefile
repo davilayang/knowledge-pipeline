@@ -14,7 +14,7 @@ dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot). Override 
 	(cd services/fetcher && exec env FETCHER_DB_PATH="$$(pwd)/../../data/fetches.db" \
 	  uv run uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) --env-file ../../.env) &
 	FETCHER_PID=$$!
-	FETCHER_URL=http://localhost:$(FETCHER_PORT) dagster dev --port 3030 -m orchestrators.definitions
+	FETCHER_URL=http://localhost:$(FETCHER_PORT) uv run --env-file .env dagster dev --port 3030 -m orchestrators.definitions
 
 dagster-dev:  ## Start only Dagster (when fetcher is already running elsewhere)
 	pkill -f dagster 2>/dev/null || true
