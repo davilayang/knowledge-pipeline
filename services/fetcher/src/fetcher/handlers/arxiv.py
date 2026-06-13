@@ -19,7 +19,7 @@ STRICT_PAID_TIER = True
 _ARXIV_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
 _ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
 # Same regex shape as NA's `arxiv_fetcher._NEW_ID_RE` / `_OLD_ID_RE` and
-# kp's `packages/orchestrators/.../triage_queued_items/classify.py` —
+# kp's `packages/orchestrators/.../triage_knowledge_queue/classify.py` —
 # three copies, all required to stay byte-for-byte identical. Update
 # all three on any arXiv ID-format change. Can't share: fetcher service
 # is not a kp workspace member, NA is a separate repo.

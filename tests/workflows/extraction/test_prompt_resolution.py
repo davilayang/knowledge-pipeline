@@ -20,7 +20,7 @@ def reload_resources():
     """
     import importlib
 
-    import orchestrators.defs.extract_complex_contents.resources as r
+    import orchestrators.defs.fetch_extract_queue.resources as r
 
     def _reload():
         importlib.reload(r)

@@ -12,7 +12,7 @@ prompts/
 
 ## Resolution
 
-Consumers resolve the prompts root via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory. The orchestrator's `ExtractorRegistry` adapter (`packages/orchestrators/.../extract_complex_contents/resources.py`) defines:
+Consumers resolve the prompts root via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory. The orchestrator's `ExtractorRegistry` adapter (`packages/orchestrators/.../fetch_extract_queue/resources.py`) defines:
 
 ```python
 _DEFAULT_PROMPTS_ROOT = Path(__file__).resolve().parents[6] / "prompts"

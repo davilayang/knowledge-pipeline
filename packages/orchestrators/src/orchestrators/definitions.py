@@ -5,11 +5,11 @@ import dagster as dg
 
 from orchestrators.defs import (
     backup_readings,
-    extract_complex_contents,
+    fetch_extract_queue,
     populate_vector_store,
     shared,
     synthesize_wiki,
-    triage_queued_items,
+    triage_knowledge_queue,
     upstream_sources,
 )
 
@@ -19,6 +19,6 @@ defs = dg.Definitions.merge(
     backup_readings.defs,
     synthesize_wiki.defs,
     populate_vector_store.defs,
-    triage_queued_items.defs,
-    extract_complex_contents.defs,
+    triage_knowledge_queue.defs,
+    fetch_extract_queue.defs,
 )

@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.18.19] — 2026-06-13
+
+### Added
+
+- **Fetcher Swagger UI reachable on the Tailnet at `https://<tailnet>/fetcher/docs`.** Fetcher container starts with `uvicorn --root-path /fetcher` so Swagger generates the right `openapi.json` URL through NA's Caddy reverse proxy; internal callers at `http://fetcher:8000/v1/*` are unchanged.
+
+### Changed
+
+- **Two Dagster pipelines renamed: `extract_complex_contents` → `fetch_extract_queue`, `triage_queued_items` → `triage_knowledge_queue`.** Asset keys, module paths, op names, and `*_DAG_VERSION` constants all move; versions reset to `"1"` (pre-deploy, no materializations to invalidate).
+- **Notion Queue checkbox renamed `Use page body as content` → `Use page body`.** Sensor reads only the new name — rename the property in Notion before pulling.
+
+---
+
 ## [0.18.18] — 2026-06-13
 
 ### Changed

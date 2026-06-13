@@ -43,4 +43,9 @@ WORKDIR /app
 EXPOSE 8000
 
 # Single-worker invariant: see services/fetcher/README.md.
-CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--port", "8000"]
+# --root-path /fetcher: app is reverse-proxied from NA's Caddy at
+# https://<tailnet>/fetcher/* (handle_path strips the prefix), so Swagger
+# UI needs the prefix to generate the right openapi.json URL. Internal
+# callers (http://fetcher:8000/v1/*, http://kp-fetcher:8000/v1/*) are
+# unaffected — the app still listens at /.
+CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--port", "8000", "--root-path", "/fetcher"]

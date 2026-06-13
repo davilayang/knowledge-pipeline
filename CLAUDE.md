@@ -124,11 +124,10 @@ packages/
     defs/
       shared/                  # Shared resources (raw_store, chroma, Notion Queue + queue.db, etc.) + partitions.py
       backup_readings/
-      triage_queued_items/
+      triage_knowledge_queue/
         classify.py            # Pure URL → Content Type / canonicalize (no I/O)
         url_meta.py            # Best-effort HTTP fetch → page title + description
-      extract_complex_contents/
-        fetchers/
+      fetch_extract_queue/
       synthesize_wiki/
       populate_vector_store/
       upstream_sources.py

@@ -1,6 +1,6 @@
 """Shared resources for the Notion Knowledge OS Queue + local queue.db.
 
-Both `triage_queued_items` and `extract_complex_contents` operate on the
+Both `triage_knowledge_queue` and `fetch_extract_queue` operate on the
 same Notion Queue data source and the same `queue_items` SQLite table; the
 resources below consolidate their access so neither pipeline owns the
 class definition.
@@ -111,7 +111,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         page_id: str,
         content_type: str,
         canonical_url: str,
-        status_after: str,  # "Fetching" — extract_complex_contents claims the row
+        status_after: str,  # "Fetching" — fetch_extract_queue claims the row
         content_shape: str | None = None,
         name: str | None = None,
         description: str | None = None,
@@ -246,7 +246,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         the converter doesn't handle (see notion_blocks.blocks_to_markdown).
         Empty page → empty string.
         """
-        from orchestrators.defs.triage_queued_items.notion_blocks import blocks_to_markdown
+        from orchestrators.defs.triage_knowledge_queue.notion_blocks import blocks_to_markdown
 
         client = self._client()
         results: list[dict[str, Any]] = []
