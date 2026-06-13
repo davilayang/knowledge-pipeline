@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.18.16] — 2026-06-13
+
 ### Added
 
 - **`content_shape` now classified at triage time and stored on `queue_items`.** New rules-only classifier `classify_content_shape` reads cached enrichment + URL → one of `conference_talk` / `podcast_episode` / `tutorial` / `opinion_essay` / `research_summary` / `unknown`. Seed rules in `conference_channels.yaml` / `youtube_channel_rules.yaml` / `article_host_rules.yaml`. `triaged` now depends on `enriched`. Notion property write and extractor prompt routing land in later phases.
