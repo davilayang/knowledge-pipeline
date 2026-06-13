@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Triage now seeds Notion `Name` over auto-default titles.** `"New <db_name> page"` (Notion's default for fresh rows) and `"Untitled"` were treated as user-set names and preserved; new `_is_user_set_name` helper filters them so the fetched page title lands instead.
+- **`final_url` renamed to `redirected_url`** on `UrlMeta`, `ArticleSignals`, and the `triaged` materialization metadata key — distinguishes "post-HTTP-redirect URL" from `canonical_url` (dedup key) and `original_url` (raw input). `enrich._build_article` reads both the new and old keys so rows enriched before the rename still parse.
+- **`poll_notion_for_extract` self-heals dynamic partitions.** Previously assumed triage had pre-registered every page_id's partition; orphan rows (DAGSTER_HOME reset, prior-deploy carryover) crashed the run launch with `DagsterUnknownPartitionError`. Sensor now registers each polled page_id idempotently in the same `SensorResult`.
+
 ---
 
 ## [0.18.17] — 2026-06-13

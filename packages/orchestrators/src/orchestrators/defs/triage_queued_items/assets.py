@@ -80,9 +80,8 @@ class EnrichedInput(dg.Config):
         source (YouTube oEmbed, arXiv Atom API, article HTML meta) and
         cache as enrichment_json on the queue_items row. Failure-tolerant
         — any per-source HTTP error collapses to empty signals; the asset
-        always succeeds. Phase 3 wires the cached signals into the
-        content_shape classifier; for now `triaged` runs in parallel and
-        ignores this output.
+        always succeeds. Consumed by `triaged` for content_shape
+        classification.
         """
     ),
 )
@@ -162,26 +161,13 @@ class TriageInput(dg.Config):
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=_oneline(
         """
-        One row → fetch URL meta (title + short description, redirects
-        followed) → classify URL, canonicalize, then commit to local store +
-        Notion. Reads `enrichment_json` cached by the `enriched` sibling
-        asset to classify `content_shape` (drives the extractor's per-shape
-        prompt routing in Phase 5). Notion gets a `Content Shape` SELECT
-        write next to `Content Type`; user override on either property
-        wins over the classifier on the next triage. Two terminal
-        Notion states: Status=Skipped if the canonical URL duplicates an
-        existing queue_items row (queue.db unchanged, original cohort
-        stays the single source); Status=Fetching otherwise, and
-        extract_complex_contents picks the row up and routes the URL to
-        the fetcher service (its article handler is a catch-all for
-        anything not yt/arxiv/pdf/medium, so Article/Other still land
-        somewhere). Notion Status write is the last API call so
-        partially-triaged states can't be picked up by the extract
-        sensor. Name is seeded from the fetched page title when the user
-        left it blank — extract's `published` later upgrades it to
-        `topic_card.extracted_title` once the LLM has produced a sharper
-        read. Description is always written when the fetch produced one
-        (extract overwrites on a hit).
+        Per-row: fetch URL meta → classify content_type + content_shape
+        (consumes `enriched`'s cache) → dedup → commit to queue.db + Notion.
+        User can override Content Type / Content Shape SELECTs on the
+        Notion row; valid overrides win over the classifier. Notion Status
+        write is the last API call so the extract sensor never sees a
+        partially-triaged row. See the pipeline README for the state
+        machine + dedup / Name-seeding semantics.
         """
     ),
 )
@@ -258,16 +244,10 @@ def triaged(
             }
         )
 
-    # Load enrichment cached by the `enriched` sibling asset and classify
-    # content_shape. `enriched` always lands a row first (same partition,
-    # asset dep), so `get_row` will hit; defensive `from_json` collapses
-    # any malformed / missing payload to empty signals → `unknown` shape.
     existing_row = triage_store.get_row(notion_page_id=page_id)
     enrichment_json = (existing_row or {}).get("enrichment_json")
     enrichment = EnrichmentSignals.from_json(enrichment_json)
-    # User override wins if set + valid; typo / empty → rules classifier.
-    # Mirrors the content_type override semantics so Notion edits behave
-    # the same on both axes.
+    # Same override-vs-classifier shape as content_type above.
     if config.content_shape and config.content_shape in ALL_CONTENT_SHAPES:
         content_shape = config.content_shape
         content_shape_source = "notion"
