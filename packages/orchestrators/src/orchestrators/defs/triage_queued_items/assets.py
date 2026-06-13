@@ -16,7 +16,7 @@ from .classify import (
     classify_content_type,
     normalize_url,
 )
-from .content_shape import classify_content_shape
+from .content_shape import ALL_CONTENT_SHAPES, classify_content_shape
 from .def_config import PIPELINE_TAG, queue_items_partition_def
 from .enrich import EnrichmentSignals, enrich_url
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
@@ -103,10 +103,12 @@ class TriageInput(dg.Config):
     """Typed input for the triage asset. Sensor populates from Notion;
     manual UI launches must supply via the Launchpad config form.
 
-    `content_type` and `name` are user overrides — set on the Notion row
-    before triage runs. Empty / typo'd content_type falls back to URL
-    classification. `name` is metadata-only (passes through to the run
-    materialization for observability; triage doesn't write it back).
+    `content_type`, `content_shape`, and `name` are user overrides — set
+    on the Notion row before triage runs. Empty / typo'd `content_type`
+    falls back to URL classification; empty / typo'd `content_shape`
+    falls back to the rules classifier. `name` is metadata-only (passes
+    through to the run materialization for observability; triage doesn't
+    write it back).
     `added_at_iso` is an Added At backfill — the sensor sets it to the
     Notion page's `created_time` when the row has no Added At (mobile
     captures often omit it); None means "leave Added At alone."
@@ -117,6 +119,7 @@ class TriageInput(dg.Config):
 
     url: str
     content_type: str | None = None
+    content_shape: str | None = None
     name: str | None = None
     added_at_iso: str | None = None
     raw_content_override: str = ""
@@ -139,8 +142,9 @@ class TriageInput(dg.Config):
         followed) → classify URL, canonicalize, then commit to local store +
         Notion. Reads `enrichment_json` cached by the `enriched` sibling
         asset to classify `content_shape` (drives the extractor's per-shape
-        prompt routing in Phase 5; written to queue.db only this phase —
-        Notion Content Shape property lands in Phase 4). Two terminal
+        prompt routing in Phase 5). Notion gets a `Content Shape` SELECT
+        write next to `Content Type`; user override on either property
+        wins over the classifier on the next triage. Two terminal
         Notion states: Status=Skipped if the canonical URL duplicates an
         existing queue_items row (queue.db unchanged, original cohort
         stays the single source); Status=Fetching otherwise, and
@@ -237,11 +241,19 @@ def triaged(
     existing_row = triage_store.get_row(notion_page_id=page_id)
     enrichment_json = (existing_row or {}).get("enrichment_json")
     enrichment = EnrichmentSignals.from_json(enrichment_json)
-    content_shape = classify_content_shape(
-        enrichment=enrichment,
-        content_type=content_type,
-        url=canonical,
-    )
+    # User override wins if set + valid; typo / empty → rules classifier.
+    # Mirrors the content_type override semantics so Notion edits behave
+    # the same on both axes.
+    if config.content_shape and config.content_shape in ALL_CONTENT_SHAPES:
+        content_shape = config.content_shape
+        content_shape_source = "notion"
+    else:
+        content_shape = classify_content_shape(
+            enrichment=enrichment,
+            content_type=content_type,
+            url=canonical,
+        )
+        content_shape_source = "classified"
 
     triage_store.upsert_triaged(
         notion_page_id=page_id,
@@ -258,6 +270,7 @@ def triaged(
     triage_notion.write_triaged(
         page_id=page_id,
         content_type=content_type,
+        content_shape=content_shape,
         canonical_url=canonical,
         status_after=status_after,
         name=name_for_notion,
@@ -270,6 +283,7 @@ def triaged(
         "content_type": dg.MetadataValue.text(content_type),
         "content_type_source": dg.MetadataValue.text(content_type_source),
         "content_shape": dg.MetadataValue.text(content_shape),
+        "content_shape_source": dg.MetadataValue.text(content_shape_source),
         "canonical_url": dg.MetadataValue.url(canonical),
         "original_url": dg.MetadataValue.url(config.url),
         "final_url": dg.MetadataValue.url(effective_url),

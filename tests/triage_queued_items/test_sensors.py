@@ -13,6 +13,7 @@ def _notion_row(
     last_edited: str = "2026-06-01T10:00:00.000Z",
     created_time: str = "2026-06-01T09:00:00.000Z",
     content_type: str | None = None,
+    content_shape: str | None = None,
     name: str = "",
     added_at: str | None = None,
     use_page_body: bool | None = None,
@@ -20,6 +21,8 @@ def _notion_row(
     props: dict = {"URL": {"url": url}}
     if content_type is not None:
         props["Content Type"] = {"select": {"name": content_type}}
+    if content_shape is not None:
+        props["Content Shape"] = {"select": {"name": content_shape}}
     if name:
         props["Name"] = {"title": [{"plain_text": name}]}
     if added_at is not None:
@@ -97,6 +100,26 @@ def test_sensor_carries_url_to_enriched_op():
     ops_config = result.run_requests[0].run_config["ops"]
     enriched_cfg = ops_config["triage_queued_items__enriched"]["config"]
     assert enriched_cfg["url"] == "https://example.com/a"
+
+
+def test_sensor_reads_user_set_content_shape():
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a", content_shape="conference_talk"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg["content_shape"] == "conference_talk"
+
+
+def test_sensor_emits_none_content_shape_when_unset():
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_queued_items__triaged"]["config"]
+    assert triaged_cfg.get("content_shape") is None
 
 
 def test_sensor_reads_user_set_content_type():
