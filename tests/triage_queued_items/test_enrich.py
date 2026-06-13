@@ -171,7 +171,7 @@ def test_article_signals_empty_when_url_meta_returns_nothing():
 
 
 def test_enrich_url_returns_empty_signals_for_podcast():
-    """Phase 2a doesn't enrich podcast URLs — covered by Phase 2b."""
+    """Podcast URLs aren't enriched in `enrich_url` — out of scope here."""
     with patch("orchestrators.defs.triage_queued_items.enrich.httpx.get") as fake:
         signals = enrich_url("https://podtrac.example.com/show.mp3", "Podcast")
     assert signals == EnrichmentSignals()

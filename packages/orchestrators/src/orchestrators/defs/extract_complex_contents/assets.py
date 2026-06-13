@@ -41,7 +41,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 @dg.asset(
     key=["extract_complex_contents", "fetched"],
     group_name=GROUP_NAME,
-    compute_kind="http",
+    kinds={"http", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -183,7 +183,7 @@ def fetched(
 @dg.asset(
     key=["extract_complex_contents", "extracted"],
     group_name=GROUP_NAME,
-    compute_kind="openai",
+    kinds={"openai", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -230,9 +230,9 @@ def extracted(
     # instance — no extra client construction.
     ex = extractor.build()
     # Read the user-visible / classifier-emitted content_shape written by
-    # the triaged asset (Phase 3). NULL pre-Phase-3 rows (or any row where
-    # the classifier returned "unknown") fall back to the unknown bundle
-    # inside the extractor — bundle selection is the extractor's concern.
+    # the triaged asset. NULL (legacy rows, or rows the classifier returned
+    # `unknown` for) falls back to the unknown bundle inside the extractor
+    # — bundle selection is the extractor's concern.
     content_shape = row.get("content_shape") or "unknown"
     payload, calls = ex.extract(
         content=row["raw_content"],
@@ -324,7 +324,7 @@ def extracted(
 @dg.asset(
     key=["extract_complex_contents", "published"],
     group_name=GROUP_NAME,
-    compute_kind="notion",
+    kinds={"notion", "sqlite"},
     code_version=EXTRACT_COMPLEX_CONTENTS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},

@@ -582,7 +582,7 @@ def test_triaged_substitutes_podcast_url_to_youtube_on_match(tmp_path: Path):
 def test_triaged_keeps_podcast_classification_when_no_substitution(tmp_path: Path):
     """When no YouTube equivalent is found, the row stays Podcast with
     the original audio URL — fetcher service will handle it via the
-    podcast handler (Phase 5b) or fall through to article handler today."""
+    podcast handler (when wired) or fall through to article handler today."""
     resources, notion = _resources(tmp_path)
     podcast_url = "https://traffic.libsyn.com/unknown-show/episode.mp3"
     with patch(
@@ -667,7 +667,7 @@ def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_pa
 def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
     """No prior `enriched` materialization → from_json(None) → empty signals
     → unknown shape. Asset must not crash and must write `unknown` to
-    queue.db (Phase 5 extractor will fall back to generic prompt)."""
+    queue.db (extractor will fall back to generic prompt for unknown)."""
     resources, _ = _resources(tmp_path)
     result = _materialize(
         partition_key="p-1",

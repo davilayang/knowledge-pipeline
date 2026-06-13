@@ -175,7 +175,7 @@ def test_get_latest_extraction_calls_returns_empty_for_unknown_page(db_path: Pat
 
 
 def test_record_extraction_calls_persists_prompt_set_shape(db_path: Path):
-    """Phase 5b: each call carries the PromptBundle shape that fired.
+    """Each call carries the PromptBundle shape that fired.
     Reader returns it so downstream eval queries can group runs by
     `prompt_set_shape` without re-deriving from sha lookups."""
     record_extraction_calls(

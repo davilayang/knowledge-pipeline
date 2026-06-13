@@ -118,7 +118,7 @@ def _snapshot_one_dir(
 @dg.asset(
     key=["snapshots", "raw_store"],
     group_name="backup",
-    compute_kind="sqlite",
+    kinds={"sqlite"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep("raw_store")],
@@ -134,7 +134,7 @@ def snapshot_raw_store(
 @dg.asset(
     key=["snapshots", "sessions"],
     group_name="backup",
-    compute_kind="sqlite",
+    kinds={"sqlite"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep("session_store")],
@@ -150,7 +150,7 @@ def snapshot_sessions(
 @dg.asset(
     key=["snapshots", "notes"],
     group_name="backup",
-    compute_kind="file",
+    kinds={"file"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -165,7 +165,7 @@ def snapshot_notes(
 @dg.asset(
     key=["snapshots", "research"],
     group_name="backup",
-    compute_kind="sqlite",
+    kinds={"sqlite"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep("research_store")],
@@ -181,7 +181,7 @@ def snapshot_research(
 @dg.asset(
     key=["snapshots", "queue"],
     group_name="backup",
-    compute_kind="sqlite",
+    kinds={"sqlite"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep("queue_store")],
@@ -206,7 +206,7 @@ def snapshot_queue(
 @dg.asset(
     key=["google_drive", "storage_capacity"],
     group_name="backup",
-    compute_kind="googledrive",
+    kinds={"googledrive"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[
@@ -283,7 +283,7 @@ def storage_capacity(context: dg.AssetExecutionContext, rclone: RcloneResource):
 @dg.asset(
     key=["google_drive", "uploaded_snapshots"],
     group_name="backup",
-    compute_kind="googledrive",
+    kinds={"googledrive"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "storage_capacity"])],
@@ -359,7 +359,7 @@ def upload_snapshots_to_drive(
 @dg.asset(
     key=["google_drive", "pruned_old_backups"],
     group_name="backup",
-    compute_kind="googledrive",
+    kinds={"googledrive"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],
@@ -403,7 +403,7 @@ def prune_drive_backups(
 @dg.asset(
     key=["local_disk", "pruned_old_backups"],
     group_name="backup",
-    compute_kind="file",
+    kinds={"file"},
     code_version=BACKUP_READINGS_DAG_VERSION,
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep(["google_drive", "uploaded_snapshots"])],

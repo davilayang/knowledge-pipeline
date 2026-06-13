@@ -25,7 +25,7 @@ triage_queued_items_job  (partition_key = notion_page_id)
                        substitution via podcast_canonicalize.py on map hit;
                        classify content_shape via rules over enrichment +
                        URL; commit to local store + Notion. Notion Content
-                       Shape property write lands in Phase 4.)
+                       commit to local store + Notion.)
                 │
                 ├──► canonical_url matches an existing queue_items row?
                 │    → Notion Status=Skipped, Error="Duplicate of <other_page_id>"

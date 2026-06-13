@@ -8,8 +8,10 @@ substitutes the YouTube URL into the canonical_url for that queue row —
 the fetcher service then routes the URL via its youtube handler and we
 get a free transcript instead of paying for Whisper transcription.
 
-Substring + fuzzy match (no date-proximity heuristic) — see Phase 5 plan
-for the decision.
+Substring + fuzzy match (no date-proximity heuristic) — episode titles
+across podcast / YouTube versions of the same show are stable enough
+that fuzzy match on title alone hits real overlaps without false
+positives.
 """
 
 import re

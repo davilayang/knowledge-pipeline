@@ -200,8 +200,8 @@ class ExtractorRegistry(dg.ConfigurableResource):
         return (_PROMPTS_DIR / f"{label}.md").read_text()
 
     def build(self) -> ThreeCallOpenAIExtractor:
-        # Phase 5a: one bundle registered as the generic fallback. Per-shape
-        # bundles land alongside in Phase 5b once we have lift evidence —
+        # One bundle registered as the generic fallback. Per-shape bundles
+        # land alongside once Phase-6 lift evidence motivates them —
         # registering more shapes is a single-line addition here.
         generic_bundle = PromptBundle(
             narrative=(self._prompt_text(PROMPT_LABEL_NARRATIVE), PROMPT_LABEL_NARRATIVE),

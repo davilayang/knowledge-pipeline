@@ -453,7 +453,7 @@ def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
 
 
 def test_extracted_passes_content_shape_from_queue_row(tmp_path: Path):
-    """Phase 5b: asset reads content_shape from queue_items and passes it
+    """asset reads content_shape from queue_items and passes it
     through to the extractor + bundle_sha256, so the per-shape PromptBundle
     fires."""
     db_path = tmp_path / "q.db"

@@ -139,12 +139,12 @@ class NotionQueueResource(dg.ConfigurableResource):
             "Content Type": {"select": {"name": content_type}},
             "Canonical URL": {"rich_text": [{"text": {"content": canonical_url}}]},
         }
-        # Content Shape is the orthogonal extractor-routing axis (Phase 4 of
-        # the content-shape rollout). Skipped when `unknown` — leaves the
-        # Notion property empty so users can pre-populate it as an override
-        # without triage stomping on it next tick. SELECT options must exist
-        # on the Notion DB; absence surfaces as a Notion API validation error
-        # via update_page, which the run_failure_sensor writes back as Failed.
+        # Content Shape is the orthogonal extractor-routing axis. Skipped
+        # when `unknown` — leaves the Notion property empty so users can
+        # pre-populate it as an override without triage stomping on it next
+        # tick. SELECT options must exist on the Notion DB; absence surfaces
+        # as a Notion API validation error via update_page, which the
+        # run_failure_sensor writes back as Failed.
         if content_shape and content_shape != "unknown":
             properties["Content Shape"] = {"select": {"name": content_shape}}
         # Strip both ends — incoming title/description may include trailing

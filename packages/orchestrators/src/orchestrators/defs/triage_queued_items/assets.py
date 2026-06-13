@@ -69,7 +69,7 @@ class EnrichedInput(dg.Config):
 @dg.asset(
     key=["triage_queued_items", "enriched"],
     group_name=GROUP_NAME,
-    compute_kind="http",
+    kinds={"http", "sqlite"},
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     deps=[dg.AssetDep("notion_queue")],
@@ -151,7 +151,7 @@ class TriageInput(dg.Config):
 @dg.asset(
     key=["triage_queued_items", "triaged"],
     group_name=GROUP_NAME,
-    compute_kind="notion",
+    kinds={"notion", "sqlite"},
     code_version=TRIAGE_QUEUED_ITEMS_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     deps=[

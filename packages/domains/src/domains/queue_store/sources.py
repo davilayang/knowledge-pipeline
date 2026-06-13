@@ -209,11 +209,9 @@ def upsert_triaged(
     `get_queue_extraction` would otherwise serve last-cohort Topic Cards while
     the row is back at Status=Fetching.
 
-    `content_shape` is the orthogonal extractor-routing axis introduced in
-    Phase 1 of the content-shape rollout. `None` writes NULL — `get_content_shape`
-    coalesces NULL → `"unknown"` so the extractor's per-shape lookup falls
-    through to the generic fallback bundle. Phase 3 wires the classifier;
-    until then triage continues passing None and downstream stays generic."""
+    `content_shape` is the orthogonal extractor-routing axis. `None` writes
+    NULL; `get_content_shape` coalesces NULL → `"unknown"` so the extractor's
+    per-shape lookup falls through to the generic fallback bundle."""
     with _connect(db_path) as conn:
         conn.execute(
             """
@@ -269,12 +267,13 @@ def upsert_enriched(
     enrichment_json: str,
 ) -> None:
     """Land the `enriched` asset's signals cache. Idempotent by page_id —
-    re-materialising overwrites. Phase 2 wires `enriched` BEFORE `triaged`,
-    so this often creates the row. `url` is required to satisfy the NOT NULL
-    column constraint and to let any reader in the enriched-but-not-yet-
-    triaged window see the captured URL instead of an empty placeholder. When
-    `triaged` lands after, its ON CONFLICT overwrites url / canonical_url /
-    content_type; enrichment_json is preserved across that re-write.
+    re-materialising overwrites. `enriched` runs before `triaged` in the
+    asset graph, so this often creates the row. `url` is required to satisfy
+    the NOT NULL column constraint and to let any reader in the enriched-
+    but-not-yet-triaged window see the captured URL instead of an empty
+    placeholder. When `triaged` lands after, its ON CONFLICT overwrites
+    url / canonical_url / content_type; enrichment_json is preserved across
+    that re-write.
 
     Dedup-skipped pages retain an orphan enrichment_json row by design
     (cheap, useful on re-queue). Does NOT touch routing or fetch columns;
@@ -295,7 +294,7 @@ def get_content_shape(*, db_path: Path, notion_page_id: str) -> str:
     """Single source of truth for "NULL → unknown". Consumers MUST go through
     this rather than read `content_shape` off `get_row` so the extractor's
     per-shape prompt routing never KeyErrors on a None left over from a row
-    triaged before Phase 1 landed."""
+    triaged before the column existed."""
     with _connect(db_path) as conn:
         row = conn.execute(
             "SELECT content_shape FROM queue_items WHERE notion_page_id = ?",

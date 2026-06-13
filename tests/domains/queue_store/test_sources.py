@@ -415,10 +415,10 @@ def test_find_canonical_url_duplicate_ignores_other_urls(db_path: Path):
 
 
 def test_schema_includes_content_shape_columns(db_path: Path):
-    """Phase 1 schema landing: queue_items carries content_shape (extractor
-    routing) + enrichment_json (signals cache) alongside content_type. NULL
-    until triage/enrich materialise — `"unknown"` is the consumer-facing
-    coalesce, not a column default."""
+    """queue_items carries content_shape (extractor routing) + enrichment_json
+    (signals cache) alongside content_type. NULL until triage/enrich
+    materialise — `"unknown"` is the consumer-facing coalesce, not a column
+    default."""
     with sqlite3.connect(db_path) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
     assert "content_shape" in cols
@@ -468,7 +468,7 @@ def test_upsert_enriched_stores_json_and_overwrites_on_conflict(db_path: Path):
 
 
 def test_upsert_enriched_creates_row_when_no_triaged_yet(db_path: Path):
-    """Phase 2 sequence: `enriched` runs before `triaged`, so `upsert_enriched`
+    """`enriched` runs before `triaged` in the asset graph, so `upsert_enriched`
     must create the row with the captured URL (not an empty placeholder). When
     `triaged` lands after, ON CONFLICT overwrites the identity columns it owns
     (url / canonical_url / content_type) while enrichment_json survives."""
@@ -503,9 +503,7 @@ def test_upsert_enriched_creates_row_when_no_triaged_yet(db_path: Path):
 
 
 def test_upsert_triaged_accepts_content_shape(db_path: Path):
-    """Phase 1 extends `upsert_triaged` to land `content_shape` for the
-    extractor's per-shape prompt routing. Phase 3 will wire the classifier;
-    Phase 1 just makes the column writable."""
+    """`upsert_triaged` accepts `content_shape` and lands it on the row."""
     upsert_triaged(
         db_path=db_path,
         notion_page_id="p-cs",

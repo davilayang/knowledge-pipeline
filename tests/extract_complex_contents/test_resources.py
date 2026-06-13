@@ -264,7 +264,7 @@ def test_registry_build_returns_extractor_with_shape_routed_bundle_label(
 def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
     """Bundle sha covers model + the three prompt texts — bumping any one
     flips the cohort-staleness signal written to queue_items.extractor_sha256.
-    Phase 5a registers only the `unknown` bundle, so the staleness check
+    Registry registers only the `unknown` bundle today, so the staleness check
     runs against that key."""
     base = _make_registry(tmp_path, monkeypatch).build()
     other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE").build()
