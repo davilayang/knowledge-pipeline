@@ -3,24 +3,23 @@
 .ONESHELL:
 SHELL := /bin/bash
 
-# Single source of truth = .env. CLI override still works:
+# .env is single source of truth for FETCHER_URL. CLI override still wins:
 #   FETCHER_URL=http://localhost:8080 make dev
-_FETCHER_URL_FROM_ENV := $(shell bash -c 'set -a; . .env 2>/dev/null; printf %s "$${FETCHER_URL:-http://localhost:8765}"')
-FETCHER_URL ?= $(_FETCHER_URL_FROM_ENV)
+FETCHER_URL ?= $(shell bash -c 'set -a; . .env 2>/dev/null; printf %s "$${FETCHER_URL:-http://localhost:8765}"')
 FETCHER_PORT := $(shell echo "$(FETCHER_URL)" | sed -E 's|^.*:([0-9]+).*$$|\1|')
 
 .PHONY: dev dagster-dev fetcher-dev build up down logs tunnel
 
-dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot). Override URL with FETCHER_URL=http://localhost:8080 make dev
-	pkill -f dagster 2>/dev/null || true
+dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot)
+	pkill -f 'dagster|uvicorn fetcher' 2>/dev/null || true
 	trap '[ -n "$$FETCHER_PID" ] && kill $$FETCHER_PID 2>/dev/null; docker compose --profile data down' EXIT INT TERM
 	docker compose --profile data up -d
-	(cd services/fetcher && exec env FETCHER_DB_PATH="$$(pwd)/../../data/fetches.db" \
-	  uv run uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) --env-file ../../.env) &
+	FETCHER_DB_PATH=$(CURDIR)/data/fetches.db uv run --project services/fetcher --env-file .env \
+	  uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) &
 	FETCHER_PID=$$!
 	uv run --env-file .env dagster dev --port 3030 -m orchestrators.definitions
 
-dagster-dev:  ## Start only Dagster (when fetcher is already running elsewhere)
+dagster-dev:  ## Start only Dagster local service
 	pkill -f dagster 2>/dev/null || true
 	uv run poe dagster-dev
 
