@@ -42,11 +42,11 @@ backups/
 .tmp_dagster_home*
 .dagster_home/
 
-# Environment variables
+# Environment variables (except suffixed with .example)
 .env
 .env.deploy
-!.env*.example
 .env*
+!.env*.example
 
 # Kubernetes secrets with real values
 k8s/secret.yaml
