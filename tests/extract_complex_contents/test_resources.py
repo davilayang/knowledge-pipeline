@@ -253,19 +253,23 @@ def _make_registry(
     return ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
 
 
-def test_registry_build_returns_extractor_with_3call_v1_bundle_label(tmp_path: Path, monkeypatch):
+def test_registry_build_returns_extractor_with_shape_routed_bundle_label(
+    tmp_path: Path, monkeypatch
+):
     registry = _make_registry(tmp_path, monkeypatch)
     ex = registry.build()
-    assert ex.bundle_label == "3call_v1"
+    assert ex.bundle_label == "3call_v2_shape_routed"
 
 
 def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
     """Bundle sha covers model + the three prompt texts — bumping any one
-    flips the cohort-staleness signal written to queue_items.extractor_sha256."""
+    flips the cohort-staleness signal written to queue_items.extractor_sha256.
+    Phase 5a registers only the `unknown` bundle, so the staleness check
+    runs against that key."""
     base = _make_registry(tmp_path, monkeypatch).build()
     other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE").build()
-    assert other.bundle_sha256 != base.bundle_sha256
-    assert len(base.bundle_sha256) == 64
+    assert other.bundle_sha256("unknown") != base.bundle_sha256("unknown")
+    assert len(base.bundle_sha256("unknown")) == 64
 
 
 def test_extractor_uses_real_v1_prompt_labels():
@@ -285,7 +289,7 @@ def test_extractor_uses_real_v1_prompt_labels():
     assert "Core idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
     assert "PER-FIELD CONTRACTS" in registry._prompt_text(PROMPT_LABEL_TOPIC_CARD)
     assert "follow-up questions" in registry._prompt_text(PROMPT_LABEL_FOLLOWUPS)
-    assert len(registry.build().bundle_sha256) == 64
+    assert len(registry.build().bundle_sha256("unknown")) == 64
 
 
 # -------- QueueStoreResource --------

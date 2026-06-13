@@ -129,8 +129,10 @@ def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMoc
     ]
     ex_instance = MagicMock()
     ex_instance.model = "gpt-4o-mini"
-    ex_instance.bundle_label = "3call_v1"
-    ex_instance.bundle_sha256 = "b" * 64
+    ex_instance.bundle_label = "3call_v2_shape_routed"
+    # bundle_sha256 is now a method `(content_shape) -> str`. Returning a
+    # constant 64-char sha matches what the asset writes to queue_items.
+    ex_instance.bundle_sha256 = MagicMock(return_value="b" * 64)
     ex_instance.extract.return_value = (payload, calls)
 
     registry = MagicMock()
@@ -401,7 +403,7 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
 
     # queue_items cohort fields updated.
     row = store.get_row("p-1")
-    assert row["extractor_label"] == "3call_v1"
+    assert row["extractor_label"] == "3call_v2_shape_routed"
     assert row["extractor_sha256"] == "b" * 64
     assert row["tokens_in_total"] == 600  # 200 + 250 + 150
     assert row["tokens_out_total"] == 240  # 100 + 80 + 60
@@ -442,6 +444,9 @@ def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
     ex_instance = extractor.build.return_value
     ex_instance.extract.assert_called_once()
     assert ex_instance.extract.call_args.kwargs["content_type"] == "arXiv"
+    # Phase 5a: content_shape is hardcoded to "unknown" until 5b wires it
+    # from the queue row. Asset must pass it through to the extractor.
+    assert ex_instance.extract.call_args.kwargs["content_shape"] == "unknown"
 
 
 def test_extracted_builds_extractor_exactly_once_per_run(tmp_path: Path):
@@ -476,7 +481,7 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     assert "Narrative" in metadata["narrative_preview"].md_str
     assert "Visible Title" in metadata["topic_card_preview"].md_str
     assert metadata["followups_count"].value == 4
-    assert metadata["extractor_label"].text == "3call_v1"
+    assert metadata["extractor_label"].text == "3call_v2_shape_routed"
     # Both timing perspectives present — total_model_time_ms is sum of per-call
     # durations (what you pay), wall_clock_ms is narrative + max(topic,
     # followups) since calls 2+3 run in parallel inside asyncio.gather.

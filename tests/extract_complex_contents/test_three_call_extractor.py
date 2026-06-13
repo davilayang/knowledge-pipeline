@@ -10,9 +10,26 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+from workflows.extraction import PromptBundle
 from workflows.extraction.three_call_openai import (
     ThreeCallOpenAIExtractor,
 )
+
+
+def _bundle(
+    *,
+    narrative_text: str = "NARRATIVE_PROMPT",
+    narrative_label: str = "narrative_v1",
+    topic_card_text: str = "TOPIC_CARD_PROMPT",
+    topic_card_label: str = "topic_card_v1",
+    followups_text: str = "FOLLOWUPS_PROMPT",
+    followups_label: str = "followups_v1",
+) -> PromptBundle:
+    return PromptBundle(
+        narrative=(narrative_text, narrative_label),
+        topic_card=(topic_card_text, topic_card_label),
+        followups=(followups_text, followups_label),
+    )
 
 
 def _topic_card_obj() -> TopicCard:
@@ -80,19 +97,16 @@ def extractor() -> ThreeCallOpenAIExtractor:
     return ThreeCallOpenAIExtractor(
         api_key="test",
         model="gpt-4.1-mini",
-        narrative_prompt="NARRATIVE_PROMPT",
-        narrative_prompt_label="narrative_v1",
-        topic_card_prompt="TOPIC_CARD_PROMPT",
-        topic_card_prompt_label="topic_card_v1",
-        followups_prompt="FOLLOWUPS_PROMPT",
-        followups_prompt_label="followups_v1",
+        prompt_sets={"unknown": _bundle()},
     )
 
 
 def test_extract_returns_extraction_payload_with_three_call_outputs(extractor):
     client = _wire_client("# narrative body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        payload, calls = extractor.extract(content="raw", content_type="Article")
+        payload, calls = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
     assert isinstance(payload, ExtractionPayload)
     assert payload.narrative_md == "# narrative body"
     assert payload.topic_card.extracted_title == "t"
@@ -102,7 +116,7 @@ def test_extract_returns_extraction_payload_with_three_call_outputs(extractor):
 def test_extract_returns_one_call_record_per_call(extractor):
     client = _wire_client("# narrative body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        _, calls = extractor.extract(content="raw", content_type="Article")
+        _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(calls) == 3
     kinds = {c.call_kind for c in calls}
     assert kinds == {"narrative", "topic_card", "followups"}
@@ -113,12 +127,12 @@ def test_extract_returns_one_call_record_per_call(extractor):
 def test_extract_records_carry_prompt_label_and_sha(extractor):
     client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        _, calls = extractor.extract(content="raw", content_type="Article")
+        _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
     assert by_kind["narrative"].prompt_label == "narrative_v1"
     assert by_kind["topic_card"].prompt_label == "topic_card_v1"
     assert by_kind["followups"].prompt_label == "followups_v1"
-    for kind, c in by_kind.items():
+    for c in by_kind.values():
         assert len(c.prompt_sha256) == 64
         assert c.tokens_in == 100
         assert c.tokens_out == 50
@@ -127,7 +141,7 @@ def test_extract_records_carry_prompt_label_and_sha(extractor):
 def test_narrative_record_has_schema_name_none(extractor):
     client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        _, calls = extractor.extract(content="raw", content_type="Article")
+        _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
     assert by_kind["narrative"].schema_name is None
     assert by_kind["topic_card"].schema_name == "TopicCard"
@@ -137,9 +151,8 @@ def test_narrative_record_has_schema_name_none(extractor):
 def test_structured_calls_store_pydantic_json_output(extractor):
     client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        _, calls = extractor.extract(content="raw", content_type="Article")
+        _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
-    # topic_card and followups outputs are pydantic JSON, parseable back
     TopicCard.model_validate_json(by_kind["topic_card"].output)
     Followups.model_validate_json(by_kind["followups"].output)
 
@@ -149,7 +162,7 @@ def test_extract_passes_content_type_tag_in_user_message(extractor):
     content-type routing block can branch."""
     client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        extractor.extract(content="raw content", content_type="YouTube")
+        extractor.extract(content="raw content", content_type="YouTube", content_shape="unknown")
     create_call = client.chat.completions.create.await_args
     user_msg = create_call.kwargs["messages"][1]["content"]
     assert "[content_type: YouTube]" in user_msg
@@ -172,7 +185,7 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
 
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="topic_card OpenAI 500"):
-            extractor.extract(content="raw", content_type="Article")
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
 
 
 def test_extract_closes_async_client_on_success(extractor):
@@ -180,7 +193,7 @@ def test_extract_closes_async_client_on_success(extractor):
     asyncio.run loop dies on return, taking any unclosed httpx pool with it."""
     client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
-        extractor.extract(content="raw", content_type="Article")
+        extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     client.close.assert_awaited_once()
 
 
@@ -192,57 +205,136 @@ def test_extract_closes_async_client_even_on_failure(extractor):
     client.close = AsyncMock()
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="narrative 500"):
-            extractor.extract(content="raw", content_type="Article")
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     client.close.assert_awaited_once()
 
 
-def test_bundle_sha256_changes_when_model_changes():
-    """A model bump must flip the cohort-staleness signal — without this,
-    upgrading EXTRACT_QUEUE_MODEL from gpt-4o-mini to gpt-4o would leave
-    existing rows looking fresh under the new model."""
-    base = ThreeCallOpenAIExtractor(
+# -------- bundle_label + bundle_sha256 --------
+
+
+def test_bundle_label_is_shape_routed_v2():
+    """Bumped from `3call_v1` because routing semantics changed — re-extract
+    sensor cohort comparison flags existing rows as stale on the next tick."""
+    ex = ThreeCallOpenAIExtractor(
         api_key="t",
-        model="gpt-4o-mini",
-        narrative_prompt="N",
-        narrative_prompt_label="narrative_v1",
-        topic_card_prompt="T",
-        topic_card_prompt_label="topic_card_v1",
-        followups_prompt="F",
-        followups_prompt_label="followups_v1",
+        model="gpt-4.1-mini",
+        prompt_sets={"unknown": _bundle()},
+    )
+    assert ex.bundle_label == "3call_v2_shape_routed"
+
+
+def test_bundle_sha256_changes_when_model_changes():
+    """Model bump must flip cohort-staleness signal — without this an
+    OPENAI_MODEL upgrade would leave existing rows looking fresh."""
+    base = ThreeCallOpenAIExtractor(
+        api_key="t", model="gpt-4o-mini", prompt_sets={"unknown": _bundle()}
     )
     upgraded = ThreeCallOpenAIExtractor(
-        api_key="t",
-        model="gpt-4o",  # only the model changed
-        narrative_prompt="N",
-        narrative_prompt_label="narrative_v1",
-        topic_card_prompt="T",
-        topic_card_prompt_label="topic_card_v1",
-        followups_prompt="F",
-        followups_prompt_label="followups_v1",
+        api_key="t", model="gpt-4o", prompt_sets={"unknown": _bundle()}
     )
-    assert base.bundle_sha256 != upgraded.bundle_sha256
+    assert base.bundle_sha256("unknown") != upgraded.bundle_sha256("unknown")
 
 
 def test_bundle_sha256_changes_when_any_prompt_changes():
     base = ThreeCallOpenAIExtractor(
         api_key="t",
         model="gpt-4.1-mini",
-        narrative_prompt="N1",
-        narrative_prompt_label="narrative_v1",
-        topic_card_prompt="T1",
-        topic_card_prompt_label="topic_card_v1",
-        followups_prompt="F1",
-        followups_prompt_label="followups_v1",
+        prompt_sets={"unknown": _bundle(narrative_text="N1")},
     )
     diff_narrative = ThreeCallOpenAIExtractor(
         api_key="t",
         model="gpt-4.1-mini",
-        narrative_prompt="N2",
-        narrative_prompt_label="narrative_v1",
-        topic_card_prompt="T1",
-        topic_card_prompt_label="topic_card_v1",
-        followups_prompt="F1",
-        followups_prompt_label="followups_v1",
+        prompt_sets={"unknown": _bundle(narrative_text="N2")},
     )
-    assert base.bundle_sha256 != diff_narrative.bundle_sha256
-    assert base.bundle_label == "3call_v1"
+    assert base.bundle_sha256("unknown") != diff_narrative.bundle_sha256("unknown")
+
+
+def test_bundle_sha_only_reflects_selected_bundle():
+    """Critical isolation property: adding a new shape's bundle MUST NOT
+    change `bundle_sha256(other_shape)`. Otherwise registering one new
+    per-shape prompt set invalidates every prior row across all shapes."""
+    single_shape = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={"unknown": _bundle(narrative_text="UN")},
+    )
+    multi_shape = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={
+            "unknown": _bundle(narrative_text="UN"),
+            "conference_talk": _bundle(narrative_text="CT", narrative_label="narrative_ct_v1"),
+        },
+    )
+    assert single_shape.bundle_sha256("unknown") == multi_shape.bundle_sha256("unknown")
+    assert multi_shape.bundle_sha256("conference_talk") != multi_shape.bundle_sha256("unknown")
+
+
+def test_constructor_raises_when_unknown_bundle_missing():
+    """The `unknown` bundle is the generic fallback for any content_shape
+    that has no shape-specific entry. Missing it would crash `extract` on
+    the first row from a new shape — fail fast at construction instead."""
+    with pytest.raises(ValueError, match="unknown"):
+        ThreeCallOpenAIExtractor(
+            api_key="t",
+            model="gpt-4.1-mini",
+            prompt_sets={"conference_talk": _bundle()},
+        )
+
+
+def test_extract_selects_shape_specific_bundle_when_present():
+    """When the caller passes a content_shape that has a registered bundle,
+    that bundle's prompts drive the calls — not the unknown fallback."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={
+            "unknown": _bundle(
+                narrative_text="GENERIC_NARRATIVE", narrative_label="narrative_generic"
+            ),
+            "conference_talk": _bundle(
+                narrative_text="CT_NARRATIVE", narrative_label="narrative_ct_v1"
+            ),
+        },
+    )
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        _, calls = ex.extract(
+            content="raw", content_type="YouTube", content_shape="conference_talk"
+        )
+    by_kind = {c.call_kind: c for c in calls}
+    assert by_kind["narrative"].prompt_label == "narrative_ct_v1"
+    sys_msg = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
+    assert sys_msg == "CT_NARRATIVE"
+
+
+def test_extract_falls_back_to_unknown_for_unregistered_shape():
+    """A content_shape with no registered bundle (yet) routes to the
+    `unknown` fallback. Future shapes can be wired without crashing
+    in-flight rows captured under the old extractor build."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={
+            "unknown": _bundle(
+                narrative_text="GENERIC_NARRATIVE", narrative_label="narrative_generic"
+            ),
+        },
+    )
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        _, calls = ex.extract(content="raw", content_type="YouTube", content_shape="tutorial")
+    by_kind = {c.call_kind: c for c in calls}
+    assert by_kind["narrative"].prompt_label == "narrative_generic"
+
+
+def test_bundle_sha256_falls_back_to_unknown_for_unregistered_shape():
+    """Symmetric to extract's fallback — sha for an unregistered shape
+    equals sha for the unknown bundle. Lets staleness comparisons stay
+    deterministic across deploys that register new shapes."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t",
+        model="gpt-4.1-mini",
+        prompt_sets={"unknown": _bundle()},
+    )
+    assert ex.bundle_sha256("conference_talk") == ex.bundle_sha256("unknown")

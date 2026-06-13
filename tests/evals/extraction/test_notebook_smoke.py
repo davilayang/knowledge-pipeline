@@ -53,7 +53,7 @@ def fake_three_call_extract(monkeypatch):
 
     fake_record = MagicMock(tokens_in=100, tokens_out=200, duration_ms=1.0)
 
-    def fake_extract(self, content, *, content_type):
+    def fake_extract(self, content, *, content_type, content_shape):
         return fake_payload, [fake_record, fake_record, fake_record]
 
     from workflows.extraction import ThreeCallOpenAIExtractor

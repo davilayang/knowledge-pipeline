@@ -77,7 +77,8 @@ def test_variant_run_invokes_three_call_extractor(monkeypatch):
         def __init__(self, **kwargs):
             self.kwargs = kwargs
 
-        def extract(self, content: str, *, content_type: str):
+        def extract(self, content: str, *, content_type: str, content_shape: str):
+            self.last_content_shape = content_shape
             return fake_payload, [fake_record, fake_record, fake_record]
 
     monkeypatch.setattr(
@@ -117,7 +118,7 @@ def test_variant_run_inside_running_event_loop(monkeypatch):
         def __init__(self, **kwargs):
             pass
 
-        def extract(self, content: str, *, content_type: str):
+        def extract(self, content: str, *, content_type: str, content_shape: str):
             # Simulate the production extractor: would crash here if called
             # inside a running loop.
             asyncio.run(asyncio.sleep(0))
@@ -151,7 +152,7 @@ def test_variant_run_returns_error_status_on_extractor_failure(monkeypatch):
         def __init__(self, **kwargs):
             pass
 
-        def extract(self, content: str, *, content_type: str):
+        def extract(self, content: str, *, content_type: str, content_shape: str):
             raise RuntimeError("upstream 500")
 
     monkeypatch.setattr(

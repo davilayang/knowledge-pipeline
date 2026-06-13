@@ -12,9 +12,11 @@ that's an orchestration concern (see orchestrators.defs.extract_complex_contents
 
 from workflows.extraction.protocol import ExtractionUsage, ExtractorProtocol
 from workflows.extraction.three_call_openai import ThreeCallOpenAIExtractor
+from workflows.extraction.types import PromptBundle
 
 __all__ = [
     "ExtractionUsage",
     "ExtractorProtocol",
+    "PromptBundle",
     "ThreeCallOpenAIExtractor",
 ]

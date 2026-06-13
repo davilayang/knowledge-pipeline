@@ -23,6 +23,12 @@ LangGraph migration is a one-class swap: a future `LangGraphExtractor`
 returns the same `(ExtractionPayload, list[ExtractionCallRecord])` shape
 with extra rows for planner / critic nodes and `node_metadata` populated.
 The asset code and the storage shape don't change.
+
+Content-shape routing: `extract(...)` picks `prompt_sets[content_shape]`,
+falling back to `prompt_sets["unknown"]` when no shape-specific bundle is
+registered. `bundle_sha256(content_shape)` returns the staleness signal
+for the SELECTED bundle so adding a new shape's prompts does not
+invalidate prior shapes' rows.
 """
 
 import asyncio
@@ -34,6 +40,10 @@ from typing import Any
 import openai
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+
+from workflows.extraction.types import PromptBundle
+
+_GENERIC_SHAPE = "unknown"
 
 
 def _sha(text: str) -> str:
@@ -53,6 +63,20 @@ def _cached_tokens(usage: Any) -> int | None:
     return getattr(details, "cached_tokens", None)
 
 
+# (prompt_text, prompt_label, prompt_sha256) — internal expansion of one role
+# of a PromptBundle. Kept as a 3-tuple so the per-call record-building path
+# below stays a single attribute read.
+_RoleTriple = tuple[str, str, str]
+
+
+def _expand(bundle: PromptBundle) -> dict[str, _RoleTriple]:
+    return {
+        "narrative": (bundle.narrative[0], bundle.narrative[1], _sha(bundle.narrative[0])),
+        "topic_card": (bundle.topic_card[0], bundle.topic_card[1], _sha(bundle.topic_card[0])),
+        "followups": (bundle.followups[0], bundle.followups[1], _sha(bundle.followups[0])),
+    }
+
+
 class ThreeCallOpenAIExtractor:
     """v2 strategy. Three OpenAI calls per content item, asyncio.gather for the
     structured pair. Returns (ExtractionPayload, list[ExtractionCallRecord]).
@@ -69,19 +93,24 @@ class ThreeCallOpenAIExtractor:
         *,
         api_key: str,
         model: str,
-        narrative_prompt: str,
-        narrative_prompt_label: str,
-        topic_card_prompt: str,
-        topic_card_prompt_label: str,
-        followups_prompt: str,
-        followups_prompt_label: str,
+        prompt_sets: dict[str, PromptBundle],
         max_tokens: int = 2048,
     ):
+        if _GENERIC_SHAPE not in prompt_sets:
+            raise ValueError(
+                f"prompt_sets must include an '{_GENERIC_SHAPE}' bundle — it's "
+                "the generic fallback for content_shape values without a "
+                "shape-specific set."
+            )
         self._client = openai.AsyncOpenAI(api_key=api_key)
         self._model = model
-        self._narrative = (narrative_prompt, narrative_prompt_label, _sha(narrative_prompt))
-        self._topic_card = (topic_card_prompt, topic_card_prompt_label, _sha(topic_card_prompt))
-        self._followups = (followups_prompt, followups_prompt_label, _sha(followups_prompt))
+        # Pre-compute the per-role (text, label, sha) triple per shape. Sha
+        # is the per-call staleness signal recorded on each
+        # `ExtractionCallRecord`; computing here keeps the record-build path
+        # branch-free.
+        self._prompt_sets: dict[str, dict[str, _RoleTriple]] = {
+            shape: _expand(bundle) for shape, bundle in prompt_sets.items()
+        }
         self._max_tokens = max_tokens
 
     @property
@@ -90,52 +119,64 @@ class ThreeCallOpenAIExtractor:
 
     @property
     def bundle_label(self) -> str:
-        """Cohort label written to queue_items.extractor_label. Bumped manually
-        when ANY of the three sub-prompts changes shape."""
-        return "3call_v1"
+        """Cohort label written to queue_items.extractor_label. Bumped from
+        `3call_v1` to `3call_v2_shape_routed` when the routing semantics
+        changed — existing rows surface as stale via the re-extract sensor
+        cohort comparison regardless of whether their resolved bundle text
+        is byte-identical to today's `unknown` bundle."""
+        return "3call_v2_shape_routed"
 
-    @property
-    def bundle_sha256(self) -> str:
-        """Hash across model + the three prompt texts — canonical staleness
-        signal. Model is included so a model bump (e.g. gpt-4o-mini →
-        gpt-4o) flips the cohort sha and a re-extract sensor catches stale
-        rows. Bump anything in this tuple and existing rows become stale."""
+    def bundle_sha256(self, content_shape: str) -> str:
+        """Hash across model + the three prompt texts of the SELECTED
+        bundle. Pure function of the chosen bundle — adding a new shape's
+        bundle does NOT invalidate prior shapes' rows. Falls back to the
+        `unknown` bundle when the shape is not in the registered set."""
+        bundle = self._prompt_sets.get(content_shape) or self._prompt_sets[_GENERIC_SHAPE]
         return _sha(
             "\n".join(
                 (
                     self._model,
-                    self._narrative[0],
-                    self._topic_card[0],
-                    self._followups[0],
+                    bundle["narrative"][0],
+                    bundle["topic_card"][0],
+                    bundle["followups"][0],
                 )
             )
         )
 
     def extract(
-        self, content: str, *, content_type: str
+        self, content: str, *, content_type: str, content_shape: str
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
         """Sync wrapper. Dagster ops run in their own threads, so asyncio.run
         does not collide with the daemon's event loop."""
-        return asyncio.run(self._extract_async(content=content, content_type=content_type))
+        return asyncio.run(
+            self._extract_async(
+                content=content,
+                content_type=content_type,
+                content_shape=content_shape,
+            )
+        )
 
     async def _extract_async(
-        self, *, content: str, content_type: str
+        self, *, content: str, content_type: str, content_shape: str
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
+        bundle = self._prompt_sets.get(content_shape) or self._prompt_sets[_GENERIC_SHAPE]
         try:
-            narrative_record = await self._narrative_call(content, content_type)
+            narrative_record = await self._narrative_call(
+                content, content_type, bundle["narrative"]
+            )
 
             topic_result, followups_result = await asyncio.gather(
                 self._structured_call(
                     content,
                     content_type,
-                    self._topic_card,
+                    bundle["topic_card"],
                     TopicCard,
                     "topic_card",
                 ),
                 self._structured_call(
                     content,
                     content_type,
-                    self._followups,
+                    bundle["followups"],
                     Followups,
                     "followups",
                 ),
@@ -164,8 +205,10 @@ class ThreeCallOpenAIExtractor:
             # Extractor is single-use as a result — see class docstring.
             await self._client.close()
 
-    async def _narrative_call(self, content: str, content_type: str) -> ExtractionCallRecord:
-        prompt_text, prompt_label, prompt_sha = self._narrative
+    async def _narrative_call(
+        self, content: str, content_type: str, prompt_triple: _RoleTriple
+    ) -> ExtractionCallRecord:
+        prompt_text, prompt_label, prompt_sha = prompt_triple
         t0 = time.monotonic()
         resp = await self._client.chat.completions.create(
             model=self._model,
@@ -196,7 +239,7 @@ class ThreeCallOpenAIExtractor:
         self,
         content: str,
         content_type: str,
-        prompt_triple: tuple[str, str, str],
+        prompt_triple: _RoleTriple,
         schema: type,
         call_kind: str,
     ) -> tuple[Any, ExtractionCallRecord]:
