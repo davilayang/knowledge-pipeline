@@ -14,9 +14,7 @@ from pathlib import Path
 from fetcher.extractors._cloud_chain import _load_chain
 
 
-_YAML_PATH = (
-    Path(__file__).parent.parent / "config" / "transcript_structurer.yaml"
-)
+_YAML_PATH = Path(__file__).parent.parent / "config" / "transcript_structurer.yaml"
 
 _MIN_ATTEMPT_TIMEOUT_S = 600.0
 
