@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
+- **`POST /v1/structure-transcript` — explicit-call surface over the cloud transcript structurer.** Same chain (Ollama `gemma4:31b` → `gpt-4.1-mini`) as the YouTube handler tier, content-keyed cache namespaced separately from `/v1/structure`. Failures surface as 502/503 (no fallback to raw) so eval harnesses and debug tools see them explicitly. Implementation: `fetcher.endpoints.structure_transcript`.
 - **YouTube transcripts can now be cloud-structured into speaker-attributed paragraphs** behind `FETCHER_YOUTUBE_STRUCTURER_ENABLED` (default off). When on, the handler runs the new `transcript_structurer` (Ollama Cloud `gemma4:31b` → `gpt-4.1-mini` fallback) after fetching auto-captions; falls back to raw transcript on chain failure. Raw chunks (text + start + duration) ride along in `metadata["chunks"]` for downstream alignment.
 
 ### Changed
