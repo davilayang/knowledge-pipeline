@@ -7,6 +7,7 @@ from urllib.parse import urlparse
 from fastapi import APIRouter, Header, Request
 from fastapi.responses import JSONResponse, Response
 
+from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.errors import BadUrl
 from fetcher.fetch_service import run_fetch_request
 from fetcher.types import FetchRequest, TierLogEntry
@@ -44,6 +45,22 @@ def _tier_log_payload(tier_log: list[TierLogEntry]) -> list[dict[str, Any]]:
 @router.post(
     "/v1/fetch",
     summary="Synchronously fetch a URL → markdown via per-source handler cascade.",
+    responses={
+        400: {"model": ProblemResponse, "description": "Malformed URL (`BadUrl`)."},
+        422: {
+            "model": ProblemResponse,
+            "description": "No handler matches the URL (`UnsupportedKind`).",
+        },
+        429: {
+            "model": ProblemResponse,
+            "description": "Per-key semaphore exhausted (`RateLimited`).",
+        },
+        502: {"model": ProblemResponse, "description": "All tiers failed (`UpstreamFailure`)."},
+        504: {
+            "model": ProblemResponse,
+            "description": "Per-request deadline exceeded (`UpstreamTimeout`).",
+        },
+    },
 )
 async def fetch(
     req: FetchRequest,

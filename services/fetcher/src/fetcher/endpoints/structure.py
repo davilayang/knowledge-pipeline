@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from fetcher.cache import lookup as cache_lookup, upsert as cache_upsert
 from fetcher.canonicalize import canonicalize
 from fetcher.endpoints.errors import problem_response
+from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extractors import structure as _structure_extractor
 from fetcher.extractors._cloud_chain import (
     cache_key_components,
@@ -87,6 +88,14 @@ def _success_body(result: FetchResult) -> dict[str, Any]:
 @router.post(
     "/v1/structure",
     summary="Clean a noisy article body into structured markdown via cloud LLM cascade.",
+    responses={
+        400: {"model": ProblemResponse, "description": "Empty `raw_content`."},
+        502: {"model": ProblemResponse, "description": "Structurer cascade exhausted."},
+        503: {
+            "model": ProblemResponse,
+            "description": "No structurer API keys configured.",
+        },
+    },
 )
 async def structure(req: StructureRequest, request: Request) -> Any:
     if not req.raw_content.strip():

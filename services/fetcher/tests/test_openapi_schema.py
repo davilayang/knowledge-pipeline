@@ -102,3 +102,42 @@ def test_openapi_includes_problem_response_schema(monkeypatch, tmp_db_path: str)
         f"ProblemResponse missing from openapi components.schemas; "
         f"found: {sorted(schemas.keys())}"
     )
+
+
+# Each entry: (path, method) → set of ProblemResponse-shaped status codes
+# that endpoint can return. Excludes FastAPI HTTPException-shaped errors
+# (e.g. 404 'job not found') which use the {"detail": "..."} envelope.
+_EXPECTED_PROBLEM_RESPONSES = {
+    ("/v1/structure", "post"): {400, 502, 503},
+    ("/v1/structure-transcript", "post"): {400, 502, 503},
+    ("/v1/fetch", "post"): {400, 422, 429, 502, 504},  # via FetcherError handler
+    ("/v1/fetches", "post"): {400},
+    ("/v1/fetches/{job_id}", "delete"): {409, 499},
+}
+
+
+def test_every_problem_response_endpoint_declares_the_schema(
+    monkeypatch, tmp_db_path: str
+) -> None:
+    """Every endpoint that returns an RFC 7807 problem envelope must declare
+    ProblemResponse in its `responses={}` so /docs shows the typed error
+    schema, not the opaque 'application/json' fallback."""
+    monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    schema = _openapi_schema()
+    missing = []
+    for (path, method), expected_codes in _EXPECTED_PROBLEM_RESPONSES.items():
+        op = schema["paths"][path][method]
+        responses = op.get("responses") or {}
+        for code in expected_codes:
+            entry = responses.get(str(code)) or {}
+            content = entry.get("content") or {}
+            references_problem = any(
+                "ProblemResponse" in ((body.get("schema") or {}).get("$ref") or "")
+                for body in content.values()
+            )
+            if not references_problem:
+                missing.append(f"{method.upper()} {path} status={code}")
+    assert not missing, f"endpoints missing ProblemResponse responses=: {missing}"
