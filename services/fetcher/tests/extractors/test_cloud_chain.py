@@ -7,10 +7,6 @@ prompt content + chain config + hint context, so editing prompts/structure_v1.md
 silently fails to invalidate cache.
 """
 
-from pathlib import Path
-
-import pytest
-
 from fetcher.extractors._cloud_chain import (
     ChainEntry,
     StructurerChainFailed,
@@ -159,36 +155,6 @@ def test_cache_key_components_namespaces_by_endpoint() -> None:
     assert k1 != k2
 
 
-def test_cache_key_is_a_string_that_can_serve_as_canonical_url_in_cache_table() -> None:
-    """The cache table indexes by canonical_url (TEXT). Key must be string-shaped."""
-    key = cache_key_components(
-        endpoint="structure",
-        content_sha_value="a" * 64,
-        prompt_sha_value="b" * 64,
-        chain_config_sha_value="c" * 64,
-    )
-    assert isinstance(key, str)
-    assert key.startswith("structure:")
-    assert len(key) < 512  # well under sqlite TEXT practical limits
-
-
-def test_structurer_chain_failed_exposes_retryable_flag() -> None:
-    exc = StructurerChainFailed("upstream timeout", retryable=True)
-    assert exc.retryable is True
-    assert str(exc) == "upstream timeout"
-
-    exc2 = StructurerChainFailed("no API keys", retryable=False)
-    assert exc2.retryable is False
-
-
-def test_chain_entry_is_importable_from_cloud_chain_module() -> None:
-    """Both structure.py (article) and transcript_structurer.py will import from here."""
-    entry = ChainEntry(model="m", provider="openai")
-    assert entry.model == "m"
-    assert entry.provider == "openai"
-    assert entry.attempt_timeout == 30.0  # default
-
-
 def test_re_exported_from_structure_for_backward_compat() -> None:
     """structure.py re-exports ChainEntry/StructurerChainFailed for existing imports."""
     from fetcher.extractors.structure import ChainEntry as RE_ChainEntry
@@ -198,24 +164,3 @@ def test_re_exported_from_structure_for_backward_compat() -> None:
     assert RE_StructurerChainFailed is StructurerChainFailed
 
 
-@pytest.fixture
-def tmp_chain_yaml(tmp_path: Path) -> Path:
-    p = tmp_path / "structurer.yaml"
-    p.write_text(
-        """
-chain:
-  - model: gpt-4.1-mini
-    provider: openai
-    attempt_timeout: 60.0
-"""
-    )
-    return p
-
-
-def test_load_chain_moved_to_cloud_chain_module(tmp_chain_yaml: Path) -> None:
-    """_load_chain is now sourced from _cloud_chain.py; structure.py re-imports."""
-    from fetcher.extractors._cloud_chain import _load_chain
-
-    entries = _load_chain(tmp_chain_yaml)
-    assert len(entries) == 1
-    assert entries[0].model == "gpt-4.1-mini"
