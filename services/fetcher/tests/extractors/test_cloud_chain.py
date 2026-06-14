@@ -28,11 +28,12 @@ def test_content_sha_changes_when_content_changes() -> None:
     assert content_sha("hello world") != content_sha("hello world!")
 
 
-def test_prompt_sha_hashes_text() -> None:
-    sha_a = prompt_sha("you are a structurer")
-    assert len(sha_a) == 64
-    assert sha_a != prompt_sha("you are a different structurer")
-    assert sha_a == prompt_sha("you are a structurer")
+def test_prompt_sha_is_an_alias_over_content_sha() -> None:
+    """prompt_sha + content_sha are intentionally aliases so call sites read clearly.
+    This test exists only to catch accidental divergence (someone making prompt_sha
+    a meaningfully different function); the hashing-text behaviour itself is covered
+    by test_content_sha_*."""
+    assert prompt_sha("any text") == content_sha("any text")
 
 
 def test_prompt_sha_handles_empty_string() -> None:
