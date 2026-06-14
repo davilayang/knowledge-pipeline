@@ -6,10 +6,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Changed
-
-- **Pre-existing fetcher tests tightened against the strict TDD vertical-slicing rules.** Audit of 132 tests across 20 files: 5 redundant tests deleted, ~25 assertions tightened (dropped pass-throughs, constant-pinning, mock-kwarg coupling), 2 tests split into independent invariants, 2 tests rewritten as real characterization (cross-endpoint cache isolation, `chunks_to_markdown` format). Net test count 172 → 170; suite green throughout.
-
 ---
 
 ## [0.19.1] — 2026-06-14
