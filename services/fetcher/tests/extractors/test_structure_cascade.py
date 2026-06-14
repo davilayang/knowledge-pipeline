@@ -84,7 +84,7 @@ async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
 async def test_stage_cloud_chain_called_with_mocked_chain(monkeypatch: pytest.MonkeyPatch) -> None:
     usage = {"provider": "openai", "model": "test-model", "tokens_in": 1, "tokens_out": 2}
     mock_call = AsyncMock(return_value=("# clean md\n\nBody", "structurer:test-model", usage))
-    monkeypatch.setattr(structure, "_call_cloud_chain", mock_call)
+    monkeypatch.setattr(structure, "call_cloud_chain", mock_call)
 
     ctx = _make_ctx()
     ctx.openai_api_key = "sk-test"
@@ -158,7 +158,7 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
     )
 
     with patch("openai.AsyncOpenAI", return_value=primary_client) as ctor:
-        markdown, tier, usage = await structure._call_cloud_chain(
+        markdown, tier, usage = await structure.call_cloud_chain(
             "noisy",
             "SYS",
             chain=[_openai_entry(), _ollama_entry()],
@@ -185,7 +185,7 @@ async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
     )
 
     with patch("openai.AsyncOpenAI", side_effect=[openai_client, ollama_client]):
-        markdown, tier, usage = await structure._call_cloud_chain(
+        markdown, tier, usage = await structure.call_cloud_chain(
             "noisy",
             "SYS",
             chain=[_openai_entry(), _ollama_entry()],
@@ -207,7 +207,7 @@ async def test_call_cloud_chain_raises_when_all_entries_exhausted() -> None:
 
     with patch("openai.AsyncOpenAI", side_effect=[openai_client, ollama_client]):
         with pytest.raises(StructurerChainFailed) as excinfo:
-            await structure._call_cloud_chain(
+            await structure.call_cloud_chain(
                 "noisy",
                 "SYS",
                 chain=[_openai_entry(), _ollama_entry()],
@@ -221,7 +221,7 @@ async def test_call_cloud_chain_raises_when_all_entries_exhausted() -> None:
 
 async def test_call_cloud_chain_raises_retryable_false_when_all_keys_missing() -> None:
     with pytest.raises(StructurerChainFailed) as excinfo:
-        await structure._call_cloud_chain(
+        await structure.call_cloud_chain(
             "noisy",
             "SYS",
             chain=[_openai_entry(), _ollama_entry()],
@@ -238,7 +238,7 @@ async def test_call_cloud_chain_threads_hint_kwargs_into_user_message() -> None:
     openai_client.chat.completions.create = AsyncMock(return_value=_mock_openai_response("# out"))
 
     with patch("openai.AsyncOpenAI", return_value=openai_client):
-        await structure._call_cloud_chain(
+        await structure.call_cloud_chain(
             "raw paste",
             "SYS",
             chain=[_openai_entry()],
