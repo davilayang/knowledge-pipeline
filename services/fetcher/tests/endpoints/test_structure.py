@@ -365,3 +365,94 @@ def test_structure_cache_key_isolated_from_url_keys(monkeypatch, tmp_db_path: st
 
     structurer_key = "structure:v1:openai:gpt-4.1-mini:v1:abcdef"
     assert lookup(db_path=db_path, canonical_url=structurer_key) is None
+
+
+def test_structure_endpoint_cache_invalidates_when_prompt_changes(
+    monkeypatch, tmp_db_path: str
+) -> None:
+    """Regression for the latent /v1/structure cache bug PR 1 (Phase A) fixes.
+
+    Editing prompts/structure_v1.md must produce a cache miss on the next request
+    with otherwise-identical inputs. Today's key omits prompt content, so the bug
+    surfaces as a silent cache hit returning markdown structured under the OLD
+    prompt — invisible to operators editing prompts.
+    """
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
+        patch("fetcher.endpoints.structure._structure_extractor.get_prompt") as get_prompt,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _ok_result()
+
+        get_prompt.return_value = "prompt v1 contents"
+        with TestClient(app) as client:
+            first = client.post(
+                "/v1/structure",
+                json={"raw_content": "paste", "source_url": "https://example.com/a"},
+            )
+
+        get_prompt.return_value = "prompt v2 contents — edited!"
+        with TestClient(app) as client:
+            second = client.post(
+                "/v1/structure",
+                json={"raw_content": "paste", "source_url": "https://example.com/a"},
+            )
+
+    assert first.status_code == 200
+    assert second.status_code == 200
+    assert first.json()["cache_hit"] is False
+    # The bug: today this is True (stale cache hit). After PR 1: False (proper miss).
+    assert second.json()["cache_hit"] is False
+    assert cascade.await_count == 2
+
+
+def test_structure_endpoint_cache_invalidates_when_chain_config_changes(
+    monkeypatch, tmp_db_path: str
+) -> None:
+    """Reordering / swapping chain entries must also invalidate cache.
+
+    Today's key only includes chain HEAD provider+model; downstream entries
+    are invisible. The cache_key_components helper closes that gap by sha-ing
+    the entire chain config (provider/model/base_url/attempt_timeout per entry).
+    """
+    from fetcher.extractors._cloud_chain import ChainEntry
+
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+
+    chain_v1 = [ChainEntry(model="gpt-4.1-mini", provider="openai", attempt_timeout=30.0)]
+    chain_v2 = [ChainEntry(model="gpt-4.1-mini", provider="openai", attempt_timeout=60.0)]
+
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
+        patch("fetcher.endpoints.structure._structure_extractor.get_chain") as get_chain,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _ok_result()
+
+        get_chain.return_value = chain_v1
+        with TestClient(app) as client:
+            first = client.post(
+                "/v1/structure",
+                json={"raw_content": "paste", "source_url": "https://example.com/a"},
+            )
+
+        get_chain.return_value = chain_v2
+        with TestClient(app) as client:
+            second = client.post(
+                "/v1/structure",
+                json={"raw_content": "paste", "source_url": "https://example.com/a"},
+            )
+
+    assert first.json()["cache_hit"] is False
+    assert second.json()["cache_hit"] is False
+    assert cascade.await_count == 2
