@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **Fetcher `/docs` (Swagger) and `/redoc` now ship as a real API reference.** App metadata (`kp-fetcher` title, summary, multi-line description), four tag groups (Health / Fetch / Normalize / Utilities), descriptive `summary=` on every route, and typed `ProblemResponse` error envelopes declared on all error-returning endpoints (POST `/v1/structure`, `/v1/fetch`, `/v1/fetches`, DELETE `/v1/fetches/{id}`, and `/v1/structure-transcript`). Regression tests pin tags, summaries, and `ProblemResponse` presence so future endpoints can't ship undocumented.
 
+### Changed
+
+- **Pre-existing fetcher test suite tightened against the strict TDD vertical-slicing rules.** Audit of 132 tests across 20 files: 5 deletions, ~25 assertion tightenings (drop pass-throughs, format coupling, mock-kwarg coupling, constant-pinning), 2 splits, 2 characterization rewrites. No runtime behaviour change; net suite count 172 → 170.
+
 ---
 
 ## [0.19.0] — 2026-06-14

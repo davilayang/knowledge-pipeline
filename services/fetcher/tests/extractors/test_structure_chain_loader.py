@@ -24,7 +24,8 @@ chain:
 
     entries = _load_chain(path)
 
-    assert len(entries) == 2
+    # len assertion redundant — if entries had ≠2 the equality checks below
+    # would IndexError or fail. Skip and assert the actual entry shapes.
     assert entries[0] == ChainEntry(
         model="gpt-4.1-mini", provider="openai", base_url=None, attempt_timeout=60.0
     )

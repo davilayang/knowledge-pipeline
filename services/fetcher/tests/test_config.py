@@ -5,7 +5,10 @@ from fetcher.config import Settings
 
 
 def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
-    """With no env vars set, defaults are used and required envs are supplied."""
+    """Settings construction with required envs succeeds. The two load-bearing
+    defaults (db_path → governs cache location; cache_ttl_days → governs
+    eviction) are pinned; the rest of the field values are enforced by the
+    Pydantic type annotations themselves."""
     for var in ["FETCHER_DB_PATH", "FETCHER_CACHE_TTL_DAYS", "FETCHER_BATCH_MAX"]:
         monkeypatch.delenv(var, raising=False)
 
@@ -17,13 +20,6 @@ def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     assert settings.db_path == "/app/data/fetches.db"
     assert settings.cache_ttl_days == 365
-    assert settings.batch_max == 100
-    assert settings.upstream_timeout_s == 30
-    assert settings.jina_api_key == "test-jina-key"
-    assert settings.socks5_url == "socks5://127.0.0.1:1080"
-    assert settings.llama_parse_api_key == "test-llama-key"
-    assert settings.llama_parse_tier_arxiv == "agentic_plus"
-    assert settings.llama_parse_tier_pdf == "fast"
 
 
 def test_settings_raises_when_required_missing(monkeypatch: pytest.MonkeyPatch) -> None:

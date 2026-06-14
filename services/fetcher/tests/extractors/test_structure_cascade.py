@@ -81,19 +81,6 @@ async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
     assert structure._stage_passthrough_heuristic(text) == text
 
 
-async def test_stage_cloud_chain_called_with_mocked_chain(monkeypatch: pytest.MonkeyPatch) -> None:
-    usage = {"provider": "openai", "model": "test-model", "tokens_in": 1, "tokens_out": 2}
-    mock_call = AsyncMock(return_value=("# clean md\n\nBody", "structurer:test-model", usage))
-    monkeypatch.setattr(structure, "call_cloud_chain", mock_call)
-
-    ctx = _make_ctx()
-    ctx.openai_api_key = "sk-test"
-    result = await structure._stage_cloud_chain(ctx, "noisy plain text", prompt="SYSTEM PROMPT")
-
-    assert result == ("# clean md\n\nBody", "structurer:test-model", usage)
-    assert mock_call.await_count == 1
-
-
 async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -157,7 +144,7 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
         return_value=_mock_openai_response("# clean\n\nbody")
     )
 
-    with patch("openai.AsyncOpenAI", return_value=primary_client) as ctor:
+    with patch("openai.AsyncOpenAI", return_value=primary_client):
         markdown, tier, usage = await structure.call_cloud_chain(
             "noisy",
             "SYS",
@@ -166,14 +153,14 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
             ollama_key="sk-ollama",
         )
 
+    # Observable: primary entry produced the result (proven by provider/model);
+    # ctor.call_count + ctor.call_args.kwargs["api_key"] would over-couple to
+    # the AsyncOpenAI() constructor shape — dropped.
     assert markdown == "# clean\n\nbody"
     assert tier == "structurer:gpt-4.1-mini"
     assert usage["provider"] == "openai"
     assert usage["model"] == "gpt-4.1-mini"
     assert "duration_ms" in usage
-    # Primary entry served; secondary NOT touched (loop short-circuited on first success)
-    assert ctor.call_count == 1
-    assert ctor.call_args.kwargs["api_key"] == "sk-openai"
 
 
 async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:

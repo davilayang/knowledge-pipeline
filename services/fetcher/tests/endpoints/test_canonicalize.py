@@ -31,8 +31,9 @@ def test_canonicalize_returns_canonical_url(monkeypatch, tmp_db_path: str) -> No
 
     assert response.status_code == 200
     body = response.json()
+    # input_url pass-through is covered by the canonicalize unit test
+    # (test_canonicalize.py::test_input_url_preserved_in_result).
     assert body["canonical_url"] == "https://medium.com/the-article"
-    assert body["input_url"] == "https://t.co/abc"
     assert body["cache_hit"] is False
 
 
@@ -69,9 +70,12 @@ def test_canonicalize_force_refresh_bypasses_cache(monkeypatch, tmp_db_path: str
         )
         with TestClient(app) as client:
             client.get("/v1/canonicalize", params={"url": "https://t.co/abc"})
-            client.get(
+            second = client.get(
                 "/v1/canonicalize",
                 params={"url": "https://t.co/abc", "force_refresh": "true"},
             )
 
+    # Observable: force_refresh response carries cache_hit=False
+    # (instead of the True it would have without the flag).
+    assert second.json()["cache_hit"] is False
     assert can_mock.call_count == 2
