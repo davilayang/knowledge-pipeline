@@ -43,6 +43,16 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **SQLite cache** with three tables: `cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
 - **Container** in this repo's docker-compose stack, attached to `dagster_network` and `kos-network` with the alias `kp-fetcher`.
 
+## Live API reference
+
+The running service serves auto-generated docs at:
+
+- **Swagger UI**: `/docs` (interactive, supports "Try it out")
+- **ReDoc**: `/redoc` (read-only, prints cleaner)
+- **Raw OpenAPI**: `/openapi.json`
+
+Local: `http://localhost:8001/docs`. Container on hcloud: `https://<tailnet-host>/fetcher/docs`. The schema is the authoritative endpoint list — README sections below describe behaviour, but `/docs` is what you click through to learn the wire shape.
+
 ## Network Setup
 
 The `kos-network` Docker network is shared by KOS compose stacks. It must exist before either

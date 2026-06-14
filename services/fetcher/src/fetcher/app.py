@@ -27,6 +27,42 @@ logger = logging.getLogger(__name__)
 _registered_kinds: list[str] = []
 
 
+_APP_DESCRIPTION = """\
+Synchronous URL → markdown fetcher with a content-keyed cache.
+
+Per-source handlers (article / arxiv / medium / pdf / youtube) run a
+**cascade** of tiers; the first tier whose output meets the quality floor
+wins. Cloud-LLM **structurers** clean noisy article bodies (`/v1/structure`)
+and turn YouTube auto-captions into speaker-attributed paragraphs
+(YouTube handler tier + `/v1/structure-transcript`).
+
+This service is consumed by both `knowledge-pipeline` (Dagster
+orchestrators) and `newsletter-assistant` (voice / MCP / web agents)
+in the personal-knowledge-OS. Run with `uvicorn --workers 1` — the
+SQLite cache layer relies on the single-worker invariant.
+"""
+
+
+_OPENAPI_TAGS = [
+    {"name": "Health", "description": "Liveness + readiness probes."},
+    {
+        "name": "Fetch",
+        "description": (
+            "URL → markdown via per-source handler cascade. Sync (`/v1/fetch`) "
+            "and async-job (`/v1/fetches`) shapes."
+        ),
+    },
+    {
+        "name": "Normalize",
+        "description": (
+            "Markdown cleanup + transcript structuring. Source-agnostic; "
+            "reused by handlers and external callers."
+        ),
+    },
+    {"name": "Utilities", "description": "Canonicalization, cache inspection."},
+]
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize settings, DB schema, and shared fetch context on startup."""
@@ -80,7 +116,14 @@ def create_app() -> FastAPI:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
         force=True,
     )
-    app = FastAPI(title="fetcher", version="0.1.0", lifespan=_lifespan)
+    app = FastAPI(
+        title="kp-fetcher",
+        summary="Content acquisition + normalization service for the knowledge-pipeline OS.",
+        description=_APP_DESCRIPTION,
+        version="0.1.0",
+        openapi_tags=_OPENAPI_TAGS,
+        lifespan=_lifespan,
+    )
     app.add_exception_handler(FetcherError, fetcher_exception_handler)
     app.include_router(fetch_endpoint.router)
     app.include_router(canonicalize_endpoint.router)
@@ -88,7 +131,11 @@ def create_app() -> FastAPI:
     app.include_router(structure_endpoint.router)
     app.include_router(structure_transcript_endpoint.router)
 
-    @app.get("/healthz")
+    @app.get(
+        "/healthz",
+        tags=["Health"],
+        summary="Liveness + readiness probe — reports config validity and registered handlers.",
+    )
     async def healthz() -> Any:
         try:
             Settings()

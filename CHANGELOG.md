@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.19.1] — 2026-06-14
+
+### Added
+
+- **Fetcher `/docs` (Swagger) and `/redoc` now ship as a real API reference.** App metadata (`kp-fetcher` title, summary, multi-line description), four tag groups (Health / Fetch / Normalize / Utilities), descriptive `summary=` on every route, and typed `ProblemResponse` error envelopes declared on all error-returning endpoints (POST `/v1/structure`, `/v1/fetch`, `/v1/fetches`, DELETE `/v1/fetches/{id}`, and `/v1/structure-transcript`). Regression tests pin tags, summaries, and `ProblemResponse` presence so future endpoints can't ship undocumented.
+
+---
+
 ## [0.19.0] — 2026-06-14
 
 ### Added

@@ -21,6 +21,7 @@ from pydantic import BaseModel
 
 from fetcher.cache import lookup as cache_lookup, upsert as cache_upsert
 from fetcher.endpoints.errors import problem_response
+from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extractors import transcript_structurer as _transcript_extractor
 from fetcher.extractors._cloud_chain import (
     cache_key_components,
@@ -34,7 +35,7 @@ from fetcher.extractors.transcript_structurer import (
 )
 
 
-router = APIRouter()
+router = APIRouter(tags=["Normalize"])
 
 
 _ENDPOINT_KEY = "structure-transcript"
@@ -83,7 +84,18 @@ def _success_body(
     }
 
 
-@router.post("/v1/structure-transcript")
+@router.post(
+    "/v1/structure-transcript",
+    summary="Structure a raw transcript blob into speaker-attributed paragraphs.",
+    responses={
+        400: {"model": ProblemResponse, "description": "Empty `raw_transcript`."},
+        502: {"model": ProblemResponse, "description": "Structurer cascade exhausted."},
+        503: {
+            "model": ProblemResponse,
+            "description": "No structurer API keys configured.",
+        },
+    },
+)
 async def structure_transcript_endpoint(req: StructureTranscriptRequest, request: Request) -> Any:
     if not req.raw_transcript.strip():
         return problem_response(

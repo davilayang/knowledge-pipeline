@@ -20,10 +20,11 @@ from fetcher.errors import BadUrl, UnsupportedKind
 from fetcher.problems import problem_body
 from fetcher.registry import find_handler
 from fetcher.types import FetchRequest
+from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.workers import new_batch_id, new_job_id, spawn_job
 
 
-router = APIRouter()
+router = APIRouter(tags=["Fetch"])
 
 
 class FetchBatch(BaseModel):
@@ -38,7 +39,16 @@ def _is_valid_url_shape(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-@router.post("/v1/fetches")
+@router.post(
+    "/v1/fetches",
+    summary="Async-job: submit a batch of URLs for background fetching.",
+    responses={
+        400: {
+            "model": ProblemResponse,
+            "description": "Batch is empty, exceeds `batch_max`, or contains a malformed URL.",
+        },
+    },
+)
 async def post_fetches(batch: FetchBatch, request: Request) -> Response:
     settings = request.app.state.settings
     ctx = request.app.state.fetch_context
@@ -115,7 +125,10 @@ async def post_fetches(batch: FetchBatch, request: Request) -> Response:
     )
 
 
-@router.get("/v1/fetches/{job_id}")
+@router.get(
+    "/v1/fetches/{job_id}",
+    summary="Async-job: poll for the status + result of a previously-submitted fetch.",
+)
 async def get_fetch(job_id: str, request: Request) -> dict[str, Any]:
     body = get_job(db_path=Path(request.app.state.settings.db_path), job_id=job_id)
     if body is None:
@@ -123,7 +136,20 @@ async def get_fetch(job_id: str, request: Request) -> dict[str, Any]:
     return body
 
 
-@router.delete("/v1/fetches/{job_id}")
+@router.delete(
+    "/v1/fetches/{job_id}",
+    summary="Async-job: cancel a pending or in-flight fetch by job id.",
+    responses={
+        409: {
+            "model": ProblemResponse,
+            "description": "Job already in a terminal state — nothing to cancel.",
+        },
+        499: {
+            "model": ProblemResponse,
+            "description": "Client-side cancellation acknowledgement.",
+        },
+    },
+)
 async def delete_fetch(job_id: str, request: Request) -> Response:
     settings = request.app.state.settings
     db_path = Path(settings.db_path)

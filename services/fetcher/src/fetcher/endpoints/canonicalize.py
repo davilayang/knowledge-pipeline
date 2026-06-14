@@ -11,14 +11,17 @@ from fastapi import APIRouter, Query, Request
 from fetcher.canonicalize import canonicalize
 
 
-router = APIRouter()
+router = APIRouter(tags=["Utilities"])
 
 
 def _input_hash(url: str) -> str:
     return hashlib.sha256(url.encode("utf-8")).hexdigest()
 
 
-@router.get("/v1/canonicalize")
+@router.get(
+    "/v1/canonicalize",
+    summary="Resolve a URL through redirects and strip tracking params; cached.",
+)
 async def canonicalize_endpoint(
     request: Request,
     url: str = Query(...),
