@@ -12,7 +12,7 @@ from fetcher.fetch_service import run_fetch_request
 from fetcher.types import FetchRequest, TierLogEntry
 
 
-router = APIRouter()
+router = APIRouter(tags=["Fetch"])
 
 
 def _validate_url_shape(url: str) -> None:

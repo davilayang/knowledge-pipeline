@@ -24,7 +24,7 @@ from fetcher.extractors.structure import (
 from fetcher.types import FetchResult, TierLogEntry
 
 
-router = APIRouter()
+router = APIRouter(tags=["Normalize"])
 
 
 _ENDPOINT_KEY = "structure"

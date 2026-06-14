@@ -43,3 +43,22 @@ def test_openapi_declares_four_tag_groups(monkeypatch, tmp_db_path: str) -> None
     schema = _openapi_schema()
     tag_names = {tag["name"] for tag in schema.get("tags") or []}
     assert {"Health", "Fetch", "Normalize", "Utilities"} <= tag_names
+
+
+def test_every_route_carries_a_non_empty_tag(monkeypatch, tmp_db_path: str) -> None:
+    """Catches future endpoints that ship without slotting into one of the
+    four tag groups (untagged routes show up under a hidden 'default'
+    section in /docs)."""
+    monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    schema = _openapi_schema()
+    untagged = []
+    for path, methods in schema["paths"].items():
+        for method, operation in methods.items():
+            if method == "parameters":
+                continue
+            if not operation.get("tags"):
+                untagged.append(f"{method.upper()} {path}")
+    assert not untagged, f"routes without a tag: {untagged}"

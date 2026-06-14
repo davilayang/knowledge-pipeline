@@ -34,7 +34,7 @@ from fetcher.extractors.transcript_structurer import (
 )
 
 
-router = APIRouter()
+router = APIRouter(tags=["Normalize"])
 
 
 _ENDPOINT_KEY = "structure-transcript"

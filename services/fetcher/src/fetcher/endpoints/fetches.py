@@ -23,7 +23,7 @@ from fetcher.types import FetchRequest
 from fetcher.workers import new_batch_id, new_job_id, spawn_job
 
 
-router = APIRouter()
+router = APIRouter(tags=["Fetch"])
 
 
 class FetchBatch(BaseModel):

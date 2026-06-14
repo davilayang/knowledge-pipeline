@@ -11,7 +11,7 @@ from fastapi import APIRouter, Query, Request
 from fetcher.canonicalize import canonicalize
 
 
-router = APIRouter()
+router = APIRouter(tags=["Utilities"])
 
 
 def _input_hash(url: str) -> str:
