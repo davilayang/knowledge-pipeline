@@ -11,7 +11,8 @@ def test_healthz_returns_200_when_ready(
     tmp_db_path: str,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """/healthz returns 200 with ok=true and the registered source list."""
+    """/healthz returns 200 with ok=true when required config is present.
+    The registered-handlers list shape is tested in test_registry.py."""
     monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
     monkeypatch.setenv("FETCHER_JINA_API_KEY", "x")
     monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
@@ -22,9 +23,7 @@ def test_healthz_returns_200_when_ready(
         response = client.get("/healthz")
 
     assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["registered_kinds"] == ["arxiv", "youtube", "medium", "pdf", "article"]
+    assert response.json()["ok"] is True
 
 
 def test_healthz_returns_503_when_required_env_missing(

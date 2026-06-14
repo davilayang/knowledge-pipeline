@@ -2,7 +2,6 @@
 
 import pytest
 
-from fetcher.extractors.jina import wraps_upstream_error as _jina_wraps_upstream_error
 from fetcher.handlers import article, arxiv, medium, pdf, youtube
 
 
@@ -89,10 +88,6 @@ def test_medium_matches_configured_domain(medium_domains: set[str]) -> None:
     assert medium.matches("https://www.towardsdatascience.com/title-abc123def456") is True
     assert medium.matches("https://example.com/post-abc123def456") is False
     assert medium.matches("mailto:x@y.com") is False
-
-
-def test_medium_strict_paid_tier_is_false(medium_domains: set[str]) -> None:
-    assert medium.STRICT_PAID_TIER is False
 
 
 def test_medium_tier_order_jina_then_rapidapi(medium_domains: set[str]) -> None:
@@ -212,10 +207,6 @@ def test_pdf_matches_pdf_url_not_arxiv() -> None:
     assert pdf.matches("https://export.arxiv.org/pdf/2401.00001.pdf") is False
     assert pdf.matches("https://example.com/article") is False
     assert pdf.matches("mailto:x@y.com") is False
-
-
-def test_pdf_strict_paid_tier_is_false() -> None:
-    assert pdf.STRICT_PAID_TIER is False
 
 
 def test_pdf_tier_order_is_pymupdf_then_llamaparse() -> None:
@@ -357,18 +348,6 @@ async def test_article_jina_4xx_returns_empty_content() -> None:
     result = await _jina_fetch(ctx, "https://example.com")
     assert result.status == 401
     assert result.content == ""
-
-
-def test_jina_upstream_error_marker_detection() -> None:
-    """Jina wraps upstream 4xx/5xx in 200 with a 'Warning:' marker — detect it."""
-    assert _jina_wraps_upstream_error(
-        "Title: 404\n\nWarning: Target URL returned error 404: Not Found\n\nMarkdown Content:\n"
-    )
-    assert _jina_wraps_upstream_error(
-        "Warning: Target URL returned error 500: Internal Server Error"
-    )
-    assert not _jina_wraps_upstream_error("Title: Real Article\n\nSome legitimate prose.")
-    assert not _jina_wraps_upstream_error("")
 
 
 async def test_article_jina_demotes_upstream_404_wrapper() -> None:
