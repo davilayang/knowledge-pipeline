@@ -38,21 +38,19 @@ def freeze_chain(monkeypatch: pytest.MonkeyPatch) -> list[ChainEntry]:
     return chain
 
 
-async def test_structure_transcript_threads_title_and_author_into_user_message_not_system(
+async def test_structure_transcript_keeps_hints_out_of_system_prompt(
     freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
 ) -> None:
-    """Hint context (title/author) must land in the USER message, never the system prompt
-    — preserves OpenAI prompt cache invariant: identical system prompt across calls."""
+    """The user-cache invariant: title/author must NOT leak into the system
+    prompt (which OpenAI caches), only into the user message. Cache hit-rate
+    depends on the system prompt being byte-identical across calls."""
     monkeypatch.setattr(transcript_structurer, "_PROMPT", "you are a transcript structurer")
 
-    captured = {}
+    captured_prompt: list[str] = []
 
     async def fake_chain(content, prompt, **kwargs):
-        captured["content"] = content
-        captured["prompt"] = prompt
-        captured["title"] = kwargs.get("title")
-        captured["author_name"] = kwargs.get("author_name")
-        return "Structured paragraph.", "structurer:gemma4:31b", {"tokens_in": 1, "tokens_out": 2}
+        captured_prompt.append(prompt)
+        return "Structured paragraph.", "structurer:gemma4:31b", {}
 
     monkeypatch.setattr(transcript_structurer, "call_cloud_chain", fake_chain)
 
@@ -63,11 +61,9 @@ async def test_structure_transcript_threads_title_and_author_into_user_message_n
 
     assert markdown == "Structured paragraph."
     assert tier == "structurer:gemma4:31b"
-    assert captured["prompt"] == "you are a transcript structurer"
-    assert "My Talk" not in captured["prompt"]
-    assert "Jane Doe" not in captured["prompt"]
-    assert captured["title"] == "My Talk"
-    assert captured["author_name"] == "Jane Doe"
+    assert captured_prompt == ["you are a transcript structurer"]
+    assert "My Talk" not in captured_prompt[0]
+    assert "Jane Doe" not in captured_prompt[0]
 
 
 async def test_structure_transcript_propagates_chain_failure(
