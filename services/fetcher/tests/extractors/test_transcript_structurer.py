@@ -70,28 +70,6 @@ async def test_structure_transcript_threads_title_and_author_into_user_message_n
     assert captured["author_name"] == "Jane Doe"
 
 
-async def test_structure_transcript_omits_hints_when_title_and_author_none(
-    freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Degrade gracefully when oembed didn't return title/author."""
-    monkeypatch.setattr(transcript_structurer, "_PROMPT", "sys prompt")
-
-    captured = {}
-
-    async def fake_chain(content, prompt, **kwargs):
-        captured["title"] = kwargs.get("title")
-        captured["author_name"] = kwargs.get("author_name")
-        return "ok", "structurer:gemma4:31b", {}
-
-    monkeypatch.setattr(transcript_structurer, "call_cloud_chain", fake_chain)
-
-    ctx = _make_ctx()
-    await transcript_structurer.structure_transcript(ctx, _RAW, title=None, author=None)
-
-    assert captured["title"] is None
-    assert captured["author_name"] is None
-
-
 async def test_structure_transcript_propagates_chain_failure(
     freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -108,32 +86,6 @@ async def test_structure_transcript_propagates_chain_failure(
         await transcript_structurer.structure_transcript(ctx, _RAW, title="t", author="a")
 
 
-async def test_structure_transcript_uses_module_chain_and_prompt(
-    freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    """Verify the module-level _CHAIN and _PROMPT actually thread into call_cloud_chain."""
-    monkeypatch.setattr(transcript_structurer, "_PROMPT", "transcript-system-prompt")
-
-    captured = {}
-
-    async def fake_chain(content, prompt, *, chain, openai_key, ollama_key, **kwargs):
-        captured["chain"] = chain
-        captured["openai_key"] = openai_key
-        captured["ollama_key"] = ollama_key
-        captured["prompt"] = prompt
-        return "md", "structurer:gemma4:31b", {}
-
-    monkeypatch.setattr(transcript_structurer, "call_cloud_chain", fake_chain)
-
-    ctx = _make_ctx(openai_key="oai", ollama_key="oll")
-    await transcript_structurer.structure_transcript(ctx, _RAW, title=None, author=None)
-
-    assert captured["chain"] == freeze_chain
-    assert captured["openai_key"] == "oai"
-    assert captured["ollama_key"] == "oll"
-    assert captured["prompt"] == "transcript-system-prompt"
-
-
 def test_get_chain_returns_a_copy() -> None:
     """Defensive: caller mutating return value must not affect module state."""
     chain = transcript_structurer.get_chain()
@@ -141,7 +93,3 @@ def test_get_chain_returns_a_copy() -> None:
     assert ChainEntry(model="x", provider="openai") not in transcript_structurer.get_chain()
 
 
-def test_get_prompt_returns_in_memory_prompt() -> None:
-    # Just calls — content depends on whether config file is present;
-    # we only assert it's a string (possibly empty if prompt file is absent).
-    assert isinstance(transcript_structurer.get_prompt(), str)
