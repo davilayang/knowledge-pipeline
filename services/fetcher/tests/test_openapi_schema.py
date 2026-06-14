@@ -31,3 +31,15 @@ def test_openapi_info_carries_app_level_metadata(monkeypatch, tmp_db_path: str) 
     assert info["title"] == "kp-fetcher"
     assert info.get("summary"), "info.summary must be present (FastAPI 0.99+)"
     assert info.get("description"), "info.description must be present"
+
+
+def test_openapi_declares_four_tag_groups(monkeypatch, tmp_db_path: str) -> None:
+    """/docs groups endpoints under Health / Fetch / Normalize / Utilities
+    instead of showing one flat unsorted list."""
+    monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    schema = _openapi_schema()
+    tag_names = {tag["name"] for tag in schema.get("tags") or []}
+    assert {"Health", "Fetch", "Normalize", "Utilities"} <= tag_names

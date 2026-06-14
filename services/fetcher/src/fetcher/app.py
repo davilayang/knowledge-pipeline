@@ -43,6 +43,26 @@ SQLite cache layer relies on the single-worker invariant.
 """
 
 
+_OPENAPI_TAGS = [
+    {"name": "Health", "description": "Liveness + readiness probes."},
+    {
+        "name": "Fetch",
+        "description": (
+            "URL → markdown via per-source handler cascade. Sync (`/v1/fetch`) "
+            "and async-job (`/v1/fetches`) shapes."
+        ),
+    },
+    {
+        "name": "Normalize",
+        "description": (
+            "Markdown cleanup + transcript structuring. Source-agnostic; "
+            "reused by handlers and external callers."
+        ),
+    },
+    {"name": "Utilities", "description": "Canonicalization, cache inspection."},
+]
+
+
 @asynccontextmanager
 async def _lifespan(app: FastAPI) -> AsyncIterator[None]:
     """Initialize settings, DB schema, and shared fetch context on startup."""
@@ -101,6 +121,7 @@ def create_app() -> FastAPI:
         summary="Content acquisition + normalization service for the knowledge-pipeline OS.",
         description=_APP_DESCRIPTION,
         version="0.1.0",
+        openapi_tags=_OPENAPI_TAGS,
         lifespan=_lifespan,
     )
     app.add_exception_handler(FetcherError, fetcher_exception_handler)
