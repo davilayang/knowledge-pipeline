@@ -83,3 +83,22 @@ def test_every_route_carries_a_descriptive_summary(monkeypatch, tmp_db_path: str
             if len(summary) < 30 or len(summary.split()) < 4:
                 weak.append(f"{method.upper()} {path}: {summary!r}")
     assert not weak, f"routes with weak/auto-derived summary: {weak}"
+
+
+def test_openapi_includes_problem_response_schema(monkeypatch, tmp_db_path: str) -> None:
+    """Today's error responses are returned via `problem_response()` as
+    untyped JSON. Without a pydantic model wired into `responses={...}` on
+    each endpoint, /docs shows error envelopes as opaque `application/json`.
+    This test pins that ProblemResponse is registered in the components
+    schema once at least one route declares it."""
+    monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    schema = _openapi_schema()
+    components = schema.get("components") or {}
+    schemas = components.get("schemas") or {}
+    assert "ProblemResponse" in schemas, (
+        f"ProblemResponse missing from openapi components.schemas; "
+        f"found: {sorted(schemas.keys())}"
+    )
