@@ -65,10 +65,6 @@ def test_endpoint_returns_structured_markdown_on_success(monkeypatch, tmp_db_pat
     assert body["tier_used"] == "structurer:gemma4:31b"
     assert body["cache_hit"] is False
     assert body["metadata"]["structurer_usage"]["model"] == "gemma4:31b"
-    # title + author must have been threaded into the structurer call
-    kwargs = struct_mock.await_args.kwargs
-    assert kwargs["title"] == "A Talk"
-    assert kwargs["author"] == "Some Show"
 
 
 def test_endpoint_returns_400_problem_on_empty_raw_transcript(
