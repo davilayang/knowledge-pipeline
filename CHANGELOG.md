@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **`POST /v1/structure` cache misses correctly on prompt, chain config, or hint changes.** The old key covered only content + primary model; edits to the prompt file, chain order/timeout, or `title`/`author_name`/`content_date` hints silently returned stale markdown. New key hashes all four inputs via `_cloud_chain.cache_key_components`. Implementation: `fetcher.endpoints.structure._structurer_cache_key`.
+
 ---
 
 ## [0.18.19] — 2026-06-13
