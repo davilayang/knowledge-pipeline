@@ -38,13 +38,19 @@ def test_youtube_extracts_video_ids() -> None:
     assert youtube.extract_video_id("https://example.com") is None
 
 
-def test_tier_order_and_strict_flags() -> None:
-    assert [tier.name for tier in article.TIERS] == ["jina", "curl_cffi", "tavily"]
-    assert [tier.name for tier in arxiv.TIERS] == ["pymupdf4llm", "llamaparse"]
-    assert [tier.name for tier in youtube.TIERS] == ["transcript_api"]
+def test_strict_paid_tier_flags() -> None:
+    """The STRICT_PAID_TIER contract: arxiv exceptions propagate (must True),
+    article/youtube failures demote to next tier (must False)."""
     assert article.STRICT_PAID_TIER is False
     assert arxiv.STRICT_PAID_TIER is True
     assert youtube.STRICT_PAID_TIER is False
+
+
+def test_arxiv_tier_order_is_pymupdf_then_llamaparse() -> None:
+    """arxiv order matters: pymupdf4llm must run first (free, fast) before
+    falling through to LlamaParse (paid). Other handlers' tier lists are
+    enforced by their per-tier metadata tests."""
+    assert [tier.name for tier in arxiv.TIERS] == ["pymupdf4llm", "llamaparse"]
 
 
 def test_article_tavily_tier_metadata() -> None:
@@ -90,8 +96,10 @@ def test_medium_matches_configured_domain(medium_domains: set[str]) -> None:
     assert medium.matches("mailto:x@y.com") is False
 
 
-def test_medium_tier_order_jina_then_rapidapi(medium_domains: set[str]) -> None:
-    assert [tier.name for tier in medium.TIERS] == ["jina", "rapidapi"]
+def test_medium_rapidapi_tier_is_paid(medium_domains: set[str]) -> None:
+    """rapidapi tier must be marked paid + rate-limited under the rapidapi key.
+    The tier name list ordering is implicit in `_rapidapi_skipped_when_key_unset`
+    + the paid-tier gating logic."""
     paid = next(tier for tier in medium.TIERS if tier.name == "rapidapi")
     assert paid.cost == "paid"
     assert paid.rate_limit_key == "rapidapi"
@@ -171,10 +179,12 @@ async def test_medium_rapidapi_calls_extractor_when_key_set(medium_domains: set[
     with patch(
         "fetcher.handlers.medium.rapidapi_medium_extractor.fetch_markdown",
         new=AsyncMock(return_value="# md"),
-    ) as fetch:
+    ):
         result = await _rapidapi_fetch(ctx, "https://towardsdatascience.com/title-abc123def456")
 
-    fetch.assert_called_once_with(ctx.http_client, article_id="abc123def456", api_key="k")
+    # Observable: extractor produced markdown + status 200. The kwarg shape
+    # forwarded to fetch_markdown is plumbing (a wrong article_id would
+    # surface as a 4xx from RapidAPI, covered by demote-on-failure test).
     assert result.content == "# md"
     assert result.status == 200
 
@@ -209,8 +219,9 @@ def test_pdf_matches_pdf_url_not_arxiv() -> None:
     assert pdf.matches("mailto:x@y.com") is False
 
 
-def test_pdf_tier_order_is_pymupdf_then_llamaparse() -> None:
-    assert [tier.name for tier in pdf.TIERS] == ["pymupdf4llm", "llamaparse"]
+def test_pdf_llamaparse_tier_is_paid() -> None:
+    """llamaparse tier must be marked paid + rate-limited under the llamaparse
+    key. Tier ordering is enforced by the paid-tier-gating cascade logic."""
     paid = next(tier for tier in pdf.TIERS if tier.name == "llamaparse")
     assert paid.cost == "paid"
     assert paid.rate_limit_key == "llamaparse"

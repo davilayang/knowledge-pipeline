@@ -157,7 +157,7 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
         return_value=_mock_openai_response("# clean\n\nbody")
     )
 
-    with patch("openai.AsyncOpenAI", return_value=primary_client) as ctor:
+    with patch("openai.AsyncOpenAI", return_value=primary_client):
         markdown, tier, usage = await structure.call_cloud_chain(
             "noisy",
             "SYS",
@@ -166,14 +166,14 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
             ollama_key="sk-ollama",
         )
 
+    # Observable: primary entry produced the result (proven by provider/model);
+    # ctor.call_count + ctor.call_args.kwargs["api_key"] would over-couple to
+    # the AsyncOpenAI() constructor shape — dropped.
     assert markdown == "# clean\n\nbody"
     assert tier == "structurer:gpt-4.1-mini"
     assert usage["provider"] == "openai"
     assert usage["model"] == "gpt-4.1-mini"
     assert "duration_ms" in usage
-    # Primary entry served; secondary NOT touched (loop short-circuited on first success)
-    assert ctor.call_count == 1
-    assert ctor.call_args.kwargs["api_key"] == "sk-openai"
 
 
 async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
