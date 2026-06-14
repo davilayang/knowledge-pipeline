@@ -184,9 +184,7 @@ def test_build_user_message_skips_missing_hint_lines() -> None:
     """Only the hints actually present appear in the block."""
     from fetcher.extractors._cloud_chain import _build_user_message
 
-    out = _build_user_message(
-        "body", title="Only Title", content_date=None, author_name=None
-    )
+    out = _build_user_message("body", title="Only Title", content_date=None, author_name=None)
     assert out == "Title: Only Title\n\n---\n\nbody"
 
 
@@ -197,5 +195,3 @@ def test_re_exported_from_structure_for_backward_compat() -> None:
 
     assert RE_ChainEntry is ChainEntry
     assert RE_StructurerChainFailed is StructurerChainFailed
-
-

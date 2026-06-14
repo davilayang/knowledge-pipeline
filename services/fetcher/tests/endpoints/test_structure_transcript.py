@@ -7,7 +7,6 @@ fallbacks), surfaces structurer failures to the caller instead of falling
 back to raw transcript.
 """
 
-from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 from fastapi.testclient import TestClient
@@ -165,30 +164,67 @@ def test_endpoint_cache_invalidates_when_hints_change(monkeypatch, tmp_db_path: 
     assert struct_mock.await_count == 2
 
 
-def test_endpoint_cache_key_does_not_collide_with_structure_endpoint(
+def test_structure_and_structure_transcript_use_separate_cache_namespaces(
     monkeypatch, tmp_db_path: str
 ) -> None:
-    """Same raw text, both endpoints → must hit different cache rows (namespaced)."""
-    from fetcher.cache import lookup, upsert
-    from domains.fetches_store.sources import create_schema
+    """Real namespacing check: POST to both endpoints with identical text;
+    each must produce its own cache row. A naive `content_sha`-only key
+    would collide and silently return structured-article markdown to a
+    structured-transcript caller (or vice-versa)."""
+    from unittest.mock import AsyncMock, patch
+
+    from fetcher.canonicalize import CanonicalResult
 
     _setup_envs(monkeypatch, tmp_db_path)
-    db_path = Path(tmp_db_path)
-    create_schema(db_path=db_path)
+    app = create_app()
 
-    # Seed a row under a /v1/structure key prefix; transcript lookup must miss.
-    upsert(
-        db_path=db_path,
-        canonical_url="structure:v2:abcdef",
-        source_type="structured",
-        markdown="article markdown",
-        tier_used="structurer:gpt-4.1-mini",
-        metadata={},
-        tier_log=[],
-        ttl_days=365,
-    )
+    article_md = "# Article body\n\nstructured article output"
+    transcript_md = "**Host:** transcript output"
+    shared_text = "the same input text " * 30
 
-    # A transcript endpoint key won't be `structure:v2:abcdef` — it'll be
-    # under `structure-transcript:v2:*`. Lookup with the article key must
-    # still miss when probed from the transcript endpoint's namespace.
-    assert lookup(db_path=db_path, canonical_url="structure-transcript:v2:abcdef") is None
+    article_result = type(
+        "FetchResult",
+        (),
+        {
+            "markdown": article_md,
+            "kind": "structured",
+            "canonical_url": "https://x/a",
+            "tier_used": "structurer:gpt-4.1-mini",
+            "fetched_at": "2026-06-14T00:00:00Z",
+            "cache_hit": False,
+            "etag": "",
+            "tier_log": [],
+            "metadata": {"model": "gpt-4.1-mini"},
+        },
+    )()
+
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
+        patch(
+            "fetcher.endpoints.structure_transcript.structure_transcript",
+            new_callable=AsyncMock,
+        ) as struct_mock,
+    ):
+        can_mock.return_value = CanonicalResult("https://x/a", "https://x/a", [], [])
+        cascade.return_value = article_result
+        struct_mock.return_value = (transcript_md, "structurer:gemma4:31b", {})
+
+        with TestClient(app) as client:
+            article_resp = client.post(
+                "/v1/structure",
+                json={"raw_content": shared_text, "source_url": "https://x/a"},
+            )
+            transcript_resp = client.post(
+                "/v1/structure-transcript",
+                json={"raw_transcript": shared_text},
+            )
+
+    assert article_resp.json()["markdown"] == article_md
+    assert transcript_resp.json()["markdown"] == transcript_md
+    # Both were fresh writes (cache miss on both) — proves they didn't
+    # collide on the same cache row. A naive shared key would have made
+    # transcript_resp a cache_hit returning article_md.
+    assert article_resp.json()["cache_hit"] is False
+    assert transcript_resp.json()["cache_hit"] is False
+    assert article_resp.json()["markdown"] != transcript_resp.json()["markdown"]

@@ -87,5 +87,3 @@ def test_get_chain_returns_a_copy() -> None:
     chain = transcript_structurer.get_chain()
     chain.append(ChainEntry(model="x", provider="openai"))
     assert ChainEntry(model="x", provider="openai") not in transcript_structurer.get_chain()
-
-
