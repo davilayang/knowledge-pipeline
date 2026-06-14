@@ -84,7 +84,10 @@ def _success_body(result: FetchResult) -> dict[str, Any]:
     }
 
 
-@router.post("/v1/structure")
+@router.post(
+    "/v1/structure",
+    summary="Clean a noisy article body into structured markdown via cloud LLM cascade.",
+)
 async def structure(req: StructureRequest, request: Request) -> Any:
     if not req.raw_content.strip():
         return problem_response(

@@ -41,7 +41,10 @@ def _tier_log_payload(tier_log: list[TierLogEntry]) -> list[dict[str, Any]]:
     ]
 
 
-@router.post("/v1/fetch")
+@router.post(
+    "/v1/fetch",
+    summary="Synchronously fetch a URL → markdown via per-source handler cascade.",
+)
 async def fetch(
     req: FetchRequest,
     request: Request,

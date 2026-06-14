@@ -131,7 +131,11 @@ def create_app() -> FastAPI:
     app.include_router(structure_endpoint.router)
     app.include_router(structure_transcript_endpoint.router)
 
-    @app.get("/healthz", tags=["Health"])
+    @app.get(
+        "/healthz",
+        tags=["Health"],
+        summary="Liveness + readiness probe — reports config validity and registered handlers.",
+    )
     async def healthz() -> Any:
         try:
             Settings()

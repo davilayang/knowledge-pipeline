@@ -83,7 +83,10 @@ def _success_body(
     }
 
 
-@router.post("/v1/structure-transcript")
+@router.post(
+    "/v1/structure-transcript",
+    summary="Structure a raw transcript blob into speaker-attributed paragraphs.",
+)
 async def structure_transcript_endpoint(req: StructureTranscriptRequest, request: Request) -> Any:
     if not req.raw_transcript.strip():
         return problem_response(

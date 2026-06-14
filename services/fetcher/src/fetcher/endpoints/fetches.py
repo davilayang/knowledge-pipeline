@@ -38,7 +38,10 @@ def _is_valid_url_shape(url: str) -> bool:
     return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
-@router.post("/v1/fetches")
+@router.post(
+    "/v1/fetches",
+    summary="Async-job: submit a batch of URLs for background fetching.",
+)
 async def post_fetches(batch: FetchBatch, request: Request) -> Response:
     settings = request.app.state.settings
     ctx = request.app.state.fetch_context
@@ -115,7 +118,10 @@ async def post_fetches(batch: FetchBatch, request: Request) -> Response:
     )
 
 
-@router.get("/v1/fetches/{job_id}")
+@router.get(
+    "/v1/fetches/{job_id}",
+    summary="Async-job: poll for the status + result of a previously-submitted fetch.",
+)
 async def get_fetch(job_id: str, request: Request) -> dict[str, Any]:
     body = get_job(db_path=Path(request.app.state.settings.db_path), job_id=job_id)
     if body is None:
@@ -123,7 +129,10 @@ async def get_fetch(job_id: str, request: Request) -> dict[str, Any]:
     return body
 
 
-@router.delete("/v1/fetches/{job_id}")
+@router.delete(
+    "/v1/fetches/{job_id}",
+    summary="Async-job: cancel a pending or in-flight fetch by job id.",
+)
 async def delete_fetch(job_id: str, request: Request) -> Response:
     settings = request.app.state.settings
     db_path = Path(settings.db_path)

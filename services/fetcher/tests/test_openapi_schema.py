@@ -62,3 +62,24 @@ def test_every_route_carries_a_non_empty_tag(monkeypatch, tmp_db_path: str) -> N
             if not operation.get("tags"):
                 untagged.append(f"{method.upper()} {path}")
     assert not untagged, f"routes without a tag: {untagged}"
+
+
+def test_every_route_carries_a_descriptive_summary(monkeypatch, tmp_db_path: str) -> None:
+    """FastAPI auto-derives `summary` from the function name (title-cased), so
+    a missing explicit `summary=` shows up as e.g. 'Structure Transcript
+    Endpoint' — short, not descriptive. Require ≥30 chars + ≥4 words to force
+    a real sentence."""
+    monkeypatch.setenv("FETCHER_DB_PATH", tmp_db_path)
+    monkeypatch.setenv("FETCHER_SOCKS5_URL", "socks5://x")
+    monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
+
+    schema = _openapi_schema()
+    weak = []
+    for path, methods in schema["paths"].items():
+        for method, operation in methods.items():
+            if method == "parameters":
+                continue
+            summary = operation.get("summary") or ""
+            if len(summary) < 30 or len(summary.split()) < 4:
+                weak.append(f"{method.upper()} {path}: {summary!r}")
+    assert not weak, f"routes with weak/auto-derived summary: {weak}"
