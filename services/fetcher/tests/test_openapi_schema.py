@@ -116,9 +116,7 @@ _EXPECTED_PROBLEM_RESPONSES = {
 }
 
 
-def test_every_problem_response_endpoint_declares_the_schema(
-    monkeypatch, tmp_db_path: str
-) -> None:
+def test_every_problem_response_endpoint_declares_the_schema(monkeypatch, tmp_db_path: str) -> None:
     """Every endpoint that returns an RFC 7807 problem envelope must declare
     ProblemResponse in its `responses={}` so /docs shows the typed error
     schema, not the opaque 'application/json' fallback."""

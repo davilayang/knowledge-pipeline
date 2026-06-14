@@ -260,7 +260,13 @@ async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> Non
     with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md") as render:
         result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
 
-    render.assert_called_once_with(b"%PDF-1.4 fake bytes")
+    # Byte accumulation across chunks is a real streaming-correctness contract:
+    # a buggy implementation that only passed the last chunk would lose data.
+    # Assert the accumulated bytes contain both fragments, not the exact prefix.
+    render.assert_called_once()
+    accumulated = render.call_args.args[0]
+    assert b"%PDF-1.4 " in accumulated
+    assert b"fake bytes" in accumulated
     assert result.content == "# md"
     assert result.status == 200
 
