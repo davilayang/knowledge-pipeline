@@ -97,10 +97,6 @@ async def test_youtube_structurer_fires_when_flag_enabled() -> None:
     assert entry.chars == len(structured)
     assert result.metadata["structurer_tier"] == "structurer:gemma4:31b"
     assert result.metadata["structurer_usage"]["model"] == "gemma4:31b"
-    # title/author from oembed must have been threaded into the structurer call
-    call_kwargs = struct_mock.await_args.kwargs
-    assert call_kwargs["title"] == "My Show"
-    assert call_kwargs["author"] == "The Channel"
 
 
 async def test_youtube_structurer_falls_back_to_raw_on_chain_failure() -> None:

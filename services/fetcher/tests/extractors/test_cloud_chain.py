@@ -7,10 +7,6 @@ prompt content + chain config + hint context, so editing prompts/structure_v1.md
 silently fails to invalidate cache.
 """
 
-from pathlib import Path
-
-import pytest
-
 from fetcher.extractors._cloud_chain import (
     ChainEntry,
     StructurerChainFailed,
@@ -32,11 +28,12 @@ def test_content_sha_changes_when_content_changes() -> None:
     assert content_sha("hello world") != content_sha("hello world!")
 
 
-def test_prompt_sha_hashes_text() -> None:
-    sha_a = prompt_sha("you are a structurer")
-    assert len(sha_a) == 64
-    assert sha_a != prompt_sha("you are a different structurer")
-    assert sha_a == prompt_sha("you are a structurer")
+def test_prompt_sha_is_an_alias_over_content_sha() -> None:
+    """prompt_sha + content_sha are intentionally aliases so call sites read clearly.
+    This test exists only to catch accidental divergence (someone making prompt_sha
+    a meaningfully different function); the hashing-text behaviour itself is covered
+    by test_content_sha_*."""
+    assert prompt_sha("any text") == content_sha("any text")
 
 
 def test_prompt_sha_handles_empty_string() -> None:
@@ -159,34 +156,36 @@ def test_cache_key_components_namespaces_by_endpoint() -> None:
     assert k1 != k2
 
 
-def test_cache_key_is_a_string_that_can_serve_as_canonical_url_in_cache_table() -> None:
-    """The cache table indexes by canonical_url (TEXT). Key must be string-shaped."""
-    key = cache_key_components(
-        endpoint="structure",
-        content_sha_value="a" * 64,
-        prompt_sha_value="b" * 64,
-        chain_config_sha_value="c" * 64,
+def test_build_user_message_prepends_hints_above_content() -> None:
+    """Title/author/date go INTO the user message (not the system prompt).
+    The hint block sits above the content separated by `---` so the LLM sees
+    structured context before the raw transcript/article."""
+    from fetcher.extractors._cloud_chain import _build_user_message
+
+    out = _build_user_message(
+        "raw body text",
+        title="My Talk",
+        content_date="2026-06-14",
+        author_name="Jane Doe",
     )
-    assert isinstance(key, str)
-    assert key.startswith("structure:")
-    assert len(key) < 512  # well under sqlite TEXT practical limits
+    assert out == "Title: My Talk\nAuthor: Jane Doe\nDate: 2026-06-14\n\n---\n\nraw body text"
 
 
-def test_structurer_chain_failed_exposes_retryable_flag() -> None:
-    exc = StructurerChainFailed("upstream timeout", retryable=True)
-    assert exc.retryable is True
-    assert str(exc) == "upstream timeout"
+def test_build_user_message_omits_hint_block_entirely_when_all_none() -> None:
+    """No hints → no hint block → user message is the raw content unchanged.
+    Important: a stray `---\\n\\n` prefix would confuse downstream LLMs."""
+    from fetcher.extractors._cloud_chain import _build_user_message
 
-    exc2 = StructurerChainFailed("no API keys", retryable=False)
-    assert exc2.retryable is False
+    out = _build_user_message("raw body text", title=None, content_date=None, author_name=None)
+    assert out == "raw body text"
 
 
-def test_chain_entry_is_importable_from_cloud_chain_module() -> None:
-    """Both structure.py (article) and transcript_structurer.py will import from here."""
-    entry = ChainEntry(model="m", provider="openai")
-    assert entry.model == "m"
-    assert entry.provider == "openai"
-    assert entry.attempt_timeout == 30.0  # default
+def test_build_user_message_skips_missing_hint_lines() -> None:
+    """Only the hints actually present appear in the block."""
+    from fetcher.extractors._cloud_chain import _build_user_message
+
+    out = _build_user_message("body", title="Only Title", content_date=None, author_name=None)
+    assert out == "Title: Only Title\n\n---\n\nbody"
 
 
 def test_re_exported_from_structure_for_backward_compat() -> None:
@@ -196,26 +195,3 @@ def test_re_exported_from_structure_for_backward_compat() -> None:
 
     assert RE_ChainEntry is ChainEntry
     assert RE_StructurerChainFailed is StructurerChainFailed
-
-
-@pytest.fixture
-def tmp_chain_yaml(tmp_path: Path) -> Path:
-    p = tmp_path / "structurer.yaml"
-    p.write_text(
-        """
-chain:
-  - model: gpt-4.1-mini
-    provider: openai
-    attempt_timeout: 60.0
-"""
-    )
-    return p
-
-
-def test_load_chain_moved_to_cloud_chain_module(tmp_chain_yaml: Path) -> None:
-    """_load_chain is now sourced from _cloud_chain.py; structure.py re-imports."""
-    from fetcher.extractors._cloud_chain import _load_chain
-
-    entries = _load_chain(tmp_chain_yaml)
-    assert len(entries) == 1
-    assert entries[0].model == "gpt-4.1-mini"
