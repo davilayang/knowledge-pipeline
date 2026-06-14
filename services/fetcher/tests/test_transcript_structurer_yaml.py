@@ -1,9 +1,9 @@
 """Regression test for transcript_structurer.yaml chain-entry timeouts.
 
-E2E (ai-findings/2026-06-14_e2e-structurer-platform.md) found the original
-240s/120s timeouts in transcript_structurer.yaml were too tight for
-full-podcast input (~22k tokens × 1.0 output ratio = 220–440s minimum
-streaming time at 40–100 tok/s). Bumped to 600s/600s in Phase D slice 1.
+End-to-end smoke against a real LLM found the original 240s/120s
+timeouts in transcript_structurer.yaml too tight for full-podcast input
+(~22k tokens × 1.0 output ratio = 220-440s minimum streaming time at
+40-100 tok/s). Bumped to 600s/600s.
 
 This test pins the shipped values so a future revert doesn't silently
 re-introduce the timeout cliff that produced 502s in production.
