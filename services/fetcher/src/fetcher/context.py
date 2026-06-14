@@ -32,6 +32,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             rapidapi_key=settings.rapidapi_key,
             openai_api_key=settings.openai_api_key,
             ollama_api_key=settings.ollama_api_key,
+            youtube_structurer_enabled=settings.youtube_structurer_enabled,
         )
     finally:
         await default.aclose()

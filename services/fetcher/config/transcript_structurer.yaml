@@ -1,0 +1,16 @@
+# Transcript structurer chain config — drives the cloud LLM tier for
+# YouTube auto-caption + (later) podcast Whisper transcripts.
+#
+# Entries are tried in order. The first entry whose API key is configured
+# (and which doesn't fail) wins. attempt_timeout is per-entry wall-clock
+# seconds — transcripts are longer than article bodies, so timeouts are
+# higher than `structurer.yaml`.
+
+chain:
+  - model: gemma4:31b
+    provider: ollama
+    base_url: https://ollama.com/v1
+    attempt_timeout: 240.0
+  - model: gpt-4.1-mini
+    provider: openai
+    attempt_timeout: 120.0
