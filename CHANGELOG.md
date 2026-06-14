@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.19.1] — 2026-06-14
+
 ### Added
 
-- **Fetcher `/docs` (Swagger) and `/redoc` now ship as a real API reference.** App metadata (`kp-fetcher` title, summary, multi-line description), four tag groups (Health / Fetch / Normalize / Utilities), descriptive `summary=` on every route, and a typed `ProblemResponse` schema (registered via `/v1/structure-transcript`'s `responses=`) so error envelopes are no longer opaque JSON. Regression tests pin tags + descriptive summaries + ProblemResponse presence so future endpoints can't ship undocumented.
+- **Fetcher `/docs` (Swagger) and `/redoc` now ship as a real API reference.** App metadata (`kp-fetcher` title, summary, multi-line description), four tag groups (Health / Fetch / Normalize / Utilities), descriptive `summary=` on every route, and typed `ProblemResponse` error envelopes declared on all error-returning endpoints (POST `/v1/structure`, `/v1/fetch`, `/v1/fetches`, DELETE `/v1/fetches/{id}`, and `/v1/structure-transcript`). Regression tests pin tags, summaries, and `ProblemResponse` presence so future endpoints can't ship undocumented.
 
 ---
 
