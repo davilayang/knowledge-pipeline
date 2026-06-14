@@ -6,14 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.19.0] — 2026-06-14
+
 ### Added
 
-- **`POST /v1/structure-transcript` — explicit-call surface over the cloud transcript structurer.** Same chain (Ollama `gemma4:31b` → `gpt-4.1-mini`) as the YouTube handler tier, content-keyed cache namespaced separately from `/v1/structure`. Failures surface as 502/503 (no fallback to raw) so eval harnesses and debug tools see them explicitly. Implementation: `fetcher.endpoints.structure_transcript`.
-- **YouTube transcripts now cloud-structured into speaker-attributed paragraphs by default** (`FETCHER_YOUTUBE_STRUCTURER_ENABLED=true`; set false to opt out per-deploy). Handler runs the new `transcript_structurer` (Ollama Cloud `gemma4:31b` → `gpt-4.1-mini` fallback) after fetching auto-captions and falls back to raw transcript on chain failure. Raw chunks (text + start + duration) ride along in `metadata["chunks"]` for downstream alignment. Chain timeouts in `config/transcript_structurer.yaml` set to 600s/600s — accommodates full-podcast input (E2E verified ~22k tokens completes in ~214s on Ollama Cloud).
+- **`POST /v1/structure-transcript` — explicit call surface over the cloud transcript structurer.** Same Ollama `gemma4:31b` → `gpt-4.1-mini` fallback chain as the YouTube handler, with a separately namespaced content-keyed cache. Failures surface as 502/503 (no raw fallback) so eval harnesses see them explicitly. Implementation: `fetcher.endpoints.structure_transcript`.
+- **YouTube transcripts are now cloud-structured into speaker-attributed paragraphs by default.** Handler runs `transcript_structurer` after fetching auto-captions and falls back to raw on chain failure; raw chunks ride along in `metadata["chunks"]`. Set `FETCHER_YOUTUBE_STRUCTURER_ENABLED=false` to opt out per-deploy.
 
 ### Changed
 
-- **`POST /v1/structure` cache misses correctly on prompt, chain config, or hint changes.** The old key covered only content + primary model; edits to the prompt file, chain order/timeout, or `title`/`author_name`/`content_date` hints silently returned stale markdown. New key hashes all four inputs via `_cloud_chain.cache_key_components`. Implementation: `fetcher.endpoints.structure._structurer_cache_key`.
+- **`POST /v1/structure` cache now invalidates on prompt, chain config, or hint changes.** Previously only content + primary model were keyed; edits to the prompt file, chain order, or `title`/`author_name`/`content_date` hints silently returned stale markdown. Fix: `fetcher.endpoints.structure._structurer_cache_key` via `_cloud_chain.cache_key_components`.
 
 ---
 
