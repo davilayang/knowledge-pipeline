@@ -156,6 +156,40 @@ def test_cache_key_components_namespaces_by_endpoint() -> None:
     assert k1 != k2
 
 
+def test_build_user_message_prepends_hints_above_content() -> None:
+    """Title/author/date go INTO the user message (not the system prompt).
+    The hint block sits above the content separated by `---` so the LLM sees
+    structured context before the raw transcript/article."""
+    from fetcher.extractors._cloud_chain import _build_user_message
+
+    out = _build_user_message(
+        "raw body text",
+        title="My Talk",
+        content_date="2026-06-14",
+        author_name="Jane Doe",
+    )
+    assert out == "Title: My Talk\nAuthor: Jane Doe\nDate: 2026-06-14\n\n---\n\nraw body text"
+
+
+def test_build_user_message_omits_hint_block_entirely_when_all_none() -> None:
+    """No hints → no hint block → user message is the raw content unchanged.
+    Important: a stray `---\\n\\n` prefix would confuse downstream LLMs."""
+    from fetcher.extractors._cloud_chain import _build_user_message
+
+    out = _build_user_message("raw body text", title=None, content_date=None, author_name=None)
+    assert out == "raw body text"
+
+
+def test_build_user_message_skips_missing_hint_lines() -> None:
+    """Only the hints actually present appear in the block."""
+    from fetcher.extractors._cloud_chain import _build_user_message
+
+    out = _build_user_message(
+        "body", title="Only Title", content_date=None, author_name=None
+    )
+    assert out == "Title: Only Title\n\n---\n\nbody"
+
+
 def test_re_exported_from_structure_for_backward_compat() -> None:
     """structure.py re-exports ChainEntry/StructurerChainFailed for existing imports."""
     from fetcher.extractors.structure import ChainEntry as RE_ChainEntry
