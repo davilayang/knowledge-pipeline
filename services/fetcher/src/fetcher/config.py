@@ -117,10 +117,12 @@ class Settings(BaseSettings):
         description="Path to the active transcript structurer system prompt.",
     )
     youtube_structurer_enabled: bool = Field(
-        default=False,
+        default=True,
         description=(
             "When True, the YouTube handler runs the cloud transcript structurer "
             "after fetching auto-captions; falls back to raw transcript markdown on "
-            "structurer failure. Default off so the first deploy is opt-in."
+            "structurer failure. Default ON since Phase D after the E2E smoke "
+            "(ai-findings/2026-06-14_e2e-structurer-platform.md) confirmed real "
+            "podcast structuring works through both endpoints."
         ),
     )
