@@ -64,6 +64,7 @@ class FetchContext:
     rapidapi_key: str | None = None
     openai_api_key: str | None = None
     ollama_api_key: str | None = None
+    youtube_structurer_enabled: bool = False
 
 
 @dataclass
@@ -77,6 +78,12 @@ class RawTierResult:
     # 4xx body slice (jina), exception message a handler swallowed, etc.
     # Cascade copies this into TierLogEntry.detail.
     detail: str | None = None
+    # Synthetic tier_log entries the cascade appends after the main tier
+    # entry. Lets a handler internally orchestrate sub-tiers (e.g. YouTube's
+    # transcript_api → transcript_structurer chain) and surface each step in
+    # the canonical tier_log without forcing the cascade to expose
+    # prior-tier outputs to sibling tiers.
+    extra_tier_log: list["TierLogEntry"] = field(default_factory=list)
 
 
 @dataclass

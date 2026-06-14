@@ -126,6 +126,7 @@ async def run_cascade(
         tier_log.append(
             _result_entry(tier, raw, validated=validated, quality=quality, duration_ms=duration_ms)
         )
+        tier_log.extend(raw.extra_tier_log)
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
         if validated and (best_result is None or len(raw.content) > len(best_result[1].content)):
@@ -164,6 +165,7 @@ async def run_cascade(
                     tier, raw, validated=validated, quality=quality, duration_ms=duration_ms
                 )
             )
+            tier_log.extend(raw.extra_tier_log)
             if _tier_meets_floor(tier, raw.content, quality):
                 return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
             if validated and (

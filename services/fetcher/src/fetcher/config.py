@@ -108,3 +108,19 @@ class Settings(BaseSettings):
         default="prompts/structure_v1.md",
         description="Path to the active /v1/structure system prompt.",
     )
+    transcript_structurer_config_path: str = Field(
+        default="config/transcript_structurer.yaml",
+        description="Path to the YAML file declaring the transcript structurer cloud chain.",
+    )
+    transcript_structurer_prompt_path: str = Field(
+        default="prompts/structure_transcript_v1.md",
+        description="Path to the active transcript structurer system prompt.",
+    )
+    youtube_structurer_enabled: bool = Field(
+        default=False,
+        description=(
+            "When True, the YouTube handler runs the cloud transcript structurer "
+            "after fetching auto-captions; falls back to raw transcript markdown on "
+            "structurer failure. Default off so the first deploy is opt-in."
+        ),
+    )

@@ -1,12 +1,15 @@
-"""YouTube handler: transcript API plus oEmbed metadata."""
+"""YouTube handler: transcript API + oEmbed metadata, with optional cloud structurer."""
 
 import logging
 import re
+import time
 from urllib.parse import parse_qs, urlparse
 
 from fetcher.extractors import oembed as oembed_extractor
+from fetcher.extractors import transcript_structurer
 from fetcher.extractors import youtube_transcript as transcript_extractor
-from fetcher.types import FetchContext, RawTierResult, Tier
+from fetcher.extractors._cloud_chain import StructurerChainFailed
+from fetcher.types import FetchContext, RawTierResult, Tier, TierLogEntry
 
 
 logger = logging.getLogger(__name__)
@@ -80,9 +83,82 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         logger.warning("youtube transcript fetch failed for %s: %s", video_id, exc)
         return RawTierResult(content="", status=0)
 
-    header = await oembed_extractor.youtube_metadata_header(ctx.http_client, url)
+    meta = await oembed_extractor.youtube_metadata(ctx.http_client, url)
+    header = _format_header(meta, url)
     body = transcript_extractor.chunks_to_markdown(chunks)
-    return RawTierResult(content=header + body, status=200)
+    raw_markdown = header + body
+
+    metadata: dict = {"chunks": chunks}
+    extra_log: list[TierLogEntry] = []
+    final_markdown = raw_markdown
+
+    if ctx.youtube_structurer_enabled and transcript_structurer.get_chain():
+        structured, struct_entry, struct_meta = await _run_structurer(
+            ctx, body, title=meta.title, author=meta.author
+        )
+        if structured is not None:
+            final_markdown = header + structured
+            metadata.update(struct_meta)
+        extra_log.append(struct_entry)
+
+    return RawTierResult(
+        content=final_markdown,
+        status=200,
+        metadata=metadata,
+        extra_tier_log=extra_log,
+    )
+
+
+def _format_header(meta: oembed_extractor.YouTubeMetadata, url: str) -> str:
+    title = meta.title or "Untitled"
+    if meta.author:
+        return f"# {title}\n\n**Channel:** {meta.author}\n**Source:** {url}\n\n---\n\n"
+    return f"# {title}\n\n**Source:** {url}\n\n---\n\n"
+
+
+async def _run_structurer(
+    ctx: FetchContext,
+    raw_body: str,
+    *,
+    title: str | None,
+    author: str | None,
+) -> tuple[str | None, TierLogEntry, dict]:
+    """Run the cloud transcript structurer.
+
+    Returns (structured_text_or_None, tier_log_entry, metadata_dict).
+    On failure: structured is None, caller keeps raw markdown.
+    """
+    t0 = time.monotonic()
+    try:
+        structured, tier_name, usage = await transcript_structurer.structure_transcript(
+            ctx, raw_body, title=title, author=author
+        )
+    except StructurerChainFailed as exc:
+        duration_ms = int((time.monotonic() - t0) * 1000)
+        logger.warning("youtube transcript structurer failed: %s", exc)
+        entry = TierLogEntry(
+            tier="transcript_structurer",
+            status=0,
+            chars=0,
+            error="empty",
+            validated=False,
+            duration_ms=duration_ms,
+            error_kind="exception",
+            detail=f"StructurerChainFailed: {exc}"[:500],
+        )
+        return None, entry, {}
+
+    duration_ms = int((time.monotonic() - t0) * 1000)
+    entry = TierLogEntry(
+        tier="transcript_structurer",
+        status=200,
+        chars=len(structured),
+        error=None,
+        validated=True,
+        duration_ms=duration_ms,
+        error_kind="ok",
+    )
+    return structured, entry, {"structurer_tier": tier_name, "structurer_usage": usage}
 
 
 TIERS: list[Tier] = [
