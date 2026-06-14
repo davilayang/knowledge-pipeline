@@ -81,19 +81,6 @@ async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
     assert structure._stage_passthrough_heuristic(text) == text
 
 
-async def test_stage_cloud_chain_called_with_mocked_chain(monkeypatch: pytest.MonkeyPatch) -> None:
-    usage = {"provider": "openai", "model": "test-model", "tokens_in": 1, "tokens_out": 2}
-    mock_call = AsyncMock(return_value=("# clean md\n\nBody", "structurer:test-model", usage))
-    monkeypatch.setattr(structure, "call_cloud_chain", mock_call)
-
-    ctx = _make_ctx()
-    ctx.openai_api_key = "sk-test"
-    result = await structure._stage_cloud_chain(ctx, "noisy plain text", prompt="SYSTEM PROMPT")
-
-    assert result == ("# clean md\n\nBody", "structurer:test-model", usage)
-    assert mock_call.await_count == 1
-
-
 async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

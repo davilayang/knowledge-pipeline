@@ -341,30 +341,58 @@ def test_structure_endpoint_does_not_cache_passthrough(monkeypatch, tmp_db_path:
     assert cascade.await_count == 2
 
 
-def test_structure_cache_key_isolated_from_url_keys(monkeypatch, tmp_db_path: str) -> None:
-    """Inserting a /v1/fetch row at a URL key must not satisfy a structurer lookup."""
-    from pathlib import Path
-
-    from domains.fetches_store.sources import create_schema
-    from fetcher.cache import lookup, upsert
-
+def test_structure_endpoint_does_not_collide_with_fetch_cache(
+    monkeypatch, tmp_db_path: str
+) -> None:
+    """Real cross-endpoint isolation: a /v1/fetch row at a canonical URL must
+    NOT satisfy a subsequent /v1/structure call for the same source_url. The
+    old test seeded a made-up structurer key — proving two literal strings
+    differ, not that the endpoints actually produce non-colliding keys."""
     _setup_envs(monkeypatch, tmp_db_path)
-    db_path = Path(tmp_db_path)
-    create_schema(db_path=db_path)
+    app = create_app()
 
-    upsert(
-        db_path=db_path,
-        canonical_url="https://example.com/a",
-        source_type="article",
-        markdown="from /v1/fetch",
-        tier_used="jina",
-        metadata={},
-        tier_log=[],
-        ttl_days=365,
-    )
+    with (
+        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
+    ):
+        can_mock.return_value = CanonicalResult(
+            "https://example.com/a", "https://example.com/a", [], []
+        )
+        cascade.return_value = _ok_result()
 
-    structurer_key = "structure:v1:openai:gpt-4.1-mini:v1:abcdef"
-    assert lookup(db_path=db_path, canonical_url=structurer_key) is None
+        with TestClient(app) as client:
+            # Seed a /v1/fetch-shaped cache row at the canonical URL by
+            # writing directly through the cache layer (simulates a prior
+            # /v1/fetch hit for this URL).
+            from pathlib import Path
+
+            from domains.fetches_store.sources import create_schema
+            from fetcher.cache import upsert as cache_upsert
+
+            db_path = Path(tmp_db_path)
+            create_schema(db_path=db_path)
+            cache_upsert(
+                db_path=db_path,
+                canonical_url="https://example.com/a",
+                source_type="article",
+                markdown="from /v1/fetch — not what /v1/structure produces",
+                tier_used="jina",
+                metadata={},
+                tier_log=[],
+                ttl_days=365,
+            )
+
+            # /v1/structure on the same source URL must NOT pick up the
+            # fetch row — it must run the cascade and return its own markdown.
+            response = client.post(
+                "/v1/structure",
+                json={"raw_content": "paste", "source_url": "https://example.com/a"},
+            )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["markdown"] != "from /v1/fetch — not what /v1/structure produces"
+    assert body["cache_hit"] is False
 
 
 def test_structure_endpoint_cache_invalidates_when_prompt_changes(

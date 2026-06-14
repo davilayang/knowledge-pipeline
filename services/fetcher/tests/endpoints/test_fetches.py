@@ -84,6 +84,11 @@ def test_post_fetches_rejects_batch_over_max(monkeypatch, tmp_db_path: str) -> N
 
 
 def test_get_fetches_returns_done_job(monkeypatch, tmp_db_path: str) -> None:
+    """A completed job's GET response carries result.markdown. Poll budget
+    was raised from 1s (50×20ms) to 10s (200×50ms) — slow CI runners
+    occasionally missed the original window. Also moved the assertions
+    inside the TestClient context so the client isn't torn down before
+    the final check."""
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
 
@@ -95,15 +100,16 @@ def test_get_fetches_returns_done_job(monkeypatch, tmp_db_path: str) -> None:
                 json={"requests": [{"url": "https://example.com/a"}]},
             )
             job_id = response.json()["fetches"][0]["job_id"]
-            for _ in range(50):
+            for _ in range(200):
                 poll = client.get(f"/v1/fetches/{job_id}")
                 if poll.json()["status"] == "done":
                     break
-                time.sleep(0.02)
+                time.sleep(0.05)
+            else:
+                raise AssertionError(
+                    f"job {job_id} never reached status=done after 10s; last={poll.json()}"
+                )
 
-    assert poll.status_code == 200
-    res_body = poll.json()
-    if "result" not in res_body:
-        print(f"DEBUG: job_id={job_id} body={res_body}")
-    assert "result" in res_body
-    assert res_body["result"]["markdown"] == "x"
+            assert poll.status_code == 200
+            res_body = poll.json()
+            assert res_body["result"]["markdown"] == "x"
