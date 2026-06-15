@@ -8,13 +8,12 @@ configured, exception, invalid output, all tiers failed) returns
 even when the LLM is unavailable.
 """
 
-import json
 import os
 from dataclasses import asdict
 from pathlib import Path
 
 import dagster as dg
-import httpx
+from workflows.llm_cascade import CascadeTier, run_cascade
 
 from .content_shape import ALL_CONTENT_SHAPES, SHAPE_UNKNOWN
 from .def_config import CONTENT_SHAPE_CLASSIFIER_PROMPT
@@ -49,6 +48,15 @@ def _build_user_prompt(enrichment: EnrichmentSignals, content_type: str, url: st
     return "\n".join(parts)
 
 
+def _validate_shape(payload: dict) -> tuple[str | None, str | None]:
+    shape = payload.get("content_shape")
+    if shape not in ALL_CONTENT_SHAPES:
+        return None, None  # invalid value — try next tier
+    if shape == SHAPE_UNKNOWN:
+        return shape, "returned_unknown"
+    return shape, None  # ok
+
+
 class ContentShapeClassifier(dg.ConfigurableResource):
     """When both keys are None, `classify` short-circuits to SHAPE_UNKNOWN
     so an unconfigured deploy still materialises triage."""
@@ -67,43 +75,19 @@ class ContentShapeClassifier(dg.ConfigurableResource):
         if not self.groq_api_key and not self.openai_api_key:
             return SHAPE_UNKNOWN, {"status": "skipped_no_key"}
 
-        user_prompt = _build_user_prompt(enrichment, content_type, url)
-        tiers: list[tuple[str, str, str]] = []
+        tiers: list[CascadeTier] = []
         if self.groq_api_key:
-            tiers.append((_GROQ_MODEL, _GROQ_URL, self.groq_api_key))
+            tiers.append(CascadeTier(_GROQ_MODEL, _GROQ_URL, self.groq_api_key))
         if self.openai_api_key:
-            tiers.append((_OPENAI_MODEL, _OPENAI_URL, self.openai_api_key))
+            tiers.append(CascadeTier(_OPENAI_MODEL, _OPENAI_URL, self.openai_api_key))
 
-        for model, endpoint, api_key in tiers:
-            try:
-                response = httpx.post(
-                    endpoint,
-                    headers={
-                        "Authorization": f"Bearer {api_key}",
-                        "Content-Type": "application/json",
-                    },
-                    json={
-                        "model": model,
-                        "messages": [
-                            {"role": "system", "content": _SYSTEM_PROMPT},
-                            {"role": "user", "content": user_prompt},
-                        ],
-                        "response_format": {"type": "json_object"},
-                        "temperature": 0.0,
-                        "max_completion_tokens": 200,
-                    },
-                    timeout=self.request_timeout_s,
-                )
-                payload = response.json()
-                msg = payload["choices"][0]["message"]["content"]
-                shape = json.loads(msg)["content_shape"]
-            except Exception:
-                # Network blip, malformed JSON, missing key in payload —
-                # all treated as tier failure, try the next one.
-                continue
-            if shape not in ALL_CONTENT_SHAPES:
-                continue  # Tier emitted a value we can't route on — try next.
-            status = "returned_unknown" if shape == SHAPE_UNKNOWN else "ok"
-            return shape, {"status": status, "model": model}
-
-        return SHAPE_UNKNOWN, {"status": "invalid_output"}
+        result = run_cascade(
+            tiers=tiers,
+            system_prompt=_SYSTEM_PROMPT,
+            user_prompt=_build_user_prompt(enrichment, content_type, url),
+            validate=_validate_shape,
+            timeout_s=self.request_timeout_s,
+        )
+        if result.value is None:
+            return SHAPE_UNKNOWN, {"status": result.status}
+        return result.value, {"status": result.status, "model": result.model}
