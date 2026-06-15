@@ -19,6 +19,7 @@ from .classify import (
 )
 from .content_shape import ALL_CONTENT_SHAPES, classify_content_shape
 from .def_config import PIPELINE_TAG, queue_items_partition_def
+from .display import resolve_display_description, resolve_display_title
 from .enrich import EnrichmentSignals, enrich_url
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import fetch_url_meta
@@ -267,11 +268,19 @@ def triaged(
         content_shape=content_shape,
         raw_content_override=config.raw_content_override,
     )
+    # Per-content-type display sources avoid YouTube's '- YouTube' static
+    # title and generic og:description boilerplate. See display.py.
+    display_title = resolve_display_title(content_type=content_type, enrichment=enrichment)
+    display_description = resolve_display_description(
+        content_type=content_type, enrichment=enrichment
+    )
     # Only seed Notion's Name when the user left it blank — never overwrite a
     # user-set title. Notion's auto-default ("New queued page", "Untitled")
     # counts as blank so triage can replace it with the real page title.
     # Description is operational and safe to (re)write.
-    name_for_notion = meta.title if (not _is_user_set_name(config.name) and meta.title) else None
+    name_for_notion = (
+        display_title if (not _is_user_set_name(config.name) and display_title) else None
+    )
     status_after = "Fetching"
     triage_notion.write_triaged(
         page_id=page_id,
@@ -280,7 +289,7 @@ def triaged(
         canonical_url=canonical,
         status_after=status_after,
         name=name_for_notion,
-        description=meta.description,
+        description=display_description,
         added_at_iso=config.added_at_iso,
     )
 
