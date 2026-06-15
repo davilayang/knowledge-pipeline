@@ -1,6 +1,7 @@
 import json
 import re
 import textwrap
+import time
 
 import dagster as dg
 
@@ -12,12 +13,19 @@ from orchestrators.defs.shared.queue_resources import (
 
 from .classify import (
     ALL_CONTENT_TYPES,
+    CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_PODCAST,
     CONTENT_TYPE_YOUTUBE,
     classify_content_type,
     normalize_url,
 )
-from .content_shape import ALL_CONTENT_SHAPES, classify_content_shape
+from .content_shape import (
+    ALL_CONTENT_SHAPES,
+    SHAPE_PODCAST_EPISODE,
+    SHAPE_RESEARCH_SUMMARY,
+    SHAPE_UNKNOWN,
+)
+from .content_shape_llm import ContentShapeClassifier
 from .def_config import PIPELINE_TAG, queue_items_partition_def
 from .display import resolve_display_description, resolve_display_title
 from .enrich import EnrichmentSignals, enrich_url
@@ -177,6 +185,7 @@ def triaged(
     config: TriageInput,
     triage_notion: NotionQueueResource,
     triage_store: QueueStoreResource,
+    content_shape_classifier: ContentShapeClassifier,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
 
@@ -249,16 +258,28 @@ def triaged(
     enrichment_json = (existing_row or {}).get("enrichment_json")
     enrichment = EnrichmentSignals.from_json(enrichment_json)
     # Same override-vs-classifier shape as content_type above.
+    llm_meta: dict | None = None
+    llm_duration_ms: int | None = None
     if config.content_shape and config.content_shape in ALL_CONTENT_SHAPES:
         content_shape = config.content_shape
         content_shape_source = "notion"
+    elif content_type == CONTENT_TYPE_ARXIV:
+        # arXiv URLs host research papers; no reason to round-trip the LLM.
+        content_shape = SHAPE_RESEARCH_SUMMARY
+        content_shape_source = "url_fastpath"
+    elif content_type == CONTENT_TYPE_PODCAST:
+        # Audio-suffix URLs are podcast episodes by definition.
+        content_shape = SHAPE_PODCAST_EPISODE
+        content_shape_source = "url_fastpath"
     else:
-        content_shape = classify_content_shape(
+        t0 = time.monotonic()
+        content_shape, llm_meta = content_shape_classifier.classify(
             enrichment=enrichment,
             content_type=content_type,
             url=canonical,
         )
-        content_shape_source = "classified"
+        llm_duration_ms = int((time.monotonic() - t0) * 1000)
+        content_shape_source = "llm_classified" if content_shape != SHAPE_UNKNOWN else "unknown"
 
     triage_store.upsert_triaged(
         notion_page_id=page_id,
@@ -312,6 +333,12 @@ def triaged(
     }
     if podcast_substituted_to:
         metadata["podcast_substituted_to"] = dg.MetadataValue.url(podcast_substituted_to)
+    if llm_meta is not None:
+        metadata["content_shape_llm_status"] = dg.MetadataValue.text(llm_meta.get("status", ""))
+        if "model" in llm_meta:
+            metadata["content_shape_llm_model"] = dg.MetadataValue.text(llm_meta["model"])
+        if llm_duration_ms is not None:
+            metadata["content_shape_llm_duration_ms"] = dg.MetadataValue.int(llm_duration_ms)
     return dg.MaterializeResult(metadata=metadata)
 
 

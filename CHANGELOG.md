@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.21.0] — 2026-06-15
+
+### Added
+- **LLM-primary `content_shape` classifier.** Replaces the deleted YAML rules engine with a `ContentShapeClassifier` Dagster resource that picks one of six shapes (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`) from existing per-source enrichment (title/description/channel/abstract) via a Groq `llama-3.3-70b-versatile` → OpenAI `gpt-4.1-mini` cascade. URL-deterministic fast-paths bypass the LLM for arXiv URLs (→ `research_summary`) and audio URLs (→ `podcast_episode`). LLM may return `unknown` honestly for ambiguous content — user disambiguates in Notion. Optional `GROQ_API_KEY`; deploys with neither LLM key land non-fast-path URLs as `unknown`. `packages/orchestrators/src/orchestrators/defs/triage_knowledge_queue/content_shape_llm.py`.
+
+### Removed
+- **Rules-based `classify_content_shape` + the three YAML lookup tables** (`article_host_rules.yaml`, `youtube_channel_rules.yaml`, `conference_channels.yaml`). The rules silently misclassified multi-shape hosts (Medium, mixed YouTube creators); the LLM-primary classifier reads page-specific enrichment instead of host whitelists.
+
+---
+
 ## [0.20.0] — 2026-06-15
 
 ### Added

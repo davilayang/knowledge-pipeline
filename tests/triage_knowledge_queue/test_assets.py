@@ -76,7 +76,15 @@ def _get_metadata(result) -> dict:
 def _resources(tmp_path: Path):
     store = QueueStoreResource(db_path=str(tmp_path / "q.db"))
     notion = MagicMock()
-    return {"triage_notion": notion, "triage_store": store}, notion
+    classifier = MagicMock()
+    # Default: behave as if no LLM key is configured. Individual tests
+    # that exercise the LLM path override .classify.return_value.
+    classifier.classify.return_value = ("unknown", {"status": "skipped_no_key"})
+    return {
+        "triage_notion": notion,
+        "triage_store": store,
+        "content_shape_classifier": classifier,
+    }, notion
 
 
 # -------- classification metadata --------
@@ -698,9 +706,15 @@ def _seed_enrichment(store: QueueStoreResource, *, page_id: str, url: str, paylo
 
 
 def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_path: Path):
-    """YouTube row with `AI Engineer` channel enriched → triaged writes
-    `content_shape="conference_talk"` to queue.db."""
+    """YouTube row with `AI Engineer` channel enriched → asset forwards
+    the channel signal to the LLM classifier, which picks conference_talk.
+    Regression guard: enrichment data must flow into the classify call."""
     resources, _ = _resources(tmp_path)
+    classifier = resources["content_shape_classifier"]
+    classifier.classify.return_value = (
+        "conference_talk",
+        {"status": "ok", "model": "llama-3.3-70b-versatile"},
+    )
     _seed_enrichment(
         resources["triage_store"],
         page_id="p-1",
@@ -719,6 +733,10 @@ def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_pa
 
     row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
     assert row["content_shape"] == "conference_talk"
+    # Enrichment with the YouTube channel was passed into classify.
+    call_kwargs = classifier.classify.call_args.kwargs
+    assert call_kwargs["enrichment"].youtube is not None
+    assert call_kwargs["enrichment"].youtube.channel == "AI Engineer"
 
 
 def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
@@ -741,8 +759,10 @@ def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
 
 
 def test_triaged_classifies_research_summary_for_arxiv_without_enrichment(tmp_path: Path):
-    """arXiv host trumps enrichment — even an empty `enriched` row still
-    classifies as research_summary."""
+    """arXiv URLs → research_summary via URL-deterministic fast-path.
+    arXiv hosts research papers >99% of the time; skipping the LLM
+    round-trip for this case avoids asking a question we know the
+    answer to. Source tags as `url_fastpath` for observability."""
     resources, _ = _resources(tmp_path)
     _seed_enrichment(
         resources["triage_store"],
@@ -758,11 +778,71 @@ def test_triaged_classifies_research_summary_for_arxiv_without_enrichment(tmp_pa
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_shape"].text == "research_summary"
+    assert metadata["content_shape_source"].text == "url_fastpath"
+
+
+def test_triaged_classifies_podcast_episode_for_audio_url(tmp_path: Path):
+    """Audio-suffix URL → podcast_episode via URL-deterministic fast-path.
+    The URL suffix IS the definition for podcast episodes — nothing else
+    serves .mp3 as primary content in this corpus. Source = `url_fastpath`."""
+    resources, _ = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/episode-42.mp3",
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "podcast_episode"
+    assert metadata["content_shape_source"].text == "url_fastpath"
+
+
+def test_triaged_invokes_llm_classifier_for_general_article(tmp_path: Path):
+    """Non-fast-path URL (Article, no Notion override) → LLM classifier
+    resource is invoked with the page's enrichment. The shape and status
+    it returns flow into the asset's MaterializeResult metadata so the
+    Dagster UI shows which tier answered + how long it took."""
+    resources, _ = _resources(tmp_path)
+    classifier = resources["content_shape_classifier"]
+    classifier.classify.return_value = (
+        "opinion_essay",
+        {"status": "ok", "model": "llama-3.3-70b-versatile"},
+    )
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://example.com/post",
+        payload='{"article":{"title":"My take","description":"A short thesis."}}',
+    )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/post",
+    )
+
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "opinion_essay"
+    assert metadata["content_shape_source"].text == "llm_classified"
+    assert metadata["content_shape_llm_model"].text == "llama-3.3-70b-versatile"
+    assert metadata["content_shape_llm_status"].text == "ok"
+    # Classifier was actually called — not bypassed by any fast-path.
+    classifier.classify.assert_called_once()
+    call_kwargs = classifier.classify.call_args.kwargs
+    assert call_kwargs["content_type"] == "Article"
+    assert call_kwargs["url"] == "https://example.com/post"
 
 
 def test_triaged_classifies_opinion_essay_for_substack_host(tmp_path: Path):
-    """Article host rule fires when YouTube channel match doesn't."""
+    """Substack article → asset forwards the article signal to LLM
+    classifier, which picks opinion_essay. Regression guard for article
+    enrichment flow."""
     resources, _ = _resources(tmp_path)
+    classifier = resources["content_shape_classifier"]
+    classifier.classify.return_value = (
+        "opinion_essay",
+        {"status": "ok", "model": "llama-3.3-70b-versatile"},
+    )
     _seed_enrichment(
         resources["triage_store"],
         page_id="p-1",
@@ -777,6 +857,39 @@ def test_triaged_classifies_opinion_essay_for_substack_host(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_shape"].text == "opinion_essay"
+    assert metadata["content_shape_source"].text == "llm_classified"
+
+
+def test_notion_override_skips_llm_classifier(tmp_path: Path):
+    """When the user sets `Content Shape` on the Notion row, the asset
+    uses that value verbatim and does NOT spend a classifier call. Keeps
+    user overrides authoritative + avoids burning quota on pages the user
+    already disambiguated."""
+    resources, _ = _resources(tmp_path)
+    classifier = resources["content_shape_classifier"]
+    instance = _instance_with_partition("p-1")
+    result = dg.materialize(
+        [triaged],
+        partition_key="p-1",
+        resources=resources,
+        instance=instance,
+        tags={"notion_page_id": "p-1"},
+        run_config={
+            "ops": {
+                "triage_knowledge_queue__triaged": {
+                    "config": {
+                        "url": "https://example.com/post",
+                        "content_shape": "tutorial",  # user-set
+                    }
+                }
+            }
+        },
+    )
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_shape"].text == "tutorial"
+    assert metadata["content_shape_source"].text == "notion"
+    classifier.classify.assert_not_called()
 
 
 def test_triaged_respects_user_set_content_shape(tmp_path: Path):
@@ -810,8 +923,9 @@ def test_triaged_respects_user_set_content_shape(tmp_path: Path):
 
 
 def test_triaged_falls_back_to_classifier_on_typo_content_shape(tmp_path: Path):
-    """Typo'd Content Shape (not in ALL_CONTENT_SHAPES) → rules classifier
-    fires. Source = "classified"."""
+    """Typo'd Content Shape (not in ALL_CONTENT_SHAPES) → classifier path
+    fires. Current state: classifier returns SHAPE_UNKNOWN (LLM wiring lands
+    in later slices). Source = "unknown" until then."""
     resources, _ = _resources(tmp_path)
     instance = _instance_with_partition("p-1")
     result = dg.materialize(
@@ -834,7 +948,7 @@ def test_triaged_falls_back_to_classifier_on_typo_content_shape(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_shape"].text == "unknown"
-    assert metadata["content_shape_source"].text == "classified"
+    assert metadata["content_shape_source"].text == "unknown"
 
 
 def test_triaged_survives_malformed_enrichment_json(tmp_path: Path):
