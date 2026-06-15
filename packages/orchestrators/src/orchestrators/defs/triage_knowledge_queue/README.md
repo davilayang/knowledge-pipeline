@@ -23,8 +23,8 @@ triage_knowledge_queue_job  (partition_key = notion_page_id)
         └──► triaged  (consumes enriched; resolve Content Type (Notion override >
                        URL classifier), canonicalize URL; Podcast → YouTube
                        substitution via podcast_canonicalize.py on map hit;
-                       classify content_shape via rules over enrichment +
-                       URL; commit to local store + Notion. Notion Content
+                       classify content_shape via priority chain (Notion
+                       override → arXiv/audio URL fast-paths → LLM resource);
                        commit to local store + Notion.)
                 │
                 ├──► canonical_url matches an existing queue_items row?
@@ -56,7 +56,7 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 |---|---|
 | `URL` | Required input. Asset fails fast if missing. |
 | `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`Article`/`YouTube`/`arXiv`/`PDF`/`Podcast`/`Other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
-| `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls back to the rules classifier in `content_shape.py`. Metadata field `content_shape_source` records which path was taken. When the classifier returns `unknown`, triage skips the Notion write so a pre-populated override isn't stomped on the next tick. |
+| `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls into the priority chain: arXiv URLs → `research_summary` (fast-path); audio URLs → `podcast_episode` (fast-path); everything else → `ContentShapeClassifier` LLM resource (Groq `llama-3.3-70b-versatile` primary, OpenAI `gpt-4.1-mini` fallback). LLM may return `unknown` honestly when no category fits — user disambiguates in Notion. `content_shape_source` metadata records which path fired (`notion` / `url_fastpath` / `llm_classified` / `unknown`). |
 | `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `fetch_extract_queue.published` later overwrites Name with `topic_card.extracted_title`. |
 
 `Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
