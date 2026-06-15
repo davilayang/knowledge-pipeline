@@ -195,3 +195,49 @@ def test_re_exported_from_structure_for_backward_compat() -> None:
 
     assert RE_ChainEntry is ChainEntry
     assert RE_StructurerChainFailed is StructurerChainFailed
+
+
+async def test_call_cloud_chain_raises_not_configured_on_empty_chain() -> None:
+    """Empty chain (yaml not loaded, e.g. fetcher image missing config/) raises
+    StructurerNotConfigured with a message that names the actual condition —
+    NOT the generic 'no API keys configured'. This is the bug that escaped
+    diagnosis for hours: silent FileNotFoundError → empty chain → misleading
+    error pointing at keys when the real cause was missing config files."""
+    from fetcher.extractors._cloud_chain import StructurerNotConfigured, call_cloud_chain
+
+    try:
+        await call_cloud_chain(
+            "content", "prompt", chain=[], openai_key="sk-set", ollama_key="ol-set"
+        )
+        raise AssertionError("expected StructurerNotConfigured")
+    except StructurerNotConfigured as exc:
+        assert "chain config not loaded" in str(exc)
+        assert exc.retryable is False
+
+
+async def test_call_cloud_chain_raises_not_configured_when_no_provider_has_key() -> None:
+    """Chain has entries but no provider's API key is set → StructurerNotConfigured
+    with the distinct 'no API keys configured for any chain provider' message.
+    Symmetric to the empty-chain case via a single StructurerNotConfigured
+    subclass — endpoints map both to 503 via isinstance."""
+    from fetcher.extractors._cloud_chain import StructurerNotConfigured, call_cloud_chain
+
+    chain = [
+        ChainEntry(model="m1", provider="openai"),
+        ChainEntry(model="m2", provider="ollama"),
+    ]
+    try:
+        await call_cloud_chain("content", "prompt", chain=chain, openai_key=None, ollama_key=None)
+        raise AssertionError("expected StructurerNotConfigured")
+    except StructurerNotConfigured as exc:
+        assert "no API keys configured for any chain provider" in str(exc)
+        assert exc.retryable is False
+
+
+def test_not_configured_is_a_chain_failed_subclass() -> None:
+    """Endpoint handlers catch StructurerChainFailed broadly, then check
+    isinstance(exc, StructurerNotConfigured) for the 503 branch. The subclass
+    relationship is load-bearing — assert it explicitly."""
+    from fetcher.extractors._cloud_chain import StructurerNotConfigured
+
+    assert issubclass(StructurerNotConfigured, StructurerChainFailed)

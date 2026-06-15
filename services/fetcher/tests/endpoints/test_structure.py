@@ -209,10 +209,11 @@ def test_structure_endpoint_returns_503_problem_when_no_api_keys_configured(
             "https://example.com/a", "https://example.com/a", [], []
         )
         cascade.side_effect = StructurerCascadeFailed(
-            "no API keys",
+            "cascade exhausted",
             retryable=False,
             tier_log=[],
-            last_error="no API keys configured",
+            last_error="no API keys configured for any chain provider",
+            not_configured=True,
         )
         with TestClient(app) as client:
             response = client.post(

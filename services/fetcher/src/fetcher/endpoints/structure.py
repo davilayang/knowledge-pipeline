@@ -147,7 +147,7 @@ async def structure(req: StructureRequest, request: Request) -> Any:
             prompt=_structure_extractor.get_prompt(),
         )
     except StructurerCascadeFailed as exc:
-        if not exc.retryable and "no api keys" in exc.last_error.lower():
+        if exc.not_configured:
             return problem_response(
                 status=503,
                 code="STRUCTURER_UNCONFIGURED",

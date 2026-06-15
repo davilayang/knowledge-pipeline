@@ -20,6 +20,7 @@ from fetcher.extractors import trafilatura as _trafilatura
 from fetcher.extractors._cloud_chain import (
     ChainEntry,
     StructurerChainFailed,
+    StructurerNotConfigured,
     _load_chain,
     call_cloud_chain,
 )
@@ -114,11 +115,13 @@ class StructurerCascadeFailed(Exception):
         retryable: bool,
         tier_log: list[TierLogEntry],
         last_error: str,
+        not_configured: bool = False,
     ) -> None:
         super().__init__(message)
         self.retryable = retryable
         self.tier_log = tier_log
         self.last_error = last_error
+        self.not_configured = not_configured
 
 
 def _stage_trafilatura(raw_content: str) -> str | None:
@@ -247,6 +250,7 @@ async def run_cascade(
             retryable=exc.retryable,
             tier_log=tier_log,
             last_error=str(exc),
+            not_configured=isinstance(exc, StructurerNotConfigured),
         ) from exc
 
     tier_log.append(_log_entry(tier_name, chars=len(markdown), error=None))

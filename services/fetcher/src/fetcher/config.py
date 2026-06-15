@@ -1,7 +1,9 @@
 """Env-driven settings for the fetcher service.
 
-All vars are prefixed ``FETCHER_`` to avoid colliding with host env. Settings
-split three ways by failure shape when unset:
+Most vars are prefixed ``FETCHER_`` to avoid colliding with host env;
+the structurer's ``OPENAI_API_KEY`` / ``OLLAMA_API_KEY`` are deliberate
+exceptions so a single entry in ``.env`` feeds both the orchestrator and
+the fetcher. Settings split three ways by failure shape when unset:
 
 - **Required** (no default; ``Settings()`` raises at boot, healthz returns 503
   with the missing-list): ``FETCHER_SOCKS5_URL``, ``FETCHER_LLAMA_PARSE_API_KEY``.
@@ -19,7 +21,7 @@ handler module reads ``os.environ.get(...)`` directly rather than waiting for
 ``Settings`` so the path is resolved before FastAPI startup runs.
 """
 
-from pydantic import Field
+from pydantic import AliasChoices, Field
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -91,14 +93,17 @@ class Settings(BaseSettings):
     )
     openai_api_key: str | None = Field(
         default=None,
+        validation_alias=AliasChoices("OPENAI_API_KEY"),
         description=(
             "OpenAI API key for the /v1/structure cloud LLM chain. "
-            "Optional individually; at least one of openai/ollama is needed for "
-            "the cloud stage to function."
+            "Shares the bare OPENAI_API_KEY env var with the orchestrator so "
+            "one entry in .env serves both services. Optional individually; "
+            "at least one of openai/ollama is needed for the cloud stage."
         ),
     )
     ollama_api_key: str | None = Field(
         default=None,
+        validation_alias=AliasChoices("OLLAMA_API_KEY"),
         description=(
             "Ollama Cloud API key for the /v1/structure fallback. "
             "Used with the OpenAI-compat base_url declared in structurer.yaml."
