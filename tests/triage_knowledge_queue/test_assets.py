@@ -733,7 +733,6 @@ def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_pa
 
     row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
     assert row["content_shape"] == "conference_talk"
-    # Enrichment with the YouTube channel was passed into classify.
     call_kwargs = classifier.classify.call_args.kwargs
     assert call_kwargs["enrichment"].youtube is not None
     assert call_kwargs["enrichment"].youtube.channel == "AI Engineer"

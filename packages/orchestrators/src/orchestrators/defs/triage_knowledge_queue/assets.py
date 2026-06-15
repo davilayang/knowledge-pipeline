@@ -268,7 +268,6 @@ def triaged(
         content_shape = SHAPE_RESEARCH_SUMMARY
         content_shape_source = "url_fastpath"
     elif content_type == CONTENT_TYPE_PODCAST:
-        # Audio-suffix URLs are podcast episodes by definition.
         content_shape = SHAPE_PODCAST_EPISODE
         content_shape_source = "url_fastpath"
     else:

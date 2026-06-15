@@ -6,11 +6,6 @@ Groq → OpenAI cascade. Never raises — every failure mode (no key
 configured, exception, invalid output, all tiers failed) returns
 `(SHAPE_UNKNOWN, metadata_dict)` so the triage asset lands the page
 even when the LLM is unavailable.
-
-Model choice (Groq `llama-3.3-70b-versatile`) was empirically validated
-against a 6-URL panel — see `ai-plannings/2026-06-15_hybrid-content-shape-groq-fallback.md`
-"Pre-implementation E2E validation" for the comparison vs gpt-oss-20b,
-llama-3.1-8b, and llama-3.3-70b.
 """
 
 import json
@@ -55,9 +50,8 @@ def _build_user_prompt(enrichment: EnrichmentSignals, content_type: str, url: st
 
 
 class ContentShapeClassifier(dg.ConfigurableResource):
-    """Wraps the LLM call. Holds optional API keys read at resource
-    construction. When both keys are None, `classify` short-circuits to
-    SHAPE_UNKNOWN so an unconfigured deploy still materialises triage."""
+    """When both keys are None, `classify` short-circuits to SHAPE_UNKNOWN
+    so an unconfigured deploy still materialises triage."""
 
     groq_api_key: str | None = None
     openai_api_key: str | None = None
