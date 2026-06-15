@@ -33,6 +33,28 @@ def _mock_chat_response(content_shape: str, status_code: int = 200) -> MagicMock
     return response
 
 
+def test_system_prompt_loaded_from_disk() -> None:
+    """The system prompt lives in `prompts/triage/<label>.md`; the module
+    reads it at import time. Guards against accidental inline prompts
+    creeping back in + against the file being renamed/moved without
+    updating the label constant. Mirrors the prompt-resolution test
+    pattern used by `workflows.extraction`."""
+    from orchestrators.defs.triage_knowledge_queue import content_shape_llm
+
+    assert "content_shape" in content_shape_llm._SYSTEM_PROMPT
+    # All six valid shape strings should appear in the prompt body so the
+    # LLM can reason about them as the enum we'll then validate against.
+    for shape in (
+        "conference_talk",
+        "podcast_episode",
+        "tutorial",
+        "opinion_essay",
+        "research_summary",
+        "unknown",
+    ):
+        assert shape in content_shape_llm._SYSTEM_PROMPT
+
+
 def test_no_keys_configured_returns_unknown() -> None:
     """When neither Groq nor OpenAI key is set, the resource skips the
     HTTP call entirely and returns SHAPE_UNKNOWN with a metadata marker
