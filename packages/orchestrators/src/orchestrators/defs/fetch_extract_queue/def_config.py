@@ -14,11 +14,13 @@ JOB_MAX_RETRIES = "1"
 # Content Type values that this pipeline supports. Triage routes every row
 # whose type is in this set to Status=Fetching; the fetcher service's
 # handler registry then claims the URL (article handler is a catch-all for
-# anything not yt/arxiv/pdf/medium, so "Article" and "Other" both reach it
-# safely). Podcast is handled upstream — triage substitutes audio URLs to
-# YouTube via `podcast_canonicalize.py` so this pipeline never sees the
-# Podcast type. Extend when the PDF fetcher port lands.
-SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other")
+# anything not yt/arxiv/pdf/medium/podcast, so "Article" and "Other" both
+# reach it safely). `Podcast` covers audio rows whose URL has no YouTube
+# mirror in `podcast_canonicalize.podcast_youtube_map.yaml` — the
+# substitution path keeps reclassifying mirrored podcasts as YouTube
+# upstream, so only un-mirrored audio reaches the fetcher's podcast
+# handler (Whisper). Extend when the PDF fetcher port lands.
+SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other", "Podcast")
 
 # Active prompt labels — basenames of the markdown files under prompts/.
 # Code-level constants (not env vars) because prompt versions don't vary

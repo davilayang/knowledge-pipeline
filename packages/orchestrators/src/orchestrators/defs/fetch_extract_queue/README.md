@@ -5,8 +5,8 @@ Cards stored locally for newsletter-assistant to retrieve on engagement.
 
 Picks up rows after triage_knowledge_queue has classified them: sensor filter is
 Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv,
-Article, Other}). The fetcher service's handler registry routes the URL by
-host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium,
+Article, Other, Podcast}). The fetcher service's handler registry routes the URL by
+host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium/podcast,
 so Article and Other reach a real fetcher path. Triage also registers the
 dynamic partition; this pipeline only runs the job. Triage is therefore the
 sole writer to `queue_items` partition state — a Notion row reaching

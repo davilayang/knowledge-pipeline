@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.22.1] — 2026-06-15
+
+### Changed
+
+- **Podcast rows without a YouTube mirror now flow through to the Whisper handler.** The extract sensor previously filtered only on `Article`, `YouTube`, and a handful of other types — `Podcast` was missing, so rows sat at Status=Fetching indefinitely. Sensor filter now includes `Podcast`.
+
+---
+
 ## [0.22.0] — 2026-06-15
 
 ### Added
