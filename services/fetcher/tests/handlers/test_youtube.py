@@ -11,11 +11,12 @@ from fetcher.handlers import youtube
 _VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 
-def _make_ctx(*, structurer_enabled: bool = False) -> MagicMock:
+def _make_ctx(*, structurer_enabled: bool = False, socks5_url: str = "") -> MagicMock:
     ctx = MagicMock()
     ctx.openai_api_key = "openai-key"
     ctx.ollama_api_key = "ollama-key"
     ctx.youtube_structurer_enabled = structurer_enabled
+    ctx.socks5_url = socks5_url
     ctx.http_client = MagicMock()
     return ctx
 
@@ -148,6 +149,66 @@ async def test_youtube_structurer_skipped_when_flag_disabled() -> None:
     struct_mock.assert_not_awaited()
     assert result.extra_tier_log == []
     assert "structurer_tier" not in result.metadata
+
+
+async def test_transcript_api_uses_socks5_proxy_when_configured() -> None:
+    """YouTube data-center IP-blocks the transcript API on cloud hosts. Wire
+    ctx.socks5_url into the client so the call exits via the Tailscale proxy
+    on residential IP — same pattern the article handler uses."""
+    ctx = _make_ctx(socks5_url="socks5://192.168.1.10:1080")
+    api_instance = MagicMock()
+    api_instance.fetch.return_value = SimpleNamespace(snippets=_fake_snippets())
+    api_cls = MagicMock(return_value=api_instance)
+
+    with (
+        patch("youtube_transcript_api.YouTubeTranscriptApi", api_cls),
+        patch("youtube_transcript_api.proxies.GenericProxyConfig") as proxy_cls,
+        _patch_oembed(),
+    ):
+        proxy_instance = MagicMock(name="proxy_config")
+        proxy_cls.return_value = proxy_instance
+        await youtube._transcript_api_tier(ctx, _VIDEO_URL)
+
+    proxy_cls.assert_called_once_with(
+        http_url="socks5://192.168.1.10:1080",
+        https_url="socks5://192.168.1.10:1080",
+    )
+    api_cls.assert_called_once_with(proxy_config=proxy_instance)
+
+
+async def test_transcript_api_surfaces_ipblocked_in_detail() -> None:
+    """IpBlocked from cloud-host IPs shouldn't masquerade as a generic
+    'empty' tier. The handler surfaces the exception class name in
+    RawTierResult.detail so the cascade tier_log shows operators *why*
+    the tier failed — proxy config, not 'no transcript exists'."""
+    from youtube_transcript_api import IpBlocked
+
+    ctx = _make_ctx()
+    api_instance = MagicMock()
+    api_instance.fetch.side_effect = IpBlocked("cloud IP blocked")
+    api_cls = MagicMock(return_value=api_instance)
+
+    with patch("youtube_transcript_api.YouTubeTranscriptApi", api_cls):
+        result = await youtube._transcript_api_tier(ctx, _VIDEO_URL)
+
+    assert result.content == ""
+    assert result.status == 0
+    assert result.detail is not None
+    assert "IpBlocked" in result.detail
+
+
+async def test_transcript_api_no_proxy_when_socks5_unset() -> None:
+    """Empty ctx.socks5_url → instantiate bare (local dev / tests). No
+    GenericProxyConfig import overhead, no surprise routing."""
+    ctx = _make_ctx(socks5_url="")
+    api_instance = MagicMock()
+    api_instance.fetch.return_value = SimpleNamespace(snippets=_fake_snippets())
+    api_cls = MagicMock(return_value=api_instance)
+
+    with patch("youtube_transcript_api.YouTubeTranscriptApi", api_cls), _patch_oembed():
+        await youtube._transcript_api_tier(ctx, _VIDEO_URL)
+
+    api_cls.assert_called_once_with(proxy_config=None)
 
 
 async def test_youtube_structurer_skipped_when_chain_empty() -> None:

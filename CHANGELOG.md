@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.19.3] — 2026-06-15
+
+### Changed
+
+- **YouTube transcript fetch now routes through `FETCHER_SOCKS5_URL` when set.** Data-center IPs (Hetzner, AWS) get IP-blocked by YouTube's transcript API; the handler now wires `ctx.socks5_url` into `GenericProxyConfig` so the call egresses via the residential Tailscale path the article handler already uses. Failure detail (exception class) now surfaces in `tier_log.detail` instead of being flattened to generic `"empty"`. `services/fetcher/src/fetcher/handlers/youtube.py`.
+
+---
+
 ## [0.19.2] — 2026-06-15
 
 ### Changed
