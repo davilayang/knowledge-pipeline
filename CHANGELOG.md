@@ -12,9 +12,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 - **Facebook post fetching via RapidAPI.** New `facebook` handler claims `facebook.com` / `fb.com` / `fb.watch` URLs with a two-tier cascade — `facebook-scraper-api4` (URL-keyed, primary) then `facebook-scraper3` (`pfbid`-keyed, fallback). Both share `FETCHER_RAPIDAPI_KEY`; the handler is `STRICT_PAID_TIER=True` so unauthorized fetches surface a Problem instead of falling through to the article handler and returning login-wall junk. `services/fetcher/src/fetcher/handlers/facebook.py`.
+- **YouTube captions fallback via RapidAPI youtube-data16.** New paid `rapidapi_captions` tier fires after the free `transcript_api` tier when the latter returns no chunks (YouTube IP-blocks even via the Tailscale SOCKS5 proxy, or no community transcript exists). Extractor maps the upstream `offset` field to `start` so the existing `chunks_to_markdown` formatter consumes the chunks unchanged; structurer runs symmetrically for both tiers via a shared `_finalize_chunks` helper. `services/fetcher/src/fetcher/handlers/youtube.py`, `services/fetcher/src/fetcher/extractors/rapidapi/youtube_captions.py`.
 
 ### Changed
-- **RapidAPI extractors moved into `extractors/rapidapi/` subpackage** with shared `_client.py` primitives (`build_headers`, `raise_for_status_with_body`, `check_quota`). `rapidapi_medium` → `rapidapi.medium`; new `rapidapi.facebook_api4` and `rapidapi.facebook_scraper3` compose the same helpers. Pure relocation for medium — error shape unchanged. `services/fetcher/src/fetcher/extractors/rapidapi/`.
+- **RapidAPI extractors moved into `extractors/rapidapi/` subpackage** with shared `_client.py` primitives (`build_headers`, `raise_for_status_with_body`, `check_quota`). `rapidapi_medium` → `rapidapi.medium`; new `rapidapi.facebook_api4`, `rapidapi.facebook_scraper3`, and `rapidapi.youtube_captions` compose the same helpers. Pure relocation for medium — error shape unchanged. `services/fetcher/src/fetcher/extractors/rapidapi/`.
 
 ---
 

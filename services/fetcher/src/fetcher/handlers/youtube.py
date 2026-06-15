@@ -9,6 +9,7 @@ from fetcher.extractors import oembed as oembed_extractor
 from fetcher.extractors import transcript_structurer
 from fetcher.extractors import youtube_transcript as transcript_extractor
 from fetcher.extractors._cloud_chain import StructurerChainFailed
+from fetcher.extractors.rapidapi import youtube_captions as rapidapi_captions_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier, TierLogEntry
 
 
@@ -93,6 +94,17 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         logger.warning("youtube transcript fetch failed for %s: %s", video_id, exc)
         return RawTierResult(content="", status=0, detail=_exception_detail(exc))
 
+    return await _finalize_chunks(ctx, url, chunks)
+
+
+async def _finalize_chunks(ctx: FetchContext, url: str, chunks: list[dict]) -> RawTierResult:
+    """Common finalization for any tier that produces a transcript chunk list.
+
+    Oembed metadata + markdown header + body + optional structurer pass —
+    shared by `_transcript_api_tier` (youtube-transcript-api via SOCKS5)
+    and `_rapidapi_captions_tier` (youtube-data16 via RapidAPI). Both
+    tiers produce identical artifacts; only the chunk-acquisition source
+    differs."""
     meta = await oembed_extractor.youtube_metadata(ctx.http_client, url)
     header = _format_header(meta, url)
     body = transcript_extractor.chunks_to_markdown(chunks)
@@ -117,6 +129,30 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         metadata=metadata,
         extra_tier_log=extra_log,
     )
+
+
+async def _rapidapi_captions_tier(ctx: FetchContext, url: str) -> RawTierResult:
+    """Paid fallback for when the free transcript_api tier returns no
+    chunks (IP-blocked even via Tailscale, no community transcript indexed
+    under en, etc.). Hits youtube-data16 via RapidAPI for the same
+    text/start/duration chunks and feeds the shared finalization helper."""
+    if not ctx.rapidapi_key:
+        return RawTierResult(
+            content="", status=0, detail="rapidapi_captions skipped: RAPIDAPI_KEY not configured"
+        )
+    video_id = extract_video_id(url)
+    if not video_id:
+        return RawTierResult(content="", status=0)
+    try:
+        chunks = await rapidapi_captions_extractor.fetch_captions(
+            ctx.http_client, video_id=video_id, api_key=ctx.rapidapi_key
+        )
+    except ValueError as exc:
+        logger.warning("youtube rapidapi captions fetch failed for %s: %s", video_id, exc)
+        return RawTierResult(
+            content="", status=0, detail=f"rapidapi_captions: {_exception_detail(exc)}"
+        )
+    return await _finalize_chunks(ctx, url, chunks)
 
 
 def _exception_detail(exc: BaseException) -> str:
@@ -179,4 +215,12 @@ async def _run_structurer(
 
 TIERS: list[Tier] = [
     Tier("transcript_api", "free", 200, 200, _transcript_api_tier),
+    Tier(
+        "rapidapi_captions",
+        "paid",
+        200,
+        200,
+        _rapidapi_captions_tier,
+        rate_limit_key="rapidapi",
+    ),
 ]
