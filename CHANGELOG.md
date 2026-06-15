@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.22.0] — 2026-06-15
+
+### Added
+
+- **Podcast handler for direct audio/video URLs (MP3, M4A, MP4, etc.).** The fetcher now transcribes non-YouTube podcast audio via a Whisper cascade (Groq `whisper-large-v3-turbo` → OpenAI `whisper-1`), then runs the existing transcript structurer on the result. Implementation: `services/fetcher/src/fetcher/handlers/podcast.py` + `extractors/whisper.py`; chain config in `services/fetcher/config/whisper.yaml`.
+
+### Changed
+
+- **`GROQ_API_KEY` now feeds the podcast Whisper cascade in addition to the triage classifier.** No new variable; the existing key gains a second consumer. `ffmpeg` is now a runtime dependency of the fetcher image (`docker/fetcher/Dockerfile`).
+
+---
+
 ## [0.21.2] — 2026-06-15
 
 ### Changed

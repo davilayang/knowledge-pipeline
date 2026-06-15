@@ -28,7 +28,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 FROM python:3.13-slim AS runtime
 
-RUN useradd --create-home --uid 1000 fetcher
+RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg \
+    && rm -rf /var/lib/apt/lists/* \
+    && useradd --create-home --uid 1000 fetcher
 
 COPY --from=builder --chown=fetcher:fetcher /app/.venv /app/.venv
 
