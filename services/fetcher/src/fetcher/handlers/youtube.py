@@ -56,13 +56,23 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         VideoUnplayable,
         YouTubeTranscriptApi,
     )
+    from youtube_transcript_api.proxies import GenericProxyConfig
 
     video_id = extract_video_id(url)
     if not video_id:
         return RawTierResult(content="", status=0)
 
+    # YouTube IP-blocks data-center ranges (Hetzner, AWS, etc.) on the
+    # transcript endpoint. Route through ctx.socks5_url when set — same
+    # Tailscale → residential-IP path the article handler uses.
+    proxy_config = (
+        GenericProxyConfig(http_url=ctx.socks5_url, https_url=ctx.socks5_url)
+        if ctx.socks5_url
+        else None
+    )
+
     try:
-        api = YouTubeTranscriptApi()
+        api = YouTubeTranscriptApi(proxy_config=proxy_config)
         transcript = api.fetch(video_id)
         chunks = [
             {"text": snippet.text, "start": snippet.start, "duration": snippet.duration}
@@ -78,10 +88,10 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         RequestBlocked,
     ) as exc:
         logger.info("youtube transcript unavailable for %s: %s", video_id, type(exc).__name__)
-        return RawTierResult(content="", status=0)
+        return RawTierResult(content="", status=0, detail=_exception_detail(exc))
     except Exception as exc:
         logger.warning("youtube transcript fetch failed for %s: %s", video_id, exc)
-        return RawTierResult(content="", status=0)
+        return RawTierResult(content="", status=0, detail=_exception_detail(exc))
 
     meta = await oembed_extractor.youtube_metadata(ctx.http_client, url)
     header = _format_header(meta, url)
@@ -107,6 +117,12 @@ async def _transcript_api_tier(ctx: FetchContext, url: str) -> RawTierResult:
         metadata=metadata,
         extra_tier_log=extra_log,
     )
+
+
+def _exception_detail(exc: BaseException) -> str:
+    """Single-line detail string for the tier_log — class name + truncated message."""
+    msg = str(exc).replace("\n", " ").strip()
+    return f"{type(exc).__name__}: {msg}"[:500] if msg else type(exc).__name__
 
 
 def _format_header(meta: oembed_extractor.YouTubeMetadata, url: str) -> str:
