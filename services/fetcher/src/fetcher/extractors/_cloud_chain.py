@@ -48,6 +48,16 @@ class StructurerChainFailed(Exception):
         self.retryable = retryable
 
 
+class StructurerNotConfigured(StructurerChainFailed):
+    """Permanent: structurer can't run because the chain config wasn't loaded
+    or no provider in the chain has an API key. Distinct subclass so endpoint
+    handlers map it to 503 STRUCTURER_UNCONFIGURED via isinstance — replaces
+    the fragile substring match on ``"no api keys"``."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, retryable=False)
+
+
 def _load_chain(path: Path) -> list[ChainEntry]:
     """Parse the structurer chain YAML. Returns [] if the file is missing."""
     try:
@@ -164,8 +174,17 @@ async def call_cloud_chain(
     callable_entries = [
         e for e in chain if _key_for(e.provider, openai_key, ollama_key) is not None
     ]
-    if not callable_entries:
-        raise StructurerChainFailed("no API keys configured", retryable=False)
+    match (chain, callable_entries):
+        case ([], _):
+            raise StructurerNotConfigured(
+                "structurer chain config not loaded — no entries in YAML "
+                "(check fetcher image has services/fetcher/config/ copied to /app/config/)"
+            )
+        case (_, []):
+            raise StructurerNotConfigured(
+                f"no API keys configured for any chain provider "
+                f"(chain has {len(chain)} entries, none have a matching key)"
+            )
 
     last_exc: BaseException | None = None
     last_retryable = True

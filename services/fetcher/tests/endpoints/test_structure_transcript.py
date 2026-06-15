@@ -12,7 +12,7 @@ from unittest.mock import AsyncMock, patch
 from fastapi.testclient import TestClient
 
 from fetcher.app import create_app
-from fetcher.extractors._cloud_chain import StructurerChainFailed
+from fetcher.extractors._cloud_chain import StructurerChainFailed, StructurerNotConfigured
 
 
 def _setup_envs(monkeypatch, tmp_db_path: str) -> None:
@@ -107,7 +107,9 @@ def test_endpoint_returns_503_on_no_api_keys(monkeypatch, tmp_db_path: str) -> N
         "fetcher.endpoints.structure_transcript.structure_transcript",
         new_callable=AsyncMock,
     ) as struct_mock:
-        struct_mock.side_effect = StructurerChainFailed("no API keys configured", retryable=False)
+        struct_mock.side_effect = StructurerNotConfigured(
+            "no API keys configured for any chain provider"
+        )
         with TestClient(app) as client:
             response = client.post(
                 "/v1/structure-transcript",

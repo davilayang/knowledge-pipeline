@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.21.2] — 2026-06-15
+
+### Changed
+
+- **Article + transcript structurer now actually runs in containerised deploys.** Fetcher Docker image now copies `services/fetcher/config/` and `services/fetcher/prompts/` into `/app/` (they were missing → `_load_chain` silently returned `[]` → cascade emitted misleading "no API keys configured" even when keys were set).
+- **Distinct error for missing config vs missing keys.** `_cloud_chain.py` raises `StructurerNotConfigured` (subclass of `StructurerChainFailed`) with separate messages for empty-chain and no-keys; endpoint handlers map both to 503 `STRUCTURER_UNCONFIGURED` via `isinstance` instead of substring matching.
+
+### Removed
+
+- **`FETCHER_OPENAI_API_KEY` and `FETCHER_OLLAMA_API_KEY` env vars.** Fetcher's structurer cascade now reads bare `OPENAI_API_KEY` / `OLLAMA_API_KEY` (shared with orchestrator) via Pydantic `validation_alias` that bypasses the `FETCHER_` prefix for just these two fields. Drop the duplicate vars from prod env.
+
+---
+
 ## [0.21.1] — 2026-06-15
 
 ### Changed

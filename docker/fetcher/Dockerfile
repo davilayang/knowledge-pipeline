@@ -32,6 +32,12 @@ RUN useradd --create-home --uid 1000 fetcher
 
 COPY --from=builder --chown=fetcher:fetcher /app/.venv /app/.venv
 
+# Runtime assets read relative to /app (the final WORKDIR). Without these the
+# structurer cascade silently runs with an empty chain → "no API keys
+# configured" error even when keys are present.
+COPY --chown=fetcher:fetcher services/fetcher/config /app/config
+COPY --chown=fetcher:fetcher services/fetcher/prompts /app/prompts
+
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1
 

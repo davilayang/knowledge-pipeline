@@ -24,6 +24,7 @@ from fetcher.endpoints.errors import problem_response
 from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extractors import transcript_structurer as _transcript_extractor
 from fetcher.extractors._cloud_chain import (
+    StructurerNotConfigured,
     cache_key_components,
     chain_config_sha,
     content_sha,
@@ -134,7 +135,7 @@ async def structure_transcript_endpoint(req: StructureTranscriptRequest, request
             content_date=req.content_date,
         )
     except StructurerChainFailed as exc:
-        if not exc.retryable and "no api keys" in str(exc).lower():
+        if isinstance(exc, StructurerNotConfigured):
             return problem_response(
                 status=503,
                 code="STRUCTURER_UNCONFIGURED",
