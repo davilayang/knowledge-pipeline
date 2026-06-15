@@ -80,7 +80,7 @@ def test_groq_returns_valid_shape() -> None:
     classifier = ContentShapeClassifier(groq_api_key="g-key", openai_api_key="o-key")
 
     with patch(
-        "orchestrators.defs.triage_knowledge_queue.content_shape_llm.httpx.post",
+        "workflows.llm_cascade.httpx.post",
         return_value=_mock_chat_response("tutorial"),
     ) as mock_post:
         shape, metadata = classifier.classify(
@@ -110,7 +110,7 @@ def test_llm_returning_unknown_is_honored() -> None:
     classifier = ContentShapeClassifier(groq_api_key="g-key", openai_api_key="o-key")
 
     with patch(
-        "orchestrators.defs.triage_knowledge_queue.content_shape_llm.httpx.post",
+        "workflows.llm_cascade.httpx.post",
         return_value=_mock_chat_response("unknown"),
     ) as mock_post:
         shape, metadata = classifier.classify(
@@ -133,7 +133,7 @@ def test_groq_returning_invalid_shape_falls_through_to_openai() -> None:
     classifier = ContentShapeClassifier(groq_api_key="g-key", openai_api_key="o-key")
 
     with patch(
-        "orchestrators.defs.triage_knowledge_queue.content_shape_llm.httpx.post",
+        "workflows.llm_cascade.httpx.post",
         side_effect=[
             _mock_chat_response("newsletter"),  # Groq emits invalid shape
             _mock_chat_response("opinion_essay"),  # OpenAI fallback recovers
@@ -161,7 +161,7 @@ def test_groq_exception_falls_through_to_openai() -> None:
     classifier = ContentShapeClassifier(groq_api_key="g-key", openai_api_key="o-key")
 
     with patch(
-        "orchestrators.defs.triage_knowledge_queue.content_shape_llm.httpx.post",
+        "workflows.llm_cascade.httpx.post",
         side_effect=[
             httpx.ConnectTimeout("groq dropped the connection"),
             _mock_chat_response("tutorial"),
@@ -185,7 +185,7 @@ def test_all_tiers_fail_returns_unknown_with_exception_status() -> None:
     classifier = ContentShapeClassifier(groq_api_key="g-key", openai_api_key="o-key")
 
     with patch(
-        "orchestrators.defs.triage_knowledge_queue.content_shape_llm.httpx.post",
+        "workflows.llm_cascade.httpx.post",
         side_effect=[
             httpx.ConnectTimeout("groq down"),
             httpx.ReadTimeout("openai slow"),
