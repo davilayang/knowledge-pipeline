@@ -73,8 +73,11 @@ dg launch --job fetch_extract_queue --partition <notion_page_id>
 
 # Recovery — stuck in Fetching:
 # Check the local store; if extraction row exists, manually flip Notion Status=Ready.
-# If not, edit the Notion row (any field) to bump last_edited_time so the
-# sensor's run_key generates a fresh run on the next tick.
+# If not, wait for any in-flight run to reach a terminal state first
+# (the sensor's _has_in_flight_run guard skips page_ids with QUEUED /
+# NOT_STARTED / STARTING / STARTED runs, so a Notion edit mid-flight has
+# no effect). Once the run is terminal, edit the Notion row (any field) to
+# bump last_edited_time so the sensor computes a fresh run_key on the next tick.
 ```
 
 ## External setup

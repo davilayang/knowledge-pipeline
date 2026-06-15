@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.22.2] — 2026-06-16
+
+### Changed
+
+- **The extract sensor now skips partitions that already have a run in flight.** Previously, a manual Dagster UI re-trigger or a Notion edit mid-processing caused the next sensor tick to launch a second concurrent run for the same page — paying for transcription and LLM extraction twice. The sensor now queries for any queued or running job tagged with the `notion_page_id` and skips it.
+
+---
+
 ## [0.22.1] — 2026-06-15
 
 ### Changed
