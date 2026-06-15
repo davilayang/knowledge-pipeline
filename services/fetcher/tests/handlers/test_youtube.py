@@ -11,12 +11,18 @@ from fetcher.handlers import youtube
 _VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
 
 
-def _make_ctx(*, structurer_enabled: bool = False, socks5_url: str = "") -> MagicMock:
+def _make_ctx(
+    *,
+    structurer_enabled: bool = False,
+    socks5_url: str = "",
+    rapidapi_key: str | None = None,
+) -> MagicMock:
     ctx = MagicMock()
     ctx.openai_api_key = "openai-key"
     ctx.ollama_api_key = "ollama-key"
     ctx.youtube_structurer_enabled = structurer_enabled
     ctx.socks5_url = socks5_url
+    ctx.rapidapi_key = rapidapi_key
     ctx.http_client = MagicMock()
     return ctx
 
@@ -228,3 +234,128 @@ async def test_youtube_structurer_skipped_when_chain_empty() -> None:
 
     struct_mock.assert_not_awaited()
     assert result.extra_tier_log == []
+
+
+# ---------------------------------------------------------------------------
+# rapidapi_captions tier (paid fallback when free transcript_api fails)
+# ---------------------------------------------------------------------------
+
+
+def _fake_captions_chunks() -> list[dict]:
+    """Shape that rapidapi.youtube_captions.fetch_captions returns —
+    already-mapped to text/start/duration so chunks_to_markdown consumes
+    it unchanged."""
+    return [
+        {"text": "hello world this is the first segment", "start": 0.0, "duration": 2.5},
+        {"text": "and this is the second segment", "start": 2.5, "duration": 2.0},
+    ]
+
+
+async def test_rapidapi_captions_tier_produces_same_markdown_shape() -> None:
+    """When rapidapi_captions runs, the output markdown header/body
+    matches what the free transcript_api tier produces — only the
+    chunk source differs. Same metadata['chunks'] key, same header,
+    same body formatter."""
+    ctx = _make_ctx(rapidapi_key="rapid-key")
+
+    with (
+        patch(
+            "fetcher.handlers.youtube.rapidapi_captions_extractor.fetch_captions",
+            new_callable=AsyncMock,
+        ) as fetch_mock,
+        _patch_oembed(title="My Show", author="The Channel"),
+    ):
+        fetch_mock.return_value = _fake_captions_chunks()
+        result = await youtube._rapidapi_captions_tier(ctx, _VIDEO_URL)
+
+    fetch_mock.assert_awaited_once()
+    call_kwargs = fetch_mock.await_args.kwargs
+    assert call_kwargs["video_id"] == "dQw4w9WgXcQ"
+    assert call_kwargs["api_key"] == "rapid-key"
+
+    assert result.status == 200
+    assert "hello world this is the first segment" in result.content
+    assert "**Channel:** The Channel" in result.content
+    assert result.metadata["chunks"] == _fake_captions_chunks()
+
+
+async def test_rapidapi_captions_tier_skips_when_no_key() -> None:
+    """No RAPIDAPI_KEY → skip without calling upstream. Cascade reads
+    detail to distinguish from a network failure."""
+    ctx = _make_ctx(rapidapi_key=None)
+
+    with patch(
+        "fetcher.handlers.youtube.rapidapi_captions_extractor.fetch_captions",
+    ) as fetch_mock:
+        result = await youtube._rapidapi_captions_tier(ctx, _VIDEO_URL)
+
+    fetch_mock.assert_not_called()
+    assert result.status == 0
+    assert result.content == ""
+    assert "RAPIDAPI_KEY not configured" in (result.detail or "")
+
+
+async def test_rapidapi_captions_tier_surfaces_extractor_error_in_detail() -> None:
+    """Extractor raises ValueError (HTTP 403, empty list, etc.) →
+    handler maps to RawTierResult.detail so cascade tier_log shows
+    *why* the paid fallback also failed."""
+    ctx = _make_ctx(rapidapi_key="rapid-key")
+
+    with patch(
+        "fetcher.handlers.youtube.rapidapi_captions_extractor.fetch_captions",
+        new_callable=AsyncMock,
+    ) as fetch_mock:
+        fetch_mock.side_effect = ValueError(
+            "RapidAPI youtube-data16: empty caption list for video_id=dQw4w9WgXcQ lang=en"
+        )
+        result = await youtube._rapidapi_captions_tier(ctx, _VIDEO_URL)
+
+    assert result.status == 0
+    assert result.content == ""
+    assert "empty caption list" in (result.detail or "")
+
+
+async def test_rapidapi_captions_tier_runs_structurer_when_flag_enabled() -> None:
+    """Symmetry with transcript_api tier — same _finalize_chunks helper
+    means structurer fires for both. Confirms the refactor didn't
+    accidentally route around the structurer for the new tier."""
+    ctx = _make_ctx(structurer_enabled=True, rapidapi_key="rapid-key")
+    structured = "**Host:** Hello.\n\n**Guest:** Reply.\n"
+
+    with (
+        patch(
+            "fetcher.handlers.youtube.rapidapi_captions_extractor.fetch_captions",
+            new_callable=AsyncMock,
+            return_value=_fake_captions_chunks(),
+        ),
+        _patch_oembed(title="My Show", author="The Channel"),
+        patch(
+            "fetcher.handlers.youtube.transcript_structurer.get_chain",
+            return_value=[MagicMock()],
+        ),
+        patch(
+            "fetcher.handlers.youtube.transcript_structurer.structure_transcript",
+            new_callable=AsyncMock,
+        ) as struct_mock,
+    ):
+        struct_mock.return_value = (
+            structured,
+            "structurer:gemma4:31b",
+            {"provider": "ollama", "model": "gemma4:31b", "tokens_in": 100, "tokens_out": 80},
+        )
+        result = await youtube._rapidapi_captions_tier(ctx, _VIDEO_URL)
+
+    assert structured in result.content
+    assert len(result.extra_tier_log) == 1
+    assert result.extra_tier_log[0].tier == "transcript_structurer"
+    assert result.metadata["structurer_tier"] == "structurer:gemma4:31b"
+
+
+def test_handler_registers_transcript_api_before_rapidapi_captions() -> None:
+    """Free tier runs first; paid fallback only fires when transcript_api
+    returned empty AND the request opted into paid tiers."""
+    names = [t.name for t in youtube.TIERS]
+    assert names == ["transcript_api", "rapidapi_captions"]
+    assert youtube.TIERS[0].cost == "free"
+    assert youtube.TIERS[1].cost == "paid"
+    assert youtube.TIERS[1].rate_limit_key == "rapidapi"

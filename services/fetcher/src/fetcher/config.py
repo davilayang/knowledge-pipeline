@@ -74,10 +74,12 @@ class Settings(BaseSettings):
     rapidapi_key: str | None = Field(
         default=None,
         description=(
-            "RapidAPI key. Powers Medium paywall bypass (mediumapi.com) and "
-            "the Facebook post handler (facebook-scraper-api4 → "
-            "facebook-scraper3 cascade). Optional, but Facebook URLs fail "
-            "with 502 when unset (handler is STRICT_PAID_TIER)."
+            "RapidAPI key. Powers Medium paywall bypass (mediumapi.com), the "
+            "Facebook post handler (facebook-scraper-api4 → facebook-scraper3 "
+            "cascade), and the YouTube captions fallback (youtube-data16) "
+            "fired when the free transcript_api tier is IP-blocked even via "
+            "the SOCKS5 proxy. Optional, but Facebook URLs fail with 502 "
+            "when unset (handler is STRICT_PAID_TIER)."
         ),
     )
     medium_domains_path: str = Field(
