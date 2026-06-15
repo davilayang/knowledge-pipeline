@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.19.2] — 2026-06-15
+
+### Changed
+
+- **Triage seeds Notion Name + Description from per-content-type enrichment instead of static HTML.** YouTube titles (JS-rendered) and generic `og:description` boilerplate are now bypassed; the asset resolves oEmbed, Atom API, or article meta depending on content type. `display.py` in `triage_knowledge_queue`; `TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION` bumped to 2.
+
+---
+
 ## [0.19.1] — 2026-06-14
 
 ### Added

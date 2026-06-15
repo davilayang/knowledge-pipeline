@@ -8,6 +8,10 @@ import pytest
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
 from orchestrators.defs.triage_knowledge_queue.assets import triaged
 from orchestrators.defs.triage_knowledge_queue.def_config import queue_items_partition_def
+from orchestrators.defs.triage_knowledge_queue.enrich import (
+    ArticleSignals,
+    EnrichmentSignals,
+)
 from orchestrators.defs.triage_knowledge_queue.url_meta import UrlMeta
 
 
@@ -135,19 +139,25 @@ def test_triaged_writes_status_fetching_for_article(tmp_path: Path):
 
 
 def test_triaged_writes_fetched_title_to_notion_when_config_name_empty(tmp_path: Path):
-    """config.name unset + fetched title present → triage seeds Name in Notion."""
+    """config.name unset + enrichment title present → triage seeds Name in Notion."""
     resources, notion = _resources(tmp_path)
-    meta = UrlMeta(
-        redirected_url="https://blog.example.com/post",
-        title="Fetched Title",
-        description=None,
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://blog.example.com/post",
+        payload=EnrichmentSignals(
+            article=ArticleSignals(
+                redirected_url="https://blog.example.com/post",
+                title="Fetched Title",
+                description=None,
+            ),
+        ).to_json(),
     )
-    with _patch_fetch(meta):
-        result = _materialize(
-            partition_key="p-1",
-            resources=resources,
-            url="https://blog.example.com/post",
-        )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://blog.example.com/post",
+    )
     assert result.success
     kwargs = notion.write_triaged.call_args.kwargs
     assert kwargs.get("name") == "Fetched Title"
@@ -177,18 +187,24 @@ def test_triaged_seeds_name_when_notion_default_new_page_pattern(tmp_path: Path)
     """Notion auto-assigns "New <db_name> page" to fresh rows — treat that
     as blank-equivalent so triage replaces it with the fetched title."""
     resources, notion = _resources(tmp_path)
-    meta = UrlMeta(
-        redirected_url="https://blog.example.com/post",
-        title="Real Title",
-        description=None,
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://blog.example.com/post",
+        payload=EnrichmentSignals(
+            article=ArticleSignals(
+                redirected_url="https://blog.example.com/post",
+                title="Real Title",
+                description=None,
+            ),
+        ).to_json(),
     )
-    with _patch_fetch(meta):
-        result = _materialize(
-            partition_key="p-1",
-            resources=resources,
-            url="https://blog.example.com/post",
-            name="New queued page",
-        )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://blog.example.com/post",
+        name="New queued page",
+    )
     assert result.success
     kwargs = notion.write_triaged.call_args.kwargs
     assert kwargs.get("name") == "Real Title"
@@ -197,18 +213,24 @@ def test_triaged_seeds_name_when_notion_default_new_page_pattern(tmp_path: Path)
 def test_triaged_seeds_name_when_notion_default_untitled(tmp_path: Path):
     """The other common Notion auto-default — "Untitled" — also counts as blank."""
     resources, notion = _resources(tmp_path)
-    meta = UrlMeta(
-        redirected_url="https://blog.example.com/post",
-        title="Real Title",
-        description=None,
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://blog.example.com/post",
+        payload=EnrichmentSignals(
+            article=ArticleSignals(
+                redirected_url="https://blog.example.com/post",
+                title="Real Title",
+                description=None,
+            ),
+        ).to_json(),
     )
-    with _patch_fetch(meta):
-        result = _materialize(
-            partition_key="p-1",
-            resources=resources,
-            url="https://blog.example.com/post",
-            name="Untitled",
-        )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://blog.example.com/post",
+        name="Untitled",
+    )
     assert result.success
     kwargs = notion.write_triaged.call_args.kwargs
     assert kwargs.get("name") == "Real Title"
@@ -238,20 +260,55 @@ def test_triaged_preserves_real_name_that_starts_with_new(tmp_path: Path):
 
 def test_triaged_writes_fetched_description_to_notion(tmp_path: Path):
     resources, notion = _resources(tmp_path)
-    meta = UrlMeta(
-        redirected_url="https://blog.example.com/post",
-        title=None,
-        description="A short blurb of the post.",
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://blog.example.com/post",
+        payload=EnrichmentSignals(
+            article=ArticleSignals(
+                redirected_url="https://blog.example.com/post",
+                title=None,
+                description="A short blurb of the post.",
+            ),
+        ).to_json(),
     )
-    with _patch_fetch(meta):
-        result = _materialize(
-            partition_key="p-1",
-            resources=resources,
-            url="https://blog.example.com/post",
-        )
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://blog.example.com/post",
+    )
     assert result.success
     kwargs = notion.write_triaged.call_args.kwargs
     assert kwargs.get("description") == "A short blurb of the post."
+
+
+def test_triaged_youtube_prefers_oembed_title_over_static_html_scrape(tmp_path: Path):
+    """Regression: YouTube static HTML returns '- YouTube' (video title is
+    JS-rendered) and a generic site-wide og:description. Triage must take
+    the oEmbed-fetched title from enrichment instead, and leave Description
+    blank rather than write the boilerplate."""
+    resources, notion = _resources(tmp_path)
+    bogus_meta = UrlMeta(
+        redirected_url="https://www.youtube.com/watch?v=abc",
+        title="- YouTube",
+        description="Enjoy the videos and music you love, upload original content...",
+    )
+    _seed_enrichment(
+        resources["triage_store"],
+        page_id="p-1",
+        url="https://www.youtube.com/watch?v=abc",
+        payload='{"youtube":{"channel":"AI Engineer","title":"Real Video Title"}}',
+    )
+    with _patch_fetch(bogus_meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://www.youtube.com/watch?v=abc",
+        )
+    assert result.success
+    kwargs = notion.write_triaged.call_args.kwargs
+    assert kwargs.get("name") == "Real Video Title"
+    assert kwargs.get("description") is None
 
 
 def test_triaged_succeeds_with_empty_meta_on_fetch_failure(tmp_path: Path):
