@@ -10,6 +10,12 @@ from orchestrators.defs.fetch_extract_queue.def_config import (
 from orchestrators.defs.fetch_extract_queue.sensors import poll_notion_for_extract
 
 
+def _ctx() -> dg.SensorEvaluationContext:
+    """Sensor context backed by an ephemeral instance — required because the
+    sensor calls `context.instance.get_runs(...)` to skip in-flight partitions."""
+    return dg.build_sensor_context(instance=dg.DagsterInstance.ephemeral())
+
+
 def _notion_row(
     page_id: str,
     url: str,
@@ -41,7 +47,7 @@ def test_poll_notion_for_extract_emits_one_run_request_per_fetching_row():
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
     ]
-    context = dg.build_sensor_context()
+    context = _ctx()
     result = poll_notion_for_extract(context, notion=notion)
     assert isinstance(result, dg.SensorResult)
     assert {req.partition_key for req in result.run_requests} == {"p-1", "p-2"}
@@ -64,7 +70,7 @@ def test_poll_notion_for_extract_skips_rows_with_empty_url():
             },
         },
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert [req.partition_key for req in result.run_requests] == ["p-1"]
 
 
@@ -81,7 +87,7 @@ def test_poll_notion_for_extract_skips_rows_with_missing_content_type():
             },
         },
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert [req.partition_key for req in result.run_requests] == ["p-1"]
 
 
@@ -90,7 +96,7 @@ def test_poll_notion_for_extract_passes_url_and_content_type_in_run_tag():
     notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a", content_type="YouTube")
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert result.run_requests[0].tags == {
         "notion_page_id": "p-1",
         "url": "https://example.com/a",
@@ -101,8 +107,36 @@ def test_poll_notion_for_extract_passes_url_and_content_type_in_run_tag():
 def test_poll_notion_for_extract_returns_empty_when_no_rows():
     notion = MagicMock()
     notion.query_for_extract.return_value = []
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert result.run_requests == []
+
+
+def test_poll_notion_for_extract_skips_page_ids_with_in_flight_runs():
+    """When a partition is already mid-run (e.g. manual UI re-trigger
+    against a still-Fetching row), the next sensor tick must not launch a
+    second run for the same page_id. `run_key` alone doesn't prevent this —
+    UI launches don't reserve sensor run_keys. Sensor queries
+    `instance.get_runs(tags={"notion_page_id": ...}, statuses=[in-flight])`
+    and excludes those page_ids."""
+    notion = MagicMock()
+    notion.query_for_extract.return_value = [
+        _notion_row("p-busy", "https://example.com/a"),
+        _notion_row("p-free", "https://example.com/b"),
+    ]
+
+    # Fake "in-flight" run for p-busy only — patch the ephemeral instance's
+    # get_runs in place since build_sensor_context type-checks the instance.
+    def fake_get_runs(filters=None, limit=None, **kwargs):
+        tags = getattr(filters, "tags", {}) or {}
+        return [MagicMock()] if tags.get("notion_page_id") == "p-busy" else []
+
+    instance = dg.DagsterInstance.ephemeral()
+    context = dg.build_sensor_context(instance=instance)
+    instance.get_runs = fake_get_runs  # type: ignore[method-assign]
+    result = poll_notion_for_extract(context, notion=notion)
+
+    page_ids = {req.partition_key for req in result.run_requests}
+    assert page_ids == {"p-free"}, "p-busy already in flight, should have been skipped"
 
 
 def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability():
@@ -110,7 +144,7 @@ def test_poll_notion_for_extract_run_key_includes_last_edited_for_re_runnability
     notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://example.com/a", last_edited="2026-05-31T10:00:00.000Z"),
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert result.run_requests[0].run_key == "queue-p-1-2026-05-31T10:00:00.000Z"
 
 
@@ -126,7 +160,7 @@ def test_sensor_registers_dynamic_partitions_for_self_heal():
         _notion_row("p-1", "https://example.com/a"),
         _notion_row("p-2", "https://example.com/b"),
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert len(result.dynamic_partitions_requests) == 1
     assert set(result.dynamic_partitions_requests[0].partition_keys) == {"p-1", "p-2"}
 
@@ -136,7 +170,7 @@ def test_sensor_emits_no_partition_requests_when_no_rows():
     (empty list, not an add-request with empty keys)."""
     notion = MagicMock()
     notion.query_for_extract.return_value = []
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert result.run_requests == []
     assert result.dynamic_partitions_requests == []
 
@@ -146,5 +180,5 @@ def test_sensor_run_request_carries_content_type_tag():
     notion.query_for_extract.return_value = [
         _notion_row("p-1", "https://youtube.com/watch?v=abc", content_type="YouTube")
     ]
-    result = poll_notion_for_extract(dg.build_sensor_context(), notion=notion)
+    result = poll_notion_for_extract(_ctx(), notion=notion)
     assert result.run_requests[0].tags["content_type"] == "YouTube"

@@ -11,6 +11,32 @@ from .def_config import (
 )
 from .schedules import fetch_extract_queue_job
 
+_IN_FLIGHT_STATUSES = [
+    dg.DagsterRunStatus.QUEUED,
+    dg.DagsterRunStatus.NOT_STARTED,
+    dg.DagsterRunStatus.STARTING,
+    dg.DagsterRunStatus.STARTED,
+]
+
+
+def _has_in_flight_run(instance: dg.DagsterInstance, page_id: str) -> bool:
+    """True if any non-terminal run is already materializing this page_id.
+
+    Skips re-launching when a manual UI run is mid-flight or a prior sensor
+    tick's run is still running (e.g. a long Whisper transcription). The
+    sensor's `run_key` alone doesn't prevent this — UI launches carry no
+    `run_key`, and a Notion edit mid-flight bumps `last_edited_time` so a
+    later sensor tick computes a fresh `run_key` that no longer dedupes."""
+    runs = instance.get_runs(
+        filters=dg.RunsFilter(
+            job_name="fetch_extract_queue",
+            statuses=_IN_FLIGHT_STATUSES,
+            tags={"notion_page_id": page_id},
+        ),
+        limit=1,
+    )
+    return bool(runs)
+
 
 @dg.sensor(
     job=fetch_extract_queue_job,
@@ -47,6 +73,12 @@ def poll_notion_for_extract(
         content_type = content_type_select.get("name")
         if not content_type:
             context.log.warning("Skipping page_id=%s with missing Content Type", page_id)
+            continue
+        if _has_in_flight_run(context.instance, page_id):
+            context.log.info(
+                "Skipping page_id=%s — in-flight run already materializing this partition",
+                page_id,
+            )
             continue
         last_edited = row.get("last_edited_time") or ""
         page_ids.append(page_id)
