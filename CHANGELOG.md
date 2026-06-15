@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.20.0] — 2026-06-15
+
+### Added
+- **Facebook post fetching via RapidAPI.** New `facebook` handler claims `facebook.com` / `fb.com` / `fb.watch` URLs with a two-tier cascade — `facebook-scraper-api4` (URL-keyed, primary) then `facebook-scraper3` (`pfbid`-keyed, fallback). Both share `FETCHER_RAPIDAPI_KEY`; the handler is `STRICT_PAID_TIER=True` so unauthorized fetches surface a Problem instead of falling through to the article handler and returning login-wall junk. `services/fetcher/src/fetcher/handlers/facebook.py`.
+
+### Changed
+- **RapidAPI extractors moved into `extractors/rapidapi/` subpackage** with shared `_client.py` primitives (`build_headers`, `raise_for_status_with_body`, `check_quota`). `rapidapi_medium` → `rapidapi.medium`; new `rapidapi.facebook_api4` and `rapidapi.facebook_scraper3` compose the same helpers. Pure relocation for medium — error shape unchanged. `services/fetcher/src/fetcher/extractors/rapidapi/`.
+
+---
+
 ## [0.19.3] — 2026-06-15
 
 ### Changed
