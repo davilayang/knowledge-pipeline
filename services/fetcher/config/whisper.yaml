@@ -1,0 +1,13 @@
+# Whisper transcription chain — Groq Whisper primary, OpenAI Whisper fallback.
+# Used by `handlers/podcast.py` for MP3 / video-podcast URLs without a YouTube mirror.
+# Both providers expose the OpenAI-compat `/audio/transcriptions` multipart endpoint.
+
+chain:
+  - provider: groq
+    model: whisper-large-v3-turbo
+    base_url: https://api.groq.com/openai/v1
+    attempt_timeout: 300.0
+  - provider: openai
+    model: whisper-1
+    base_url: https://api.openai.com/v1
+    attempt_timeout: 600.0

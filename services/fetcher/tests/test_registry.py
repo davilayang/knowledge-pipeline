@@ -10,6 +10,7 @@ def test_registered_handlers_order() -> None:
         "medium",
         "facebook",
         "pdf",
+        "podcast",
         "article",
     ]
 

@@ -9,11 +9,14 @@ that have no YouTube mirror.
 """
 
 import logging
+import os
 import subprocess
 import tempfile
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
+
+import yaml
 
 
 if TYPE_CHECKING:
@@ -100,6 +103,42 @@ def _key_for(provider: str, ctx: "FetchContext") -> str | None:
     if provider == "openai":
         return getattr(ctx, "openai_api_key", None)
     return None
+
+
+_KNOWN_PROVIDERS = {"groq", "openai"}
+
+
+def _load_chain(path: Path) -> list[WhisperChainEntry]:
+    """Parse the whisper chain YAML. Returns [] if the file is missing."""
+    try:
+        with open(path) as f:
+            data = yaml.safe_load(f) or {}
+    except FileNotFoundError:
+        logger.warning("whisper chain YAML not found at %s; whisper unreachable", path)
+        return []
+    entries: list[WhisperChainEntry] = []
+    for raw in data.get("chain") or []:
+        provider = str(raw["provider"])
+        if provider not in _KNOWN_PROVIDERS:
+            raise ValueError(f"unknown provider {provider!r} in {path}")
+        entries.append(
+            WhisperChainEntry(
+                provider=provider,
+                model=str(raw["model"]),
+                base_url=str(raw["base_url"]),
+                attempt_timeout=float(raw.get("attempt_timeout", 300.0)),
+            )
+        )
+    return entries
+
+
+_CHAIN: list[WhisperChainEntry] = _load_chain(
+    Path(os.environ.get("FETCHER_WHISPER_CONFIG_PATH", "config/whisper.yaml"))
+)
+
+
+def get_chain() -> list[WhisperChainEntry]:
+    return list(_CHAIN)
 
 
 async def transcribe_chunk(
