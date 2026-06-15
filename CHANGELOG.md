@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.21.1] — 2026-06-15
+
+### Changed
+
+- **Sync LLM cascade primitive extracted to `workflows.llm_cascade.run_cascade`.** `ContentShapeClassifier` now delegates the 2-tier Groq → OpenAI fall-through to the shared helper, so the next orchestrator-side classifier (queued: transcript structurer Groq swap) can reuse rather than copy-paste. No behaviour change in triage output.
+
+---
+
 ## [0.21.0] — 2026-06-15
 
 ### Added
