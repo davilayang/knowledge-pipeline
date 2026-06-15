@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.19.2] — 2026-06-15
+
 ### Changed
 
-- **Triage now seeds Notion Name + Description from per-content-type enrichment instead of a static HTML scrape.** YouTube rows were landing as `"- YouTube"` with the site-wide og:description boilerplate because the video title is JS-rendered; the asset now reads `enrichment.youtube.title` (oEmbed), `enrichment.arxiv.title`/`.abstract` (Atom API), and `enrichment.article.title`/`.description` via a match-case resolver. Implementation: `orchestrators.defs.triage_knowledge_queue.display.resolve_display_title` / `resolve_display_description`.
+- **Triage seeds Notion Name + Description from per-content-type enrichment instead of static HTML.** YouTube titles (JS-rendered) and generic `og:description` boilerplate are now bypassed; the asset resolves oEmbed, Atom API, or article meta depending on content type. `display.py` in `triage_knowledge_queue`; `TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION` bumped to 2.
 
 ---
 
