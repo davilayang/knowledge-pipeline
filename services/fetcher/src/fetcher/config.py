@@ -74,8 +74,10 @@ class Settings(BaseSettings):
     rapidapi_key: str | None = Field(
         default=None,
         description=(
-            "RapidAPI key used by Medium paywall bypass (mediumapi.com). "
-            "Optional: tier unreachable when unset."
+            "RapidAPI key. Powers Medium paywall bypass (mediumapi.com) and "
+            "the Facebook post handler (facebook-scraper-api4 → "
+            "facebook-scraper3 cascade). Optional, but Facebook URLs fail "
+            "with 502 when unset (handler is STRICT_PAID_TIER)."
         ),
     )
     medium_domains_path: str = Field(

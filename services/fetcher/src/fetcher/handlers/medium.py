@@ -8,7 +8,7 @@ from urllib.parse import urlparse
 import yaml
 
 from fetcher.extractors import jina as jina_extractor
-from fetcher.extractors import rapidapi_medium as rapidapi_medium_extractor
+from fetcher.extractors.rapidapi import medium as rapidapi_medium_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 from fetcher.validator import is_acceptable
 

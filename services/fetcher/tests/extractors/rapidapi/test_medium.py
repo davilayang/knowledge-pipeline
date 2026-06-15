@@ -4,7 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 
-from fetcher.extractors import rapidapi_medium
+from fetcher.extractors.rapidapi import medium as rapidapi_medium
 
 
 async def test_fetch_markdown_gets_correct_url_with_headers() -> None:
