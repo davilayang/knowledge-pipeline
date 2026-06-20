@@ -36,17 +36,6 @@ SOURCE_RAW_STORE = "raw_store"
 ALLOWED_CONTENT_ID_PREFIXES: tuple[str, ...] = ("medium::",)
 
 
-# ---------- entity rejection list (denylist) ----------
-
-# Entity_ids to never build or update a wiki page for (W2.5). The deterministic
-# denylist sibling of ALLOWED_CONTENT_ID_PREFIXES: any extracted entity_id in
-# this set is dropped at extraction time, so synthesis never spends an LLM call
-# on it and no page is written. Curator-owned; exact-match on the LLM-minted
-# {page_type}__{slug} id. This checked-in set is the v1 source behind the seam —
-# swappable for a DB/Notion-backed list later without touching the filter.
-REJECTED_ENTITY_IDS: frozenset[str] = frozenset()
-
-
 # ---------- schedule ----------
 
 SCHEDULE_CRON = "0 6 * * *"

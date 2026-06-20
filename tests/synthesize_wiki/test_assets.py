@@ -9,7 +9,6 @@ regression would silently change a Dagster materialization's metadata.
 from unittest.mock import MagicMock, patch
 
 import dagster as dg
-from orchestrators.defs.synthesize_wiki import def_config
 from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, synthesized
 from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
@@ -76,19 +75,28 @@ def test_synthesized_no_op_on_empty_pending(tmp_path):
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
 
-    result = synthesized.op.compute_fn.decorated_fn(ctx, pending=[], wiki=wiki)
+    result = synthesized.op.compute_fn.decorated_fn(
+        ctx, pending=[], wiki=wiki, wiki_pages_notion=MagicMock()
+    )
 
     assert isinstance(result, dg.MaterializeResult)
     summary = result.metadata["summary"].value
     assert "_no pending items this tick_" in summary
 
 
-def test_synthesized_passes_rejected_entities_denylist(tmp_path):
-    """The asset injects the configured REJECTED_ENTITY_IDS denylist into the
-    workflow (W2.5 seam at the orchestrator boundary)."""
-    wiki = WikiResource(backup_dir=str(tmp_path), database_url="postgresql://x")
+def test_synthesized_injects_notion_denylist(tmp_path):
+    """The asset loads the rejection list from the Notion 'Wiki Pages' DB and
+    injects the rejected entity_ids into the workflow (W2.5 Notion seam)."""
+    wiki = WikiResource(
+        backup_dir=str(tmp_path),
+        database_url="postgresql://x",
+        wiki_dir=str(tmp_path / "wiki"),
+    )
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
+
+    notion = MagicMock()
+    notion.query_rejected.return_value = {"tool__cli": {"category": "generic", "reason": "z"}}
 
     item = MagicMock(item_id="medium::x", source_type="raw_store")
     source = MagicMock()
@@ -108,7 +116,9 @@ def test_synthesized_passes_rejected_entities_denylist(tmp_path):
         ) as mock_invoke,
         patch("orchestrators.defs.synthesize_wiki.assets.psycopg.connect", return_value=conn),
     ):
-        synthesized.op.compute_fn.decorated_fn(ctx, pending=["medium::x"], wiki=wiki)
+        synthesized.op.compute_fn.decorated_fn(
+            ctx, pending=["medium::x"], wiki=wiki, wiki_pages_notion=notion
+        )
 
     mock_invoke.assert_called_once()
-    assert mock_invoke.call_args.kwargs["rejected_entities"] == def_config.REJECTED_ENTITY_IDS
+    assert mock_invoke.call_args.kwargs["rejected_entities"] == frozenset({"tool__cli"})

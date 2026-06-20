@@ -251,3 +251,22 @@ re-runs the init scripts on a fresh volume (per the rebuild-don't-migrate
 decision). The same Postgres instance hosts LangGraph checkpoints
 (separate tables managed by `langgraph-checkpoint-postgres`); no extra
 setup beyond the URL.
+
+### Entity rejection list (denylist)
+
+`synthesized` reads a curator-managed denylist from the Notion "Wiki Pages"
+database (`WikiPagesNotionResource.query_rejected`) at the start of each
+tick: every row with `Rejected` ticked contributes its `Entity ID`, and
+those entity_ids are dropped in `extract_entities` (no page built or
+updated for them). The Notion DB is the edit surface — see the curator
+columns `Rejected` / `Reject category` / `Reject reason`.
+
+Resolved behind a **fail-closed** loader (`denylist.load_rejected_entities`):
+a successful read atomically refreshes `data/wiki/_index/rejected.json`; a
+Notion error reuses that last-known-good snapshot rather than falling back
+to an empty list (an empty denylist would silently re-admit rejected
+entities). Empty is reachable only on first-run bootstrap, with a loud log
+warning.
+
+Env: `NOTION_WIKI_PAGES_DATA_SOURCE_ID` (the "Wiki Pages" data source id) +
+the shared `NOTION_INTEGRATION_TOKEN`.
