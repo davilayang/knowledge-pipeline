@@ -18,12 +18,12 @@ from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 from .def_config import (
     ALLOWED_CONTENT_ID_PREFIXES,
     PIPELINE_TAG,
-    REJECTED_ENTITY_IDS,
     SOURCE_RAW_STORE,
     WIKI_MAX_PER_TICK,
     wiki_daily_partition_def,
 )
-from .resources import WikiResource
+from .denylist import load_rejected_entities
+from .resources import WikiPagesNotionResource, WikiResource
 
 
 def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
@@ -136,6 +136,7 @@ def synthesized(
     context: dg.AssetExecutionContext,
     pending: list[str],
     wiki: WikiResource,
+    wiki_pages_notion: WikiPagesNotionResource,
 ) -> dg.MaterializeResult:
     if not pending:
         return dg.MaterializeResult(
@@ -160,6 +161,13 @@ def synthesized(
             metadata={"missing": dg.MetadataValue.json(missing[:50])},
         )
     wiki_dir = wiki.get_wiki_dir()
+    # W2.5 denylist: curator-marked rejects from the Notion "Wiki Pages" DB,
+    # fail-closed to a last-known-good snapshot so a Notion outage never
+    # silently re-admits rejected entities.
+    rejected = frozenset(
+        load_rejected_entities(wiki_pages_notion, wiki_dir / "_index" / "rejected.json")
+    )
+    context.log.info("denylist: %d rejected entity_id(s)", len(rejected))
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []
     # Parallelism options if throughput becomes a constraint:
@@ -176,7 +184,7 @@ def synthesized(
         started = time.monotonic()
         try:
             final_state = invoke_wiki_synthesis(
-                item, db_url=db_url, wiki_dir=wiki_dir, rejected_entities=REJECTED_ENTITY_IDS
+                item, db_url=db_url, wiki_dir=wiki_dir, rejected_entities=rejected
             )
         except Exception as e:
             context.log.exception("wiki synthesis raised for %s", item.item_id)
