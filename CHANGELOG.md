@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.23.0] — 2026-06-20
+
 ### Added
 
 - **Wiki synthesis now skips curator-rejected entities, managed from a Notion "Wiki Pages" database.** Rows marked `Rejected` in Notion are read each tick and their entity_ids dropped at extraction time, so no page is built or updated for them — fail-closed to a last-known-good snapshot (`data/wiki/_index/rejected.json`) on a Notion outage. New `NOTION_WIKI_PAGES_DATA_SOURCE_ID` env var; reuses `NOTION_INTEGRATION_TOKEN`.
