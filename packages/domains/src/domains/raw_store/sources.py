@@ -84,15 +84,22 @@ def get_contents(
     return [_row_to_content(r) for r in rows]
 
 
-def get_content_ids(*, db_path: Path) -> list[str]:
+def get_content_ids(*, db_path: Path, with_body: bool = False) -> list[str]:
     """Return all content_ids ordered by stored_at — IDs only, no payload.
 
     Used by the synthesize_wiki schedule to enumerate raw_store cheaply
     (full content_md is large). For batch reads of full rows use
     get_contents().
+
+    with_body=True drops items whose body was never fetched (content_md
+    NULL or blank) — wiki synthesis must not be fed, and must not
+    permanently mark `processed`, an empty document that the fetcher may
+    fill later. The filter runs in SQL, so it stays cheap (content_md is
+    evaluated, not transferred).
     """
+    where = " WHERE content_md IS NOT NULL AND TRIM(content_md) <> ''" if with_body else ""
     with _connect(db_path) as conn:
-        rows = conn.execute("SELECT content_id FROM contents ORDER BY stored_at").fetchall()
+        rows = conn.execute(f"SELECT content_id FROM contents{where} ORDER BY stored_at").fetchall()
     return [r["content_id"] for r in rows]
 
 
@@ -135,9 +142,13 @@ class RawStoreSource:
         rows: list[ContentRow] = get_contents(db_path=self._db_path)
         return [self._to_item(r) for r in rows]
 
-    def get_item_ids(self) -> list[str]:
-        """IDs-only enumeration — cheap discovery without pulling content_md."""
-        return get_content_ids(db_path=self._db_path)
+    def get_item_ids(self, with_body: bool = False) -> list[str]:
+        """IDs-only enumeration — cheap discovery without pulling content_md.
+
+        with_body=True drops items whose body was never fetched, so
+        synthesis isn't fed (and doesn't permanently consume) empties.
+        """
+        return get_content_ids(db_path=self._db_path, with_body=with_body)
 
     def get_item(self, item_id: str) -> IngestItem | None:
         """Single-row lookup by item_id (= content_id). None if absent."""

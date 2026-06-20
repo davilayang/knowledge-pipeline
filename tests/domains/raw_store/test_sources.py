@@ -85,6 +85,37 @@ def test_get_content_ids_returns_ids_only_ordered(tmp_db: Path):
     assert ids == ["item-1", "item-2"]
 
 
+def test_get_content_ids_with_body_excludes_unfetched(tmp_path: Path):
+    """wiki/pending enumerates ids cheaply; with_body=True must drop items
+    whose body was never fetched (content_md NULL or blank) so synthesis
+    isn't fed — and doesn't permanently consume — empty documents."""
+    db_path = tmp_path / "bodies.db"
+    conn = sqlite3.connect(db_path)
+    conn.execute(
+        """
+        CREATE TABLE contents (
+            content_id TEXT PRIMARY KEY,
+            content_md TEXT,
+            scrape_status TEXT,
+            stored_at TEXT
+        )
+    """
+    )
+    conn.executemany(
+        "INSERT INTO contents (content_id, content_md, scrape_status, stored_at) VALUES (?,?,?,?)",
+        [
+            ("fetched", "# Real body\n\nlots of text", "full", "2026-03-01T00:00:00"),
+            ("unfetched-null", None, "pending", "2026-03-02T00:00:00"),
+            ("unfetched-blank", "   ", "snippet_only", "2026-03-03T00:00:00"),
+        ],
+    )
+    conn.commit()
+    conn.close()
+
+    assert get_content_ids(db_path=db_path) == ["fetched", "unfetched-null", "unfetched-blank"]
+    assert get_content_ids(db_path=db_path, with_body=True) == ["fetched"]
+
+
 def _create_test_db(tmp_path: Path) -> Path:
     db_path = tmp_path / "test.db"
     conn = sqlite3.connect(db_path)
@@ -147,3 +178,21 @@ class TestRawStoreSource:
         assert item.title == "RAG is All You Need"
         assert item.date == date(2026, 4, 1)
         assert "RAG is a technique" in item.text
+
+    def test_get_item_ids_with_body_excludes_unfetched(self, tmp_path: Path):
+        """The id enumeration wiki/pending uses can drop unfetched items."""
+        db_path = tmp_path / "bodies.db"
+        conn = sqlite3.connect(db_path)
+        conn.execute(
+            "CREATE TABLE contents (content_id TEXT PRIMARY KEY, content_md TEXT, stored_at TEXT)"
+        )
+        conn.executemany(
+            "INSERT INTO contents (content_id, content_md, stored_at) VALUES (?,?,?)",
+            [("has-body", "real text", "2026-03-01"), ("no-body", None, "2026-03-02")],
+        )
+        conn.commit()
+        conn.close()
+        source = RawStoreSource(db_path=db_path)
+
+        assert source.get_item_ids() == ["has-body", "no-body"]
+        assert source.get_item_ids(with_body=True) == ["has-body"]

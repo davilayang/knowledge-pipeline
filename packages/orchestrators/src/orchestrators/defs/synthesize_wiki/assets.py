@@ -89,9 +89,16 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
             metadata={"snapshot_path": dg.MetadataValue.path(str(snapshot_path))},
         )
 
-    raw_ids = RawStoreSource(snapshot_path).get_item_ids()
-    eligible = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
-    excluded_by_source = len(raw_ids) - len(eligible)
+    source = RawStoreSource(snapshot_path)
+    raw_ids = source.get_item_ids()
+    fetched = set(source.get_item_ids(with_body=True))
+    # Skip items the fetcher hasn't filled yet: an empty body extracts zero
+    # entities but still marks the item `processed`, so it would never be
+    # re-synthesised once the body lands.
+    allowed = [r for r in raw_ids if r.startswith(ALLOWED_CONTENT_ID_PREFIXES)]
+    eligible = [r for r in allowed if r in fetched]
+    excluded_by_source = len(raw_ids) - len(allowed)
+    excluded_unfetched = len(allowed) - len(eligible)
     with psycopg.connect(wiki.database_url) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
     full = [r for r in eligible if r not in handled]
@@ -102,12 +109,14 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
             "summary": dg.MetadataValue.md(
                 f"**{len(queued)} queued** (backlog {len(full)}"
                 + (", capped" if len(queued) < len(full) else "")
-                + f"; {excluded_by_source} excluded by source allowlist)"
+                + f"; {excluded_by_source} excluded by source allowlist"
+                + f"; {excluded_unfetched} unfetched)"
             ),
             "total_pending": dg.MetadataValue.int(len(full)),
             "queued": dg.MetadataValue.int(len(queued)),
             "capped": dg.MetadataValue.bool(len(queued) < len(full)),
             "excluded_by_source": dg.MetadataValue.int(excluded_by_source),
+            "excluded_unfetched": dg.MetadataValue.int(excluded_unfetched),
             "allowed_prefixes": dg.MetadataValue.json(list(ALLOWED_CONTENT_ID_PREFIXES)),
             "snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
             "item_ids": dg.MetadataValue.json(queued),
