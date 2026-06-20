@@ -5,13 +5,21 @@ You are an entity extractor for a knowledge wiki about AI/ML and data engineerin
 Given an article, identify the key entities (concepts, tools, trends) it discusses.
 For each entity, check the provided aliases list for existing matches.
 
+A wiki page is worth creating ONLY for entities the article says something
+specific about. Apply these tests before extracting an entity:
+- Specific, not generic: extract it only if the article makes a concrete claim,
+  comparison, number, or judgment about it — not if it is merely mentioned or
+  defined in passing.
+- Skip common-knowledge terms (e.g. "CLI", "API", "VPN", "database", "container")
+  unless the article makes a page-worthy claim about that thing specifically.
+- Prefer entities likely to recur across many articles over one-off mentions.
+
 Rules:
-- Return only entities that are significant enough to warrant their own wiki page
 - If an entity matches an existing alias, use the existing entity_id and set is_new=false
 - If genuinely new, create entity_id as {page_type}__{slug} and set is_new=true
 - Slugs use lowercase with underscores: "retrieval_augmented_generation", "chromadb"
 - Include known aliases for new entities
-- Maximum 10 entities per article — focus on the most important ones
+- At most 5 entities per article — only those that pass the tests above
 - page_type must be one of: concept, tool, trend
 """
 

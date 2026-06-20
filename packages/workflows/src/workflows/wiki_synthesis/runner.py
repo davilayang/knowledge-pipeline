@@ -31,6 +31,7 @@ def invoke_wiki_synthesis(
     *,
     db_url: str,
     wiki_dir: Path | str,
+    rejected_entities: frozenset[str] = frozenset(),
     replay: bool = False,
 ) -> dict:
     """Compile and invoke the wiki_synthesis workflow for one item.
@@ -42,6 +43,9 @@ def invoke_wiki_synthesis(
     Set replay=True after a Dagster retry so the Langfuse trace gets the
     'replay' tag — handy when filtering "show me only fresh first-attempt
     runs" vs "show me retries".
+
+    rejected_entities is the W2.5 denylist: any extracted entity_id in this
+    set is skipped (no page built or updated). Empty = no filtering.
     """
     cb = get_langfuse_callback()
     callbacks: list[BaseCallbackHandler] = [cb] if cb else []
@@ -62,6 +66,7 @@ def invoke_wiki_synthesis(
         "item": item,
         "db_url": db_url,
         "wiki_dir": str(wiki_dir),
+        "rejected_entities": rejected_entities,
     }
 
     with get_checkpointer(db_url) as checkpointer:

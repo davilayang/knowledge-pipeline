@@ -79,6 +79,45 @@ def test_runner_invokes_workflow_end_to_end(tmp_path: Path, wiki_pg, wiki_pg_url
     assert get_page(wiki_pg, "concept__test") is not None
 
 
+def test_runner_honours_rejected_entities(tmp_path: Path, wiki_pg, wiki_pg_url):
+    """The runner threads its rejected_entities arg into the workflow so a
+    denylisted entity is never built (W2.5 seam)."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+
+    extraction = ExtractionResult(
+        entities=[
+            ExtractedEntity(
+                entity_id="concept__test", title="Test", page_type="concept", is_new=True
+            ),
+            ExtractedEntity(entity_id="tool__cli", title="CLI", page_type="tool", is_new=True),
+        ]
+    )
+    llm_output = (
+        "---\nentity_id: concept__test\ntitle: Test\npage_type: concept\n---\n# Test\n\nBody."
+    )
+
+    with (
+        patch(
+            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
+        ),
+        patch(
+            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            return_value=make_llm_call(content=llm_output),
+        ),
+    ):
+        invoke_wiki_synthesis(
+            _runner_item(),
+            db_url=wiki_pg_url,
+            wiki_dir=wiki_dir,
+            rejected_entities={"tool__cli"},
+        )
+
+    assert get_page(wiki_pg, "tool__cli") is None
+    assert get_page(wiki_pg, "concept__test") is not None
+
+
 def test_runner_passes_langfuse_metadata_when_callback_configured(tmp_path: Path, wiki_pg_url):
     """When LANGFUSE_PUBLIC_KEY is set, the runner should attach the callback
     AND the session_id metadata at graph.invoke level — that's what gives

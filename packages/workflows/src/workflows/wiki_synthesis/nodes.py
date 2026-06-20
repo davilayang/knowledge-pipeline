@@ -72,10 +72,17 @@ def extract_entities(state: "WikiSynthesisState") -> dict:
         )
         llm_calls.append(call)
 
-        staged = _stage_alias_updates(store, extraction.entities)
+        # W2.5 denylist: drop rejected entity_ids before staging aliases, so
+        # entities + staged_aliases stay consistent and an all-rejected batch
+        # falls through to commit's `not entities` → 'skipped' path. Filtering
+        # here (not at the fan-out edge) is what keeps those invariants.
+        rejected = state.get("rejected_entities") or frozenset()
+        kept = [e for e in extraction.entities if e.entity_id not in rejected]
+
+        staged = _stage_alias_updates(store, kept)
 
         return {
-            "entities": list(extraction.entities),
+            "entities": kept,
             "staged_aliases": staged,
             "llm_calls": llm_calls,
         }
