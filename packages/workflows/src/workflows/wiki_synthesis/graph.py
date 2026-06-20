@@ -36,6 +36,9 @@ class WikiSynthesisState(TypedDict, total=False):
     item: Required[ReadOnly[IngestItem]]
     db_url: Required[ReadOnly[str]]
     wiki_dir: Required[ReadOnly[str]]
+    # Optional denylist of entity_ids to skip building/updating (W2.5).
+    # Absent/empty → no filtering. Injected at the orchestrator boundary.
+    rejected_entities: ReadOnly[frozenset[str]]
 
     # Filled by extract_entities
     entities: list[ExtractedEntity]

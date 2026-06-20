@@ -18,6 +18,7 @@ from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 from .def_config import (
     ALLOWED_CONTENT_ID_PREFIXES,
     PIPELINE_TAG,
+    REJECTED_ENTITY_IDS,
     SOURCE_RAW_STORE,
     WIKI_MAX_PER_TICK,
     wiki_daily_partition_def,
@@ -174,7 +175,9 @@ def synthesized(
         context.log.info("[%d/%d] synthesizing %s", i, len(items), item.item_id)
         started = time.monotonic()
         try:
-            final_state = invoke_wiki_synthesis(item, db_url=db_url, wiki_dir=wiki_dir)
+            final_state = invoke_wiki_synthesis(
+                item, db_url=db_url, wiki_dir=wiki_dir, rejected_entities=REJECTED_ENTITY_IDS
+            )
         except Exception as e:
             context.log.exception("wiki synthesis raised for %s", item.item_id)
             errors.append((item.item_id, repr(e)))

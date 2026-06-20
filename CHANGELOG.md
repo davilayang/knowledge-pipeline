@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Wiki synthesis can now skip designated low-value entities.** Entity IDs listed in `REJECTED_ENTITY_IDS` (`synthesize_wiki` def_config, empty by default) are dropped at extraction time, so no page is built or updated for them. Threaded through `invoke_wiki_synthesis(rejected_entities=…)` into the workflow's `extract_entities`.
+
+### Changed
+
+- **Wiki entity extraction now biases toward specific over generic entities.** The extraction prompt's "significant enough" rule was operationalized with specific-claim / skip-common-knowledge / recurrence tests, and the per-article entity cap lowered 10 → 5.
+
 ---
 
 ## [0.22.2] — 2026-06-16

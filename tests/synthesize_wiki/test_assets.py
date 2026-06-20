@@ -6,9 +6,10 @@ pure helpers — _cost_metadata aggregation correctness — where a
 regression would silently change a Dagster materialization's metadata.
 """
 
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import dagster as dg
+from orchestrators.defs.synthesize_wiki import def_config
 from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, synthesized
 from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
@@ -80,3 +81,34 @@ def test_synthesized_no_op_on_empty_pending(tmp_path):
     assert isinstance(result, dg.MaterializeResult)
     summary = result.metadata["summary"].value
     assert "_no pending items this tick_" in summary
+
+
+def test_synthesized_passes_rejected_entities_denylist(tmp_path):
+    """The asset injects the configured REJECTED_ENTITY_IDS denylist into the
+    workflow (W2.5 seam at the orchestrator boundary)."""
+    wiki = WikiResource(backup_dir=str(tmp_path), database_url="postgresql://x")
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    item = MagicMock(item_id="medium::x", source_type="raw_store")
+    source = MagicMock()
+    source.get_item.return_value = item
+
+    conn = MagicMock()
+    conn.__enter__.return_value.execute.return_value.fetchall.return_value = []
+
+    with (
+        patch(
+            "orchestrators.defs.synthesize_wiki.assets.RawStoreSource",
+            return_value=source,
+        ),
+        patch(
+            "orchestrators.defs.synthesize_wiki.assets.invoke_wiki_synthesis",
+            return_value={"llm_calls": []},
+        ) as mock_invoke,
+        patch("orchestrators.defs.synthesize_wiki.assets.psycopg.connect", return_value=conn),
+    ):
+        synthesized.op.compute_fn.decorated_fn(ctx, pending=["medium::x"], wiki=wiki)
+
+    mock_invoke.assert_called_once()
+    assert mock_invoke.call_args.kwargs["rejected_entities"] == def_config.REJECTED_ENTITY_IDS
