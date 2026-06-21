@@ -212,27 +212,51 @@ def get_aliases_for_entity(conn: Connection, entity_id: str) -> list[str]:
     return [r[0] for r in rows]
 
 
-def count_sources_for_entity(conn: Connection, entity_id: str) -> int:
-    """Return the count of distinct item_ids in wiki.processed that have
-    contributed (status='ok') to a page for this entity.
+def insert_page_source(
+    conn: Connection,
+    *,
+    entity_id: str,
+    item_id: str,
+    source_type: str,
+) -> None:
+    """Record one (entity_id, item_id, source_type) contribution in the
+    wiki.page_sources ledger. Idempotent (ON CONFLICT DO NOTHING) so retries
+    and re-processing don't double-count. Caller manages the transaction."""
+    conn.execute(
+        """
+        INSERT INTO wiki.page_sources (entity_id, item_id, source_type)
+        VALUES (%s, %s, %s)
+        ON CONFLICT (entity_id, item_id, source_type) DO NOTHING
+        """,
+        (entity_id, item_id, source_type),
+    )
 
-    Note: wiki.processed today is keyed by (item_id, source_type) with no
-    entity_id column — this helper joins via wiki.pages.sources jsonb array,
-    which is the authoritative producer-side record of which item_ids landed
-    in which page.
+
+def count_sources_for_entity(conn: Connection, entity_id: str) -> int:
+    """Return the count of distinct item_ids that have contributed to this
+    entity, from the wiki.page_sources ledger — the deterministic record of
+    which content item surfaced which entity, not the LLM-authored
+    wiki.pages.sources array.
     """
     row = conn.execute(
-        """
-        SELECT count(DISTINCT proc.item_id)
-        FROM wiki.pages p
-        CROSS JOIN LATERAL jsonb_array_elements_text(p.sources) AS src(item_id)
-        JOIN wiki.processed proc
-          ON proc.item_id = src.item_id AND proc.status = 'ok'
-        WHERE p.entity_id = %s
-        """,
+        "SELECT count(DISTINCT item_id) FROM wiki.page_sources WHERE entity_id = %s",
         (entity_id,),
     ).fetchone()
     return int(row[0]) if row and row[0] is not None else 0
+
+
+def is_source_for_entity(conn: Connection, entity_id: str, item_id: str) -> bool:
+    """True if item_id is already a recorded contribution for entity_id.
+
+    Lets the producer decide whether the current tick adds a new source (so
+    num_sources reflects the post-commit ledger state) without double-counting
+    a re-processed item.
+    """
+    row = conn.execute(
+        "SELECT 1 FROM wiki.page_sources WHERE entity_id = %s AND item_id = %s LIMIT 1",
+        (entity_id, item_id),
+    ).fetchone()
+    return row is not None
 
 
 def snapshot_aliases(conn: Connection) -> AliasStore:

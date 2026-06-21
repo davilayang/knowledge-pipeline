@@ -22,6 +22,7 @@ import yaml
 from domains.wiki.aliases import AliasStore
 from domains.wiki.state import (
     insert_aliases_idempotent,
+    insert_page_source,
     insert_processed,
     snapshot_aliases,
     upsert_page,
@@ -144,6 +145,14 @@ def commit(state: "WikiSynthesisState") -> dict:
                     page=r["page"],
                     file_path=r["file_path"],
                     source_types=[item.source_type],
+                )
+                # Record this item's contribution to the entity — the
+                # deterministic ground truth behind num_sources.
+                insert_page_source(
+                    conn,
+                    entity_id=r["entity_id"],
+                    item_id=item.item_id,
+                    source_type=item.source_type,
                 )
             if successes:
                 # Aliases are only persisted when at least one page succeeds —

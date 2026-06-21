@@ -28,7 +28,11 @@ from typing import Annotated, ReadOnly, Required, TypedDict
 import psycopg
 from domains.types import IngestItem
 from domains.wiki.io import write_page
-from domains.wiki.state import count_sources_for_entity, get_aliases_for_entity
+from domains.wiki.state import (
+    count_sources_for_entity,
+    get_aliases_for_entity,
+    is_source_for_entity,
+)
 from domains.wiki.types import ExtractedEntity
 from langgraph.graph import END, START, StateGraph
 
@@ -134,11 +138,16 @@ def process_entity(state: EntityWorkflowState) -> dict:
         if is_update:
             check_h2_preservation(page_path, new_page.content)
 
+        # num_sources counts distinct items in the page_sources ledger, plus
+        # this tick's item (commit records its edge after synthesis). The +1 is
+        # gated on the LEDGER, not new_page.sources — the LLM almost always
+        # echoes the current source into its frontmatter, which made the old
+        # check skip the +1 and render 0 on every fresh page.
         with psycopg.connect(db_url) as conn:
             aliases = get_aliases_for_entity(conn, entity.entity_id)
             num_sources = count_sources_for_entity(conn, entity.entity_id)
-        if item.item_id not in new_page.sources:
-            num_sources += 1
+            if not is_source_for_entity(conn, entity.entity_id, item.item_id):
+                num_sources += 1
 
         write_page(page_path, new_page, aliases=aliases, num_sources=num_sources)
 

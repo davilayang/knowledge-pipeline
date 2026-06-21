@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Wiki `num_sources` is now counted from a deterministic ledger, not the LLM-authored page frontmatter.** New `wiki.page_sources(entity_id, item_id, source_type)` table records each real contribution in the `commit` transaction; `num_sources` is `COUNT(DISTINCT item_id)` over it. Fixes fresh single-source pages rendering `num_sources: 0` (the recurrence signal the vector-index sparsity gate relies on). Bumps `SYNTHESIZE_WIKI_DAG_VERSION`.
+
 ---
 
 ## [0.23.0] — 2026-06-20
