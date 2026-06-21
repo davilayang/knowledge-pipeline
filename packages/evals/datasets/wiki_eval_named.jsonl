@@ -1,0 +1,8 @@
+{"query": "what's MCP?", "source": "wiki", "expected_content_id": "trend__model_context_protocol"}
+{"query": "tell me about VPS", "source": "wiki", "expected_content_id": "concept__vps"}
+{"query": "the AI coin idea", "source": "wiki", "expected_content_id": "trend__ai_global_currency"}
+{"query": "screen watching AI", "source": "wiki", "expected_content_id": "trend__ambient_screen_monitoring"}
+{"query": "multi-agent systems", "source": "wiki", "expected_content_id": "concept__multi_agent_workflows"}
+{"query": "what is Neo4j", "source": "wiki", "expected_content_id": "tool__neo4j"}
+{"query": "Gemini CLI", "source": "wiki", "expected_content_id": "tool__gemini_cli"}
+{"query": "what was that off-grid data center thing", "source": "wiki", "expected_content_id": "trend__off_grid_data_centers"}

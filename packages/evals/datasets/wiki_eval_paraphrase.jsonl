@@ -1,0 +1,10 @@
+{"query": "agents that react to live streaming signals as things happen", "source": "wiki", "expected_content_id": "concept__agentic_agents"}
+{"query": "can an AI get better by training on its own output?", "source": "wiki", "expected_content_id": "trend__ai_self_improvement"}
+{"query": "why are AI companies generating their own electricity instead of using the grid?", "source": "wiki", "expected_content_id": "trend__off_grid_data_centers"}
+{"query": "how do people run several AI coders at once without them clashing?", "source": "wiki", "expected_content_id": "trend__parallel_agents_setup"}
+{"query": "an AI that pushes back on your engineering decisions like a blunt senior reviewer", "source": "wiki", "expected_content_id": "concept__ai_as_tech_lead"}
+{"query": "if AI does the annoying steps for users, what happens to businesses that relied on those being annoying?", "source": "wiki", "expected_content_id": "concept__death_of_friction_moat"}
+{"query": "what breaks in the economy when intelligence stops being scarce?", "source": "wiki", "expected_content_id": "concept__core_fallacy_capitalism"}
+{"query": "agents that reason over both spreadsheets and messy documents together", "source": "wiki", "expected_content_id": "trend__agent_support"}
+{"query": "which tool is basically an open-source reimplementation of Claude Code?", "source": "wiki", "expected_content_id": "tool__deepagents"}
+{"query": "catching bad data early by enforcing schema and freshness rules right in the pipeline", "source": "wiki", "expected_content_id": "concept__data_contracts_enforceable"}
