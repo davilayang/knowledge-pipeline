@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.23.1] — 2026-06-21
+
 ### Changed
 
 - **Wiki synthesis now skips items whose body hasn't been fetched yet.** `wiki/pending` filters on a new `with_body` flag in `domains.raw_store.sources.get_content_ids` (SQL `content_md` non-empty). Previously an unfetched item was synthesised empty and marked `processed`, so it was never re-synthesised once the fetcher filled it; the asset now also surfaces an `excluded_unfetched` count.
