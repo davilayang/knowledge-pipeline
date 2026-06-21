@@ -19,10 +19,11 @@ src/domains/
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
 │   └── sources.py      # LocalFileSource
-├── wiki/               # Wiki state — Postgres-backed run state
-│   ├── state.py        # wiki.processed / wiki.pages run state
+├── wiki/               # Wiki state — Postgres-backed run state + page IO
+│   ├── state.py        # wiki.processed / wiki.pages / wiki.page_sources run state
 │   ├── aliases.py      # alias resolution
-│   ├── io.py           # markdown page IO
+│   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
+│   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   └── schema/wiki.sql # Postgres schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
@@ -51,11 +52,12 @@ class IngestItem:
     title: str
     date: date | None
     text: str
-    source_type: str          # "raw_store" | "local_file" | "sessions" | "research"
+    source_type: str          # "raw_store" | "local_file" | "sessions" | "research" | "wiki"
     source_ref: str           # e.g. "raw_store:abc123" or "sessions:s_done"
     author: str | None = None
     url: str | None = None
     started_at: datetime | None = None
+    num_sources: int | None = None   # wiki: distinct content items behind the entity
 ```
 
 The optional fields carry source-specific metadata that some adapters expose
@@ -73,7 +75,7 @@ class IngestSource(Protocol):
 All concrete source classes additionally implement `get_item_ids` and `get_item`:
 
 ```python
-def get_item_ids(self, with_body: bool = False) -> list[str]: ...
+def get_item_ids(self) -> list[str]: ...
 def get_item(self, item_id: str) -> IngestItem | None: ...
 ```
 
@@ -82,9 +84,10 @@ and `synthesize_wiki` `pending` assets to compute the indexable set; `get_item`
 is the per-item path used by the ingest assets. Sources that filter by
 completion state (e.g. only ended sessions) apply that filter inside
 `get_item_ids` — never index a row that the writer hasn't committed.
-`RawStoreSource.get_item_ids(with_body=True)` additionally drops items whose
-`content_md` is NULL or blank, so synthesis is not fed an unfetched document
-that could be permanently marked processed before the fetcher fills it.
+`RawStoreSource` extends the base signature with an optional `with_body: bool =
+False` parameter; passing `True` additionally drops items whose `content_md` is
+NULL or blank, so synthesis is not fed an unfetched document that could be
+permanently marked processed before the fetcher fills it.
 
 | Source | DB / path | Completion gate | Notes |
 |---|---|---|---|
@@ -92,6 +95,7 @@ that could be permanently marked processed before the fetcher fills it.
 | `LocalFileSource` | a directory of `*.md` | none — caller filters mtime | YAML frontmatter respected |
 | `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `turns` into a marker-delimited body |
 | `ResearchSource` | `research.db` | row in `documents` | reads `documents.content` directly (committed atomically with the row) |
+| `WikiSource` | a `data/wiki/` dir of `.md` pages | none — page on disk | one page → one item; `text` is the page **summary**, `num_sources` carried for the W3 sparsity gate; skips `_index/` sidecars |
 
 ## SQLite reads
 
