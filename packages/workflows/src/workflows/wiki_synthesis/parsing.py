@@ -22,6 +22,37 @@ _LLM_ACCEPTED_FIELDS = frozenset(
 )
 
 
+def _strip_code_fence(text: str) -> str:
+    """Drop a wrapping ```lang ... ``` fence the LLM sometimes emits around its
+    whole response. Without this the fence bypasses frontmatter parsing and the
+    block leaks into the summary."""
+    if not text.startswith("```"):
+        return text
+    nl = text.find("\n")
+    if nl == -1:
+        return text
+    inner = text[nl + 1 :]
+    if inner.rstrip().endswith("```"):
+        inner = inner.rstrip()[:-3]
+    return inner.strip()
+
+
+def _field_from_frontmatter_text(yaml_str: str, field: str) -> str:
+    """Pull a single `field: value` line out of frontmatter text by regex.
+
+    Used to recover the summary/title when YAML parsing fails (e.g. an unquoted
+    title containing a colon), instead of dumping the whole block into the
+    summary as first-sentence junk.
+    """
+    m = re.search(rf"^{field}:\s*(.+)$", yaml_str, re.MULTILINE)
+    if not m:
+        return ""
+    val = m.group(1).strip()
+    if len(val) >= 2 and val[0] == val[-1] and val[0] in "\"'":
+        val = val[1:-1]
+    return val.strip()
+
+
 def _first_sentence(text: str) -> str:
     """Return the first sentence of `text`, stripped of markdown headings."""
     cleaned_lines: list[str] = []
@@ -58,7 +89,7 @@ def parse_llm_page_output(
     even if the LLM emits them — they're authoritative from Postgres at write
     time, not from the LLM.
     """
-    raw = raw.strip()
+    raw = _strip_code_fence(raw.strip())
 
     if raw.startswith("---"):
         rest = raw[3:]
@@ -105,7 +136,23 @@ def parse_llm_page_output(
                         content=content,
                     )
             except (yaml.YAMLError, ValueError):
-                logger.warning("Bad frontmatter from LLM for %s, using defaults", entity_id)
+                logger.warning(
+                    "Bad frontmatter YAML from LLM for %s; recovering fields by regex",
+                    entity_id,
+                )
+                summary = _field_from_frontmatter_text(yaml_str, "summary") or _first_sentence(
+                    content
+                )
+                return WikiPage(
+                    entity_id=entity_id,
+                    title=_field_from_frontmatter_text(yaml_str, "title") or title,
+                    page_type=page_type,
+                    summary=summary,
+                    related=related,
+                    sources=[source_id],
+                    updated_at=date.today(),
+                    content=content,
+                )
 
     return WikiPage(
         entity_id=entity_id,

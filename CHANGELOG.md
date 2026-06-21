@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Wiki summaries no longer leak code-fence / frontmatter junk.** The synthesis parser (`workflows.wiki_synthesis.parsing`) now strips a wrapping ` ```yaml `/` ```markdown ` fence, and recovers the `summary` + `title` by regex when the frontmatter YAML is malformed (e.g. an unquoted title containing a colon) instead of dumping the raw block into the summary. Fixes the parser bug behind ~7% of pages rendering an unusable summary.
+
 ---
 
 ## [0.23.3] — 2026-06-21

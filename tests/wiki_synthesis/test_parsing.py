@@ -191,6 +191,54 @@ class TestParseLlmPageOutput:
         )
         assert page.summary == "RAG augments generation."
 
+    def test_parse_strips_code_fence_wrapper(self):
+        # The synthesis LLM sometimes wraps its whole response in a ```yaml /
+        # ```markdown fence. Without stripping it, startswith("---") is False and
+        # the fence block leaks into the summary as first-sentence junk.
+        raw = (
+            "```yaml\n"
+            "---\n"
+            "entity_id: trend__graph_rag\n"
+            "title: Graph RAG\n"
+            "page_type: trend\n"
+            "summary: Graph RAG fuses knowledge graphs with retrieval.\n"
+            "---\n"
+            "# Graph RAG\n\nBody.\n"
+            "```"
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="trend__graph_rag",
+            title="Graph RAG",
+            page_type="trend",
+            related=[],
+            source_id="c1",
+        )
+        assert page.summary == "Graph RAG fuses knowledge graphs with retrieval."
+
+    def test_recovers_summary_when_frontmatter_yaml_is_malformed(self):
+        # An unquoted title with a colon breaks yaml.safe_load. Rather than
+        # dumping the whole frontmatter block into the summary as first-sentence
+        # junk, recover the summary line directly.
+        raw = (
+            "---\n"
+            "entity_id: trend__cog_rag\n"
+            "title: Cog-RAG: Giving RAG a Brain\n"
+            "page_type: trend\n"
+            "summary: Cog-RAG adds a planning step before retrieval.\n"
+            "---\n"
+            "Body."
+        )
+        page = parse_llm_page_output(
+            raw=raw,
+            entity_id="trend__cog_rag",
+            title="Cog-RAG",
+            page_type="trend",
+            related=[],
+            source_id="c1",
+        )
+        assert page.summary == "Cog-RAG adds a planning step before retrieval."
+
 
 class TestCheckH2Preservation:
     def test_warns_on_dropped_section(self, tmp_path: Path, caplog):
