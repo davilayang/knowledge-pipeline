@@ -1,9 +1,9 @@
 """Pure helpers for turning LLM page output into a WikiPage.
 
-Lifted out of the legacy ingest.py so the new workflow doesn't depend on
-the soon-to-be-deleted module. Behavior is identical — same frontmatter
-parsing, same enforcement of expected entity_id and page_type, same H2
-preservation warning.
+Frontmatter parsing, enforcement of the expected entity_id/page_type, and the
+H2 preservation warning. Tolerates two common LLM output defects: a wrapping
+```yaml/```markdown code fence (stripped before parsing) and malformed
+frontmatter YAML (summary/title recovered by regex rather than lost).
 """
 
 import logging
