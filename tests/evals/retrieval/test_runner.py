@@ -131,6 +131,36 @@ class TestRunEval:
         # doc_5 wasn't indexed → recall@5 = 0
         assert result.per_source[0].recall_at_5 == 0.0
 
+    def test_scores_a_wiki_source(self, chroma):
+        # G1: wiki pages flow through the source-agnostic harness like any
+        # other source. expected_content_id is the wiki entity_id; the summary
+        # is the indexed text.
+        items = [
+            _item("concept__context_rot", "context rot degrades long-context output", "wiki"),
+            _item("tool__lazygit", "lazygit is a terminal UI for git", "wiki"),
+        ]
+        pairs = [
+            EvalPair("context rot degrades long-context output", "wiki", "concept__context_rot")
+        ]
+        config = EvalConfig(
+            embedding_model="fake",
+            embedding_dims=16,
+            chunker_by_source={"wiki": "markdown"},
+            chunk_size=400,
+            chunk_overlap=0,
+        )
+        result = run_eval(
+            config=config,
+            eval_pairs=pairs,
+            items_by_source={"wiki": items},
+            embedder=DeterministicFakeEmbedder(dims=16),
+            chroma_client=chroma,
+            collection_prefix="test_wiki",
+        )
+        per = {m.source: m for m in result.per_source}
+        assert per["wiki"].n_queries == 1
+        assert per["wiki"].recall_at_5 == 1.0
+
     def test_chunks_carry_content_id_metadata(self, chroma):
         # The runner must tag every chunk with content_id, _embedding_model,
         # and _embedding_dims so downstream metrics + drift detection work.

@@ -48,10 +48,10 @@ Every eval pair is one JSONL line of `{query, source, expected_content_id}`. `lo
 @dataclass(frozen=True)
 class EvalPair:
     query: str
-    source: str              # one of: raw_store | notes | sessions | research
-    expected_content_id: str # = IngestItem.item_id; matched against chunks' content_id metadata
+    source: str              # one of: raw_store | notes | sessions | research | wiki
+    expected_content_id: str # = IngestItem.item_id (= wiki entity_id for the wiki source); matched against chunks' content_id metadata
 
-VALID_SOURCES = ("raw_store", "notes", "sessions", "research")
+VALID_SOURCES = ("raw_store", "notes", "sessions", "research", "wiki")
 ```
 
 The same `content_id` lives on every chunk in Chroma (the runner sets it as metadata at upsert time). Retrieval is scored at **document granularity** — multiple chunks of the same doc all count as relevant for that query.
@@ -157,7 +157,8 @@ uv run eval-retrieval \
   --raw-store-db   "$BACKUP_SRC_DIR/raw_store.db" \
   --sessions-db    "$BACKUP_SRC_DIR/sessions.db" \
   --research-db    "$BACKUP_SRC_DIR/research.db" \
-  --notes-dir      "$BACKUP_SRC_DIR/notes"
+  --notes-dir      "$BACKUP_SRC_DIR/notes" \
+  --wiki-dir       data/wiki
 
 # Compare a candidate config — bigger embedder, swap session chunker
 uv run eval-retrieval \
@@ -171,7 +172,7 @@ uv run eval-retrieval --raw-store-db "$BACKUP_SRC_DIR/raw_store.db" --limit 50
 Requires:
 - Chroma running on `localhost:8000` — `chroma run --path /tmp/chroma_eval --port 8000` (any persistence path; results don't outlive the run).
 - `OPENAI_API_KEY` in env or `.env` (load via `python-dotenv` from notebook 02; CLI inherits from shell).
-- At least one source path flag — sources without a path arg are silently skipped, handy for partial sweeps.
+- At least one source path flag (`--raw-store-db`, `--sessions-db`, `--research-db`, `--notes-dir`, `--wiki-dir`) — sources without a path arg are silently skipped, handy for partial sweeps.
 
 Output: per-source table to stdout, `data/eval_results/retrieval_<timestamp>.json` for the diff trail.
 

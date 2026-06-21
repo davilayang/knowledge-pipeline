@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.23.3] — 2026-06-21
+
+### Added
+
+- **The retrieval eval harness can now score the wiki source.** `eval-retrieval` gains `--wiki-dir` (+ `--chunker-wiki`) to index wiki pages via `WikiSource`; `"wiki"` is now a valid eval-pair `source` (`expected_content_id` = page `entity_id`).
+- **Wiki retrieval eval datasets** (`packages/evals/datasets/wiki_eval_{named,paraphrase}.jsonl`) — 18 leakage-guarded query→entity_id pairs over the kept wiki corpus, split into named/paraphrase slices. Baseline locks wiki indexing to summary-only (no alias/keyword/hybrid retrieval).
+
+---
+
 ## [0.23.2] — 2026-06-21
 
 ### Added

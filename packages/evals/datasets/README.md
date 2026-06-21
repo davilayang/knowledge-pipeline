@@ -39,6 +39,32 @@ Refresh per-source slices when:
 
 Baseline results land in `data/eval_results/retrieval_<ts>.json` (gitignored, local-only). Keep them locally chronological — baseline-vs-current trends are easier to spot when prior runs aren't overwritten — and tag dataset version (e.g. via `git rev-parse` of the JSONL commit) when comparing across regenerations.
 
+## `wiki_eval_named.jsonl` + `wiki_eval_paraphrase.jsonl`
+
+Two `{query, source: "wiki", expected_content_id}` slices for the wiki recall source (`--eval-set`, `source=wiki`, `expected_content_id` = the page `entity_id`). The split is deliberate: it lets Recall@5 be read per query-style without a schema change.
+
+- **`wiki_eval_named.jsonl` (8)** — keyword-y / aliased queries ("what's MCP?", "the AI coin idea"). High query↔summary overlap is *expected* here (named queries contain the name) — the R1 leakage guard governs the paraphrase slice only.
+- **`wiki_eval_paraphrase.jsonl` (10)** — describe-without-naming queries (zero shared keywords), leakage-guarded against the target summary (word-overlap ≤ ~0.4, ~0 bigrams).
+
+### Selection (2026-06-21)
+
+Targets are drawn from the **kept** corpus only — 255 entities = on-disk minus the Notion "Wiki Pages" `Rejected=true` set (∩ disk) minus malformed summaries. Rejected `already_familiar`/`generic` entities (RAG, Claude Code, context_rot…) are excluded on purpose: the wiki records what's *unfamiliar*, so the eval must not sample the denylist. Skewed toward `num_sources ≥ 2` (the entities recall most needs to nail).
+
+### Baseline result — G1 (2026-06-21)
+
+`text-embedding-3-small` @1536, `markdown` chunker (one chunk per summary), kept-corpus index.
+
+| arm | named Recall@5 | paraphrase Recall@5 |
+|---|---|---|
+| summary-only | 1.00 | 0.80 |
+| title+aliases+summary | 1.00 | 0.90 (one flipped pair, n=10 — noise) |
+
+**Decision: index summary-only; no alias/keyword/hybrid retrieval** (logged in the "Knowledge OS — Decisions" DB). Dense-on-summary already maxes named recall; enriching is within noise and only ~4% of kept entities even have a summary-absent alias. n=8/10 is underpowered — treat as a regression floor, not a powered A/B.
+
+### Cadence review
+
+Re-run on any embedding-model or synthesis-prompt change (the synthesis prompt rewrites every summary). The higher-leverage lever this surfaced is summary *quality* (homogeneous phrasing + malformed summaries), not retrieval tuning.
+
 ## `extraction_eval.jsonl`
 
 JSONL of `{fixture_id, content_type, content, expected_topic_card}` rows consumed by the `evals.extraction` harness — `eval-extraction --fixtures …` (benchmark, scored) and the workbench notebooks under `packages/evals/notebooks/ab_*__content.ipynb` (single-fixture eyeball). Schema validated by `evals.core.load_fixtures(expected_schema_version=1)` — bad rows fail loudly.
