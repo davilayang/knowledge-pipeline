@@ -2109,7 +2109,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
@@ -2128,7 +2128,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-evals"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "packages/evals" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2149,7 +2149,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-orchestrators"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "packages/orchestrators" }
 dependencies = [
     { name = "dagster" },
@@ -2188,7 +2188,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-pipeline"
-version = "0.23.1"
+version = "0.23.2"
 source = { virtual = "." }
 dependencies = [
     { name = "knowledge-domains" },
@@ -2250,7 +2250,7 @@ dev = [
 
 [[package]]
 name = "knowledge-retrievers"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "packages/retrievers" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2273,7 +2273,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-workflows"
-version = "0.23.1"
+version = "0.23.2"
 source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },
