@@ -32,7 +32,8 @@ mentions, then for each one decides create-vs-update and writes the result.
 |---|---|---|
 | Entity | `wiki.pages` row + `wiki/<type>/<slug>.md` file | 1 per real-world thing |
 | Alias | `wiki.aliases` row | many per entity (canonical name + variants) |
-| Source content_id | `wiki.pages.sources[]` element | document content_id contributing to entity |
+| Source contribution (ground truth) | `wiki.page_sources` row | 1 per (entity_id, item_id, source_type) — drives `num_sources` |
+| Source content_id list (display) | `wiki.pages.sources[]` element | LLM-authored list in frontmatter — display only, not counted |
 | Source type | `wiki.pages.source_types[]` (last writer wins) | which source domain last touched the entity |
 | Processed marker | `wiki.processed` row | 1 per (item_id, source_type) |
 
@@ -42,20 +43,24 @@ returns `is_new=False` for entities that match an existing alias — the same
 canonical id is reused, so two documents mentioning "Pandas" and "pandas-dev"
 update one page, not two.
 
-**Provenance has two columns with different semantics — be aware:**
+**Provenance: three columns with different semantics — be aware:**
 
-- `wiki.pages.sources[]` is the list of source content_ids that have
-  contributed to a page. It accumulates across documents because the
-  synthesis update prompt shows the LLM the existing page's frontmatter
-  and the merge prompt is expected to preserve prior `sources`. Parser
-  fallback (`parsing.py:57`) defaults to `[current_source_id]` when the
-  LLM omits the field.
+- `wiki.page_sources` (ledger table) is the **ground truth** for which
+  items have contributed to an entity. `commit` writes one
+  `(entity_id, item_id, source_type)` row per successful entity in the
+  same transaction as `wiki.pages`. `num_sources` is
+  `COUNT(DISTINCT item_id)` from this table, not from the LLM output.
+  `is_source_for_entity` lets `process_entity` add +1 pre-commit so the
+  rendered frontmatter reflects the post-commit count even on first sighting.
+- `wiki.pages.sources[]` is the LLM-authored list of source content_ids
+  in the page frontmatter. It is **display-only** — the synthesis update
+  prompt shows it to the LLM and the merge prompt is expected to preserve
+  it, but it is no longer the source of `num_sources`. Do not join against
+  it for counts; query `wiki.page_sources` instead.
 - `wiki.pages.source_types[]` is **not** cumulative. `commit` always passes
   `source_types=[item.source_type]` (single element) and the upsert
   replaces the column outright. So this column reflects only the most
-  recent writer's source domain, not the union across history. If you
-  need a "which sources have ever touched this entity" query, run it
-  against `wiki.pages.sources` joined to whatever maps content_id → source.
+  recent writer's source domain, not the union across history.
   Promote `source_types` to additive semantics if that pattern shows up
   often.
 
@@ -88,7 +93,7 @@ extract_entities       ←─── reads wiki.aliases, calls extraction LLM,
                               ▼
                          commit       ←──── one Postgres txn:
                               │              wiki.pages, wiki.aliases,
-                              ▼              wiki.processed
+                              ▼              wiki.page_sources, wiki.processed
                              END
 ```
 
@@ -132,6 +137,7 @@ fail the entity, which is recorded as a per-entity error and surfaces in
 |---|---|
 | `<page_type>/<slug>.md` — the rendered page | `wiki.pages` — page metadata + provenance |
 | `index.md` — table of contents (regenerated) | `wiki.aliases` — entity name → id mapping |
+| | `wiki.page_sources` — deterministic (entity, item) contribution ledger; drives `num_sources` |
 | | `wiki.processed` — partition completion markers |
 | | LangGraph checkpoints (separate tables) |
 
@@ -146,8 +152,8 @@ not file listings. This separation lets the workflow be retry-idempotent
 without depending on filesystem state being perfectly consistent with PG.
 
 **Atomicity is per-system.** Inside `commit`, all PG writes (`wiki.pages` +
-`wiki.aliases` + `wiki.processed`) are one transaction — either all land or
-none do. Disk writes are atomic per-file (tmp + os.replace). PG and disk
+`wiki.aliases` + `wiki.page_sources` + `wiki.processed`) are one transaction —
+either all land or none do. Disk writes are atomic per-file (tmp + os.replace). PG and disk
 together are *not* atomic — if PG commit fails after .md files are written,
 the files are stranded but get rewritten on replay. The replay path is
 write_page-idempotent for identical content.

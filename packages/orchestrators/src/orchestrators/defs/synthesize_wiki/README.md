@@ -18,11 +18,13 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   │  reads BACKUP_DST_DIR/<partition_key>/raw_store.db; raises dg.Failure if
   │  the file is absent (backup_readings hasn't materialised that partition).
   │  Filters raw_store content_ids by ALLOWED_CONTENT_ID_PREFIXES (today:
-  │  "medium::" only — current prompts assume article-shape inputs);
-  │  reads eligible IDs ∖ wiki.processed; output is the capped work order
-  │  (≤ WIKI_MAX_PER_TICK). Metadata exposes total_pending (pre-cap),
-  │  queued (post-cap), capped (bool), excluded_by_source — daily backlog
-  │  timeseries.
+  │  "medium::" only — current prompts assume article-shape inputs); then
+  │  drops items whose content_md is NULL or blank (unfetched — synthesis
+  │  must not permanently mark an empty document processed before the
+  │  fetcher fills it); reads eligible IDs ∖ wiki.processed; output is the
+  │  capped work order (≤ WIKI_MAX_PER_TICK). Metadata exposes total_pending
+  │  (pre-cap), queued (post-cap), capped (bool), excluded_by_source,
+  │  excluded_unfetched — daily backlog timeseries.
   ▼
 wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  in: pending (list[str] from wiki/pending via Dagster IO manager)
@@ -34,8 +36,10 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  a real constraint.
   │
   │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
-  │     pages + aliases + wiki.processed all written in ONE PG transaction
-  │     per item. Aliases use ON CONFLICT DO NOTHING for cross-item safety.
+  │     pages + aliases + wiki.page_sources + wiki.processed all written in
+  │     ONE PG transaction per item. Aliases use ON CONFLICT DO NOTHING for
+  │     cross-item safety; page_sources uses ON CONFLICT DO NOTHING (idempotent
+  │     under retries).
   │
   │  ↻ retry on the same date partition replays the same pending list; per-item
   │    LangGraph checkpoints skip already-completed nodes (no duplicate
@@ -167,12 +171,15 @@ scenario.
 `total_pending` (pre-cap, eligible only), `queued` (post-cap, what got
 synthesized), `capped` (bool — `true` if the queue exceeded
 `WIKI_MAX_PER_TICK`), `excluded_by_source` (raw_store rows skipped
-because their content_id prefix isn't in `ALLOWED_CONTENT_ID_PREFIXES`).
+because their content_id prefix isn't in `ALLOWED_CONTENT_ID_PREFIXES`),
+`excluded_unfetched` (allowed rows skipped because `content_md` is NULL or
+blank — the fetcher hasn't filled them yet).
 If `capped` stays `true` for more than a few days you're falling behind —
 either raise the cap, increase tick frequency, or both. If
 `excluded_by_source` is large you've got non-article sources accumulating
 that the current prompts won't handle well — see "Adding new sources" below
-before adding their prefix to the allowlist.
+before adding their prefix to the allowlist. If `excluded_unfetched` is
+large, the fetcher is lagging behind ingestion — check the fetch pipeline.
 
 ### Adding new sources
 

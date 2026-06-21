@@ -73,15 +73,18 @@ class IngestSource(Protocol):
 All concrete source classes additionally implement `get_item_ids` and `get_item`:
 
 ```python
-def get_item_ids(self) -> list[str]: ...
+def get_item_ids(self, with_body: bool = False) -> list[str]: ...
 def get_item(self, item_id: str) -> IngestItem | None: ...
 ```
 
 `get_item_ids` is the cheap discovery path used by the `populate_vector_store`
-`pending` asset to compute the indexable set; `get_item` is the per-item path
-used by the ingest assets. Sources that filter by completion state (e.g. only
-ended sessions) apply that filter inside `get_item_ids` — never index a row
-that the writer hasn't committed.
+and `synthesize_wiki` `pending` assets to compute the indexable set; `get_item`
+is the per-item path used by the ingest assets. Sources that filter by
+completion state (e.g. only ended sessions) apply that filter inside
+`get_item_ids` — never index a row that the writer hasn't committed.
+`RawStoreSource.get_item_ids(with_body=True)` additionally drops items whose
+`content_md` is NULL or blank, so synthesis is not fed an unfetched document
+that could be permanently marked processed before the fetcher fills it.
 
 | Source | DB / path | Completion gate | Notes |
 |---|---|---|---|
