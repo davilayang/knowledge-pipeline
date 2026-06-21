@@ -135,6 +135,56 @@ class TestGetItem:
         assert WikiSource(wiki_dir).get_item("concept__nope") is None
 
 
+class TestCollidedPage:
+    """A known dedup-track failure mode: a page's frontmatter entity_id can
+    disagree with its on-disk path (e.g. `concept__x` frontmatter living at
+    `trend/x.md`). get_item must stay frontmatter-authoritative — never return
+    a page whose entity_id differs from the request, and still resolve the id
+    that get_item_ids advertises."""
+
+    def _write_at(self, path: Path, *, entity_id: str, page_type: str) -> None:
+        path.parent.mkdir(parents=True, exist_ok=True)
+        page = WikiPage(
+            entity_id=entity_id,
+            title="Boring but valuable",
+            page_type=page_type,
+            summary="A summary.",
+            related=[],
+            sources=[],
+            updated_at=date(2026, 6, 20),
+            content="# Boring but valuable\n\nBody.",
+        )
+        write_page(path, page, aliases=[], num_sources=1)
+
+    def test_request_for_path_implied_id_does_not_return_wrong_page(self, tmp_path: Path):
+        # File at trend/boring_but_valuable.md but frontmatter is concept__...
+        wiki_dir = tmp_path / "wiki"
+        self._write_at(
+            wiki_dir / "trend" / "boring_but_valuable.md",
+            entity_id="concept__boring_but_valuable",
+            page_type="trend",
+        )
+
+        # The path-implied id (trend__...) is NOT what the file holds — must NOT
+        # return the concept page under a trend id.
+        assert WikiSource(wiki_dir).get_item("trend__boring_but_valuable") is None
+
+    def test_advertised_id_is_retrievable_despite_path_mismatch(self, tmp_path: Path):
+        wiki_dir = tmp_path / "wiki"
+        self._write_at(
+            wiki_dir / "trend" / "boring_but_valuable.md",
+            entity_id="concept__boring_but_valuable",
+            page_type="trend",
+        )
+        source = WikiSource(wiki_dir)
+
+        # get_item_ids advertises the frontmatter id; get_item must resolve it.
+        assert source.get_item_ids() == ["concept__boring_but_valuable"]
+        item = source.get_item("concept__boring_but_valuable")
+        assert item is not None
+        assert item.item_id == "concept__boring_but_valuable"
+
+
 class TestIndexDirExcluded:
     def test_underscore_dirs_are_not_enumerated(self, tmp_path: Path):
         # _index/ holds sidecars (aliases.json, TOC) with no page frontmatter —
