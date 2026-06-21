@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.23.3] — 2026-06-21
+
 ### Added
 
-- **The retrieval eval harness can now score the wiki source.** `eval-retrieval` gains a `--wiki-dir` flag (+ `--chunker-wiki`) that indexes wiki pages via `WikiSource`, and `"wiki"` is now a valid eval-pair `source` (`expected_content_id` = the page `entity_id`). Enables the G1 summary-vs-body / generic-drop A/Bs that gate the wiki vector collection.
+- **The retrieval eval harness can now score the wiki source.** `eval-retrieval` gains `--wiki-dir` (+ `--chunker-wiki`) to index wiki pages via `WikiSource`; `"wiki"` is now a valid eval-pair `source` (`expected_content_id` = page `entity_id`).
 
 ---
 
