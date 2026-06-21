@@ -9,6 +9,16 @@ from domains.wiki.types import WikiPage
 _FRONTMATTER_DELIMITER = "---"
 
 
+def read_meta(path: Path) -> dict:
+    """Read just the YAML frontmatter of a wiki page as a dict.
+
+    Exposes fields that ``WikiPage`` doesn't carry (e.g. ``num_sources``, which
+    is producer-authoritative and written separately from the typed page).
+    """
+    meta, _ = _split_frontmatter(path.read_text(encoding="utf-8"))
+    return meta
+
+
 def read_page(path: Path) -> WikiPage:
     """Read a wiki page from a markdown file with YAML frontmatter."""
     text = path.read_text(encoding="utf-8")

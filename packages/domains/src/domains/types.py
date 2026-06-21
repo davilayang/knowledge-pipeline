@@ -24,6 +24,7 @@ class IngestItem:
     author: str | None = None
     url: str | None = None
     started_at: datetime | None = None
+    num_sources: int | None = None  # wiki: distinct content items behind the entity (W3 gate)
 
 
 class IngestSource(Protocol):

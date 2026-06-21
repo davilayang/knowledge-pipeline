@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Wiki pages are now readable as an ingest source** via `domains.wiki.sources.WikiSource`, mirroring the other source adapters (`get_items` / `get_item_ids` / `get_item`). Each page becomes one `IngestItem` whose `text` is the page summary and which carries `num_sources` (a new optional `IngestItem` field) for the upcoming vector-index sparsity gate. `_index/` sidecars are skipped. Adds `domains.wiki.io.read_meta` for frontmatter-only reads.
+
 ---
 
 ## [0.23.1] — 2026-06-21

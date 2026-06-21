@@ -19,10 +19,11 @@ src/domains/
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
 │   └── sources.py      # LocalFileSource
-├── wiki/               # Wiki state — Postgres-backed run state
-│   ├── state.py        # wiki.processed / wiki.pages run state
+├── wiki/               # Wiki state — Postgres-backed run state + page IO
+│   ├── state.py        # wiki.processed / wiki.pages / wiki.page_sources run state
 │   ├── aliases.py      # alias resolution
-│   ├── io.py           # markdown page IO
+│   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
+│   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   └── schema/wiki.sql # Postgres schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
@@ -51,11 +52,12 @@ class IngestItem:
     title: str
     date: date | None
     text: str
-    source_type: str          # "raw_store" | "local_file" | "sessions" | "research"
+    source_type: str          # "raw_store" | "local_file" | "sessions" | "research" | "wiki"
     source_ref: str           # e.g. "raw_store:abc123" or "sessions:s_done"
     author: str | None = None
     url: str | None = None
     started_at: datetime | None = None
+    num_sources: int | None = None   # wiki: distinct content items behind the entity
 ```
 
 The optional fields carry source-specific metadata that some adapters expose
@@ -92,6 +94,7 @@ that could be permanently marked processed before the fetcher fills it.
 | `LocalFileSource` | a directory of `*.md` | none — caller filters mtime | YAML frontmatter respected |
 | `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `turns` into a marker-delimited body |
 | `ResearchSource` | `research.db` | row in `documents` | reads `documents.content` directly (committed atomically with the row) |
+| `WikiSource` | a `data/wiki/` dir of `.md` pages | none — page on disk | one page → one item; `text` is the page **summary**, `num_sources` carried for the W3 sparsity gate; skips `_index/` sidecars |
 
 ## SQLite reads
 
