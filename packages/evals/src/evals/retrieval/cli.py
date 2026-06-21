@@ -6,11 +6,13 @@ Drives the retrieval eval harness end-to-end:
       --embedding-model text-embedding-3-small --embedding-dims 1536 \\
       --chunker-raw-store markdown --chunker-notes markdown \\
       --chunker-sessions turn_grouping --chunker-research markdown \\
+      --chunker-wiki markdown \\
       --chroma-host localhost --chroma-port 8000 \\
       --raw-store-db ${BACKUP_SRC_DIR}/raw_store.db \\
       --sessions-db ${BACKUP_SRC_DIR}/sessions.db \\
       --research-db ${BACKUP_SRC_DIR}/research.db \\
-      --notes-dir   ${BACKUP_SRC_DIR}/notes
+      --notes-dir   ${BACKUP_SRC_DIR}/notes \\
+      --wiki-dir    data/wiki
 
 Sources without a path argument are skipped — handy for partial eval runs
 while iterating on chunker config for a single source.
@@ -35,10 +37,12 @@ from .types import EvalConfig, EvalRunResult
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    if not any([args.raw_store_db, args.notes_dir, args.sessions_db, args.research_db]):
+    if not any(
+        [args.raw_store_db, args.notes_dir, args.sessions_db, args.research_db, args.wiki_dir]
+    ):
         raise SystemExit(
             "no source paths supplied — pass at least one of "
-            "--raw-store-db / --notes-dir / --sessions-db / --research-db."
+            "--raw-store-db / --notes-dir / --sessions-db / --research-db / --wiki-dir."
         )
 
     embedder = CachedEmbedder(
@@ -61,6 +65,7 @@ def main(argv: list[str] | None = None) -> int:
             "notes": args.chunker_notes,
             "sessions": args.chunker_sessions,
             "research": args.chunker_research,
+            "wiki": args.chunker_wiki,
         },
         chunk_size=args.chunk_size,
         chunk_overlap=args.chunk_overlap,
@@ -94,6 +99,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--chunker-notes", default="markdown")
     p.add_argument("--chunker-sessions", default="turn_grouping")
     p.add_argument("--chunker-research", default="markdown")
+    p.add_argument("--chunker-wiki", default="markdown")
     p.add_argument("--chunk-size", type=int, default=800)
     p.add_argument("--chunk-overlap", type=int, default=100)
     p.add_argument("--chroma-host", default="localhost")
@@ -108,6 +114,7 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--sessions-db", type=Path, default=None)
     p.add_argument("--research-db", type=Path, default=None)
     p.add_argument("--notes-dir", type=Path, default=None)
+    p.add_argument("--wiki-dir", type=Path, default=None, help="data/wiki dir of .md pages.")
     p.add_argument("--results-dir", type=Path, default=Path("data/eval_results"))
     p.add_argument(
         "--cache-dir",
@@ -140,6 +147,11 @@ def _load_items(args: argparse.Namespace) -> dict[str, list[IngestItem]]:
         from domains.research.sources import ResearchSource
 
         items["research"] = ResearchSource(args.research_db).get_items()
+
+    if args.wiki_dir is not None:
+        from domains.wiki.sources import WikiSource
+
+        items["wiki"] = WikiSource(args.wiki_dir).get_items()
 
     return items
 

@@ -47,6 +47,17 @@ class TestLoadEvalSet:
         with pytest.raises(ValueError, match="unknown source"):
             load_eval_set(p)
 
+    def test_accepts_wiki_source(self, tmp_path: Path):
+        # Wiki pages are a valid eval source (G1): query → expected entity_id.
+        p = _write(
+            tmp_path,
+            '{"query": "what do I know about context rot?", "source": "wiki", '
+            '"expected_content_id": "concept__context_rot"}\n',
+        )
+        pairs = load_eval_set(p)
+        assert pairs[0].source == "wiki"
+        assert pairs[0].expected_content_id == "concept__context_rot"
+
 
 class TestGroupBySource:
     def test_buckets_pairs_per_source(self, tmp_path: Path):

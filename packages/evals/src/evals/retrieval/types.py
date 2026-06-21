@@ -4,16 +4,16 @@ JSONL line shape consumed by :mod:`evals.retrieval.dataset`::
 
     {"query": "...", "source": "raw_store", "expected_content_id": "abc123"}
 
-``source`` is one of ``raw_store`` | ``notes`` | ``sessions`` | ``research`` and
-must match a key in ``CHUNKER_BY_SOURCE``. ``expected_content_id`` is the
-``content_id`` (= ``IngestItem.item_id``) the query is supposed to retrieve;
-chunks are tagged with ``content_id`` in their metadata so retrieval can be
-scored at the document level.
+``source`` is one of ``raw_store`` | ``notes`` | ``sessions`` | ``research`` |
+``wiki`` and must match a key in ``CHUNKER_BY_SOURCE``. ``expected_content_id``
+is the ``content_id`` (= ``IngestItem.item_id``; the wiki ``entity_id`` for the
+wiki source) the query is supposed to retrieve; chunks are tagged with
+``content_id`` in their metadata so retrieval can be scored at the document level.
 """
 
 from dataclasses import dataclass, field
 
-VALID_SOURCES = ("raw_store", "notes", "sessions", "research")
+VALID_SOURCES = ("raw_store", "notes", "sessions", "research", "wiki")
 
 
 @dataclass(frozen=True)
