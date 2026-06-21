@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **Wiki synthesis now skips items whose body hasn't been fetched yet.** `wiki/pending` filters on a new `with_body` flag in `domains.raw_store.sources.get_content_ids` (SQL `content_md` non-empty). Previously an unfetched item was synthesised empty and marked `processed`, so it was never re-synthesised once the fetcher filled it; the asset now also surfaces an `excluded_unfetched` count.
+- **Wiki `num_sources` is now counted from a deterministic ledger, not the LLM-authored page frontmatter.** New `wiki.page_sources(entity_id, item_id, source_type)` table records each real contribution in the `commit` transaction; `num_sources` is `COUNT(DISTINCT item_id)` over it. Fixes fresh single-source pages rendering `num_sources: 0` (the recurrence signal the vector-index sparsity gate relies on). Both changes bump `SYNTHESIZE_WIKI_DAG_VERSION` 5→6 (one re-materialisation epoch).
 
 ---
 

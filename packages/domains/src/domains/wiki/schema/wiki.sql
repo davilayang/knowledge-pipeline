@@ -63,3 +63,28 @@ CREATE TABLE IF NOT EXISTS wiki.aliases (
 -- Index for lookups by entity_id (e.g. "give me all aliases for X").
 CREATE INDEX IF NOT EXISTS wiki_aliases_entity_id_idx
     ON wiki.aliases (entity_id);
+
+-- ---------------------------------------------------------------------------
+-- wiki.page_sources
+--
+-- One row per (entity_id, item_id, source_type) contribution — the
+-- deterministic record of which content item surfaced which entity. Written
+-- by the commit node in the same all-or-nothing transaction as wiki.pages /
+-- wiki.processed, ON CONFLICT DO NOTHING (idempotent under retries).
+--
+-- Ground truth for num_sources: COUNT(DISTINCT item_id) per entity_id. This
+-- replaces the LLM-authored wiki.pages.sources jsonb array as the count source
+-- (that list stays for display only). source_type is part of the key because
+-- item_id is only unique within a source (mirrors wiki.processed's PK).
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS wiki.page_sources (
+    entity_id      text        NOT NULL,
+    item_id        text        NOT NULL,
+    source_type    text        NOT NULL,
+    added_at       timestamptz NOT NULL DEFAULT now(),
+    PRIMARY KEY (entity_id, item_id, source_type)
+);
+
+-- Index for the count/lookup by entity ("num_sources for X", "which items built X").
+CREATE INDEX IF NOT EXISTS wiki_page_sources_entity_id_idx
+    ON wiki.page_sources (entity_id);
