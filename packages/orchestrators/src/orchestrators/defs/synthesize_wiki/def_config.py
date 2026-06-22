@@ -17,8 +17,8 @@ wiki_daily_partition_def = dg.DailyPartitionsDefinition(start_date="2026-05-01")
 
 # Cap on items processed per scheduled tick. Limits per-run LLM spend and
 # OpenAI rate-limit pressure; wiki/pending slices `eligible[:WIKI_MAX_PER_TICK]`.
-# 0 = no cap. Kept conservative because synthesis is sequential per item (one
-# LLM call per entity) — 30 items can run ~45m+; lower it if ticks drag.
+# 0 = no cap. Synthesis is sequential per item (one LLM call per entity), so a
+# high cap makes ticks run long; lower it if a tick drags.
 WIKI_MAX_PER_TICK = 15
 
 

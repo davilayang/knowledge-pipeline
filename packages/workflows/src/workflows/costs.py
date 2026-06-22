@@ -12,13 +12,9 @@ PRICING_PER_1M: dict[str, dict[str, float]] = {
 
 
 def _rate_for(model: str) -> dict[str, float] | None:
-    """Resolve a model id to its per-1M rates.
-
-    Falls back to a prefix match so the API's DATED ids (e.g.
-    `gpt-4.1-nano-2025-04-14`, which is what shows up in the response and on
-    LLMCall.model) price at their base alias's rate instead of falling through
-    to $0. Longest matching base key wins.
-    """
+    """Per-1M rates for a model id. Falls back to a longest-prefix match so the
+    API's dated ids (gpt-4.1-nano-2025-04-14) price at their base alias's rate
+    instead of $0."""
     rate = PRICING_PER_1M.get(model)
     if rate is not None:
         return rate

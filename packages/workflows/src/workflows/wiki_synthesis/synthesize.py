@@ -136,15 +136,11 @@ def synthesize_from_candidates(
     rejected_entities: frozenset[str] = frozenset(),
     replay: bool = False,
 ) -> dict:
-    """Synthesize wiki pages from ALREADY-EXTRACTED candidates — the second half
-    of the pipeline, decoupled from extraction.
+    """Synthesize pages from ALREADY-EXTRACTED candidates (no extraction call).
 
-    `synthesize_extracted_item` is the entry point the `wiki/synthesized` asset
-    uses (it also handles the extraction-error case); this function is the
-    no-error path and assumes a clean candidate list. Resolution reads a LIVE
-    entity-index snapshot here (not a frozen extraction-time one), so within-run
-    dedup stays correct even though extraction happened in an earlier stage; the
-    LLM's matched_id is advisory and re-validated against the live snapshot.
+    `synthesize_extracted_item` is the asset entry point (it also handles the
+    extract-error case); this is the clean-candidates path. Resolution reads a
+    LIVE index, so within-run dedup stays correct across the extract/synth split.
     """
     with _trace(item, replay=replay):
         return _synthesize_resolved(
@@ -157,11 +153,9 @@ def synthesize_from_candidates(
 
 
 def extract_item(item: IngestItem, *, db_path: Path | str, replay: bool = False) -> dict:
-    """Run extraction for one item under a Langfuse span — what `wiki/extracted`
-    calls per item. Returns the artifact payload + the LLM calls for cost
-    accounting: {"candidates": [Candidate, ...], "extract_error": str | None,
-    "llm_calls": [LLMCall, ...]}. The stale entity index is intentionally NOT
-    carried forward — resolution re-reads a live snapshot in synthesis.
+    """Extraction LLM for one item, under a Langfuse span — what `wiki/extracted`
+    calls. Returns {"candidates", "extract_error", "llm_calls"}; the extraction-
+    time index is dropped (synthesis re-reads a live one).
     """
     with _trace(item, replay=replay):
         ext = extract(item, db_path=db_path)
@@ -231,10 +225,9 @@ def _synthesize_resolved(
             if not _is_rejected(cand, rec, rejected_entities)
         ]
 
-    # Two candidates in one item can resolve to the SAME entity (within-item
-    # dedup, e.g. "Model Costs" + "model costs"). Synthesize each entity ONCE —
-    # the first record wins its identity — to avoid duplicate LLM spend. Aliases
-    # below still aggregate across every surviving record.
+    # Two candidates can resolve to the same entity (within-item dedup) —
+    # synthesize each entity once (first record wins) to avoid duplicate spend.
+    # Aliases below still aggregate across every surviving record.
     seen_ids: set[str] = set()
     unique_records = []
     for cand, rec, resolved in records:
@@ -271,11 +264,9 @@ def _synthesize_resolved(
         for alias in resolved.aliases
     ]
 
-    # Commit the durable graph (entities + pages + ledger + aliases), then write
-    # the .md files, then mark the item processed — in that order so a crash
-    # leaves a RECOVERABLE state: the entities are committed (a retry reuses the
-    # same surrogates → no orphan files), and the item stays un-`processed` so
-    # `pending` re-queues it and the write is retried.
+    # Commit the graph, then write .md, then mark processed LAST — so a crash
+    # leaves a recoverable state: entities committed (retry reuses surrogates,
+    # no orphans), item un-processed so `pending` re-queues it.
     _persist_graph(
         item,
         db_path=db_path,
