@@ -16,7 +16,7 @@ from unittest.mock import MagicMock, patch
 from domains.wiki.identity import Candidate
 from domains.wiki.state import connect, get_all_entities, get_all_pages, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from workflows.wiki_synthesis.synthesize import synthesize_from_candidates, synthesize_item
+from workflows.wiki_synthesis.synthesize import extract, synthesize_from_candidates, synthesize_item
 
 from tests.wiki_synthesis._helpers import build_synthesis_output, make_item, make_llm_call
 
@@ -181,6 +181,42 @@ def test_extract_item_traces_under_distinct_extract_span(tmp_path: Path, wiki_db
 
     fake_client.start_as_current_span.assert_called_once_with(name="wiki_extract__content_runner")
     assert fake_client.update_current_trace.call_args.kwargs["session_id"] == "content_runner"
+
+
+def test_extract_relevance_filters_large_catalog_in_prompt(wiki_db_path):
+    """With a catalog past the relevance cap, extract() sends only the entities
+    lexically relevant to the article into the prompt — an off-topic entity is
+    dropped, the on-topic one survives. Below the cap nothing changes (covered in
+    domains.wiki.relevance tests)."""
+    from domains.wiki.identity import EntityRecord, normalize_name, slugify
+    from domains.wiki.relevance import RELEVANCE_MAX_ENTITIES
+    from domains.wiki.state import connection, insert_entity
+
+    def _rec(name: str) -> EntityRecord:
+        return EntityRecord(
+            entity_id="e_" + slugify(name),
+            canonical_name=name,
+            normalized_name=normalize_name(name),
+            slug=slugify(name),
+            page_type="concept",
+            created_at="2026-06-22",
+        )
+
+    names = [f"Filler Topic {i}" for i in range(RELEVANCE_MAX_ENTITIES)] + ["Knowledge Graph"]
+    with connection(wiki_db_path) as conn, conn:
+        for name in names:
+            insert_entity(conn, _rec(name))
+
+    item = make_item(item_id="kg1", title="On graphs", text="A piece on the knowledge graph.")
+    with patch(
+        "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
+        return_value=(ExtractionResult(entities=[]), make_llm_call(model="gpt-4.1-nano")),
+    ) as mock_extract:
+        extract(item, db_path=wiki_db_path)
+
+    user_prompt = mock_extract.call_args.args[0]
+    assert "Knowledge Graph" in user_prompt  # relevant entity kept
+    assert "Filler Topic 0" not in user_prompt  # off-topic entity trimmed
 
 
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):
