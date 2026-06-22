@@ -1,9 +1,9 @@
 """Pure-function tests for synthesize_wiki/assets.py helpers.
 
-Asset functions themselves require wiki_pg + raw_store.db + LangGraph
-mocking (covered by the wiki_synthesis test suite). These cover the
-pure helpers — _cost_metadata aggregation correctness — where a
-regression would silently change a Dagster materialization's metadata.
+Full asset execution is covered by the wiki_synthesis suite (synthesize_item).
+These cover the pure helpers — _cost_metadata aggregation correctness — plus
+the empty-pending shortcut and the Notion denylist injection, where a
+regression would silently change a Dagster materialization.
 """
 
 from unittest.mock import MagicMock, patch
@@ -71,7 +71,7 @@ def test_synthesized_no_op_on_empty_pending(tmp_path):
     """Empty work order: short-circuit with the no-op summary; no LLM
     calls, no PG, no snapshot read. Guards against a future refactor
     that flips the empty check or adds a pre-PG-query."""
-    wiki = WikiResource(backup_dir=str(tmp_path), database_url="postgresql://x")
+    wiki = WikiResource(backup_dir=str(tmp_path))
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
 
@@ -89,8 +89,8 @@ def test_synthesized_injects_notion_denylist(tmp_path):
     injects the rejected entity_ids into the workflow (W2.5 Notion seam)."""
     wiki = WikiResource(
         backup_dir=str(tmp_path),
-        database_url="postgresql://x",
         wiki_dir=str(tmp_path / "wiki"),
+        wiki_db_path=str(tmp_path / "wiki.db"),
     )
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
@@ -102,23 +102,19 @@ def test_synthesized_injects_notion_denylist(tmp_path):
     source = MagicMock()
     source.get_item.return_value = item
 
-    conn = MagicMock()
-    conn.__enter__.return_value.execute.return_value.fetchall.return_value = []
-
     with (
         patch(
             "orchestrators.defs.synthesize_wiki.assets.RawStoreSource",
             return_value=source,
         ),
         patch(
-            "orchestrators.defs.synthesize_wiki.assets.invoke_wiki_synthesis",
+            "orchestrators.defs.synthesize_wiki.assets.synthesize_item",
             return_value={"llm_calls": []},
-        ) as mock_invoke,
-        patch("orchestrators.defs.synthesize_wiki.assets.psycopg.connect", return_value=conn),
+        ) as mock_synth,
     ):
         synthesized.op.compute_fn.decorated_fn(
             ctx, pending=["medium::x"], wiki=wiki, wiki_pages_notion=notion
         )
 
-    mock_invoke.assert_called_once()
-    assert mock_invoke.call_args.kwargs["rejected_entities"] == frozenset({"tool__cli"})
+    mock_synth.assert_called_once()
+    assert mock_synth.call_args.kwargs["rejected_entities"] == frozenset({"tool__cli"})

@@ -5,7 +5,7 @@ Same logic as the legacy ingest's _stage_alias_updates.
 
 from domains.wiki.aliases import AliasStore
 from domains.wiki.types import ExtractedEntity
-from workflows.wiki_synthesis.nodes import _stage_alias_updates
+from workflows.wiki_synthesis.synthesize import _stage_alias_updates
 
 
 def test_stages_new_entities():

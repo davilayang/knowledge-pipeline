@@ -1,27 +1,32 @@
+"""Langfuse v3 helpers for the OpenAI-native tracing path.
+
+Tracing is automatic: `workflows.llm` uses the `langfuse.openai` drop-in, which
+creates a generation observation for every call (nested under the active span).
+This module only provides the env gate and the end-of-run flush — no callback
+plumbing, no LangChain.
+"""
+
 import os
-from functools import lru_cache
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from langfuse.langchain import CallbackHandler
 
 
-@lru_cache(maxsize=1)
-def get_langfuse_callback() -> "CallbackHandler | None":
-    """Return a process-cached Langfuse callback handler, or None if unconfigured.
+def langfuse_enabled() -> bool:
+    """True when Langfuse tracing is configured (public key present).
 
-    Skipping instantiation when LANGFUSE_PUBLIC_KEY is unset avoids the
-    "client will be disabled" warning that Langfuse logs at construction
-    time. Clear the cache (`get_langfuse_callback.cache_clear()`) if env
-    changes mid-process — useful in tests.
-
-    The langfuse.langchain import is deferred so this module loads even if
-    `langchain` (a runtime dep of `langfuse.langchain.CallbackHandler`) is
-    not installed — relevant for production images that strip the agents
-    code path.
+    Gate construction/flush on this so the code stays silent — no "client
+    disabled" warning — when the env vars are unset.
     """
-    if not os.environ.get("LANGFUSE_PUBLIC_KEY"):
-        return None
-    from langfuse.langchain import CallbackHandler
+    return bool(os.environ.get("LANGFUSE_PUBLIC_KEY"))
 
-    return CallbackHandler()
+
+def flush_langfuse() -> None:
+    """Flush buffered Langfuse events; no-op when unconfigured.
+
+    Langfuse v3 buffers spans/generations and ships them in the background. A
+    short-lived process (a Dagster asset run) must flush before it exits or the
+    last items are dropped. Safe to call unconditionally.
+    """
+    if not langfuse_enabled():
+        return
+    from langfuse import get_client
+
+    get_client().flush()

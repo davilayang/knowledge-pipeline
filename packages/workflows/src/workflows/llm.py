@@ -1,13 +1,10 @@
-# Thin wrapper around LangChain chat models.
+# Thin wrapper around the OpenAI SDK with Langfuse drop-in tracing.
 
+import os
 from dataclasses import dataclass
+from typing import Any
 
-from langchain_core.language_models import BaseChatModel
-from langchain_core.messages import AIMessage, HumanMessage, SystemMessage
-from langchain_openai import ChatOpenAI
 from pydantic import BaseModel
-
-from workflows.shared.observability import get_langfuse_callback
 
 _DEFAULT_MODEL = "gpt-4.1-mini"
 
@@ -22,36 +19,37 @@ class LLMCall:
     output_tokens: int
 
 
-def get_llm(model: str = _DEFAULT_MODEL) -> BaseChatModel:
-    """Create a LangChain chat model instance.
+def _get_client() -> Any:
+    """Return an OpenAI client, traced via Langfuse when configured.
 
-    Reads OPENAI_API_KEY from environment automatically.
-    To switch providers later, swap ChatOpenAI for ChatAnthropic etc.
+    When LANGFUSE_PUBLIC_KEY is set, `langfuse.openai.OpenAI` is a transparent
+    drop-in that auto-creates a generation observation for every call (nested
+    under the active `@observe` span when there is one). When it is unset we
+    return the plain `openai.OpenAI` so the module stays silent — no "client
+    disabled" warning — exactly as before the Langfuse migration.
+
+    Reads OPENAI_API_KEY from the environment automatically.
     """
-    return ChatOpenAI(model=model)
+    if os.environ.get("LANGFUSE_PUBLIC_KEY"):
+        from langfuse.openai import OpenAI
+    else:
+        from openai import OpenAI
+    return OpenAI()
 
 
-def _invoke_config() -> dict:
-    cb = get_langfuse_callback()
-    return {"callbacks": [cb]} if cb else {}
-
-
-def _build_messages(prompt: str, system: str) -> list:
-    messages = []
+def _messages(prompt: str, system: str) -> list[dict[str, str]]:
+    messages: list[dict[str, str]] = []
     if system:
-        messages.append(SystemMessage(content=system))
-    messages.append(HumanMessage(content=prompt))
+        messages.append({"role": "system", "content": system})
+    messages.append({"role": "user", "content": prompt})
     return messages
 
 
-def _to_llm_call(response: AIMessage, fallback_model: str) -> LLMCall:
-    usage = response.usage_metadata or {"input_tokens": 0, "output_tokens": 0}
-    return LLMCall(
-        content=response.content if isinstance(response.content, str) else "",
-        model=response.response_metadata.get("model_name", fallback_model),
-        input_tokens=usage.get("input_tokens", 0),
-        output_tokens=usage.get("output_tokens", 0),
-    )
+def _usage(response: Any) -> tuple[int, int]:
+    usage = getattr(response, "usage", None)
+    if usage is None:
+        return 0, 0
+    return usage.prompt_tokens or 0, usage.completion_tokens or 0
 
 
 def generate(
@@ -61,9 +59,10 @@ def generate(
     model: str = _DEFAULT_MODEL,
 ) -> str:
     """Generate a chat completion and return the assistant's text response."""
-    llm = get_llm(model)
-    response = llm.invoke(_build_messages(prompt, system), config=_invoke_config())
-    return response.content
+    response = _get_client().chat.completions.create(
+        model=model, messages=_messages(prompt, system)
+    )
+    return response.choices[0].message.content or ""
 
 
 def generate_with_usage(
@@ -73,9 +72,16 @@ def generate_with_usage(
     model: str = _DEFAULT_MODEL,
 ) -> LLMCall:
     """Like generate(), but also returns token usage metadata."""
-    llm = get_llm(model)
-    response = llm.invoke(_build_messages(prompt, system), config=_invoke_config())
-    return _to_llm_call(response, fallback_model=model)
+    response = _get_client().chat.completions.create(
+        model=model, messages=_messages(prompt, system)
+    )
+    in_tokens, out_tokens = _usage(response)
+    return LLMCall(
+        content=response.choices[0].message.content or "",
+        model=response.model or model,
+        input_tokens=in_tokens,
+        output_tokens=out_tokens,
+    )
 
 
 def generate_structured[
@@ -83,21 +89,12 @@ def generate_structured[
 ](prompt: str, *, schema: type[T], system: str = "", model: str = _DEFAULT_MODEL,) -> T:
     """Generate a structured response validated against a Pydantic model.
 
-    Uses LangChain's with_structured_output() for provider-native structured
-    output when available, with tool-calling fallback.
-
-    Args:
-        prompt: The user message.
-        schema: A Pydantic BaseModel class defining the expected output shape.
-        system: Optional system message.
-        model: Model identifier (default: gpt-4.1-mini).
-
-    Returns:
-        An instance of the schema class, validated by Pydantic.
+    Uses OpenAI's native structured-output parse (`beta.chat.completions.parse`
+    with `response_format=schema`); raises on a model refusal or empty parse so
+    callers fail fast rather than receive a silent None.
     """
-    llm = get_llm(model)
-    structured_llm = llm.with_structured_output(schema)
-    return structured_llm.invoke(_build_messages(prompt, system), config=_invoke_config())
+    parsed, _ = generate_structured_with_usage(prompt, schema=schema, system=system, model=model)
+    return parsed
 
 
 def generate_structured_with_usage[
@@ -113,18 +110,24 @@ def generate_structured_with_usage[
 ]:
     """Like generate_structured(), but also returns token usage.
 
-    Uses include_raw=True so the raw AIMessage (with usage_metadata) and the
-    parsed model come back from one call — no second LLM round-trip.
+    One round-trip: `beta.chat.completions.parse` returns the validated model
+    and usage together.
     """
-    llm = get_llm(model)
-    structured_llm = llm.with_structured_output(schema, include_raw=True)
-    result = structured_llm.invoke(_build_messages(prompt, system), config=_invoke_config())
-    # include_raw=True captures parse errors instead of raising. Re-raise to
-    # match the bare generate_structured() contract (caller wants fail-fast,
-    # not a None payload that crashes later).
-    err = result.get("parsing_error")
-    if err is not None:
-        raise err
-    parsed: T = result["parsed"]
-    raw: AIMessage = result["raw"]
-    return parsed, _to_llm_call(raw, fallback_model=model)
+    response = _get_client().beta.chat.completions.parse(
+        model=model,
+        messages=_messages(prompt, system),
+        response_format=schema,
+    )
+    message = response.choices[0].message
+    if getattr(message, "refusal", None):
+        raise ValueError(f"Model refused structured output: {message.refusal}")
+    parsed = message.parsed
+    if parsed is None:
+        raise ValueError("Structured output parse returned no result")
+    in_tokens, out_tokens = _usage(response)
+    return parsed, LLMCall(
+        content=message.content or "",
+        model=response.model or model,
+        input_tokens=in_tokens,
+        output_tokens=out_tokens,
+    )

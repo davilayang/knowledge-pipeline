@@ -1,36 +1,33 @@
 """Shared pytest fixtures.
 
-`wiki_pg` yields a fresh psycopg connection to a temporary Postgres instance
-managed by pytest-postgresql. The wiki schema is loaded once per process at
-fixture startup; each test gets an empty database (pytest-postgresql truncates
-between tests). Use this for any test that exercises domains.wiki.state.
+`wiki_db_path` is the path to a fresh `wiki.db` (SQLite) with the wiki schema
+applied — pass it to code paths that open their own short-lived connections.
 
-`wiki_pg_url` returns the connection URL for code paths (like the workflow
-nodes) that open their own short-lived connections from a string.
+`wiki_db` yields an open sqlite3 connection to that same database for tests that
+inspect or seed wiki state directly. Each test gets an empty database.
 """
 
+import sqlite3
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from pytest_postgresql import factories
-
-_REPO_ROOT = Path(__file__).resolve().parents[1]
-_WIKI_SCHEMA = _REPO_ROOT / "packages/domains/src/domains/wiki/schema/wiki.sql"
-
-postgresql_wiki_proc = factories.postgresql_proc(
-    load=[_WIKI_SCHEMA],
-)
-wiki_pg = factories.postgresql("postgresql_wiki_proc")
+from domains.wiki.state import connect, create_schema
 
 
 @pytest.fixture
-def wiki_pg_url(wiki_pg) -> str:
-    """Build a postgresql:// URL pointing at the same DB as wiki_pg.
+def wiki_db_path(tmp_path) -> Path:
+    """A fresh wiki.db file with the schema applied."""
+    db_path = tmp_path / "wiki.db"
+    create_schema(db_path=db_path)
+    return db_path
 
-    Workflow nodes open their own connections from a URL string (so each node
-    is independent and the workflow can be invoked from any process). This
-    fixture surfaces that URL while the wiki_pg fixture keeps the test's own
-    inspection connection.
-    """
-    info = wiki_pg.info
-    return f"postgresql://{info.user}@{info.host}:{info.port}/{info.dbname}"
+
+@pytest.fixture
+def wiki_db(wiki_db_path) -> Iterator[sqlite3.Connection]:
+    """An open connection to a fresh wiki.db (schema applied)."""
+    conn = connect(wiki_db_path)
+    try:
+        yield conn
+    finally:
+        conn.close()

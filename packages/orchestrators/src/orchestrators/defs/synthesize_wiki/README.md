@@ -1,8 +1,9 @@
 # `synthesize_wiki` runbook
 
-LangGraph-driven synthesis of `raw_store` items into a structured wiki
-(concepts, tools, trends) backed by Postgres. One scheduled tick per day
-(06:00 UTC) = one Dagster run = full pending → synthesized → index cycle.
+Plain-function wiki synthesis pipeline: turns `raw_store` items into a
+structured wiki (concepts, tools, trends) backed by a local SQLite file
+(`data/wiki.db`). One scheduled tick per day (06:00 UTC) = one Dagster
+run = full pending → synthesized → index cycle.
 
 ## DAG (per scheduled tick)
 
@@ -21,7 +22,7 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   │  "medium::" only — current prompts assume article-shape inputs); then
   │  drops items whose content_md is NULL or blank (unfetched — synthesis
   │  must not permanently mark an empty document processed before the
-  │  fetcher fills it); reads eligible IDs ∖ wiki.processed; output is the
+  │  fetcher fills it); reads eligible IDs ∖ processed; output is the
   │  capped work order (≤ WIKI_MAX_PER_TICK). Metadata exposes total_pending
   │  (pre-cap), queued (post-cap), capped (bool), excluded_by_source,
   │  excluded_unfetched — daily backlog timeseries.
@@ -29,24 +30,25 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
 wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  in: pending (list[str] from wiki/pending via Dagster IO manager)
   │  derives the same snapshot path from its own partition_key; iterates
-  │  the pending list sequentially through invoke_wiki_synthesis. No
+  │  the pending list sequentially through synthesize_item. No
   │  re-filter — the commit txn is idempotent (ON CONFLICT) so a retry
   │  re-processes already-committed items at the cost of duplicate LLM
   │  spend. See `assets.py` for parallelism options if throughput becomes
   │  a real constraint.
   │
-  │     extract_entities ─→ Send-fan-out: process_entity (×N) ─→ commit
-  │     pages + aliases + wiki.page_sources + wiki.processed all written in
-  │     ONE PG transaction per item. Aliases use ON CONFLICT DO NOTHING for
-  │     cross-item safety; page_sources uses ON CONFLICT DO NOTHING (idempotent
-  │     under retries).
+  │     extract ─→ synthesize_entity (sequential loop, one entity at a time)
+  │             ─→ persist
+  │     pages + aliases + page_sources + processed all written in
+  │     ONE SQLite transaction per item. Aliases use ON CONFLICT DO NOTHING
+  │     for cross-item safety; page_sources uses ON CONFLICT DO NOTHING
+  │     (idempotent under retries).
   │
-  │  ↻ retry on the same date partition replays the same pending list; per-item
-  │    LangGraph checkpoints skip already-completed nodes (no duplicate
-  │    LLM spend if the prior failure was infra-side).
+  │  ↻ retry on the same date partition replays the same pending list;
+  │    per-item dedup is via the processed ledger (wiki/pending skips
+  │    item_ids already ok/skipped); failed items re-run from scratch.
   ▼
 wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
-  reads wiki.pages → writes data/wiki/index.md (table of contents)
+  reads pages → writes data/wiki/index.md (table of contents)
 ```
 
 - **Snapshot missing** for the wiki partition's key (backup_readings didn't
@@ -58,14 +60,15 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
 - **`wiki/pending` empty list** → `wiki/synthesized` materializes a no-op
   result (`_no pending items this tick_`). Run is green; no LLM calls.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into
-  `wiki.processed` with `status='error'`; the run continues other items.
+  `processed` with `status='error'`; the run continues other items.
   The Dagster run shows green.
 - **`wiki/synthesized` run-level failures** (an item raises out of the
   workflow — auth, infra) → the asset raises `dg.Failure`, the run fails,
-  Dagster retry replays the pickled pending list. Per-item checkpoints
-  prevent duplicate LLM spend.
+  Dagster retry replays the pickled pending list. Items that already have a
+  `processed` row with `status='ok'` are skipped by `wiki/pending`; other
+  items re-run from scratch.
 - **`wiki/index` fails** → today's partition for `wiki/index` stays
-  unmaterialized; `wiki.pages` remains authoritative; re-materialize the
+  unmaterialized; `pages` remains authoritative; re-materialize the
   index manually or wait for the next tick.
 
 ## Operations
@@ -89,18 +92,13 @@ dg launch --job synthesize_wiki -m orchestrators.defs.definitions \
 
 ### Re-process a single item from scratch
 
-A retry auto-resumes from the LangGraph checkpoint. To force a clean re-run
-(e.g. you changed prompts and want fresh LLM output):
+Delete the processed marker so the next schedule tick picks it up again:
 
-```sql
--- Drop the processed marker so the next schedule tick picks it up again.
-DELETE FROM wiki.processed WHERE item_id = '<item_id>';
-
--- (Optional) drop the LangGraph checkpoint so it doesn't auto-resume.
-DELETE FROM checkpoints       WHERE thread_id = 'wiki_synthesis__<item_id>';
-DELETE FROM checkpoint_writes WHERE thread_id = 'wiki_synthesis__<item_id>';
-DELETE FROM checkpoint_blobs  WHERE thread_id = 'wiki_synthesis__<item_id>';
+```bash
+sqlite3 data/wiki.db "DELETE FROM processed WHERE item_id = '<item_id>';"
 ```
+
+There are no checkpoints to drop — each run is a fresh execution.
 
 ### Adjust cadence
 
@@ -116,20 +114,19 @@ Edit `SCHEDULE_CRON` in `def_config.py`. Examples:
 ### LLM rate limit / quota
 
 Item synthesis is sequential — one item at a time within a partition's
-run. Each item internally fans out per extracted entity via the
-LangGraph Send API (entity-level parallelism happens inside one
-`invoke_wiki_synthesis` call, not across items). If you're hitting
-OpenAI 429s:
+run. Each item processes its extracted entities sequentially inside one
+`synthesize_item` call. If you're hitting OpenAI 429s:
 
 - Lower `WIKI_MAX_PER_TICK` in `def_config.py` so fewer items queue
   per tick.
-- Wait — the runner doesn't catch 429; the run fails, you retry, the
-  per-item checkpointer resumes from where it stopped.
+- Wait — the runner doesn't catch 429; the run fails, you retry, items
+  already recorded in `processed` as `status='ok'` are skipped by
+  `wiki/pending`, so only remaining items re-run.
 
 ### TOC missing or stale
 
 Re-materialize `wiki/index` for today's partition. It reads everything in
-`wiki.pages` and overwrites `data/wiki/index.md` from scratch — idempotent.
+`pages` and overwrites `data/wiki/index.md` from scratch — idempotent.
 
 ### LLM cost metadata
 
@@ -144,18 +141,15 @@ contributed 0 to the displayed cost — add it to `PRICING_PER_1M` and re-run
 the partition to recompute.
 
 Retry-cost behaviour:
-- An item whose prior attempt **interrupted mid-thread** (process killed,
-  PG blip during a node) → LangGraph resumes from the last checkpointed
-  node on retry; only the remaining LLM calls are billed.
-- An item whose prior attempt **completed successfully but the run failed
-  for unrelated reasons** (sibling item raised, infra error after commit)
-  → re-processed in full on retry. LLM cost re-paid; the commit txn is
-  idempotent (`wiki.processed` / `wiki.pages` / `wiki.aliases` all use
-  `ON CONFLICT`), so no DB conflict, but expect double-billing on the
-  re-run items.
+- An item whose prior attempt **completed successfully** (status='ok' in
+  `processed`) → skipped by `wiki/pending` on retry. No LLM calls re-paid.
+- An item whose prior attempt **failed or errored** → re-processed in
+  full on retry. LLM cost re-paid; the commit txn is idempotent (ON
+  CONFLICT), so no DB conflict, but expect double-billing on the re-run
+  items.
 
 This is a deliberate trade — the alternative (re-filtering against
-`wiki.processed` inside `synthesized`) reaches back into PG state that
+`processed` inside `synthesized`) reaches back into state that
 `wiki/pending` already owns. Worst-case cost amplification is bounded
 (`max_retries=1`, `WIKI_MAX_PER_TICK=30`).
 
@@ -201,32 +195,32 @@ Before adding a transcript-shape prefix (podcast, video) to the allowlist:
 Skipping (1)–(3) and just widening the allowlist will produce
 low-quality wiki pages and waste LLM budget on noise.
 
-Direct SQL:
+Direct SQL (sqlite3 against `data/wiki.db`):
 
-```sql
--- What's been processed, with status.
-SELECT status, COUNT(*) FROM wiki.processed GROUP BY status;
+```bash
+# What's been processed, with status.
+sqlite3 data/wiki.db "SELECT status, COUNT(*) FROM processed GROUP BY status;"
 
--- Failed items (workflow caught error, committed an error marker).
-SELECT item_id, error FROM wiki.processed WHERE status = 'error';
+# Failed items (workflow caught error, committed an error marker).
+sqlite3 data/wiki.db "SELECT item_id, error FROM processed WHERE status = 'error';"
 
--- Pages by type.
-SELECT page_type, COUNT(*) FROM wiki.pages GROUP BY page_type;
+# Pages by type.
+sqlite3 data/wiki.db "SELECT page_type, COUNT(*) FROM pages GROUP BY page_type;"
 ```
 
 A row with `status='error'` is a *successful* asset run from Dagster's
 perspective — the workflow handled the failure and recorded it. Distinct
-from a Dagster run failure (auth error, PG unreachable, etc.).
+from a Dagster run failure (auth error, wiki.db unreachable, etc.).
 
 ## External setup
 
 ### LLM API key
 
 The workflow uses two OpenAI models (configurable in
-`packages/workflows/src/workflows/wiki_synthesis/`):
+`packages/workflows/src/workflows/wiki_synthesis/synthesize.py`):
 
-- `gpt-4.1-nano` — entity extraction (`nodes.py:EXTRACTION_MODEL`)
-- `gpt-4.1-mini` — page synthesis (`entity_graph.py:SYNTHESIS_MODEL`)
+- `gpt-4.1-nano` — entity extraction (`EXTRACTION_MODEL`)
+- `gpt-4.1-mini` — page synthesis (`SYNTHESIS_MODEL`)
 
 Set `OPENAI_API_KEY` in the server's `.env`. No fallback — an unset key
 fails at the first `generate(...)` call inside the workflow.
@@ -234,39 +228,36 @@ fails at the first `generate(...)` call inside the workflow.
 ### Langfuse tracing (optional)
 
 When `LANGFUSE_PUBLIC_KEY` / `LANGFUSE_SECRET_KEY` / `LANGFUSE_HOST` are
-set, every LangGraph run is traced. Each item appears as one trace named
-`wiki_synthesis__<item_id>` with sub-spans for `extract_entities`, each
-`process_entity`, and `commit`. The `LANGFUSE_TRACING_ENVIRONMENT` env
-var (e.g. `production`) tags traces for filtering across deployments.
+set, each item is traced via the `langfuse.openai` OpenAI drop-in. One
+span is opened per item named `wiki_synthesis__<item_id>` (session_id set
+to `item_id`, tags `["wiki_synthesis", <source_type>, "fresh"|"replay"]`);
+the 1 extraction call and N synthesis calls nest under it automatically as
+generation observations. The asset calls `flush_langfuse()` after the batch.
 
 If the Langfuse env vars are unset, the workflow runs fine without
 tracing — no errors, no warnings.
 
-### Postgres
+### SQLite (wiki.db)
 
-`DATABASE_URL` points at the `knowledge_pipeline` database. The compose
-postgres container auto-creates that DB and applies the wiki schema on
-first start (see `docker/postgres/init/`). For non-compose deploys,
-apply manually once:
+`wiki_db_path` in `WikiResource` defaults to `DATA_DIR/"wiki.db"`.
+`get_db_path()` ensures the schema is applied idempotently (all DDL uses
+`IF NOT EXISTS`) before any asset touches the file. No manual schema
+application is required.
 
-```bash
-psql -d knowledge_pipeline -f packages/domains/src/domains/wiki/schema/wiki.sql
-```
+The file lives under the host-bind-mounted `./data` directory and survives
+`docker compose down -v`.
 
-Schema CHANGE: `docker compose down -v && docker compose --profile data up -d postgres`
-re-runs the init scripts on a fresh volume (per the rebuild-don't-migrate
-decision). The same Postgres instance hosts LangGraph checkpoints
-(separate tables managed by `langgraph-checkpoint-postgres`); no extra
-setup beyond the URL.
+Schema change / rebuild: delete (or rename) `data/wiki.db` and
+re-synthesize. The schema is re-applied by `get_db_path()` on next run.
 
 ### Entity rejection list (denylist)
 
 `synthesized` reads a curator-managed denylist from the Notion "Wiki Pages"
 database (`WikiPagesNotionResource.query_rejected`) at the start of each
 tick: every row with `Rejected` ticked contributes its `Entity ID`, and
-those entity_ids are dropped in `extract_entities` (no page built or
-updated for them). The Notion DB is the edit surface — see the curator
-columns `Rejected` / `Reject category` / `Reject reason`.
+those entity_ids are dropped in `extract` (no page built or updated for
+them). The Notion DB is the edit surface — see the curator columns
+`Rejected` / `Reject category` / `Reject reason`.
 
 Resolved behind a **fail-closed** loader (`denylist.load_rejected_entities`):
 a successful read atomically refreshes `data/wiki/_index/rejected.json`; a
