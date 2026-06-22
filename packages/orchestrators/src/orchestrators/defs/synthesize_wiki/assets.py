@@ -9,7 +9,7 @@ from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
 from domains.wiki.identity import normalize_name
 from domains.wiki.state import connection, get_all_pages, get_processed_ids
-from workflows.costs import PRICING_PER_1M, cost_usd
+from workflows.costs import cost_usd, is_priced
 from workflows.llm import LLMCall
 from workflows.shared.observability import flush_langfuse
 from workflows.wiki_synthesis.synthesize import extract_item, synthesize_extracted_item
@@ -57,7 +57,7 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
         "cost_usd": dg.MetadataValue.float(round(total_usd, 4)),
         "cost_by_model": dg.MetadataValue.json(by_model),
     }
-    unknown = sorted({c.model for c in calls if c.model not in PRICING_PER_1M})
+    unknown = sorted({c.model for c in calls if not is_priced(c.model)})
     if unknown:
         out["unknown_pricing_models"] = dg.MetadataValue.json(unknown)
     return out

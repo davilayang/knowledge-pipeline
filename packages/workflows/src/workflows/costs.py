@@ -11,10 +11,32 @@ PRICING_PER_1M: dict[str, dict[str, float]] = {
 }
 
 
+def _rate_for(model: str) -> dict[str, float] | None:
+    """Resolve a model id to its per-1M rates.
+
+    Falls back to a prefix match so the API's DATED ids (e.g.
+    `gpt-4.1-nano-2025-04-14`, which is what shows up in the response and on
+    LLMCall.model) price at their base alias's rate instead of falling through
+    to $0. Longest matching base key wins.
+    """
+    rate = PRICING_PER_1M.get(model)
+    if rate is not None:
+        return rate
+    matches = [(key, r) for key, r in PRICING_PER_1M.items() if model.startswith(key)]
+    if not matches:
+        return None
+    return max(matches, key=lambda kr: len(kr[0]))[1]
+
+
+def is_priced(model: str) -> bool:
+    """True if `model` resolves to a known rate (exact alias or dated id)."""
+    return _rate_for(model) is not None
+
+
 def cost_usd(model: str, input_tokens: int, output_tokens: int) -> float:
     """USD cost for one LLM call. Unknown model → 0.0 (don't crash; the
     caller surfaces the unknown-model name separately so the gap is visible)."""
-    rate = PRICING_PER_1M.get(model)
+    rate = _rate_for(model)
     if rate is None:
         return 0.0
     return (input_tokens * rate["input"] + output_tokens * rate["output"]) / 1_000_000
