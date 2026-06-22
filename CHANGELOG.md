@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.2] — 2026-06-22
+
+### Changed
+
+- **Wiki page synthesis reuses the article across an item's entities via OpenAI prompt caching.** The page-synthesis prompts now lead with the shared `[system + article]` block (per-entity fields trail), so multi-entity items hit the cache — ~50% off cached input tokens + lower latency. Implementation: `prompts/wiki/page_synthesis_user_*.md`.
+- **Wiki synthesis prompts moved to versioned `prompts/wiki/*.md` files** (loaded via `KP_PROMPTS_ROOT`, mirroring `prompts/extraction/`) — edit prompts without a code change. `workflows.wiki_synthesis.prompts` is now a loader keeping the same constant names.
+
+---
+
 ## [0.24.1] — 2026-06-22
 
 ### Changed

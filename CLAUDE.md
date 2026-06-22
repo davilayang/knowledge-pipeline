@@ -137,6 +137,8 @@ services/
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by workflows.extraction.ThreeCallOpenAIExtractor
+  triage/          # Content-shape classifier prompt (triage_knowledge_queue)
+  wiki/            # Wiki entity-extraction + page-synthesis prompts (workflows.wiki_synthesis.prompts)
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
 scripts/           # Deployment scripts — deploy-hcloud.sh
