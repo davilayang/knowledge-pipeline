@@ -198,8 +198,7 @@ large, the fetcher is lagging behind ingestion — check the fetch pipeline.
 
 `ALLOWED_CONTENT_ID_PREFIXES` in `def_config.py` gates which `raw_store`
 content_id prefixes flow through wiki synthesis. Today only `"medium::"`
-is allowed because current prompts in
-`packages/workflows/src/workflows/wiki_synthesis/prompts.py` are tuned
+is allowed because current prompts in `prompts/wiki/` are tuned
 for article-shape inputs (single-author narrative, markdown structure).
 
 Before adding a transcript-shape prefix (podcast, video) to the allowlist:

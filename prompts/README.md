@@ -7,7 +7,8 @@ Markdown prompt bodies consumed by the workflow layer. Treated as **content arte
 ````
 prompts/
   extraction/     # consumed by workflows.extraction (ThreeCallOpenAIExtractor)
-  # future: wiki_synthesis/, knowledge_graph/, etc.
+  wiki/           # consumed by workflows.wiki_synthesis (synthesize.py / orchestrators.defs.synthesize_wiki)
+  # future: knowledge_graph/, etc.
 ````
 
 ## Resolution
