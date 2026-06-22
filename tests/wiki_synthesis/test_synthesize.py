@@ -104,6 +104,64 @@ def test_synthesize_from_candidates_skips_extraction(tmp_path: Path, wiki_db_pat
     assert len(list(wiki_dir.glob("*.md"))) == 1
 
 
+def test_two_candidates_one_entity_synthesizes_once(tmp_path: Path, wiki_db_path):
+    """Two candidates in one item that normalise to the same entity collapse to
+    a single synthesis call + one page — not duplicate LLM spend."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+
+    extraction = ExtractionResult(
+        entities=[
+            ExtractedEntity(title="Model Costs", page_type="concept"),
+            ExtractedEntity(title="model costs", page_type="trend"),  # same normalised name
+        ]
+    )
+    synthesis_calls = 0
+
+    def counting_generate(prompt, *, system="", model=""):
+        nonlocal synthesis_calls
+        synthesis_calls += 1
+        return make_llm_call(content=build_synthesis_output("Model Costs"))
+
+    with (
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
+        ),
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
+            side_effect=counting_generate,
+        ),
+    ):
+        synthesize_item(_runner_item(), db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    assert synthesis_calls == 1  # synthesized once, not once per candidate
+    assert _page_count(wiki_db_path) == 1
+    assert len(list(wiki_dir.glob("*.md"))) == 1
+
+
+def test_synthesize_extracted_item_marks_extraction_error(tmp_path: Path, wiki_db_path):
+    """An item whose extraction failed is recorded processed='error' (not stuck)
+    and runs no synthesis LLM call."""
+    from workflows.wiki_synthesis.synthesize import synthesize_extracted_item
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    item = _runner_item()
+
+    with patch("workflows.wiki_synthesis.synthesize.generate_with_usage") as mock_synth:
+        res = synthesize_extracted_item(
+            item,
+            {"candidates": [], "extract_error": "RuntimeError: extraction blew up"},
+            db_path=wiki_db_path,
+            wiki_dir=wiki_dir,
+        )
+
+    mock_synth.assert_not_called()
+    assert res["status"] == "error"
+    assert _processed_ids(wiki_db_path, "error") == {item.item_id}
+
+
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):
     """A denylisted entity is never built; its sibling still is (W2.5 seam)."""
     wiki_dir = tmp_path / "wiki"

@@ -155,7 +155,8 @@ def extracted(
     db_path = wiki.get_db_path()
     source = RawStoreSource(snapshot_path)
 
-    missing = [raw_id for raw_id in pending if source.get_item(raw_id) is None]
+    items = {raw_id: source.get_item(raw_id) for raw_id in pending}
+    missing = [raw_id for raw_id, item in items.items() if item is None]
     if missing:
         raise dg.Failure(
             description=f"raw_store missing {len(missing)} item(s) from wiki/pending",
@@ -167,8 +168,7 @@ def extracted(
     n_candidates = 0
     n_errors = 0
     for i, raw_id in enumerate(pending, 1):
-        item = source.get_item(raw_id)
-        ext = extract_item(item, db_path=db_path)
+        ext = extract_item(items[raw_id], db_path=db_path)
         all_calls.extend(ext.pop("llm_calls", []))
         payload[raw_id] = ext
         n_candidates += len(ext["candidates"])

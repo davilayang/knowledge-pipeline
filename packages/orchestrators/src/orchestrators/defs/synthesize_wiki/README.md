@@ -41,7 +41,7 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  items for their content); iterates sequentially through
   │  synthesize_extracted_item. No re-filter — the commit txn is idempotent
   │  (ON CONFLICT) so a retry re-processes already-committed items at the
-  │  cost of duplicate LLM spend. See `assets.py` for parallelism options.
+  │  cost of duplicate LLM spend. Items are processed sequentially.
   │
   │     resolve_or_mint_batch (LIVE entity index — minting/dedup happens
   │     here, not in extracted, so cross-item dedup is correct even though

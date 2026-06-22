@@ -9,6 +9,7 @@ regression would silently change a Dagster materialization.
 from unittest.mock import MagicMock, patch
 
 import dagster as dg
+import pytest
 from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, extracted, synthesized
 from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
@@ -104,6 +105,30 @@ def test_extracted_no_op_on_empty_pending(tmp_path):
     out = extracted.op.compute_fn.decorated_fn(ctx, pending=[], wiki=wiki)
     assert out.value == {}
     assert "_no pending items this tick_" in out.metadata["summary"].value
+
+
+def test_extracted_raises_on_missing_item(tmp_path):
+    """A pending id absent from the snapshot fails the run loudly (run-killing
+    error path) rather than silently dropping the item."""
+    wiki = WikiResource(
+        backup_dir=str(tmp_path),
+        wiki_dir=str(tmp_path / "wiki"),
+        wiki_db_path=str(tmp_path / "wiki.db"),
+    )
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    source = MagicMock()
+    source.get_item.return_value = None  # item vanished from the snapshot
+
+    with (
+        patch("orchestrators.defs.synthesize_wiki.assets.RawStoreSource", return_value=source),
+        patch("orchestrators.defs.synthesize_wiki.assets.extract_item") as mock_extract,
+        pytest.raises(dg.Failure, match="missing 1 item"),
+    ):
+        extracted.op.compute_fn.decorated_fn(ctx, pending=["medium::gone"], wiki=wiki)
+
+    mock_extract.assert_not_called()  # no extraction attempted for a missing item
 
 
 # ---------- synthesized: consumes the extracted candidate map ----------

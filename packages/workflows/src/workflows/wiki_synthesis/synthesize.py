@@ -139,11 +139,12 @@ def synthesize_from_candidates(
     """Synthesize wiki pages from ALREADY-EXTRACTED candidates — the second half
     of the pipeline, decoupled from extraction.
 
-    This is what the `wiki/synthesized` asset calls once `wiki/extracted` has run
-    the extraction LLM. Resolution reads a LIVE entity-index snapshot here (not a
-    frozen extraction-time one), so within-run dedup stays correct even though
-    extraction happened in an earlier stage; the LLM's matched_id is advisory and
-    re-validated against the live snapshot.
+    `synthesize_extracted_item` is the entry point the `wiki/synthesized` asset
+    uses (it also handles the extraction-error case); this function is the
+    no-error path and assumes a clean candidate list. Resolution reads a LIVE
+    entity-index snapshot here (not a frozen extraction-time one), so within-run
+    dedup stays correct even though extraction happened in an earlier stage; the
+    LLM's matched_id is advisory and re-validated against the live snapshot.
     """
     with _trace(item, replay=replay):
         return _synthesize_resolved(
@@ -230,9 +231,20 @@ def _synthesize_resolved(
             if not _is_rejected(cand, rec, rejected_entities)
         ]
 
-    all_ids = [rec.entity_id for _, rec, _ in records]
+    # Two candidates in one item can resolve to the SAME entity (within-item
+    # dedup, e.g. "Model Costs" + "model costs"). Synthesize each entity ONCE —
+    # the first record wins its identity — to avoid duplicate LLM spend. Aliases
+    # below still aggregate across every surviving record.
+    seen_ids: set[str] = set()
+    unique_records = []
+    for cand, rec, resolved in records:
+        if rec.entity_id not in seen_ids:
+            seen_ids.add(rec.entity_id)
+            unique_records.append((cand, rec, resolved))
+
+    all_ids = [rec.entity_id for _, rec, _ in unique_records]
     results: list[dict] = []
-    for _, rec, _ in records:
+    for _, rec, _ in unique_records:
         siblings = [eid for eid in all_ids if eid != rec.entity_id]
         res = synthesize_entity(item, rec, siblings, wiki_dir=wiki_dir)
         all_calls.extend(res.pop("llm_calls", []))
@@ -288,7 +300,6 @@ def extract(item: IngestItem, *, db_path: Path | str) -> dict:
     llm_calls: list[LLMCall] = []
     try:
         with connection(db_path) as conn:
-            index = build_entity_index(conn)
             store = snapshot_aliases(conn)
 
         known_entities = _snapshot_to_yaml(store) or "(no known entities yet)"
@@ -306,11 +317,10 @@ def extract(item: IngestItem, *, db_path: Path | str) -> dict:
         llm_calls.append(call)
 
         candidates = [_to_candidate(e) for e in extraction.entities]
-        return {"index": index, "candidates": candidates, "llm_calls": llm_calls}
+        return {"candidates": candidates, "llm_calls": llm_calls}
     except Exception as e:
         logger.exception("extract failed for %s", item.item_id)
         return {
-            "index": None,
             "candidates": [],
             "extract_error": f"{type(e).__name__}: {e}",
             "llm_calls": llm_calls,
