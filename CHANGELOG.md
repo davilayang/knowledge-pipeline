@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.0] — 2026-06-22
+
+### Changed
+
+- **Wiki entities now have stable, name-independent identities.** Renaming or re-slugging an entity no longer forks its page; an entity is minted once as an opaque surrogate `e_<16hex>` and resolved on later mentions via an alias-gate resolve-or-mint with cross-type dedup (`packages/domains/src/domains/wiki/identity.py`).
+- **Wiki page files are now flat `{slug}-{shortid}.md` in `data/wiki/`** (was nested `{page_type}/{slug}.md` subdirs), keyed to the surrogate id (`workflows/wiki_synthesis/synthesize.py`).
+- **`wiki.db` schema overhauled — rebuild required, not migratable.** New `entities` table; `pages` FKs to it and drops `page_type`/`slug`/`canonical_name`; `processed` → `processed_items`; `aliases` re-keyed on `normalized_alias`; all tables `STRICT` (`packages/domains/src/domains/wiki/schema/wiki.sql`).
+- **Wiki synthesis persists crash-safely** — graph transaction, then `.md` write, then marking the item processed last — so an interrupted tick leaves no half-written entity (`synthesize.py`).
+- **Extraction LLM contract trimmed:** dropped `entity_id`/`is_new`, added optional `matched_id`, and the prompt gained an anti-artifact rule (`workflows/wiki_synthesis/prompts.py`).
+- **W2.5 wiki denylist is now keyed on the normalized page Title** (was Entity ID), so a reject survives id churn (`defs/synthesize_wiki/denylist.py`). `SYNTHESIZE_WIKI_DAG_VERSION` bumped 7→8.
+
+---
+
 ## [0.23.4] — 2026-06-21
 
 ### Changed
