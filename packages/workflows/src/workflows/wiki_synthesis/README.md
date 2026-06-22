@@ -1,10 +1,11 @@
 # `wiki_synthesis` workflow
 
 A plain-function workflow that turns one source document into incremental
-updates to a structured wiki. One call to `synthesize_item` handles one
-document; the Dagster asset that wraps it
-(`packages/orchestrators/src/orchestrators/defs/synthesize_wiki/assets.py:synthesized`)
-runs one call per pending item in a scheduled tick.
+updates to a structured wiki. The Dagster `wiki/extracted` asset calls
+`extract_item` per pending item; `wiki/synthesized` then calls
+`synthesize_extracted_item` per item to resolve, synthesize, and persist.
+`synthesize_item` (= extract + synthesize in one call) is a convenience
+wrapper kept for callers that don't split the two stages.
 
 For operations (how to launch, retry, debug), see the asset's runbook:
 `packages/orchestrators/src/orchestrators/defs/synthesize_wiki/README.md`.
@@ -65,19 +66,27 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
 
 ## Workflow shape
 
-`synthesize_item` (`synthesize.py`) orchestrates the whole item end-to-end
-via three plain functions:
+The DAG splits extraction and synthesis into two separate entry points:
+
+- **`extract_item`** — what `wiki/extracted` calls. Snapshots the entity
+  index, calls the extraction LLM (call #1), returns
+  `{candidates, extract_error, llm_calls}`. Writes NO DB state.
+- **`synthesize_extracted_item`** — what `wiki/synthesized` calls. Takes
+  the stored extraction payload, resolves/mints against a LIVE index, then
+  delegates to `_synthesize_resolved`.
+- **`synthesize_item`** — convenience wrapper (extract + synthesize in one
+  call) for callers that don't split the two stages. Behaviour-preserving.
+
+`_synthesize_resolved` (the shared synthesis core) via three plain functions:
 
 ```
-synthesize_item(item, db_path, wiki_dir, rejected_entities, replay)
-  │
-  ├─ extract(item, db_path)
-  │    snapshot entity index → call extraction LLM → build Candidates
-  │    failure captured as extract_error; still persists an 'error' row
+_synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
   │
   ├─ resolve_or_mint_batch(index, candidates)
   │    assign surrogate entity_id to each candidate (reuse or mint)
   │    → drop denylisted (by normalised name) → build (cand, rec, resolved) triples
+  │    (reads a LIVE entity index so within-run dedup is correct even though
+  │    extraction ran in the prior asset)
   │
   ├─ for entity in entities:   (sequential loop)
   │    synthesize_entity(item, entity, sibling_ids, wiki_dir)
@@ -173,6 +182,6 @@ shouldn't look like an infrastructure failure to Dagster.
 
 | File | Role |
 |---|---|
-| `synthesize.py` | Canonical entry point — `synthesize_item` + `extract` + `synthesize_entity` + `persist` |
+| `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
 | `prompts.py` | Extraction + create + update prompt templates |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |

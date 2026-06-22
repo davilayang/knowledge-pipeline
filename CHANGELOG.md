@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.24.1] — 2026-06-22
+
 ### Changed
 
 - **Wiki entity extraction now runs as its own Dagster asset** (`wiki/extracted`) ahead of `wiki/synthesized`, so extraction (LLM call #1) and synthesis (LLM call #2) carry separate cost / candidate metadata and retry independently. Resolution/minting still runs snapshot-live in synthesis, preserving within-run dedup. `SYNTHESIZE_WIKI_DAG_VERSION` 8→9.

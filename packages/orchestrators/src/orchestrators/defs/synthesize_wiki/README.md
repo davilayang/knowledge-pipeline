@@ -59,6 +59,8 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   ▼
 wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   reads pages → writes data/wiki/index.md (table of contents)
+wiki/aliases_index   (key: wiki/aliases_index — daily partition; deps wiki/synthesized)
+  reads aliases + pages → writes data/wiki/_index/aliases.json (flat alias→entity_id map)
 ```
 
 Extraction (call #1) and synthesis (call #2) are separate asset nodes — each
@@ -132,7 +134,7 @@ Edit `SCHEDULE_CRON` in `def_config.py`. Examples:
 
 Item synthesis is sequential — one item at a time within a partition's
 run. Each item processes its extracted entities sequentially inside one
-`synthesize_item` call. If you're hitting OpenAI 429s:
+`synthesize_extracted_item` call. If you're hitting OpenAI 429s:
 
 - Lower `WIKI_MAX_PER_TICK` in `def_config.py` so fewer items queue
   per tick.
