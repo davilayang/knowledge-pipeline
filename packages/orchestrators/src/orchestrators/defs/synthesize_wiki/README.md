@@ -168,7 +168,7 @@ Retry-cost behaviour:
 This is a deliberate trade — the alternative (re-filtering against
 `processed_items` inside `synthesized`) reaches back into state that
 `wiki/pending` already owns. Worst-case cost amplification is bounded
-(`max_retries=1`, `WIKI_MAX_PER_TICK=30`).
+(`max_retries=1`, `WIKI_MAX_PER_TICK=15`).
 
 When the run completes with `errors > 0`, the `cost_complete` metadata
 boolean is `false`: per-item failures may have racked up LLM calls before
