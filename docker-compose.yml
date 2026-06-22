@@ -54,6 +54,9 @@ services:
       - chroma_data:/data
     networks:
       - dagster_network
+      # Shared cross-repo network so newsletter-assistant (separate compose)
+      # reaches this Chroma at chroma:8000 over kos-network, like kp-fetcher.
+      - kos_network
     healthcheck:
       # chromadb/chroma:1.5.5 ships no curl/wget/python — only bash. Use bash's
       # /dev/tcp builtin: the `:` no-op exits 0 iff the port is open. Chroma's
