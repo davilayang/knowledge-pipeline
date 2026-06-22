@@ -32,7 +32,7 @@ CREATE TABLE IF NOT EXISTS pages (
     entity_id      TEXT NOT NULL PRIMARY KEY,
     page_type      TEXT NOT NULL,                          -- 'concept' | 'tool' | 'trend'
     file_path      TEXT NOT NULL,                          -- relative path under data/wiki/
-    related        TEXT,                                   -- JSON array of related entity_ids
+    related_ids    TEXT,                                   -- JSON array of related entity_ids
     sources        TEXT,                                   -- JSON array of source item_ids
     source_types   TEXT,                                   -- JSON array of source_type strings
     updated_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS aliases (
     UNIQUE (alias)
 );
 
-CREATE INDEX IF NOT EXISTS aliases_entity_id_idx ON aliases (entity_id);
+CREATE INDEX IF NOT EXISTS idx_aliases_entity_id ON aliases (entity_id);
 
 -- ---------------------------------------------------------------------------
 -- page_sources
@@ -71,4 +71,4 @@ CREATE TABLE IF NOT EXISTS page_sources (
     PRIMARY KEY (entity_id, item_id, source_type)
 );
 
-CREATE INDEX IF NOT EXISTS page_sources_entity_id_idx ON page_sources (entity_id);
+CREATE INDEX IF NOT EXISTS idx_page_sources_entity_id ON page_sources (entity_id);

@@ -14,12 +14,20 @@ import sqlite3
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 
 from domains.wiki.aliases import AliasEntry, AliasStore
 from domains.wiki.types import WikiPage
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "wiki.sql"
+
+
+def _now_iso() -> str:
+    """UTC timestamp as ISO-8601 (seconds precision), matching the sibling
+    SQLite stores so timestamps compare/parse uniformly across wiki.db /
+    queue.db / raw_store.db."""
+    return datetime.now(UTC).isoformat(timespec="seconds")
 
 
 def connect(db_path: Path | str) -> sqlite3.Connection:
@@ -79,7 +87,7 @@ class PageRecord:
     entity_id: str
     page_type: str
     file_path: str
-    related: list[str]
+    related_ids: list[str]
     sources: list[str]
     source_types: list[str]
     updated_at: str
@@ -109,13 +117,13 @@ def insert_processed(
     conn.execute(
         """
         INSERT INTO processed (item_id, source_type, status, error, processed_at)
-        VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+        VALUES (?, ?, ?, ?, ?)
         ON CONFLICT (item_id, source_type)
         DO UPDATE SET status = excluded.status,
                       error = excluded.error,
-                      processed_at = CURRENT_TIMESTAMP
+                      processed_at = excluded.processed_at
         """,
-        (item_id, source_type, status, error),
+        (item_id, source_type, status, error, _now_iso()),
     )
 
 
@@ -161,15 +169,15 @@ def upsert_page(
     conn.execute(
         """
         INSERT INTO pages
-            (entity_id, page_type, file_path, related, sources, source_types, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            (entity_id, page_type, file_path, related_ids, sources, source_types, updated_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT (entity_id)
         DO UPDATE SET page_type = excluded.page_type,
                       file_path = excluded.file_path,
-                      related = excluded.related,
+                      related_ids = excluded.related_ids,
                       sources = excluded.sources,
                       source_types = excluded.source_types,
-                      updated_at = CURRENT_TIMESTAMP
+                      updated_at = excluded.updated_at
         """,
         (
             page.entity_id,
@@ -178,6 +186,7 @@ def upsert_page(
             json.dumps(page.related),
             json.dumps(page.sources),
             json.dumps(source_types),
+            _now_iso(),
         ),
     )
 
@@ -186,7 +195,7 @@ def get_page(conn: sqlite3.Connection, entity_id: str) -> PageRecord | None:
     """Return one page row by entity_id, or None if absent."""
     row = conn.execute(
         """
-        SELECT entity_id, page_type, file_path, related, sources, source_types, updated_at
+        SELECT entity_id, page_type, file_path, related_ids, sources, source_types, updated_at
         FROM pages
         WHERE entity_id = ?
         """,
@@ -199,7 +208,7 @@ def get_all_pages(conn: sqlite3.Connection) -> list[PageRecord]:
     """Return every pages row, ordered by entity_id."""
     rows = conn.execute(
         """
-        SELECT entity_id, page_type, file_path, related, sources, source_types, updated_at
+        SELECT entity_id, page_type, file_path, related_ids, sources, source_types, updated_at
         FROM pages
         ORDER BY entity_id
         """
@@ -208,12 +217,12 @@ def get_all_pages(conn: sqlite3.Connection) -> list[PageRecord]:
 
 
 def _row_to_page(row: sqlite3.Row) -> PageRecord:
-    entity_id, page_type, file_path, related, sources, source_types, updated_at = row
+    entity_id, page_type, file_path, related_ids, sources, source_types, updated_at = row
     return PageRecord(
         entity_id=entity_id,
         page_type=page_type,
         file_path=file_path,
-        related=_json_list(related),
+        related_ids=_json_list(related_ids),
         sources=_json_list(sources),
         source_types=_json_list(source_types),
         updated_at=updated_at,
@@ -278,11 +287,11 @@ def insert_page_source(
     re-processing don't double-count. Caller manages the transaction."""
     conn.execute(
         """
-        INSERT INTO page_sources (entity_id, item_id, source_type)
-        VALUES (?, ?, ?)
+        INSERT INTO page_sources (entity_id, item_id, source_type, added_at)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT (entity_id, item_id, source_type) DO NOTHING
         """,
-        (entity_id, item_id, source_type),
+        (entity_id, item_id, source_type, _now_iso()),
     )
 
 

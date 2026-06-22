@@ -107,7 +107,7 @@ def test_upsert_page_inserts_then_updates(wiki_db):
     wiki_db.commit()
 
     rec2 = get_page(wiki_db, "concept__rag")
-    assert rec2.related == ["concept__llm"]
+    assert rec2.related_ids == ["concept__llm"]
     assert rec2.source_types == ["raw_store", "local_file"]
 
 
