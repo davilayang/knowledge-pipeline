@@ -19,12 +19,12 @@ src/domains/
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
 │   └── sources.py      # LocalFileSource
-├── wiki/               # Wiki state — Postgres-backed run state + page IO
-│   ├── state.py        # wiki.processed / wiki.pages / wiki.page_sources run state
+├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
+│   ├── state.py        # processed / pages / page_sources / aliases run state
 │   ├── aliases.py      # alias resolution
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
-│   └── schema/wiki.sql # Postgres schema
+│   └── schema/wiki.sql # SQLite schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
 │                       # the marker format consumed by the turn_grouping

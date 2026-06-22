@@ -1,27 +1,18 @@
 """W2.5 Part B — deterministic entity rejection list (denylist).
 
-Denylisted entity_ids are filtered out at extraction time so synthesis
-never builds or updates a page for them. Tests drive the full graph
-(public interface) with the LLM calls mocked and a real Postgres fixture,
-mirroring tests/wiki_synthesis/test_graph.py.
+Denylisted entity_ids are filtered out at extraction time so synthesis never
+builds or updates a page for them. Tests drive the public interface
+(synthesize_item) with the LLM calls mocked and a real wiki.db.
 """
 
 from pathlib import Path
 from unittest.mock import patch
 
-from domains.wiki.state import get_page, get_processed_ids, snapshot_aliases
+from domains.wiki.state import connect, get_page, get_processed_ids, snapshot_aliases
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from workflows.wiki_synthesis.graph import build_wiki_synthesis_graph
+from workflows.wiki_synthesis.synthesize import synthesize_item
 
 from tests.wiki_synthesis._helpers import make_item, make_llm_call
-
-
-def _invoke(item, *, wiki_dir, db_url, rejected_entities=None):
-    graph = build_wiki_synthesis_graph().compile()
-    state = {"item": item, "db_url": db_url, "wiki_dir": str(wiki_dir)}
-    if rejected_entities is not None:
-        state["rejected_entities"] = rejected_entities
-    return graph.invoke(state)
 
 
 def _synthesis_output(entity_id: str, title: str) -> str:
@@ -37,7 +28,7 @@ def _synthesis_output(entity_id: str, title: str) -> str:
     )
 
 
-def test_denylisted_entity_gets_no_page(tmp_path: Path, wiki_pg, wiki_pg_url):
+def test_denylisted_entity_gets_no_page(tmp_path: Path, wiki_db_path):
     """An entity_id on the rejection list is never built; a sibling is."""
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
@@ -53,31 +44,33 @@ def test_denylisted_entity_gets_no_page(tmp_path: Path, wiki_pg, wiki_pg_url):
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
             return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
             return_value=make_llm_call(content=_synthesis_output("concept__rag", "RAG")),
         ),
     ):
-        _invoke(
+        synthesize_item(
             make_item(),
+            db_path=wiki_db_path,
             wiki_dir=wiki_dir,
-            db_url=wiki_pg_url,
-            rejected_entities={"tool__cli"},
+            rejected_entities=frozenset({"tool__cli"}),
         )
 
-    # The denylisted entity is never built.
-    assert get_page(wiki_pg, "tool__cli") is None
-    assert not (wiki_dir / "tool" / "cli.md").exists()
-    # The sibling still is.
-    assert get_page(wiki_pg, "concept__rag") is not None
-    assert get_processed_ids(wiki_pg, status="ok") == {"content_abc"}
+    conn = connect(wiki_db_path)
+    try:
+        assert get_page(conn, "tool__cli") is None
+        assert not (wiki_dir / "tool" / "cli.md").exists()
+        assert get_page(conn, "concept__rag") is not None
+        assert get_processed_ids(conn, status="ok") == {"content_abc"}
+    finally:
+        conn.close()
 
 
-def test_all_denylisted_commits_skipped(tmp_path: Path, wiki_pg, wiki_pg_url):
-    """Every extracted entity rejected → 'skipped', not 'error' (codex pitfall #3)."""
+def test_all_denylisted_commits_skipped(tmp_path: Path, wiki_db_path):
+    """Every extracted entity rejected → 'skipped', not 'error'."""
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
 
@@ -89,24 +82,28 @@ def test_all_denylisted_commits_skipped(tmp_path: Path, wiki_pg, wiki_pg_url):
     )
 
     with patch(
-        "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+        "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
         return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
     ):
-        _invoke(
+        synthesize_item(
             make_item(),
+            db_path=wiki_db_path,
             wiki_dir=wiki_dir,
-            db_url=wiki_pg_url,
-            rejected_entities={"tool__cli", "tool__api"},
+            rejected_entities=frozenset({"tool__cli", "tool__api"}),
         )
 
     assert list(wiki_dir.glob("**/*.md")) == []
-    assert get_processed_ids(wiki_pg, status="skipped") == {"content_abc"}
-    assert get_processed_ids(wiki_pg, status="error") == set()
-    assert get_processed_ids(wiki_pg, status="ok") == set()
+    conn = connect(wiki_db_path)
+    try:
+        assert get_processed_ids(conn, status="skipped") == {"content_abc"}
+        assert get_processed_ids(conn, status="error") == set()
+        assert get_processed_ids(conn, status="ok") == set()
+    finally:
+        conn.close()
 
 
-def test_denylisted_new_entity_leaves_no_alias(tmp_path: Path, wiki_pg, wiki_pg_url):
-    """A rejected is_new entity must not persist its aliases (codex pitfall #2)."""
+def test_denylisted_new_entity_leaves_no_alias(tmp_path: Path, wiki_db_path):
+    """A rejected is_new entity must not persist its aliases."""
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
 
@@ -127,21 +124,25 @@ def test_denylisted_new_entity_leaves_no_alias(tmp_path: Path, wiki_pg, wiki_pg_
 
     with (
         patch(
-            "workflows.wiki_synthesis.nodes.generate_structured_with_usage",
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
             return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
         ),
         patch(
-            "workflows.wiki_synthesis.entity_graph.generate_with_usage",
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
             return_value=make_llm_call(content=_synthesis_output("concept__rag", "RAG")),
         ),
     ):
-        _invoke(
+        synthesize_item(
             make_item(),
+            db_path=wiki_db_path,
             wiki_dir=wiki_dir,
-            db_url=wiki_pg_url,
-            rejected_entities={"tool__cli"},
+            rejected_entities=frozenset({"tool__cli"}),
         )
 
-    entries = snapshot_aliases(wiki_pg).entries
+    conn = connect(wiki_db_path)
+    try:
+        entries = snapshot_aliases(conn).entries
+    finally:
+        conn.close()
     assert "tool__cli" not in entries
     assert "concept__rag" in entries

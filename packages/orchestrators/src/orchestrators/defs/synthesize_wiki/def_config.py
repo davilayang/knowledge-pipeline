@@ -1,6 +1,6 @@
 # Definition-time config for the synthesize_wiki pipeline. Static path config
-# (DATA_DIR) lives in orchestrators.config; per-host paths (BACKUP_DST_DIR,
-# DATABASE_URL) are required dg.EnvVar fields on WikiResource.
+# (DATA_DIR, wiki.db) lives in orchestrators.config / WikiResource defaults;
+# the per-host BACKUP_DST_DIR is a required dg.EnvVar field on WikiResource.
 
 import dagster as dg
 

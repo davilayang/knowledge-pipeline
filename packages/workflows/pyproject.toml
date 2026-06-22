@@ -6,12 +6,11 @@ requires-python = ">=3.13"
 dependencies = [
     "knowledge-domains",
     "knowledge-retrievers",
+    # Kept as the toehold for the deferred writer/evaluator synthesis experiment
+    # (the one place a sub-graph re-earns its place); pulls langchain-core
+    # transitively. The wiki path itself is plain OpenAI SDK + langfuse.openai.
     "langgraph>=1.0,<2.0",
-    "langgraph-checkpoint-postgres>=2.0,<3.0",
-    "langchain>=1.0,<2.0",  # langfuse.langchain.CallbackHandler runtime dep
     "openai>=1.0,<2.0",
-    "langchain-openai>=0.3,<1.0",
-    "langchain-anthropic>=0.3,<1.0",
     "langfuse>=3.0,<4.0",
 ]
 

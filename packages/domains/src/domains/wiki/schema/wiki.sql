@@ -1,90 +1,74 @@
--- Wiki schema for the knowledge_pipeline database.
+-- Wiki state schema for data/wiki.db (SQLite).
 --
--- Three tables track synthesis state, page metadata, and alias resolution.
--- All DDL is idempotent (IF NOT EXISTS) — safe to re-run without a migration
--- framework. Drop and re-run to rebuild from scratch (see plan §State management).
---
--- Apply against the knowledge_pipeline database:
---   psql -d knowledge_pipeline -f wiki.sql
-
-CREATE SCHEMA IF NOT EXISTS wiki;
+-- Four tables track synthesis state, page metadata, alias resolution, and the
+-- source ledger. All DDL is idempotent (IF NOT EXISTS) — safe to re-run without
+-- a migration framework; applied via `create_schema()` (executescript) the same
+-- way the sibling SQLite stores (raw_store.db / queue.db) bring themselves up.
+-- Drop the file and re-run to rebuild from scratch (rebuild-don't-migrate).
 
 -- ---------------------------------------------------------------------------
--- wiki.processed
+-- processed
 --
 -- One row per (item_id, source_type) pair that has been attempted.
--- source_type is part of the PK so rows from different sources never collide
--- (e.g. newsletter vs. reforge vs. journal).
+-- source_type is part of the PK so rows from different sources never collide.
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS wiki.processed (
-    item_id        text        NOT NULL,
-    source_type    text        NOT NULL,
-    status         text        NOT NULL CHECK (status IN ('ok', 'error', 'skipped')),
-    error          text,                   -- NULL on ok
-    processed_at   timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS processed (
+    item_id        TEXT NOT NULL,
+    source_type    TEXT NOT NULL,
+    status         TEXT NOT NULL CHECK (status IN ('ok', 'error', 'skipped')),
+    error          TEXT,                                   -- NULL on ok
+    processed_at   TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (item_id, source_type)
 );
 
 -- ---------------------------------------------------------------------------
--- wiki.pages
+-- pages
 --
--- One row per synthesised entity page.
--- related / sources / source_types are jsonb arrays (not json) so Postgres
--- can index and query them efficiently if needed later.
+-- One row per synthesised entity page. related / sources / source_types are
+-- JSON arrays stored as TEXT (SQLite has no native array/jsonb type); callers
+-- json.loads them on read.
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS wiki.pages (
-    entity_id      text        NOT NULL PRIMARY KEY,
-    page_type      text        NOT NULL,   -- 'concept' | 'tool' | 'trend'
-    file_path      text        NOT NULL,   -- relative path under data/wiki/
-    related        jsonb,                  -- list of related entity_ids
-    sources        jsonb,                  -- list of source item_ids
-    source_types   jsonb,                  -- list of source_type strings
-    updated_at     timestamptz NOT NULL DEFAULT now()
+CREATE TABLE IF NOT EXISTS pages (
+    entity_id      TEXT NOT NULL PRIMARY KEY,
+    page_type      TEXT NOT NULL,                          -- 'concept' | 'tool' | 'trend'
+    file_path      TEXT NOT NULL,                          -- relative path under data/wiki/
+    related_ids    TEXT,                                   -- JSON array of related entity_ids
+    sources        TEXT,                                   -- JSON array of source item_ids
+    source_types   TEXT,                                   -- JSON array of source_type strings
+    updated_at     TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
 
 -- ---------------------------------------------------------------------------
--- wiki.aliases
+-- aliases
 --
 -- One row per (entity_id, alias) pair. alias is globally unique — each alias
 -- maps to exactly one canonical entity (first-writer-wins under ON CONFLICT).
--- canonical_name is denormalised onto every row for read-side convenience;
--- in the rare case where two writers disagree on canonical_name for the same
--- entity_id, snapshot_aliases() picks the lexicographically-first row's
--- canonical (deterministic). Promote canonical to its own entities table if
--- divergence becomes load-bearing.
+-- canonical_name is denormalised onto every row for read-side convenience.
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS wiki.aliases (
-    entity_id      text NOT NULL,
-    canonical_name text NOT NULL,
-    alias          text NOT NULL,
+CREATE TABLE IF NOT EXISTS aliases (
+    entity_id      TEXT NOT NULL,
+    canonical_name TEXT NOT NULL,
+    alias          TEXT NOT NULL,
     UNIQUE (alias)
 );
 
--- Index for lookups by entity_id (e.g. "give me all aliases for X").
-CREATE INDEX IF NOT EXISTS wiki_aliases_entity_id_idx
-    ON wiki.aliases (entity_id);
+CREATE INDEX IF NOT EXISTS idx_aliases_entity_id ON aliases (entity_id);
 
 -- ---------------------------------------------------------------------------
--- wiki.page_sources
+-- page_sources
 --
 -- One row per (entity_id, item_id, source_type) contribution — the
 -- deterministic record of which content item surfaced which entity. Written
--- by the commit node in the same all-or-nothing transaction as wiki.pages /
--- wiki.processed, ON CONFLICT DO NOTHING (idempotent under retries).
---
--- Ground truth for num_sources: COUNT(DISTINCT item_id) per entity_id. This
--- replaces the LLM-authored wiki.pages.sources jsonb array as the count source
--- (that list stays for display only). source_type is part of the key because
--- item_id is only unique within a source (mirrors wiki.processed's PK).
+-- in the same all-or-nothing transaction as pages / processed, ON CONFLICT DO
+-- NOTHING (idempotent under retries). Ground truth for num_sources:
+-- COUNT(DISTINCT item_id) per entity_id.
 -- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS wiki.page_sources (
-    entity_id      text        NOT NULL,
-    item_id        text        NOT NULL,
-    source_type    text        NOT NULL,
-    added_at       timestamptz NOT NULL DEFAULT now(),
+CREATE TABLE IF NOT EXISTS page_sources (
+    entity_id      TEXT NOT NULL,
+    item_id        TEXT NOT NULL,
+    source_type    TEXT NOT NULL,
+    added_at       TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (entity_id, item_id, source_type)
 );
 
--- Index for the count/lookup by entity ("num_sources for X", "which items built X").
-CREATE INDEX IF NOT EXISTS wiki_page_sources_entity_id_idx
-    ON wiki.page_sources (entity_id);
+CREATE INDEX IF NOT EXISTS idx_page_sources_entity_id ON page_sources (entity_id);

@@ -1,9 +1,10 @@
 # `wiki_synthesis` workflow
 
-A LangGraph workflow that turns one source document into incremental updates
-to a structured wiki. One invocation handles one document; the Dagster asset
-that wraps it (`pipelines/synthesize_wiki/assets.py:synthesized`) runs one
-invocation per pending item in a scheduled tick.
+A plain-function workflow that turns one source document into incremental
+updates to a structured wiki. One call to `synthesize_item` handles one
+document; the Dagster asset that wraps it
+(`packages/orchestrators/src/orchestrators/defs/synthesize_wiki/assets.py:synthesized`)
+runs one call per pending item in a scheduled tick.
 
 For operations (how to launch, retry, debug), see the asset's runbook:
 `packages/orchestrators/src/orchestrators/defs/synthesize_wiki/README.md`.
@@ -19,7 +20,7 @@ produce updates to a structured wiki of three entity types:
 - **trend** — emerging patterns or shifts (e.g. "MoE architectures")
 
 Each entity has exactly one wiki page on disk (`data/wiki/<page_type>/<slug>.md`)
-and one row in `wiki.pages`. The same entity is mentioned by many documents
+and one row in `pages`. The same entity is mentioned by many documents
 over time; each new mention either creates the page (first sighting) or merges
 into the existing one (subsequent sightings).
 
@@ -30,12 +31,12 @@ mentions, then for each one decides create-vs-update and writes the result.
 
 | Concept | Storage | Cardinality |
 |---|---|---|
-| Entity | `wiki.pages` row + `wiki/<type>/<slug>.md` file | 1 per real-world thing |
-| Alias | `wiki.aliases` row | many per entity (canonical name + variants) |
-| Source contribution (ground truth) | `wiki.page_sources` row | 1 per (entity_id, item_id, source_type) — drives `num_sources` |
-| Source content_id list (display) | `wiki.pages.sources[]` element | LLM-authored list in frontmatter — display only, not counted |
-| Source type | `wiki.pages.source_types[]` (last writer wins) | which source domain last touched the entity |
-| Processed marker | `wiki.processed` row | 1 per (item_id, source_type) |
+| Entity | `pages` row + `wiki/<type>/<slug>.md` file | 1 per real-world thing |
+| Alias | `aliases` row | many per entity (canonical name + variants) |
+| Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives `num_sources` |
+| Source content_id list (display) | `pages.sources[]` element | LLM-authored list in frontmatter — display only, not counted |
+| Source type | `pages.source_types[]` (last writer wins) | which source domain last touched the entity |
+| Processed marker | `processed` row | 1 per (item_id, source_type) |
 
 **Aliases** prevent duplicates. Before extraction, the workflow snapshots the
 existing alias table and hands it to the LLM as YAML context. The extractor
@@ -45,73 +46,56 @@ update one page, not two.
 
 **Provenance: three columns with different semantics — be aware:**
 
-- `wiki.page_sources` (ledger table) is the **ground truth** for which
-  items have contributed to an entity. `commit` writes one
+- `page_sources` (ledger table) is the **ground truth** for which
+  items have contributed to an entity. `persist` writes one
   `(entity_id, item_id, source_type)` row per successful entity in the
-  same transaction as `wiki.pages`. `num_sources` is
+  same transaction as `pages`. `num_sources` is
   `COUNT(DISTINCT item_id)` from this table, not from the LLM output.
-  `is_source_for_entity` lets `process_entity` add +1 pre-commit so the
-  rendered frontmatter reflects the post-commit count even on first sighting.
-- `wiki.pages.sources[]` is the LLM-authored list of source content_ids
+  `is_source_for_entity` lets `synthesize_entity` add +1 pre-commit so
+  the rendered frontmatter reflects the post-commit count even on first
+  sighting.
+- `pages.sources[]` is the LLM-authored list of source content_ids
   in the page frontmatter. It is **display-only** — the synthesis update
   prompt shows it to the LLM and the merge prompt is expected to preserve
   it, but it is no longer the source of `num_sources`. Do not join against
-  it for counts; query `wiki.page_sources` instead.
-- `wiki.pages.source_types[]` is **not** cumulative. `commit` always passes
+  it for counts; query `page_sources` instead.
+- `pages.source_types[]` is **not** cumulative. `persist` always passes
   `source_types=[item.source_type]` (single element) and the upsert
   replaces the column outright. So this column reflects only the most
   recent writer's source domain, not the union across history.
   Promote `source_types` to additive semantics if that pattern shows up
   often.
 
-## Graph shape
+## Workflow shape
 
-Two-tier: a parent graph orchestrates per-document work; a sub-graph runs once
-per extracted entity in parallel.
+`synthesize_item` (`synthesize.py`) orchestrates the whole item end-to-end
+via three plain functions:
 
 ```
-Parent (graph.py)              Sub-graph (entity_graph.py)
-─────────────────              ────────────────────────────
-
-START
+synthesize_item(item, db_path, wiki_dir, rejected_entities, replay)
   │
-  ▼
-extract_entities       ←─── reads wiki.aliases, calls extraction LLM,
-  │                          stages new aliases for commit
+  ├─ extract(item, db_path, rejected_entities)
+  │    snapshot aliases → call extraction LLM → drop denylisted → stage aliases
+  │    failure captured as extract_error; still persists an 'error' row
   │
-  ├── (no entities) ──→ commit  (records status='skipped')
+  ├─ for entity in entities:   (sequential loop)
+  │    synthesize_entity(item, entity, sibling_ids, wiki_dir, db_path)
+  │      read/merge page via synthesis LLM → parse → H2-preservation check
+  │      → write .md atomically; failure caught per entity, siblings continue
   │
-  └── Send fan-out ────→ entity_workflow ──┐
-                         entity_workflow ──┤   parallel,
-                         entity_workflow ──┤   one Send per entity
-                                           │
-                              ┌────────────┘
-                              │
-                              ▼
-                         (operator.add reducer aggregates results)
-                              │
-                              ▼
-                         commit       ←──── one Postgres txn:
-                              │              wiki.pages, wiki.aliases,
-                              ▼              wiki.page_sources, wiki.processed
-                             END
+  └─ persist(item, db_path, successes, staged_aliases, status, error_text)
+       ONE SQLite transaction: pages + page_sources + aliases + processed
+       all-or-nothing
 ```
 
-**Why two tiers, not one node per entity in the parent:** entity counts are
-unbounded per document. Modeling them as static parent nodes would require
-knowing the count at graph-build time. The Send API lets us fan out at
-runtime — `extract_entities` decides N, the conditional edge dispatches N
-sub-graph instances, the reducer collects N results.
-
-**Why a sub-graph at all (vs a plain function):** LangGraph checkpoints
-sub-graph state in a nested namespace. If entity 7 of 12 fails, retry
-re-runs only entity 7's sub-graph — entities 1-6 are skipped, no LLM calls
-re-paid. With a plain function in a list comprehension, retry would re-run
-all 12.
+Entity counts per document are unbounded; entities are processed one at a
+time in the sequential loop. A writer/evaluator agentic loop (where the
+synthesis LLM iterates with a separate evaluator LLM) is a deferred future
+option for improving page quality — not part of the current implementation.
 
 ## Update vs create per entity
 
-Inside the sub-graph (`entity_graph.py:process_entity`):
+Inside `synthesize_entity` (`synthesize.py`):
 
 ```
 page_path = wiki_dir / entity.page_type / f"{slug}.md"
@@ -129,32 +113,31 @@ else:
 The H2 preservation check is the safety net: the synthesis LLM is allowed to
 *expand* sections (add bullets, refine prose) but not *delete* them. Deletes
 fail the entity, which is recorded as a per-entity error and surfaces in
-`wiki.processed.error`. Other entities in the same document continue.
+`processed.error`. Other entities in the same document continue.
 
-## State boundary: filesystem vs Postgres
+## State boundary: filesystem vs SQLite (wiki.db)
 
-| Lives on disk (`data/wiki/`) | Lives in Postgres |
+| Lives on disk (`data/wiki/`) | Lives in SQLite (`data/wiki.db`) |
 |---|---|
-| `<page_type>/<slug>.md` — the rendered page | `wiki.pages` — page metadata + provenance |
-| `index.md` — table of contents (regenerated) | `wiki.aliases` — entity name → id mapping |
-| | `wiki.page_sources` — deterministic (entity, item) contribution ledger; drives `num_sources` |
-| | `wiki.processed` — partition completion markers |
-| | LangGraph checkpoints (separate tables) |
+| `<page_type>/<slug>.md` — the rendered page | `pages` — page metadata + provenance |
+| `index.md` — table of contents (regenerated) | `aliases` — entity name → id mapping |
+| | `page_sources` — deterministic (entity, item) contribution ledger; drives `num_sources` |
+| | `processed` — partition completion markers |
 
 **Disk is the human-readable surface.** The .md files are what humans read,
 diff in git, and reference. They're authored by the synthesis LLM, not
 hand-edited.
 
-**Postgres is the dedup/lineage truth.** When the schedule asks "what's
-already done?", it reads `wiki.processed`, not the disk.
-When the extractor asks "which entities exist?", it reads `wiki.aliases`,
+**SQLite is the dedup/lineage truth.** When the schedule asks "what's
+already done?", it reads `processed`, not the disk.
+When the extractor asks "which entities exist?", it reads `aliases`,
 not file listings. This separation lets the workflow be retry-idempotent
-without depending on filesystem state being perfectly consistent with PG.
+without depending on filesystem state being perfectly consistent with the DB.
 
-**Atomicity is per-system.** Inside `commit`, all PG writes (`wiki.pages` +
-`wiki.aliases` + `wiki.page_sources` + `wiki.processed`) are one transaction —
-either all land or none do. Disk writes are atomic per-file (tmp + os.replace). PG and disk
-together are *not* atomic — if PG commit fails after .md files are written,
+**Atomicity is per-system.** Inside `persist`, all SQLite writes (`pages` +
+`aliases` + `page_sources` + `processed`) are one transaction —
+either all land or none do. Disk writes are atomic per-file (tmp + os.replace). SQLite and disk
+together are *not* atomic — if the SQLite commit fails after .md files are written,
 the files are stranded but get rewritten on replay. The replay path is
 write_page-idempotent for identical content.
 
@@ -164,23 +147,18 @@ The workflow doesn't propagate failures up to Dagster — it records them.
 
 | Failure | Caught by | Recorded as |
 |---|---|---|
-| Extraction LLM error / PG read fails | `extract_entities` try/except | `wiki.processed.status='error'` with extract_error message |
-| Single entity's synthesis fails | `process_entity` try/except | `wiki.processed.error` carries `"<entity_id>: <error>"`; status still `'ok'` if siblings succeeded |
-| All entities fail | (same as above, in commit's status logic) | `wiki.processed.status='error'` |
-| `commit` PG transaction fails | uncaught | Dagster sees the partition fail; LangGraph checkpoint preserves state; retry resumes from `commit` without re-running LLMs |
+| Extraction LLM error / SQLite read fails | `extract` try/except | `processed.status='error'` with extract_error message |
+| Single entity's synthesis fails | `synthesize_entity` try/except | `processed.error` carries `"<entity_id>: <error>"`; status still `'ok'` if siblings succeeded |
+| All entities fail | (same as above, in synthesize_item's status logic) | `processed.status='error'` |
+| `persist` SQLite transaction fails | uncaught | Dagster sees the partition fail; retry re-runs the item from scratch — there are no checkpoints to resume from |
 
 The "swallow into state" pattern is deliberate: a partial wiki-quality issue
-shouldn't look like an infrastructure failure to Dagster. The escape hatch
-for "I want to retry without checkpoint resumption" is documented in the
-operations runbook (delete from `checkpoints` tables).
+shouldn't look like an infrastructure failure to Dagster.
 
 ## Files
 
 | File | Role |
 |---|---|
-| `runner.py` | Canonical entry point — compiles graph + checkpointer + Langfuse, invokes once per item |
-| `graph.py` | Parent `StateGraph`, `WikiSynthesisState` TypedDict, fan-out logic |
-| `nodes.py` | Parent nodes: `extract_entities`, `commit` |
-| `entity_graph.py` | Sub-graph `StateGraph`, `EntityWorkflowState`, `process_entity` |
+| `synthesize.py` | Canonical entry point — `synthesize_item` + `extract` + `synthesize_entity` + `persist` |
 | `prompts.py` | Extraction + create + update prompt templates |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |

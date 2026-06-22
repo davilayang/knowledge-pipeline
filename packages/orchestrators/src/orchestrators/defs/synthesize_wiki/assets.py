@@ -5,13 +5,13 @@ import os
 import time
 
 import dagster as dg
-import psycopg
 from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
-from domains.wiki.state import get_all_pages, get_processed_ids
+from domains.wiki.state import connection, get_all_pages, get_processed_ids
 from workflows.costs import PRICING_PER_1M, cost_usd
 from workflows.llm import LLMCall
-from workflows.wiki_synthesis.runner import invoke_wiki_synthesis
+from workflows.shared.observability import flush_langfuse
+from workflows.wiki_synthesis.synthesize import synthesize_item
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
@@ -65,7 +65,7 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
 @dg.asset(
     key=["wiki", "pending"],
     group_name="wiki",
-    kinds={"sqlite", "postgres"},
+    kinds={"sqlite"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[dg.AssetDep(["snapshots", "raw_store"])],
@@ -99,7 +99,7 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
     eligible = [r for r in allowed if r in fetched]
     excluded_by_source = len(raw_ids) - len(allowed)
     excluded_unfetched = len(allowed) - len(eligible)
-    with psycopg.connect(wiki.database_url) as conn:
+    with connection(wiki.get_db_path()) as conn:
         handled = get_processed_ids(conn, status="ok") | get_processed_ids(conn, status="skipped")
     full = [r for r in eligible if r not in handled]
     queued = full[:WIKI_MAX_PER_TICK] if WIKI_MAX_PER_TICK > 0 else full
@@ -127,17 +127,17 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
 @dg.asset(
     key=["wiki", "synthesized"],
     group_name="wiki",
-    kinds={"openai", "sqlite", "postgres"},
+    kinds={"openai", "sqlite"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     ins={"pending": dg.AssetIn(["wiki", "pending"])},
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Run the wiki_synthesis LangGraph workflow for each item in the "
-        "wiki/pending list, sequentially. The commit txn is idempotent "
+        "Run the wiki synthesis workflow (synthesize_item) for each item in "
+        "the wiki/pending list, sequentially. The persist txn is idempotent "
         "(ON CONFLICT) so a retry re-processes already-committed items at "
-        "the cost of duplicate LLM spend. Per-item failures land in "
-        "wiki.processed (status='error') without aborting the batch; only "
+        "the cost of duplicate LLM spend. Per-item failures land in the "
+        "processed table (status='error') without aborting the batch; only "
         "run-level (auth/infra) errors fail the Dagster run."
     ),
 )
@@ -153,7 +153,7 @@ def synthesized(
         )
 
     snapshot_path = wiki.snapshot_path_for(context.partition_key)
-    db_url = wiki.database_url
+    db_path = wiki.get_db_path()
 
     source = RawStoreSource(snapshot_path)
     items: list[IngestItem] = []
@@ -192,8 +192,8 @@ def synthesized(
         context.log.info("[%d/%d] synthesizing %s", i, len(items), item.item_id)
         started = time.monotonic()
         try:
-            final_state = invoke_wiki_synthesis(
-                item, db_url=db_url, wiki_dir=wiki_dir, rejected_entities=rejected
+            final_state = synthesize_item(
+                item, db_path=db_path, wiki_dir=wiki_dir, rejected_entities=rejected
             )
         except Exception as e:
             context.log.exception("wiki synthesis raised for %s", item.item_id)
@@ -204,12 +204,17 @@ def synthesized(
                 "[%d/%d] %s done in %.1fs", i, len(items), item.item_id, time.monotonic() - started
             )
 
-    with psycopg.connect(db_url) as conn:
+    # Flush buffered Langfuse traces before the run exits (v3 ships async).
+    flush_langfuse()
+
+    item_ids = [i.item_id for i in items]
+    placeholders = ",".join("?" * len(item_ids))
+    with connection(db_path) as conn:
         rows = conn.execute(
-            "SELECT status, COUNT(*) FROM wiki.processed "
-            "WHERE source_type = %s AND item_id = ANY(%s) "
-            "GROUP BY status",
-            (SOURCE_RAW_STORE, [i.item_id for i in items]),
+            f"SELECT status, COUNT(*) FROM processed "
+            f"WHERE source_type = ? AND item_id IN ({placeholders}) "
+            f"GROUP BY status",
+            (SOURCE_RAW_STORE, *item_ids),
         ).fetchall()
     by_status = {status: count for status, count in rows}
 
@@ -240,7 +245,7 @@ def synthesized(
 @dg.asset(
     key=["wiki", "index"],
     group_name="wiki",
-    kinds={"postgres", "file"},
+    kinds={"sqlite", "file"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[dg.AssetDep(["wiki", "synthesized"])],
@@ -255,7 +260,7 @@ def regenerate_toc(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    with psycopg.connect(wiki.database_url) as conn:
+    with connection(wiki.get_db_path()) as conn:
         pages = get_all_pages(conn)
 
     wiki_dir = wiki.get_wiki_dir()
@@ -292,7 +297,7 @@ def regenerate_toc(
 @dg.asset(
     key=["wiki", "aliases_index"],
     group_name="wiki",
-    kinds={"postgres", "json"},
+    kinds={"sqlite", "json"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     partitions_def=wiki_daily_partition_def,
     deps=[dg.AssetDep(["wiki", "synthesized"])],
@@ -310,13 +315,13 @@ def aliases_index(
     context: dg.AssetExecutionContext,
     wiki: WikiResource,
 ) -> dg.MaterializeResult:
-    with psycopg.connect(wiki.database_url) as conn:
-        alias_rows = conn.execute("SELECT alias, entity_id FROM wiki.aliases").fetchall()
-        title_rows = conn.execute("SELECT entity_id, file_path FROM wiki.pages").fetchall()
+    with connection(wiki.get_db_path()) as conn:
+        alias_rows = conn.execute("SELECT alias, entity_id FROM aliases").fetchall()
+        title_rows = conn.execute("SELECT entity_id, file_path FROM pages").fetchall()
         page_title_rows = conn.execute(
             """
             SELECT entity_id, canonical_name
-            FROM wiki.aliases
+            FROM aliases
             GROUP BY entity_id, canonical_name
             """
         ).fetchall()
