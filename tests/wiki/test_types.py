@@ -47,38 +47,23 @@ def test_wiki_page_invalid_page_type():
 
 
 def test_extracted_entity():
-    entity = ExtractedEntity(
-        entity_id="concept__rag",
-        title="RAG",
-        page_type="concept",
-        is_new=False,
-        aliases=[],
-    )
-    assert entity.is_new is False
+    entity = ExtractedEntity(title="RAG", page_type="concept")
+    # The LLM never mints an id; matched_id defaults to None (genuinely new).
+    assert entity.matched_id is None
+    assert entity.aliases == []
+
+
+def test_extracted_entity_carries_matched_id():
+    entity = ExtractedEntity(title="the MCP standard", page_type="concept", matched_id="e_abc123")
+    assert entity.matched_id == "e_abc123"
 
 
 def test_extraction_result_max_length():
-    entities = [
-        ExtractedEntity(
-            entity_id=f"concept__e{i}",
-            title=f"Entity {i}",
-            page_type="concept",
-            is_new=True,
-        )
-        for i in range(11)
-    ]
+    entities = [ExtractedEntity(title=f"Entity {i}", page_type="concept") for i in range(11)]
     with pytest.raises(ValidationError, match="List should have at most 10 items"):
         ExtractionResult(entities=entities)
 
 
 def test_extraction_result_within_limit():
-    entities = [
-        ExtractedEntity(
-            entity_id="concept__rag",
-            title="RAG",
-            page_type="concept",
-            is_new=False,
-        )
-    ]
-    result = ExtractionResult(entities=entities)
+    result = ExtractionResult(entities=[ExtractedEntity(title="RAG", page_type="concept")])
     assert len(result.entities) == 1

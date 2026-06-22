@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 import dagster as dg
+from domains.wiki.identity import normalize_name
 from domains.wiki.state import create_schema
 from notion_client import Client as NotionClient
 
@@ -24,10 +25,12 @@ def _select_name(prop: dict[str, Any]) -> str | None:
 class WikiPagesNotionResource(dg.ConfigurableResource):
     """Read access to the "Wiki Pages" Notion DB for the W2.5 denylist.
 
-    query_rejected() returns the curator-marked rejection list:
-    {entity_id: {category, reason}} for every row with Rejected=true. The
-    synthesized asset filters these entity_ids out of synthesis. Reuses the
-    shared NOTION_INTEGRATION_TOKEN; the data source id is the "Wiki Pages"
+    query_rejected() returns the curator-marked rejection list keyed on the
+    NORMALISED page Title (the entity's canonical name): {normalized_name:
+    {category, reason}} for every row with Rejected=true. The surrogate Entity
+    ID is minted post-extraction, so the denylist can't anchor on it — it
+    matches on the name the curator sees instead. Reuses the shared
+    NOTION_INTEGRATION_TOKEN; the data source id is the "Wiki Pages"
     collection. Read-only — never writes curator columns.
     """
 
@@ -38,11 +41,12 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
         return NotionClient(auth=self.integration_token)
 
     def query_rejected(self) -> dict[str, dict[str, str | None]]:
-        """All Rejected=true rows → {entity_id: {category, reason}}.
+        """All Rejected=true rows → {normalized_title: {category, reason}}.
 
-        Scans the data source once, paginated via has_more/next_cursor.
-        Rows with a blank Entity ID are skipped (a curator added a row but
-        hasn't set the key yet — can't match it deterministically anyway).
+        Scans the data source once, paginated via has_more/next_cursor. Rows
+        with a blank Title are skipped (nothing to match on). The key is
+        normalize_name(Title) so it lines up with both the extracted candidate
+        name and the resolved entity's normalized_name at synthesis time.
         """
         client = self._client()
         out: dict[str, dict[str, str | None]] = {}
@@ -58,10 +62,10 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
             resp = client.data_sources.query(**kwargs)
             for row in resp.get("results", []):
                 props = row.get("properties", {})
-                entity_id = _plain_text(props.get("Entity ID", {}))
-                if not entity_id:
+                title = _plain_text(props.get("Title", {}))
+                if not title:
                     continue
-                out[entity_id] = {
+                out[normalize_name(title)] = {
                     "category": _select_name(props.get("Reject category", {})),
                     "reason": _plain_text(props.get("Reject reason", {})) or None,
                 }

@@ -1,8 +1,8 @@
-"""Parity tests for the parsing helpers.
+"""Tests for the parsing helpers — frontmatter parsing, entity_id/page_type
+enforcement, summary recovery, and the H2-preservation check.
 
-Same coverage as the original tests/wiki/test_ingest.py — TestSlugFromId,
-TestParseLlmPageOutput, TestCheckH2Preservation classes — translated to
-the new module location. Behavior must match exactly.
+entity_id is now an opaque surrogate; parse echoes whatever id the caller
+passes (overwriting any the LLM hallucinated), so these use placeholder ids.
 """
 
 from pathlib import Path
@@ -10,16 +10,7 @@ from pathlib import Path
 from workflows.wiki_synthesis.parsing import (
     check_h2_preservation,
     parse_llm_page_output,
-    slug_from_id,
 )
-
-
-class TestSlugFromId:
-    def test_normal(self):
-        assert slug_from_id("concept__rag") == "rag"
-
-    def test_no_separator(self):
-        assert slug_from_id("rag") == "rag"
 
 
 class TestParseLlmPageOutput:
