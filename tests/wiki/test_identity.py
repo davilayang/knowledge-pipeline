@@ -190,6 +190,24 @@ def test_resolved_entity_carries_alias_display_forms():
     assert res.resolved[0].aliases == ("chroma", "chroma-db")
 
 
+def test_alias_shadowing_existing_canonical_is_dropped():
+    """An extracted alias equal to a DIFFERENT entity's canonical name must NOT
+    be staged — persisting it would collide with that entity in aliases_index
+    (alias 'Long-running agents' vs the canonical of e_lra). Reproduces the
+    collision seen in a real rebuild."""
+    index = EntityIndex.build([_entity("e_lra", "Long-running agents")], [])
+    res = resolve_or_mint_batch(
+        index,
+        [Candidate(name="Agentic coding", page_type="trend", aliases=["Long-running agents"])],
+        now=NOW,
+    )
+
+    r = res.resolved[0]
+    assert r.is_new is True  # Agentic coding is genuinely new
+    assert "Long-running agents" not in r.aliases  # the shadowing alias is dropped
+    assert r.aliases == ()
+
+
 def test_fuzzy_is_advisory_only_and_still_mints():
     """A near-miss must NOT auto-merge into a durable id — it mints a fresh
     entity and records a fuzzy hint for the curated merge."""

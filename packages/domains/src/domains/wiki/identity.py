@@ -132,14 +132,28 @@ def resolve_or_mint_batch(
     new_entities: list[EntityRecord] = []
     fuzzy_hints: list[tuple[str, str]] = []
 
-    def register_aliases(displays: tuple[str, ...], eid: str) -> None:
-        # First-writer-wins within the batch; an alias never shadows an existing
-        # canonical name (by_name), so a later candidate matching that name still
-        # resolves to its own entity.
+    def register_aliases(displays: tuple[str, ...], eid: str) -> tuple[str, ...]:
+        # Returns the aliases SAFE to persist for `eid` — never one that shadows
+        # a different entity's canonical (by_name) or another entity's alias
+        # (by_alias). Persisting a shadowing alias would create an aliases_index
+        # collision (an alias equal to a different entity's canonical name). An
+        # alias equal to this entity's own canonical is dropped as redundant.
+        kept: list[str] = []
         for display in displays:
             norm = normalize_name(display)
-            if norm and norm not in by_alias and norm not in by_name:
-                by_alias[norm] = eid
+            if not norm:
+                continue
+            if norm in by_name:
+                # Shadows a canonical — drop (whether another entity's or own).
+                continue
+            if norm in by_alias:
+                # Already claimed: keep only if it's this entity's (idempotent).
+                if by_alias[norm] == eid:
+                    kept.append(display)
+                continue
+            by_alias[norm] = eid
+            kept.append(display)
+        return tuple(kept)
 
     for cand in candidates:
         norm = normalize_name(cand.name)
@@ -175,7 +189,7 @@ def resolve_or_mint_batch(
             known_ids.add(eid)
             is_new, aliases = True, tuple(cand.aliases)
 
-        register_aliases(aliases, eid)
-        resolved.append(ResolvedEntity(entity_id=eid, is_new=is_new, aliases=aliases))
+        kept_aliases = register_aliases(aliases, eid)
+        resolved.append(ResolvedEntity(entity_id=eid, is_new=is_new, aliases=kept_aliases))
 
     return BatchResolution(resolved=resolved, new_entities=new_entities, fuzzy_hints=fuzzy_hints)
