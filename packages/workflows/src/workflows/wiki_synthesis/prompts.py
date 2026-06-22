@@ -68,8 +68,19 @@ store.", "Here are the key things about ChromaDB."
 full markdown body
 """
 
+# The shared article block leads BOTH templates and the per-entity fields
+# trail — within one item every entity is synthesised against the same article,
+# so leading with it makes `[system + article]` a constant prefix that OpenAI's
+# automatic prompt caching reuses across the entity loop (≈50% off the cached
+# input + lower latency). Do not move the per-entity fields back to the top.
 PAGE_SYNTHESIS_USER_UPDATE = """\
-## Entity info
+## Source article (content_id: {source_id})
+
+Title: {article_title}
+
+{article_text}
+
+## Entity to synthesize
 
 entity_id: {entity_id}
 title: {title}
@@ -79,27 +90,21 @@ related entities from this article: {related}
 ## Current page content
 
 {existing_page}
-
-## New source article (content_id: {source_id})
-
-Title: {article_title}
-
-{article_text}
 """
 
 PAGE_SYNTHESIS_USER_CREATE = """\
-## Entity info
-
-entity_id: {entity_id}
-title: {title}
-page_type: {page_type}
-related entities from this article: {related}
-
 ## Source article (content_id: {source_id})
 
 Title: {article_title}
 
 {article_text}
+
+## Entity to synthesize
+
+entity_id: {entity_id}
+title: {title}
+page_type: {page_type}
+related entities from this article: {related}
 
 Create a new wiki page for this entity. Include YAML frontmatter and \
 structured markdown body with relevant H2 sections.
