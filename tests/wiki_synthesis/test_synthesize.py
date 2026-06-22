@@ -162,6 +162,27 @@ def test_synthesize_extracted_item_marks_extraction_error(tmp_path: Path, wiki_d
     assert _processed_ids(wiki_db_path, "error") == {item.item_id}
 
 
+def test_extract_item_traces_under_distinct_extract_span(tmp_path: Path, wiki_db_path):
+    """extract_item opens a span named wiki_extract__<id> — distinct from the
+    synthesis span — so the two stages are tellable apart in Langfuse while
+    sharing the same session_id."""
+    from workflows.wiki_synthesis.synthesize import extract_item
+
+    fake_client = MagicMock()
+    with (
+        patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "test_pk"}),
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
+            return_value=(ExtractionResult(entities=[]), make_llm_call(model="gpt-4.1-nano")),
+        ),
+        patch("langfuse.get_client", return_value=fake_client),
+    ):
+        extract_item(_runner_item(), db_path=wiki_db_path)
+
+    fake_client.start_as_current_span.assert_called_once_with(name="wiki_extract__content_runner")
+    assert fake_client.update_current_trace.call_args.kwargs["session_id"] == "content_runner"
+
+
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):
     """A denylisted entity is never built; its sibling still is (W2.5 seam)."""
     wiki_dir = tmp_path / "wiki"

@@ -157,7 +157,7 @@ def extract_item(item: IngestItem, *, db_path: Path | str, replay: bool = False)
     calls. Returns {"candidates", "extract_error", "llm_calls"}; the extraction-
     time index is dropped (synthesis re-reads a live one).
     """
-    with _trace(item, replay=replay):
+    with _trace(item, replay=replay, name=f"wiki_extract__{item.item_id}"):
         ext = extract(item, db_path=db_path)
     return {
         "candidates": ext["candidates"],
@@ -500,12 +500,13 @@ def _to_candidate(entity: ExtractedEntity) -> Candidate:
 
 
 @contextmanager
-def _trace(item: IngestItem, *, replay: bool) -> Iterator[None]:
+def _trace(item: IngestItem, *, replay: bool, name: str | None = None) -> Iterator[None]:
     """One Langfuse span per item; no-op (and silent) when unconfigured.
 
-    Sets the trace name / session_id / tags so all attempts of an item group
-    under one session; the `langfuse.openai` drop-in nests each LLM generation
-    under this span automatically.
+    `name` distinguishes the stage (`wiki_extract__<id>` vs the default
+    `wiki_synthesis__<id>`); both share `session_id=item_id` so the extraction
+    and synthesis traces group under one session. The `langfuse.openai` drop-in
+    nests each LLM generation under this span automatically.
     """
     if not langfuse_enabled():
         yield
@@ -513,7 +514,7 @@ def _trace(item: IngestItem, *, replay: bool) -> Iterator[None]:
     from langfuse import get_client
 
     client = get_client()
-    name = f"wiki_synthesis__{item.item_id}"
+    name = name or f"wiki_synthesis__{item.item_id}"
     with client.start_as_current_span(name=name):
         client.update_current_trace(
             name=name,
