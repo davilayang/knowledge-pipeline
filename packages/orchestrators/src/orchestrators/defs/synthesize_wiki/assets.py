@@ -9,10 +9,10 @@ from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
 from domains.wiki.identity import normalize_name
 from domains.wiki.state import connection, get_all_pages, get_processed_ids
-from workflows.costs import PRICING_PER_1M, cost_usd
+from workflows.costs import cost_usd, is_priced
 from workflows.llm import LLMCall
 from workflows.shared.observability import flush_langfuse
-from workflows.wiki_synthesis.synthesize import synthesize_item
+from workflows.wiki_synthesis.synthesize import extract_item, synthesize_extracted_item
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION
 
@@ -57,7 +57,7 @@ def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
         "cost_usd": dg.MetadataValue.float(round(total_usd, 4)),
         "cost_by_model": dg.MetadataValue.json(by_model),
     }
-    unknown = sorted({c.model for c in calls if c.model not in PRICING_PER_1M})
+    unknown = sorted({c.model for c in calls if not is_priced(c.model)})
     if unknown:
         out["unknown_pricing_models"] = dg.MetadataValue.json(unknown)
     return out
@@ -126,7 +126,7 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
 
 
 @dg.asset(
-    key=["wiki", "synthesized"],
+    key=["wiki", "extracted"],
     group_name="wiki",
     kinds={"openai", "sqlite"},
     code_version=SYNTHESIZE_WIKI_DAG_VERSION,
@@ -134,23 +134,91 @@ def pending(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.Output[
     ins={"pending": dg.AssetIn(["wiki", "pending"])},
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
     description=(
-        "Run the wiki synthesis workflow (synthesize_item) for each item in "
-        "the wiki/pending list, sequentially. The persist txn is idempotent "
-        "(ON CONFLICT) so a retry re-processes already-committed items at "
-        "the cost of duplicate LLM spend. Per-item failures land in the "
-        "processed table (status='error') without aborting the batch; only "
-        "run-level (auth/infra) errors fail the Dagster run."
+        "Run the entity-extraction LLM (call #1) for each item in wiki/pending, "
+        "sequentially. Emits a per-item candidate map {item_id: {candidates, "
+        "extract_error}} consumed by wiki/synthesized. Writes NO DB state — the "
+        "candidates are UNRESOLVED names; minting/dedup happens snapshot-live in "
+        "synthesis. Surfaces extraction cost separately from synthesis."
+    ),
+)
+def extracted(
+    context: dg.AssetExecutionContext,
+    pending: list[str],
+    wiki: WikiResource,
+) -> dg.Output[dict]:
+    if not pending:
+        return dg.Output(
+            {}, metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
+        )
+
+    snapshot_path = wiki.snapshot_path_for(context.partition_key)
+    db_path = wiki.get_db_path()
+    source = RawStoreSource(snapshot_path)
+
+    items = {raw_id: source.get_item(raw_id) for raw_id in pending}
+    missing = [raw_id for raw_id, item in items.items() if item is None]
+    if missing:
+        raise dg.Failure(
+            description=f"raw_store missing {len(missing)} item(s) from wiki/pending",
+            metadata={"missing": dg.MetadataValue.json(missing[:50])},
+        )
+
+    payload: dict[str, dict] = {}
+    all_calls: list[LLMCall] = []
+    n_candidates = 0
+    n_errors = 0
+    for i, raw_id in enumerate(pending, 1):
+        ext = extract_item(items[raw_id], db_path=db_path)
+        all_calls.extend(ext.pop("llm_calls", []))
+        payload[raw_id] = ext
+        n_candidates += len(ext["candidates"])
+        n_errors += 1 if ext["extract_error"] else 0
+        context.log.info(
+            "[%d/%d] extracted %s (%d candidates)", i, len(pending), raw_id, len(ext["candidates"])
+        )
+
+    flush_langfuse()
+
+    metadata: dict[str, dg.MetadataValue] = {
+        "summary": dg.MetadataValue.md(
+            f"**{len(pending)} items** — {n_candidates} candidates"
+            + (f", {n_errors} extraction errors" if n_errors else "")
+        ),
+        "item_count": dg.MetadataValue.int(len(pending)),
+        "candidate_count": dg.MetadataValue.int(n_candidates),
+        "extract_errors": dg.MetadataValue.int(n_errors),
+        "source_snapshot_path": dg.MetadataValue.path(str(snapshot_path)),
+    }
+    metadata.update(_cost_metadata(all_calls))
+    return dg.Output(payload, metadata=metadata)
+
+
+@dg.asset(
+    key=["wiki", "synthesized"],
+    group_name="wiki",
+    kinds={"openai", "sqlite"},
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
+    partitions_def=wiki_daily_partition_def,
+    ins={"extracted": dg.AssetIn(["wiki", "extracted"])},
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Resolve + synthesize (call #2) each item's extracted candidates, "
+        "sequentially. Resolution mints/dedups against a LIVE entity index; the "
+        "persist txn is idempotent (ON CONFLICT) so a retry re-processes already-"
+        "committed items at the cost of duplicate LLM spend. Per-item failures "
+        "land in processed_items (status='error') without aborting the batch; "
+        "only run-level (auth/infra) errors fail the Dagster run."
     ),
 )
 def synthesized(
     context: dg.AssetExecutionContext,
-    pending: list[str],
+    extracted: dict,
     wiki: WikiResource,
     wiki_pages_notion: WikiPagesNotionResource,
 ) -> dg.MaterializeResult:
-    if not pending:
+    if not extracted:
         return dg.MaterializeResult(
-            metadata={"summary": dg.MetadataValue.md("_no pending items this tick_")}
+            metadata={"summary": dg.MetadataValue.md("_no extracted items this tick_")}
         )
 
     snapshot_path = wiki.snapshot_path_for(context.partition_key)
@@ -159,7 +227,7 @@ def synthesized(
     source = RawStoreSource(snapshot_path)
     items: list[IngestItem] = []
     missing: list[str] = []
-    for raw_id in pending:
+    for raw_id in extracted:
         item = source.get_item(raw_id)
         if item is None:
             missing.append(raw_id)
@@ -167,7 +235,7 @@ def synthesized(
             items.append(item)
     if missing:
         raise dg.Failure(
-            description=f"raw_store missing {len(missing)} item(s) from wiki/pending",
+            description=f"raw_store missing {len(missing)} item(s) from wiki/extracted",
             metadata={"missing": dg.MetadataValue.json(missing[:50])},
         )
     wiki_dir = wiki.get_wiki_dir()
@@ -180,21 +248,16 @@ def synthesized(
     context.log.info("denylist: %d rejected name(s)", len(rejected))
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []
-    # Parallelism options if throughput becomes a constraint:
-    #   - ThreadPoolExecutor inside this loop (~5x for I/O-bound LLM
-    #     calls; plain Python, not Dagster-native).
-    #   - Graph-backed asset with DynamicOutput — real Dagster fan-out
-    #     across ops, multiprocess executor parallelises; ~100 LOC plus
-    #     ~1-2s/op orchestration overhead per item.
-    #   - MultiPartitionsDefinition (date × item) — fan-out via the run
-    #     launcher; revives the dynamic-partition catalog growth that
-    #     0.9.0 deliberately removed.
     for i, item in enumerate(items, 1):
         context.log.info("[%d/%d] synthesizing %s", i, len(items), item.item_id)
         started = time.monotonic()
         try:
-            final_state = synthesize_item(
-                item, db_path=db_path, wiki_dir=wiki_dir, rejected_entities=rejected
+            final_state = synthesize_extracted_item(
+                item,
+                extracted[item.item_id],
+                db_path=db_path,
+                wiki_dir=wiki_dir,
+                rejected_entities=rejected,
             )
         except Exception as e:
             context.log.exception("wiki synthesis raised for %s", item.item_id)
@@ -391,4 +454,4 @@ def aliases_index(
     )
 
 
-all_assets = [pending, synthesized, regenerate_toc, aliases_index]
+all_assets = [pending, extracted, synthesized, regenerate_toc, aliases_index]

@@ -9,7 +9,8 @@ regression would silently change a Dagster materialization.
 from unittest.mock import MagicMock, patch
 
 import dagster as dg
-from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, synthesized
+import pytest
+from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, extracted, synthesized
 from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
 
@@ -64,29 +65,93 @@ def test_cost_metadata_empty_calls():
     assert md["cost_by_model"].value == {}
 
 
-# ---------- synthesized: empty pending shortcut ----------
+# ---------- extracted: per-item candidate map ----------
 
 
-def test_synthesized_no_op_on_empty_pending(tmp_path):
-    """Empty work order: short-circuit with the no-op summary; no LLM
-    calls, no PG, no snapshot read. Guards against a future refactor
-    that flips the empty check or adds a pre-PG-query."""
+def test_extracted_builds_candidate_map(tmp_path):
+    """wiki/extracted runs extract_item per pending item and emits a per-item
+    {candidates, extract_error} map — the artifact wiki/synthesized consumes."""
+    wiki = WikiResource(
+        backup_dir=str(tmp_path),
+        wiki_dir=str(tmp_path / "wiki"),
+        wiki_db_path=str(tmp_path / "wiki.db"),
+    )
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    item = MagicMock(item_id="medium::x", source_type="raw_store")
+    source = MagicMock()
+    source.get_item.return_value = item
+
+    with (
+        patch("orchestrators.defs.synthesize_wiki.assets.RawStoreSource", return_value=source),
+        patch(
+            "orchestrators.defs.synthesize_wiki.assets.extract_item",
+            return_value={"candidates": ["c1", "c2"], "extract_error": None, "llm_calls": []},
+        ) as mock_extract,
+    ):
+        out = extracted.op.compute_fn.decorated_fn(ctx, pending=["medium::x"], wiki=wiki)
+
+    mock_extract.assert_called_once()
+    assert out.value == {"medium::x": {"candidates": ["c1", "c2"], "extract_error": None}}
+    assert out.metadata["candidate_count"].value == 2
+
+
+def test_extracted_no_op_on_empty_pending(tmp_path):
+    wiki = WikiResource(backup_dir=str(tmp_path))
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    out = extracted.op.compute_fn.decorated_fn(ctx, pending=[], wiki=wiki)
+    assert out.value == {}
+    assert "_no pending items this tick_" in out.metadata["summary"].value
+
+
+def test_extracted_raises_on_missing_item(tmp_path):
+    """A pending id absent from the snapshot fails the run loudly (run-killing
+    error path) rather than silently dropping the item."""
+    wiki = WikiResource(
+        backup_dir=str(tmp_path),
+        wiki_dir=str(tmp_path / "wiki"),
+        wiki_db_path=str(tmp_path / "wiki.db"),
+    )
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    ctx.partition_key = "2026-05-07"
+
+    source = MagicMock()
+    source.get_item.return_value = None  # item vanished from the snapshot
+
+    with (
+        patch("orchestrators.defs.synthesize_wiki.assets.RawStoreSource", return_value=source),
+        patch("orchestrators.defs.synthesize_wiki.assets.extract_item") as mock_extract,
+        pytest.raises(dg.Failure, match="missing 1 item"),
+    ):
+        extracted.op.compute_fn.decorated_fn(ctx, pending=["medium::gone"], wiki=wiki)
+
+    mock_extract.assert_not_called()  # no extraction attempted for a missing item
+
+
+# ---------- synthesized: consumes the extracted candidate map ----------
+
+
+def test_synthesized_no_op_on_empty_extracted(tmp_path):
+    """Empty work order: short-circuit with the no-op summary; no LLM calls, no
+    DB, no snapshot read."""
     wiki = WikiResource(backup_dir=str(tmp_path))
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
 
     result = synthesized.op.compute_fn.decorated_fn(
-        ctx, pending=[], wiki=wiki, wiki_pages_notion=MagicMock()
+        ctx, extracted={}, wiki=wiki, wiki_pages_notion=MagicMock()
     )
 
     assert isinstance(result, dg.MaterializeResult)
-    summary = result.metadata["summary"].value
-    assert "_no pending items this tick_" in summary
+    assert "_no extracted items this tick_" in result.metadata["summary"].value
 
 
 def test_synthesized_injects_notion_denylist(tmp_path):
     """The asset loads the rejection list from the Notion 'Wiki Pages' DB and
-    injects the rejected entity_ids into the workflow (W2.5 Notion seam)."""
+    injects the rejected names into the workflow per item (W2.5 Notion seam)."""
     wiki = WikiResource(
         backup_dir=str(tmp_path),
         wiki_dir=str(tmp_path / "wiki"),
@@ -96,11 +161,12 @@ def test_synthesized_injects_notion_denylist(tmp_path):
     ctx.partition_key = "2026-05-07"
 
     notion = MagicMock()
-    notion.query_rejected.return_value = {"tool__cli": {"category": "generic", "reason": "z"}}
+    notion.query_rejected.return_value = {"cli": {"category": "generic", "reason": "z"}}
 
     item = MagicMock(item_id="medium::x", source_type="raw_store")
     source = MagicMock()
     source.get_item.return_value = item
+    extracted_map = {"medium::x": {"candidates": [], "extract_error": None}}
 
     with (
         patch(
@@ -108,13 +174,15 @@ def test_synthesized_injects_notion_denylist(tmp_path):
             return_value=source,
         ),
         patch(
-            "orchestrators.defs.synthesize_wiki.assets.synthesize_item",
+            "orchestrators.defs.synthesize_wiki.assets.synthesize_extracted_item",
             return_value={"llm_calls": []},
         ) as mock_synth,
     ):
         synthesized.op.compute_fn.decorated_fn(
-            ctx, pending=["medium::x"], wiki=wiki, wiki_pages_notion=notion
+            ctx, extracted=extracted_map, wiki=wiki, wiki_pages_notion=notion
         )
 
     mock_synth.assert_called_once()
-    assert mock_synth.call_args.kwargs["rejected_entities"] == frozenset({"tool__cli"})
+    assert mock_synth.call_args.kwargs["rejected_entities"] == frozenset({"cli"})
+    # the per-item extraction payload is threaded through positionally
+    assert mock_synth.call_args.args[1] == {"candidates": [], "extract_error": None}

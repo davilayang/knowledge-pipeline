@@ -3,7 +3,7 @@
 Plain-function wiki synthesis pipeline: turns `raw_store` items into a
 structured wiki (concepts, tools, trends) backed by a local SQLite file
 (`data/wiki.db`). One scheduled tick per day (06:00 UTC) = one Dagster
-run = full pending → synthesized → index cycle.
+run = full pending → extracted → synthesized → index cycle.
 
 ## DAG (per scheduled tick)
 
@@ -27,29 +27,47 @@ wiki/pending   (key: wiki/pending — daily partition, key = data-date)
   │  (pre-cap), queued (post-cap), capped (bool), excluded_by_source,
   │  excluded_unfetched — daily backlog timeseries.
   ▼
-wiki/synthesized   (key: wiki/synthesized — daily partition)
+wiki/extracted   (key: wiki/extracted — daily partition)
   │  in: pending (list[str] from wiki/pending via Dagster IO manager)
-  │  derives the same snapshot path from its own partition_key; iterates
-  │  the pending list sequentially through synthesize_item. No
-  │  re-filter — the commit txn is idempotent (ON CONFLICT) so a retry
-  │  re-processes already-committed items at the cost of duplicate LLM
-  │  spend. See `assets.py` for parallelism options if throughput becomes
-  │  a real constraint.
+  │  runs the extraction LLM (call #1) per item via extract_item; emits a
+  │  per-item map {item_id: {candidates, extract_error}}. Candidates are
+  │  UNRESOLVED names (name/page_type/matched_id/aliases) — no minting here.
+  │  Writes NO DB state, so it can't create atomicity hazards. Metadata
+  │  surfaces candidate_count + extraction cost SEPARATELY from synthesis.
+  ▼
+wiki/synthesized   (key: wiki/synthesized — daily partition)
+  │  in: extracted ({item_id: {candidates, extract_error}} via Dagster IO)
+  │  derives the same snapshot path from its own partition_key (re-reads the
+  │  items for their content); iterates sequentially through
+  │  synthesize_extracted_item. No re-filter — the commit txn is idempotent
+  │  (ON CONFLICT) so a retry re-processes already-committed items at the
+  │  cost of duplicate LLM spend. Items are processed sequentially.
   │
-  │     extract ─→ resolve_or_mint_batch ─→ synthesize_entity (sequential loop)
+  │     resolve_or_mint_batch (LIVE entity index — minting/dedup happens
+  │     here, not in extracted, so cross-item dedup is correct even though
+  │     extraction ran in the prior stage; matched_id is advisory)
+  │             ─→ synthesize_entity (call #2, sequential loop)
   │             ─→ _persist_graph (ONE transaction: entities + pages +
   │                page_sources + aliases) ─→ write .md files ─→
   │                _mark_processed (processed_items row, written LAST).
   │     Aliases use ON CONFLICT DO NOTHING for cross-item safety;
   │     page_sources uses ON CONFLICT DO NOTHING (idempotent under retries).
   │
-  │  ↻ retry on the same date partition replays the same pending list;
+  │  ↻ retry on the same date partition re-extracts + re-synthesizes;
   │    per-item dedup is via the processed ledger (wiki/pending skips
   │    item_ids already ok/skipped); failed items re-run from scratch.
   ▼
 wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   reads pages → writes data/wiki/index.md (table of contents)
+wiki/aliases_index   (key: wiki/aliases_index — daily partition; deps wiki/synthesized)
+  reads aliases + pages → writes data/wiki/_index/aliases.json (flat alias→entity_id map)
 ```
+
+Extraction (call #1) and synthesis (call #2) are separate asset nodes — each
+carries its own cost/latency metadata, and synthesis can be re-materialised off
+the stored candidate artifact. The split line is at *candidates, not
+resolution*: `wiki/extracted` hands off unresolved names; `wiki/synthesized`
+mints/dedups against a live index, which preserves within-run dedup.
 
 - **Snapshot missing** for the wiki partition's key (backup_readings didn't
   run, or its partition for that date hasn't materialised) → `wiki/pending`
@@ -57,8 +75,9 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
   there's no fallback to an older snapshot. Fix: run `backup_readings` for
   that partition (or wait for the next 03:00 UTC tick if it'll catch up
   naturally).
-- **`wiki/pending` empty list** → `wiki/synthesized` materializes a no-op
-  result (`_no pending items this tick_`). Run is green; no LLM calls.
+- **`wiki/pending` empty list** → `wiki/extracted` short-circuits to an empty
+  map (`_no pending items this tick_`) and `wiki/synthesized` to a no-op
+  (`_no extracted items this tick_`). Run is green; no LLM calls.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into
   `processed_items` with `status='error'`; the run continues other items.
   The Dagster run shows green.
@@ -115,7 +134,7 @@ Edit `SCHEDULE_CRON` in `def_config.py`. Examples:
 
 Item synthesis is sequential — one item at a time within a partition's
 run. Each item processes its extracted entities sequentially inside one
-`synthesize_item` call. If you're hitting OpenAI 429s:
+`synthesize_extracted_item` call. If you're hitting OpenAI 429s:
 
 - Lower `WIKI_MAX_PER_TICK` in `def_config.py` so fewer items queue
   per tick.
@@ -151,7 +170,7 @@ Retry-cost behaviour:
 This is a deliberate trade — the alternative (re-filtering against
 `processed_items` inside `synthesized`) reaches back into state that
 `wiki/pending` already owns. Worst-case cost amplification is bounded
-(`max_retries=1`, `WIKI_MAX_PER_TICK=30`).
+(`max_retries=1`, `WIKI_MAX_PER_TICK=15`).
 
 When the run completes with `errors > 0`, the `cost_complete` metadata
 boolean is `false`: per-item failures may have racked up LLM calls before

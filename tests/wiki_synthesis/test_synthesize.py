@@ -13,9 +13,10 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from domains.wiki.identity import Candidate
 from domains.wiki.state import connect, get_all_entities, get_all_pages, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from workflows.wiki_synthesis.synthesize import synthesize_item
+from workflows.wiki_synthesis.synthesize import synthesize_from_candidates, synthesize_item
 
 from tests.wiki_synthesis._helpers import build_synthesis_output, make_item, make_llm_call
 
@@ -76,6 +77,110 @@ def test_synthesize_item_end_to_end(tmp_path: Path, wiki_db_path):
     assert _processed_ids(wiki_db_path, "ok") == {"content_runner"}
     assert _canonical_names(wiki_db_path) == {"Test"}
     assert _page_count(wiki_db_path) == 1
+
+
+def test_synthesize_from_candidates_skips_extraction(tmp_path: Path, wiki_db_path):
+    """synthesize_from_candidates resolves + synthesizes pre-extracted candidates
+    WITHOUT calling the extraction LLM — the decoupling the wiki/extracted asset
+    relies on (extraction runs in its own stage; synthesis consumes its output)."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    candidates = [Candidate(name="Test", page_type="concept")]
+
+    with (
+        patch("workflows.wiki_synthesis.synthesize.generate_structured_with_usage") as mock_extract,
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
+            return_value=make_llm_call(content=build_synthesis_output("Test")),
+        ),
+    ):
+        res = synthesize_from_candidates(
+            _runner_item(), candidates, db_path=wiki_db_path, wiki_dir=wiki_dir
+        )
+
+    mock_extract.assert_not_called()  # extraction LLM never touched
+    assert res["status"] == "ok"
+    assert _canonical_names(wiki_db_path) == {"Test"}
+    assert len(list(wiki_dir.glob("*.md"))) == 1
+
+
+def test_two_candidates_one_entity_synthesizes_once(tmp_path: Path, wiki_db_path):
+    """Two candidates in one item that normalise to the same entity collapse to
+    a single synthesis call + one page — not duplicate LLM spend."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+
+    extraction = ExtractionResult(
+        entities=[
+            ExtractedEntity(title="Model Costs", page_type="concept"),
+            ExtractedEntity(title="model costs", page_type="trend"),  # same normalised name
+        ]
+    )
+    synthesis_calls = 0
+
+    def counting_generate(prompt, *, system="", model=""):
+        nonlocal synthesis_calls
+        synthesis_calls += 1
+        return make_llm_call(content=build_synthesis_output("Model Costs"))
+
+    with (
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
+            return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
+        ),
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
+            side_effect=counting_generate,
+        ),
+    ):
+        synthesize_item(_runner_item(), db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    assert synthesis_calls == 1  # synthesized once, not once per candidate
+    assert _page_count(wiki_db_path) == 1
+    assert len(list(wiki_dir.glob("*.md"))) == 1
+
+
+def test_synthesize_extracted_item_marks_extraction_error(tmp_path: Path, wiki_db_path):
+    """An item whose extraction failed is recorded processed='error' (not stuck)
+    and runs no synthesis LLM call."""
+    from workflows.wiki_synthesis.synthesize import synthesize_extracted_item
+
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    item = _runner_item()
+
+    with patch("workflows.wiki_synthesis.synthesize.generate_with_usage") as mock_synth:
+        res = synthesize_extracted_item(
+            item,
+            {"candidates": [], "extract_error": "RuntimeError: extraction blew up"},
+            db_path=wiki_db_path,
+            wiki_dir=wiki_dir,
+        )
+
+    mock_synth.assert_not_called()
+    assert res["status"] == "error"
+    assert _processed_ids(wiki_db_path, "error") == {item.item_id}
+
+
+def test_extract_item_traces_under_distinct_extract_span(tmp_path: Path, wiki_db_path):
+    """extract_item opens a span named wiki_extract__<id> — distinct from the
+    synthesis span — so the two stages are tellable apart in Langfuse while
+    sharing the same session_id."""
+    from workflows.wiki_synthesis.synthesize import extract_item
+
+    fake_client = MagicMock()
+    with (
+        patch.dict(os.environ, {"LANGFUSE_PUBLIC_KEY": "test_pk"}),
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
+            return_value=(ExtractionResult(entities=[]), make_llm_call(model="gpt-4.1-nano")),
+        ),
+        patch("langfuse.get_client", return_value=fake_client),
+    ):
+        extract_item(_runner_item(), db_path=wiki_db_path)
+
+    fake_client.start_as_current_span.assert_called_once_with(name="wiki_extract__content_runner")
+    assert fake_client.update_current_trace.call_args.kwargs["session_id"] == "content_runner"
 
 
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):
