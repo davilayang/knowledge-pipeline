@@ -17,7 +17,7 @@ synthesize_wiki_job = dg.define_asset_job(
     name="synthesize_wiki",
     description=(
         "Daily LLM synthesis of pending raw_store items into structured "
-        "wiki pages (concept/tool/trend) backed by Postgres, then "
+        "wiki pages (open-domain entity types) backed by wiki.db, then "
         "regenerate the wiki index."
     ),
     selection=dg.AssetSelection.assets(*[a.key for a in all_assets]),

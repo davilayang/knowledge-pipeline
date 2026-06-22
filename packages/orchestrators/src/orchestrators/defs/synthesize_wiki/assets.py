@@ -3,12 +3,14 @@
 import json
 import os
 import time
+from typing import get_args
 
 import dagster as dg
 from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
 from domains.wiki.identity import normalize_name
-from domains.wiki.state import connection, get_all_pages, get_processed_ids
+from domains.wiki.state import PageRecord, connection, get_all_pages, get_processed_ids
+from domains.wiki.types import PageType
 from workflows.costs import cost_usd, is_priced
 from workflows.llm import LLMCall
 from workflows.shared.observability import flush_langfuse
@@ -306,6 +308,25 @@ def synthesized(
     return dg.MaterializeResult(metadata=metadata)
 
 
+def _render_toc(pages: list[PageRecord]) -> str:
+    """Render index.md — one `## <Type>s` section per PageType, in declaration
+    order. Iterates `get_args(PageType)` so a widened type set (person, method,
+    …) is sectioned automatically instead of silently dropped."""
+    lines = ["# Wiki Index", "", f"Total pages: {len(pages)}", ""]
+    for page_type in get_args(PageType):
+        typed = [p for p in pages if p.page_type == page_type]
+        if not typed:
+            continue
+        lines.append(f"## {page_type.title()}s")
+        lines.append("")
+        # Label by canonical name (the surrogate entity_id is opaque); the link
+        # target is the flat {slug}-{shortid}.md file.
+        for p in sorted(typed, key=lambda x: x.canonical_name.lower()):
+            lines.append(f"- [{p.canonical_name}]({p.file_path})")
+        lines.append("")
+    return "\n".join(lines)
+
+
 @dg.asset(
     key=["wiki", "index"],
     group_name="wiki",
@@ -330,27 +351,12 @@ def regenerate_toc(
     wiki_dir = wiki.get_wiki_dir()
     wiki_dir.mkdir(parents=True, exist_ok=True)
 
-    lines = ["# Wiki Index", "", f"Total pages: {len(pages)}", ""]
-    for page_type in ("concept", "tool", "trend"):
-        typed = [p for p in pages if p.page_type == page_type]
-        if typed:
-            lines.append(f"## {page_type.title()}s")
-            lines.append("")
-            # Label by canonical name (the surrogate entity_id is opaque); the
-            # link target is the flat {slug}-{shortid}.md file.
-            for p in sorted(typed, key=lambda x: x.canonical_name.lower()):
-                lines.append(f"- [{p.canonical_name}]({p.file_path})")
-            lines.append("")
-
     index_path = wiki_dir / "index.md"
-    index_path.write_text("\n".join(lines), encoding="utf-8")
+    index_path.write_text(_render_toc(pages), encoding="utf-8")
 
-    summary = (
-        f"**Index regenerated** — {len(pages)} pages "
-        f"({sum(1 for p in pages if p.page_type == 'concept')} concept, "
-        f"{sum(1 for p in pages if p.page_type == 'tool')} tool, "
-        f"{sum(1 for p in pages if p.page_type == 'trend')} trend)"
-    )
+    counts = {pt: sum(1 for p in pages if p.page_type == pt) for pt in get_args(PageType)}
+    by_type = ", ".join(f"{n} {pt}" for pt, n in counts.items() if n)
+    summary = f"**Index regenerated** — {len(pages)} pages" + (f" ({by_type})" if by_type else "")
     return dg.MaterializeResult(
         metadata={
             "summary": dg.MetadataValue.md(summary),

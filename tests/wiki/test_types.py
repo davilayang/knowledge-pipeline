@@ -35,6 +35,19 @@ def test_wiki_page_defaults():
     assert page.sources == []
 
 
+@pytest.mark.parametrize(
+    "page_type",
+    ["concept", "tool", "trend", "person", "organization", "method", "dataset", "other"],
+)
+def test_extracted_entity_accepts_domain_agnostic_types(page_type):
+    """Open-domain extraction: the LLM may type an entity person / organization /
+    method / dataset, not just the original AI/ML-flavoured concept/tool/trend.
+    `other` is the catch-all so an off-ontology durable entity isn't forced (by
+    structured-output Literal constraint) into the nearest named type."""
+    entity = ExtractedEntity(title="X", page_type=page_type)
+    assert entity.page_type == page_type
+
+
 def test_wiki_page_invalid_page_type():
     with pytest.raises(ValidationError):
         WikiPage(

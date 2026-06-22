@@ -10,13 +10,52 @@ from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
-from orchestrators.defs.synthesize_wiki.assets import _cost_metadata, extracted, synthesized
+from domains.wiki.state import PageRecord
+from orchestrators.defs.synthesize_wiki.assets import (
+    _cost_metadata,
+    _render_toc,
+    extracted,
+    synthesized,
+)
 from orchestrators.defs.synthesize_wiki.resources import WikiResource
 from workflows.llm import LLMCall
 
 
 def _call(model: str, input_tokens: int, output_tokens: int) -> LLMCall:
     return LLMCall(content="", model=model, input_tokens=input_tokens, output_tokens=output_tokens)
+
+
+def _page(canonical_name: str, page_type: str) -> PageRecord:
+    return PageRecord(
+        entity_id="e_" + canonical_name,
+        canonical_name=canonical_name,
+        slug=canonical_name.lower(),
+        page_type=page_type,
+        file_path=f"{canonical_name.lower()}-abcd1234.md",
+        related_ids=[],
+        updated_at="2026-06-22",
+    )
+
+
+def test_render_toc_groups_all_domain_agnostic_types():
+    """The TOC sections every PageType — a person / method / dataset page must
+    not vanish from index.md just because it isn't concept/tool/trend."""
+    pages = [
+        _page("Agentic Coding", "concept"),
+        _page("Claude", "tool"),
+        _page("Yann LeCun", "person"),
+        _page("Anthropic", "organization"),
+        _page("Monte Carlo Tree Search", "method"),
+        _page("MNIST", "dataset"),
+        _page("Scaling Laws", "trend"),
+    ]
+    toc = _render_toc(pages)
+
+    for heading in ("Persons", "Organizations", "Methods", "Datasets"):
+        assert f"## {heading}" in toc
+    # Every page is linked by its canonical name → flat file path.
+    for p in pages:
+        assert f"[{p.canonical_name}]({p.file_path})" in toc
 
 
 def test_cost_metadata_aggregates_by_model():
