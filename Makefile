@@ -13,6 +13,7 @@ FETCHER_PORT := $(shell echo "$(FETCHER_URL)" | sed -E 's|^.*:([0-9]+).*$$|\1|')
 dev:  ## Start data services + fetcher + Dagster UI (laptop one-shot)
 	pkill -f 'dagster|uvicorn fetcher' 2>/dev/null || true
 	trap '[ -n "$$FETCHER_PID" ] && kill $$FETCHER_PID 2>/dev/null; docker compose --profile data down' EXIT INT TERM
+	docker network inspect kos-network >/dev/null 2>&1 || docker network create kos-network
 	docker compose --profile data up -d
 	FETCHER_DB_PATH=$(CURDIR)/data/fetches.db uv run --project services/fetcher --env-file .env \
 	  uvicorn fetcher.app:app --workers 1 --port $(FETCHER_PORT) &
