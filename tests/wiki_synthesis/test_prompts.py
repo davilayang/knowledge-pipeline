@@ -31,3 +31,17 @@ def test_update_prompt_leads_with_article_then_per_entity_fields():
     # article first, then the per-entity id and the per-entity existing page
     assert rendered.index("ARTICLE_BODY") < rendered.index("e_abc")
     assert rendered.index("ARTICLE_BODY") < rendered.index("OLD_PAGE")
+
+
+def test_prompts_load_from_files_non_empty():
+    """The constants resolve from prompts/wiki/*.md (KP_PROMPTS_ROOT) — a missing
+    or misnamed file / broken loader fails here, not at synthesis time."""
+    from workflows.wiki_synthesis.prompts import (
+        ENTITY_EXTRACTION_SYSTEM,
+        ENTITY_EXTRACTION_USER,
+        PAGE_SYNTHESIS_SYSTEM,
+    )
+
+    assert ENTITY_EXTRACTION_SYSTEM.strip()
+    assert PAGE_SYNTHESIS_SYSTEM.strip()
+    assert "{article_text}" in ENTITY_EXTRACTION_USER
