@@ -2,42 +2,83 @@
 
 Uses the `wiki_db` fixture from tests/conftest.py: a fresh sqlite3 connection to
 a temp wiki.db with the schema applied.
+
+Identity now lives in `entities`; pages/aliases/page_sources FK to it, so every
+test that writes one of those seeds its parent entity first (foreign_keys=ON).
 """
 
-from datetime import date
+import sqlite3
 
+import pytest
+from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import (
+    build_entity_index,
     count_sources_for_entity,
     get_aliases_for_entity,
     get_all_pages,
+    get_entity,
     get_failed,
     get_page,
     get_processed_ids,
-    insert_aliases_idempotent,
+    insert_aliases,
+    insert_entity,
     insert_page_source,
     insert_processed,
     is_source_for_entity,
     snapshot_aliases,
     upsert_page,
 )
-from domains.wiki.types import WikiPage
+
+NOW = "2026-06-22T00:00:00+00:00"
 
 
-def _make_page(entity_id: str = "concept__rag", **overrides) -> WikiPage:
-    defaults = {
-        "entity_id": entity_id,
-        "title": "RAG",
-        "page_type": "concept",
-        "related": [],
-        "sources": ["content_abc"],
-        "updated_at": date(2026, 5, 1),
-        "content": "# RAG\n\nBody.",
-    }
-    defaults.update(overrides)
-    return WikiPage(**defaults)
+def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRecord:
+    ent = EntityRecord(
+        entity_id=entity_id,
+        canonical_name=canonical,
+        normalized_name=normalize_name(canonical),
+        slug=slugify(canonical),
+        page_type=page_type,
+        created_at=NOW,
+    )
+    insert_entity(conn, ent)
+    return ent
 
 
-# --- processed ---
+# --- entities ---
+
+
+def test_insert_and_get_entity_roundtrips(wiki_db):
+    ent = _seed_entity(wiki_db, "e_rag", "RAG")
+    wiki_db.commit()
+    assert get_entity(wiki_db, "e_rag") == ent
+
+
+def test_get_entity_unknown_returns_none(wiki_db):
+    assert get_entity(wiki_db, "e_missing") is None
+
+
+def test_insert_entity_idempotent_on_entity_id(wiki_db):
+    """Re-inserting the same surrogate is a no-op; the first write is kept."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _seed_entity(wiki_db, "e_rag", "RAG (changed)", page_type="tool")
+    wiki_db.commit()
+    got = get_entity(wiki_db, "e_rag")
+    assert got.canonical_name == "RAG"
+    assert got.page_type == "concept"
+
+
+def test_build_entity_index_includes_names_and_aliases(wiki_db):
+    _seed_entity(wiki_db, "e_mcp", "Model Context Protocol")
+    insert_aliases(wiki_db, [("MCP", "e_mcp")])
+    wiki_db.commit()
+
+    index = build_entity_index(wiki_db)
+    assert index.by_normalized_name["model context protocol"] == "e_mcp"
+    assert index.by_normalized_alias["mcp"] == "e_mcp"
+
+
+# --- processed_items ---
 
 
 def test_insert_processed_inserts_new_row(wiki_db):
@@ -48,18 +89,9 @@ def test_insert_processed_inserts_new_row(wiki_db):
 
 def test_insert_processed_upserts_on_conflict(wiki_db):
     insert_processed(
-        wiki_db,
-        item_id="content_abc",
-        source_type="raw_store",
-        status="error",
-        error="boom",
+        wiki_db, item_id="content_abc", source_type="raw_store", status="error", error="boom"
     )
-    insert_processed(
-        wiki_db,
-        item_id="content_abc",
-        source_type="raw_store",
-        status="ok",
-    )
+    insert_processed(wiki_db, item_id="content_abc", source_type="raw_store", status="ok")
     wiki_db.commit()
     assert get_processed_ids(wiki_db, status="ok") == {"content_abc"}
     assert get_processed_ids(wiki_db, status="error") == set()
@@ -71,7 +103,7 @@ def test_insert_processed_separate_source_types_coexist(wiki_db):
     insert_processed(wiki_db, item_id="abc", source_type="local_file", status="ok")
     wiki_db.commit()
     rows = wiki_db.execute(
-        "SELECT source_type FROM processed WHERE item_id = 'abc' ORDER BY source_type"
+        "SELECT source_type FROM processed_items WHERE item_id = 'abc' ORDER BY source_type"
     ).fetchall()
     assert [r[0] for r in rows] == ["local_file", "raw_store"]
 
@@ -90,143 +122,162 @@ def test_get_failed_returns_only_errors(wiki_db):
 
 
 def test_upsert_page_inserts_then_updates(wiki_db):
-    page = _make_page()
-    upsert_page(wiki_db, page=page, file_path="concept/rag.md", source_types=["raw_store"])
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    upsert_page(wiki_db, entity_id="e_rag", file_path="rag-aaaa1111.md", related_ids=[])
     wiki_db.commit()
 
-    rec = get_page(wiki_db, "concept__rag")
+    rec = get_page(wiki_db, "e_rag")
     assert rec is not None
-    assert rec.file_path == "concept/rag.md"
-    assert rec.source_types == ["raw_store"]
+    assert rec.file_path == "rag-aaaa1111.md"
+    assert rec.canonical_name == "RAG"  # joined from entities
+    assert rec.page_type == "concept"
+    assert rec.related_ids == []
 
-    # Update — same entity_id, different related + add a new source_type
-    page2 = _make_page(related=["concept__llm"])
-    upsert_page(
-        wiki_db, page=page2, file_path="concept/rag.md", source_types=["raw_store", "local_file"]
-    )
+    upsert_page(wiki_db, entity_id="e_rag", file_path="rag-aaaa1111.md", related_ids=["e_llm"])
     wiki_db.commit()
-
-    rec2 = get_page(wiki_db, "concept__rag")
-    assert rec2.related_ids == ["concept__llm"]
-    assert rec2.source_types == ["raw_store", "local_file"]
+    assert get_page(wiki_db, "e_rag").related_ids == ["e_llm"]
 
 
-def test_get_all_pages_orders_by_entity_id(wiki_db):
-    upsert_page(
-        wiki_db,
-        page=_make_page("tool__chroma", page_type="tool"),
-        file_path="tool/chroma.md",
-        source_types=["raw_store"],
-    )
-    upsert_page(
-        wiki_db,
-        page=_make_page("concept__rag"),
-        file_path="concept/rag.md",
-        source_types=["raw_store"],
-    )
+def test_get_all_pages_orders_by_entity_id_and_joins_identity(wiki_db):
+    _seed_entity(wiki_db, "e_aaa", "RAG")
+    _seed_entity(wiki_db, "e_bbb", "Chroma", page_type="tool")
+    upsert_page(wiki_db, entity_id="e_bbb", file_path="chroma-bbbb2222.md", related_ids=[])
+    upsert_page(wiki_db, entity_id="e_aaa", file_path="rag-aaaa1111.md", related_ids=[])
     wiki_db.commit()
 
     pages = get_all_pages(wiki_db)
-    assert [p.entity_id for p in pages] == ["concept__rag", "tool__chroma"]
+    assert [p.entity_id for p in pages] == ["e_aaa", "e_bbb"]
+    assert [p.page_type for p in pages] == ["concept", "tool"]
+    assert [p.canonical_name for p in pages] == ["RAG", "Chroma"]
+
+
+def test_pages_file_path_is_unique(wiki_db):
+    """A slug+shortid collision surfaces as a UNIQUE violation, not a silent
+    overwrite of another entity's page file."""
+    _seed_entity(wiki_db, "e_a", "Alpha")
+    _seed_entity(wiki_db, "e_b", "Beta")
+    upsert_page(wiki_db, entity_id="e_a", file_path="collide.md", related_ids=[])
+    with pytest.raises(sqlite3.IntegrityError):
+        upsert_page(wiki_db, entity_id="e_b", file_path="collide.md", related_ids=[])
+
+
+def test_page_without_entity_raises_fk(wiki_db):
+    """pages.entity_id FKs to entities — a page for an unknown entity is refused."""
+    with pytest.raises(sqlite3.IntegrityError):
+        upsert_page(wiki_db, entity_id="e_ghost", file_path="ghost.md", related_ids=[])
 
 
 # --- aliases ---
 
 
-def test_insert_aliases_idempotent_writes_canonical_and_aliases(wiki_db):
-    insert_aliases_idempotent(
+def test_insert_aliases_writes_display_and_normalizes_key(wiki_db):
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_aliases(
         wiki_db,
-        [("concept__rag", "RAG", ["Retrieval-Augmented Generation", "Retrieval Augmented"])],
+        [("Retrieval-Augmented Generation", "e_rag"), ("Retrieval Augmented", "e_rag")],
     )
     wiki_db.commit()
-
-    store = snapshot_aliases(wiki_db)
-    assert "concept__rag" in store.entries
-    entry = store.entries["concept__rag"]
-    assert entry.canonical == "RAG"
-    assert set(entry.aliases) == {"Retrieval-Augmented Generation", "Retrieval Augmented"}
+    assert set(get_aliases_for_entity(wiki_db, "e_rag")) == {
+        "Retrieval-Augmented Generation",
+        "Retrieval Augmented",
+    }
 
 
-def test_insert_aliases_skips_duplicate_alias(wiki_db):
-    """Re-inserting an existing alias is a no-op (ON CONFLICT DO NOTHING)."""
-    insert_aliases_idempotent(wiki_db, [("concept__rag", "RAG", [])])
-    insert_aliases_idempotent(wiki_db, [("concept__rag", "RAG", [])])
+def test_insert_aliases_skips_duplicate_normalized_key(wiki_db):
+    """Two surface forms that normalize to the same key collapse to one row."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_aliases(wiki_db, [("RAG", "e_rag")])
+    insert_aliases(wiki_db, [("  rag ", "e_rag")])
     wiki_db.commit()
-
-    rows = wiki_db.execute("SELECT count(*) FROM aliases").fetchone()
-    assert rows[0] == 1
+    assert wiki_db.execute("SELECT count(*) FROM aliases").fetchone()[0] == 1
 
 
-def test_insert_aliases_concurrent_alias_collision_first_wins(wiki_db):
-    """If two entities try to claim the same alias, the first writer wins."""
-    insert_aliases_idempotent(wiki_db, [("concept__rag", "RAG", ["RA"])])
-    insert_aliases_idempotent(wiki_db, [("tool__rust_analyzer", "Rust Analyzer", ["RA"])])
+def test_insert_aliases_collision_first_entity_wins(wiki_db):
+    """If two entities claim the same normalized alias, the first writer wins."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _seed_entity(wiki_db, "e_ra", "Rust Analyzer", page_type="tool")
+    insert_aliases(wiki_db, [("RA", "e_rag")])
+    insert_aliases(wiki_db, [("RA", "e_ra")])
     wiki_db.commit()
-
-    row = wiki_db.execute("SELECT entity_id FROM aliases WHERE alias = 'RA'").fetchone()
-    assert row[0] == "concept__rag"
-
-
-def test_snapshot_aliases_empty_returns_empty_store(wiki_db):
-    store = snapshot_aliases(wiki_db)
-    assert store.entries == {}
+    row = wiki_db.execute("SELECT entity_id FROM aliases WHERE normalized_alias = 'ra'").fetchone()
+    assert row[0] == "e_rag"
 
 
-def test_insert_aliases_idempotent_no_entries_is_noop(wiki_db):
-    insert_aliases_idempotent(wiki_db, [])
+def test_insert_aliases_no_entries_is_noop(wiki_db):
+    insert_aliases(wiki_db, [])
     wiki_db.commit()
     assert wiki_db.execute("SELECT count(*) FROM aliases").fetchone()[0] == 0
 
 
-# --- bridge helpers: get_aliases_for_entity / count_sources_for_entity ---
-
-
-def test_get_aliases_for_entity_returns_sorted_list(wiki_db):
-    insert_aliases_idempotent(
+def test_get_aliases_for_entity_returns_sorted(wiki_db):
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_aliases(
         wiki_db,
-        [("concept__rag", "RAG", ["Retrieval-Augmented Generation", "Retrieval Augmented"])],
+        [("Retrieval-Augmented Generation", "e_rag"), ("Retrieval Augmented", "e_rag")],
     )
     wiki_db.commit()
-    aliases = get_aliases_for_entity(wiki_db, "concept__rag")
+    aliases = get_aliases_for_entity(wiki_db, "e_rag")
     assert aliases == sorted(aliases)
-    assert set(aliases) == {"RAG", "Retrieval Augmented", "Retrieval-Augmented Generation"}
 
 
 def test_get_aliases_for_entity_unknown_returns_empty(wiki_db):
-    assert get_aliases_for_entity(wiki_db, "concept__missing") == []
+    assert get_aliases_for_entity(wiki_db, "e_missing") == []
+
+
+def test_snapshot_aliases_uses_entity_canonical(wiki_db):
+    """canonical_name comes from entities; the aliases table holds only the
+    extra display forms."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_aliases(wiki_db, [("Retrieval-Augmented Generation", "e_rag")])
+    wiki_db.commit()
+
+    store = snapshot_aliases(wiki_db)
+    assert "e_rag" in store.entries
+    entry = store.entries["e_rag"]
+    assert entry.canonical == "RAG"
+    assert entry.aliases == ["Retrieval-Augmented Generation"]
+
+
+def test_snapshot_aliases_includes_entity_with_no_aliases(wiki_db):
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    wiki_db.commit()
+    store = snapshot_aliases(wiki_db)
+    assert store.entries["e_rag"].canonical == "RAG"
+    assert store.entries["e_rag"].aliases == []
+
+
+def test_snapshot_aliases_empty_returns_empty_store(wiki_db):
+    assert snapshot_aliases(wiki_db).entries == {}
+
+
+# --- page_sources ---
 
 
 def test_count_sources_for_entity_counts_distinct_items(wiki_db):
-    """Counts distinct item_ids in the page_sources ledger (the deterministic
-    record of which item contributed which entity) — not derived from the
-    LLM-authored pages.sources array."""
-    insert_page_source(
-        wiki_db, entity_id="concept__rag", item_id="content_a", source_type="raw_store"
-    )
-    insert_page_source(
-        wiki_db, entity_id="concept__rag", item_id="content_b", source_type="raw_store"
-    )
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _seed_entity(wiki_db, "e_other", "Other")
+    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
+    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_b", source_type="raw_store")
     # Re-inserting the same edge is idempotent — still one distinct contribution.
-    insert_page_source(
-        wiki_db, entity_id="concept__rag", item_id="content_a", source_type="raw_store"
-    )
+    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
     # A different entity's edge must not bleed into this count.
-    insert_page_source(
-        wiki_db, entity_id="concept__other", item_id="content_z", source_type="raw_store"
-    )
+    insert_page_source(wiki_db, entity_id="e_other", item_id="content_z", source_type="raw_store")
     wiki_db.commit()
-
-    assert count_sources_for_entity(wiki_db, "concept__rag") == 2
+    assert count_sources_for_entity(wiki_db, "e_rag") == 2
 
 
 def test_count_sources_for_entity_unknown_returns_zero(wiki_db):
-    assert count_sources_for_entity(wiki_db, "concept__missing") == 0
+    assert count_sources_for_entity(wiki_db, "e_missing") == 0
 
 
 def test_is_source_for_entity_reflects_ledger(wiki_db):
-    insert_page_source(
-        wiki_db, entity_id="concept__rag", item_id="content_a", source_type="raw_store"
-    )
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
     wiki_db.commit()
-    assert is_source_for_entity(wiki_db, "concept__rag", "content_a") is True
-    assert is_source_for_entity(wiki_db, "concept__rag", "content_b") is False
+    assert is_source_for_entity(wiki_db, "e_rag", "content_a") is True
+    assert is_source_for_entity(wiki_db, "e_rag", "content_b") is False
+
+
+def test_page_source_without_entity_raises_fk(wiki_db):
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_page_source(wiki_db, entity_id="e_ghost", item_id="x", source_type="raw_store")

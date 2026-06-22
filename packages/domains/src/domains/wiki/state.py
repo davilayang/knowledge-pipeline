@@ -1,8 +1,14 @@
 """SQLite helpers for wiki state — pure functions taking a sqlite3 connection.
 
-Single source of truth for the wiki.db tables: processed / pages / aliases /
-page_sources. Callers manage connection lifecycle and transactions (`with conn:`
-for an atomic block); these helpers issue SQL only.
+Single source of truth for the wiki.db tables: entities / processed_items /
+pages / aliases / page_sources. Callers manage connection lifecycle and
+transactions (`with conn:` for an atomic block); these helpers issue SQL only.
+
+Identity lives in `entities` (the opaque surrogate `entity_id`); `pages` is the
+synthesised-artifact record (1:1, FK to entities) and no longer carries
+page_type/slug/canonical_name — those are read back by joining `entities`.
+`build_entity_index` reads the whole identity snapshot into the in-memory
+`EntityIndex` the resolver runs against.
 
 `connect()` opens a WAL connection with the standard pragmas (mirrors the
 sibling stores raw_store.db / queue.db); `create_schema()` applies wiki.sql.
@@ -18,7 +24,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from domains.wiki.aliases import AliasEntry, AliasStore
-from domains.wiki.types import WikiPage
+from domains.wiki.identity import EntityIndex, EntityRecord, normalize_name
 
 _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "wiki.sql"
 
@@ -34,9 +40,9 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
     """Open a wiki.db connection with WAL + busy_timeout (sibling-store defaults).
 
     Default isolation_level is kept (not autocommit) so `with conn:` brackets an
-    atomic transaction — the commit path writes pages + aliases + page_sources +
-    processed all-or-nothing. row_factory is sqlite3.Row (positional unpacking
-    still works, plus name access for ad-hoc reads).
+    atomic transaction — the commit path writes entities + pages + aliases +
+    page_sources + processed_items all-or-nothing. row_factory is sqlite3.Row
+    (positional unpacking still works, plus name access for ad-hoc reads).
     """
     conn = sqlite3.connect(db_path)
     conn.row_factory = sqlite3.Row
@@ -84,12 +90,19 @@ class ProcessedRecord:
 
 @dataclass
 class PageRecord:
+    """A page joined with its identity — what consumers (toc, indexing) read.
+
+    The `pages` table stores only entity_id/file_path/related_ids/updated_at;
+    canonical_name/slug/page_type come from the `entities` join so they have a
+    single authoritative home.
+    """
+
     entity_id: str
+    canonical_name: str
+    slug: str
     page_type: str
     file_path: str
     related_ids: list[str]
-    sources: list[str]
-    source_types: list[str]
     updated_at: str
 
 
@@ -101,7 +114,75 @@ def _json_list(value: str | None) -> list[str]:
 
 
 # --------------------------------------------------------------------------
-# processed
+# entities — the identity record
+# --------------------------------------------------------------------------
+
+
+def insert_entity(conn: sqlite3.Connection, entity: EntityRecord) -> None:
+    """Insert one identity row. Caller manages the transaction and writes
+    entities BEFORE the pages/aliases/page_sources that FK to them.
+
+    ON CONFLICT(entity_id) DO NOTHING keeps a replay of the same surrogate
+    idempotent; a genuine normalized_name collision still raises (fail fast —
+    the resolver's exact-match gate means it shouldn't happen in sequential
+    processing).
+    """
+    conn.execute(
+        """
+        INSERT INTO entities
+            (entity_id, canonical_name, normalized_name, slug, page_type, created_at)
+        VALUES (?, ?, ?, ?, ?, ?)
+        ON CONFLICT (entity_id) DO NOTHING
+        """,
+        (
+            entity.entity_id,
+            entity.canonical_name,
+            entity.normalized_name,
+            entity.slug,
+            entity.page_type,
+            entity.created_at,
+        ),
+    )
+
+
+def get_entity(conn: sqlite3.Connection, entity_id: str) -> EntityRecord | None:
+    """Return one identity row by entity_id, or None if absent."""
+    row = conn.execute(
+        """
+        SELECT entity_id, canonical_name, normalized_name, slug, page_type, created_at
+        FROM entities
+        WHERE entity_id = ?
+        """,
+        (entity_id,),
+    ).fetchone()
+    return EntityRecord(*row) if row else None
+
+
+def get_all_entities(conn: sqlite3.Connection) -> list[EntityRecord]:
+    """Return every identity row, ordered by entity_id."""
+    rows = conn.execute(
+        """
+        SELECT entity_id, canonical_name, normalized_name, slug, page_type, created_at
+        FROM entities
+        ORDER BY entity_id
+        """
+    ).fetchall()
+    return [EntityRecord(*r) for r in rows]
+
+
+def get_all_aliases(conn: sqlite3.Connection) -> list[tuple[str, str]]:
+    """Return every (alias_display, entity_id) pair, ordered for determinism."""
+    rows = conn.execute("SELECT alias, entity_id FROM aliases ORDER BY entity_id, alias").fetchall()
+    return [(r[0], r[1]) for r in rows]
+
+
+def build_entity_index(conn: sqlite3.Connection) -> EntityIndex:
+    """Read the whole identity snapshot into the resolver's in-memory index."""
+    return EntityIndex.build(get_all_entities(conn), get_all_aliases(conn))
+
+
+# --------------------------------------------------------------------------
+# processed_items
 # --------------------------------------------------------------------------
 
 
@@ -113,10 +194,10 @@ def insert_processed(
     status: str,
     error: str | None = None,
 ) -> None:
-    """Upsert a processed row. Caller manages transaction."""
+    """Upsert a processed_items row. Caller manages transaction."""
     conn.execute(
         """
-        INSERT INTO processed (item_id, source_type, status, error, processed_at)
+        INSERT INTO processed_items (item_id, source_type, status, error, processed_at)
         VALUES (?, ?, ?, ?, ?)
         ON CONFLICT (item_id, source_type)
         DO UPDATE SET status = excluded.status,
@@ -130,18 +211,18 @@ def insert_processed(
 def get_processed_ids(conn: sqlite3.Connection, status: str = "ok") -> set[str]:
     """Return the set of item_ids with the given status."""
     rows = conn.execute(
-        "SELECT item_id FROM processed WHERE status = ?",
+        "SELECT item_id FROM processed_items WHERE status = ?",
         (status,),
     ).fetchall()
     return {r[0] for r in rows}
 
 
 def get_failed(conn: sqlite3.Connection) -> list[ProcessedRecord]:
-    """Return all processed rows with status='error', most recent first."""
+    """Return all processed_items rows with status='error', most recent first."""
     rows = conn.execute(
         """
         SELECT item_id, source_type, status, error, processed_at
-        FROM processed
+        FROM processed_items
         WHERE status = 'error'
         ORDER BY processed_at DESC
         """
@@ -157,74 +238,57 @@ def get_failed(conn: sqlite3.Connection) -> list[ProcessedRecord]:
 def upsert_page(
     conn: sqlite3.Connection,
     *,
-    page: WikiPage,
+    entity_id: str,
     file_path: str,
-    source_types: list[str],
+    related_ids: list[str],
 ) -> None:
-    """Upsert a pages row from a WikiPage. Caller manages transaction.
-
-    source_types is the list of source_type strings (e.g. ["raw_store"]) for
-    every IngestItem that has contributed to this page across runs.
-    """
+    """Upsert a pages row. Caller manages transaction and has already inserted
+    the entity (pages.entity_id FKs to entities)."""
     conn.execute(
         """
-        INSERT INTO pages
-            (entity_id, page_type, file_path, related_ids, sources, source_types, updated_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO pages (entity_id, file_path, related_ids, updated_at)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT (entity_id)
-        DO UPDATE SET page_type = excluded.page_type,
-                      file_path = excluded.file_path,
+        DO UPDATE SET file_path = excluded.file_path,
                       related_ids = excluded.related_ids,
-                      sources = excluded.sources,
-                      source_types = excluded.source_types,
                       updated_at = excluded.updated_at
         """,
-        (
-            page.entity_id,
-            page.page_type,
-            file_path,
-            json.dumps(page.related),
-            json.dumps(page.sources),
-            json.dumps(source_types),
-            _now_iso(),
-        ),
+        (entity_id, file_path, json.dumps(related_ids), _now_iso()),
     )
 
 
+_PAGE_SELECT = """
+    SELECT p.entity_id, e.canonical_name, e.slug, e.page_type,
+           p.file_path, p.related_ids, p.updated_at
+    FROM pages p
+    JOIN entities e ON e.entity_id = p.entity_id
+"""
+
+
 def get_page(conn: sqlite3.Connection, entity_id: str) -> PageRecord | None:
-    """Return one page row by entity_id, or None if absent."""
+    """Return one page (joined with its identity) by entity_id, or None."""
     row = conn.execute(
-        """
-        SELECT entity_id, page_type, file_path, related_ids, sources, source_types, updated_at
-        FROM pages
-        WHERE entity_id = ?
-        """,
+        _PAGE_SELECT + "WHERE p.entity_id = ?",
         (entity_id,),
     ).fetchone()
     return _row_to_page(row) if row else None
 
 
 def get_all_pages(conn: sqlite3.Connection) -> list[PageRecord]:
-    """Return every pages row, ordered by entity_id."""
-    rows = conn.execute(
-        """
-        SELECT entity_id, page_type, file_path, related_ids, sources, source_types, updated_at
-        FROM pages
-        ORDER BY entity_id
-        """
-    ).fetchall()
+    """Return every page (joined with its identity), ordered by entity_id."""
+    rows = conn.execute(_PAGE_SELECT + "ORDER BY p.entity_id").fetchall()
     return [_row_to_page(r) for r in rows]
 
 
 def _row_to_page(row: sqlite3.Row) -> PageRecord:
-    entity_id, page_type, file_path, related_ids, sources, source_types, updated_at = row
+    entity_id, canonical_name, slug, page_type, file_path, related_ids, updated_at = row
     return PageRecord(
         entity_id=entity_id,
+        canonical_name=canonical_name,
+        slug=slug,
         page_type=page_type,
         file_path=file_path,
         related_ids=_json_list(related_ids),
-        sources=_json_list(sources),
-        source_types=_json_list(source_types),
         updated_at=updated_at,
     )
 
@@ -234,45 +298,76 @@ def _row_to_page(row: sqlite3.Row) -> PageRecord:
 # --------------------------------------------------------------------------
 
 
-def insert_aliases_idempotent(
+def insert_aliases(
     conn: sqlite3.Connection,
-    entries: list[tuple[str, str, list[str]]],
+    pairs: list[tuple[str, str]],
 ) -> None:
-    """Insert (entity_id, canonical_name, alias) rows; skip on UNIQUE conflict.
+    """Insert (alias_display, entity_id) rows, keyed on normalized_alias.
 
-    Each entry is (entity_id, canonical_name, list_of_aliases). Each alias —
-    plus the canonical name itself — becomes one row. ON CONFLICT DO NOTHING
-    handles the case where a concurrent partition already claimed the alias
-    for a different entity (first claim sticks).
+    The normalized_alias (lower/trim/collapse-ws) is the globally-unique match
+    key; ON CONFLICT DO NOTHING means the first writer keeps the alias if two
+    entities both claim it. Dedupes within the batch on the normalized key.
     """
     rows: list[tuple[str, str, str]] = []
-    for entity_id, canonical, aliases in entries:
-        seen: set[str] = set()
-        for name in [canonical, *aliases]:
-            if name and name not in seen:
-                seen.add(name)
-                rows.append((entity_id, canonical, name))
+    seen: set[str] = set()
+    for display, entity_id in pairs:
+        if not display:
+            continue
+        norm = normalize_name(display)
+        if not norm or norm in seen:
+            continue
+        seen.add(norm)
+        rows.append((display, norm, entity_id))
 
     if not rows:
         return
 
     conn.executemany(
         """
-        INSERT INTO aliases (entity_id, canonical_name, alias)
+        INSERT INTO aliases (alias, normalized_alias, entity_id)
         VALUES (?, ?, ?)
-        ON CONFLICT (alias) DO NOTHING
+        ON CONFLICT (normalized_alias) DO NOTHING
         """,
         rows,
     )
 
 
 def get_aliases_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[str]:
-    """Return every alias for `entity_id`, sorted ascending for determinism."""
+    """Return every alias display form for `entity_id`, sorted ascending."""
     rows = conn.execute(
         "SELECT alias FROM aliases WHERE entity_id = ? ORDER BY alias",
         (entity_id,),
     ).fetchall()
     return [r[0] for r in rows]
+
+
+def snapshot_aliases(conn: sqlite3.Connection) -> AliasStore:
+    """Read identity + aliases into an in-memory AliasStore for prompt use.
+
+    canonical_name comes from `entities` (its authoritative home); aliases are
+    LEFT-joined so an entity with no extra alias rows still appears.
+    """
+    rows = conn.execute(
+        """
+        SELECT e.entity_id, e.canonical_name, a.alias
+        FROM entities e
+        LEFT JOIN aliases a ON a.entity_id = e.entity_id
+        ORDER BY e.entity_id, a.alias
+        """
+    ).fetchall()
+
+    entries: dict[str, AliasEntry] = {}
+    for entity_id, canonical, alias in rows:
+        if entity_id not in entries:
+            entries[entity_id] = AliasEntry(canonical=canonical, aliases=[])
+        if alias and alias != canonical:
+            entries[entity_id].aliases.append(alias)
+    return AliasStore(entries=entries)
+
+
+# --------------------------------------------------------------------------
+# page_sources
+# --------------------------------------------------------------------------
 
 
 def insert_page_source(
@@ -298,8 +393,7 @@ def insert_page_source(
 def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
     """Return the count of distinct item_ids that have contributed to this
     entity, from the page_sources ledger — the deterministic record of which
-    content item surfaced which entity, not the LLM-authored pages.sources
-    array.
+    content item surfaced which entity, not the LLM-authored frontmatter.
     """
     row = conn.execute(
         "SELECT count(DISTINCT item_id) FROM page_sources WHERE entity_id = ?",
@@ -320,18 +414,3 @@ def is_source_for_entity(conn: sqlite3.Connection, entity_id: str, item_id: str)
         (entity_id, item_id),
     ).fetchone()
     return row is not None
-
-
-def snapshot_aliases(conn: sqlite3.Connection) -> AliasStore:
-    """Read every alias row into an in-memory AliasStore for prompt use."""
-    rows = conn.execute(
-        "SELECT entity_id, canonical_name, alias FROM aliases ORDER BY entity_id, alias"
-    ).fetchall()
-
-    entries: dict[str, AliasEntry] = {}
-    for entity_id, canonical, alias in rows:
-        if entity_id not in entries:
-            entries[entity_id] = AliasEntry(canonical=canonical, aliases=[])
-        if alias != canonical:
-            entries[entity_id].aliases.append(alias)
-    return AliasStore(entries=entries)

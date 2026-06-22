@@ -1,8 +1,8 @@
 """Fail-closed loader for the W2.5 entity rejection list.
 
-Wraps the Notion reader (WikiPagesNotionResource.query_rejected) with a
-last-known-good JSON snapshot so a Notion outage never silently re-admits
-rejected entities:
+Keyed on normalised entity names (see WikiPagesNotionResource.query_rejected).
+Wraps the Notion reader with a last-known-good JSON snapshot so a Notion outage
+never silently re-admits rejected entities:
 
   - success  → return the live denylist AND atomically refresh the snapshot
   - Notion error with a snapshot → reuse the snapshot, warn (fail-CLOSED)

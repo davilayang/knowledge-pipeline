@@ -2,12 +2,14 @@
 
 Plain utility functions for building IngestItem / ExtractionResult /
 synthesis-output strings. Imported explicitly from each test module
-(unlike conftest.py fixtures which auto-discover). Parity tests in
-test_graph.py and test_runner.py share these with PR 2's new-capability
-tests so we're not duplicating the same factories four times.
+(unlike conftest.py fixtures which auto-discover).
+
+The LLM proposes a display name + optional matched_id (never an id); the
+resolver mints the surrogate. So these factories take display NAMES, and the
+synthesis-output frontmatter id is a placeholder (parse overwrites it with the
+caller's surrogate).
 """
 
-import re
 from datetime import date
 
 from domains.types import IngestItem
@@ -41,49 +43,26 @@ def make_item(**overrides) -> IngestItem:
     return IngestItem(**defaults)
 
 
-def make_extraction(*entity_ids: str, page_type: str = "concept") -> ExtractionResult:
-    """Build an ExtractionResult with one ExtractedEntity per id.
+def make_extraction(*names: str, page_type: str = "concept") -> ExtractionResult:
+    """Build an ExtractionResult with one ExtractedEntity per display name.
 
-    Each id should be in the canonical {page_type}__{slug} form. Title is
-    derived from the slug; is_new defaults to True.
+    matched_id defaults to None (genuinely new entity → the resolver mints).
     """
-    entities = [
-        ExtractedEntity(
-            entity_id=eid,
-            title=eid.split("__", 1)[-1].replace("_", " ").title(),
-            page_type=page_type,
-            is_new=True,
-        )
-        for eid in entity_ids
-    ]
+    entities = [ExtractedEntity(title=name, page_type=page_type) for name in names]
     return ExtractionResult(entities=entities)
 
 
-def build_synthesis_output(entity_id: str, *, page_type: str = "concept") -> str:
-    """Construct a frontmatter-valid synthesis LLM output for one entity."""
-    title = entity_id.split("__", 1)[-1].replace("_", " ").title()
+def build_synthesis_output(title: str, *, page_type: str = "concept") -> str:
+    """Construct a frontmatter-valid synthesis LLM output for one entity.
+
+    The frontmatter entity_id is a placeholder — parse_llm_page_output overwrites
+    it with the caller-supplied surrogate, so its value is irrelevant.
+    """
     return (
         "---\n"
-        f"entity_id: {entity_id}\n"
+        "entity_id: e_placeholder\n"
         f"title: {title}\n"
         f"page_type: {page_type}\n"
         "---\n"
         f"# {title}\n\nBody."
     )
-
-
-_ENTITY_ID_LINE = re.compile(r"^entity_id:\s*(\S+)\s*$", re.MULTILINE)
-
-
-def extract_entity_id_from_prompt(prompt: str) -> str:
-    """Pull the prompt's own entity_id from the rendered synthesis prompt.
-
-    Substring-match on the entity_id line specifically (NOT anywhere in the
-    prompt) — the prompt also includes a `related entities from this article:`
-    list which would create false positives if we matched on the bare id.
-    Returns the first match; raises if there is none.
-    """
-    m = _ENTITY_ID_LINE.search(prompt)
-    if not m:
-        raise AssertionError(f"could not find entity_id line in prompt:\n{prompt[:300]}")
-    return m.group(1)

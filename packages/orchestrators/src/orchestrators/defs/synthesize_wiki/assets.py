@@ -7,6 +7,7 @@ import time
 import dagster as dg
 from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
+from domains.wiki.identity import normalize_name
 from domains.wiki.state import connection, get_all_pages, get_processed_ids
 from workflows.costs import PRICING_PER_1M, cost_usd
 from workflows.llm import LLMCall
@@ -176,7 +177,7 @@ def synthesized(
     rejected = frozenset(
         load_rejected_entities(wiki_pages_notion, wiki_dir / "_index" / "rejected.json")
     )
-    context.log.info("denylist: %d rejected entity_id(s)", len(rejected))
+    context.log.info("denylist: %d rejected name(s)", len(rejected))
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []
     # Parallelism options if throughput becomes a constraint:
@@ -211,7 +212,7 @@ def synthesized(
     placeholders = ",".join("?" * len(item_ids))
     with connection(db_path) as conn:
         rows = conn.execute(
-            f"SELECT status, COUNT(*) FROM processed "
+            f"SELECT status, COUNT(*) FROM processed_items "
             f"WHERE source_type = ? AND item_id IN ({placeholders}) "
             f"GROUP BY status",
             (SOURCE_RAW_STORE, *item_ids),
@@ -272,8 +273,10 @@ def regenerate_toc(
         if typed:
             lines.append(f"## {page_type.title()}s")
             lines.append("")
-            for p in sorted(typed, key=lambda x: x.entity_id):
-                lines.append(f"- [{p.entity_id}]({p.file_path})")
+            # Label by canonical name (the surrogate entity_id is opaque); the
+            # link target is the flat {slug}-{shortid}.md file.
+            for p in sorted(typed, key=lambda x: x.canonical_name.lower()):
+                lines.append(f"- [{p.canonical_name}]({p.file_path})")
             lines.append("")
 
     index_path = wiki_dir / "index.md"
@@ -318,31 +321,36 @@ def aliases_index(
     with connection(wiki.get_db_path()) as conn:
         alias_rows = conn.execute("SELECT alias, entity_id FROM aliases").fetchall()
         title_rows = conn.execute("SELECT entity_id, file_path FROM pages").fetchall()
+        # canonical_name lives on entities now; join to pages so only entities
+        # with a synthesised page contribute a canonical-name key.
         page_title_rows = conn.execute(
             """
-            SELECT entity_id, canonical_name
-            FROM aliases
-            GROUP BY entity_id, canonical_name
+            SELECT e.entity_id, e.canonical_name
+            FROM entities e
+            JOIN pages p ON p.entity_id = e.entity_id
             """
         ).fetchall()
 
     flat: dict[str, str] = {}
 
     def _set(key: str, entity_id: str) -> None:
-        lowered = key.lower()
-        existing = flat.get(lowered)
+        # Normalise with the SAME key the DB/resolver use (lower + trim +
+        # collapse-ws), not a bare .lower() — otherwise "Chroma DB" and
+        # "  Chroma   DB " slip past collision detection into two keys.
+        norm = normalize_name(key)
+        existing = flat.get(norm)
         if existing is not None and existing != entity_id:
             raise dg.Failure(
                 description=(
-                    f"Alias collision: '{lowered}' maps to both '{existing}' " f"and '{entity_id}'."
+                    f"Alias collision: '{norm}' maps to both '{existing}' " f"and '{entity_id}'."
                 ),
                 metadata={
-                    "alias": dg.MetadataValue.text(lowered),
+                    "alias": dg.MetadataValue.text(norm),
                     "entity_a": dg.MetadataValue.text(existing),
                     "entity_b": dg.MetadataValue.text(entity_id),
                 },
             )
-        flat[lowered] = entity_id
+        flat[norm] = entity_id
 
     # Self-map every page entity_id first so entities with zero alias rows
     # still resolve (consumer agent's get_entity_profile(entity_id) must

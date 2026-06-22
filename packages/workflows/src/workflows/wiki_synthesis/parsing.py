@@ -86,7 +86,7 @@ def parse_llm_page_output(
 
     Only fields in `_LLM_ACCEPTED_FIELDS` are consumed from the LLM frontmatter.
     Producer-supplied fields (aliases, num_sources) are intentionally ignored
-    even if the LLM emits them — they're authoritative from Postgres at write
+    even if the LLM emits them — they're authoritative from wiki.db at write
     time, not from the LLM.
     """
     raw = _strip_code_fence(raw.strip())
@@ -179,9 +179,3 @@ def check_h2_preservation(page_path: Path, new_content: str) -> None:
             page_path.name,
             ", ".join(sorted(dropped)),
         )
-
-
-def slug_from_id(entity_id: str) -> str:
-    """Extract slug from entity_id (e.g. 'concept__rag' -> 'rag')."""
-    parts = entity_id.split("__", 1)
-    return parts[1] if len(parts) == 2 else entity_id

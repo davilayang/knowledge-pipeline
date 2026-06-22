@@ -4,17 +4,20 @@ Drives the public interface (synthesize_item) with the two LLM calls mocked at
 the workflows.wiki_synthesis.synthesize boundary and a real wiki.db (SQLite).
 Covers the happy path, the denylist thread-through, re-run semantics, and the
 Langfuse trace-attribute wiring (configured vs unconfigured).
+
+Surrogate ids are minted per run and filenames are flat `{slug}-{shortid}.md`,
+so assertions key on canonical names / file counts, never on a fixed id.
 """
 
 import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from domains.wiki.state import connect, get_page, get_processed_ids
+from domains.wiki.state import connect, get_all_entities, get_all_pages, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
 from workflows.wiki_synthesis.synthesize import synthesize_item
 
-from tests.wiki_synthesis._helpers import make_item, make_llm_call
+from tests.wiki_synthesis._helpers import build_synthesis_output, make_item, make_llm_call
 
 
 def _runner_item():
@@ -34,10 +37,18 @@ def _processed_ids(db_path: Path, status: str) -> set[str]:
         conn.close()
 
 
-def _get_page(db_path: Path, entity_id: str):
+def _canonical_names(db_path: Path) -> set[str]:
     conn = connect(db_path)
     try:
-        return get_page(conn, entity_id)
+        return {e.canonical_name for e in get_all_entities(conn)}
+    finally:
+        conn.close()
+
+
+def _page_count(db_path: Path) -> int:
+    conn = connect(db_path)
+    try:
+        return len(get_all_pages(conn))
     finally:
         conn.close()
 
@@ -46,16 +57,7 @@ def test_synthesize_item_end_to_end(tmp_path: Path, wiki_db_path):
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
 
-    extraction = ExtractionResult(
-        entities=[
-            ExtractedEntity(
-                entity_id="concept__test", title="Test", page_type="concept", is_new=True
-            )
-        ]
-    )
-    llm_output = (
-        "---\nentity_id: concept__test\ntitle: Test\npage_type: concept\n---\n# Test\n\nBody."
-    )
+    extraction = ExtractionResult(entities=[ExtractedEntity(title="Test", page_type="concept")])
 
     with (
         patch(
@@ -64,14 +66,16 @@ def test_synthesize_item_end_to_end(tmp_path: Path, wiki_db_path):
         ),
         patch(
             "workflows.wiki_synthesis.synthesize.generate_with_usage",
-            return_value=make_llm_call(content=llm_output),
+            return_value=make_llm_call(content=build_synthesis_output("Test")),
         ),
     ):
         synthesize_item(_runner_item(), db_path=wiki_db_path, wiki_dir=wiki_dir)
 
-    assert (wiki_dir / "concept" / "test.md").exists()
+    md_files = list(wiki_dir.glob("*.md"))
+    assert len(md_files) == 1
     assert _processed_ids(wiki_db_path, "ok") == {"content_runner"}
-    assert _get_page(wiki_db_path, "concept__test") is not None
+    assert _canonical_names(wiki_db_path) == {"Test"}
+    assert _page_count(wiki_db_path) == 1
 
 
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):
@@ -81,14 +85,9 @@ def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path)
 
     extraction = ExtractionResult(
         entities=[
-            ExtractedEntity(
-                entity_id="concept__test", title="Test", page_type="concept", is_new=True
-            ),
-            ExtractedEntity(entity_id="tool__cli", title="CLI", page_type="tool", is_new=True),
+            ExtractedEntity(title="Test", page_type="concept"),
+            ExtractedEntity(title="CLI", page_type="tool"),
         ]
-    )
-    llm_output = (
-        "---\nentity_id: concept__test\ntitle: Test\npage_type: concept\n---\n# Test\n\nBody."
     )
 
     with (
@@ -98,45 +97,36 @@ def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path)
         ),
         patch(
             "workflows.wiki_synthesis.synthesize.generate_with_usage",
-            return_value=make_llm_call(content=llm_output),
+            return_value=make_llm_call(content=build_synthesis_output("Test")),
         ),
     ):
         synthesize_item(
             _runner_item(),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
-            rejected_entities=frozenset({"tool__cli"}),
+            rejected_entities=frozenset({"cli"}),
         )
 
-    assert _get_page(wiki_db_path, "tool__cli") is None
-    assert _get_page(wiki_db_path, "concept__test") is not None
+    assert _canonical_names(wiki_db_path) == {"Test"}
+    assert _page_count(wiki_db_path) == 1
 
 
 def test_synthesize_item_re_runs_on_completed_item(tmp_path: Path, wiki_db_path):
     """Calling synthesize_item twice for the same item runs synthesis twice —
-    not a no-op (no checkpointer to resume from). The processed row is upserted,
-    not duplicated (PK is (item_id, source_type))."""
+    not a no-op (no checkpointer to resume from). The second run reuses the
+    entity (exact normalised-name match → same surrogate → page UPDATE, not a
+    duplicate), and the processed row is upserted, not duplicated."""
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
 
-    extraction = ExtractionResult(
-        entities=[
-            ExtractedEntity(
-                entity_id="concept__rerun", title="Rerun", page_type="concept", is_new=True
-            )
-        ]
-    )
-    llm_output = (
-        "---\nentity_id: concept__rerun\ntitle: Rerun\npage_type: concept\n---\n# Rerun\n\nBody."
-    )
-
+    extraction = ExtractionResult(entities=[ExtractedEntity(title="Rerun", page_type="concept")])
     item = make_item(item_id="content_rerun", source_ref="raw_store:content_rerun")
     synthesis_calls = 0
 
     def counting_generate(prompt, *, system="", model=""):
         nonlocal synthesis_calls
         synthesis_calls += 1
-        return make_llm_call(content=llm_output)
+        return make_llm_call(content=build_synthesis_output("Rerun"))
 
     with (
         patch(
@@ -154,6 +144,9 @@ def test_synthesize_item_re_runs_on_completed_item(tmp_path: Path, wiki_db_path)
 
     assert synthesis_calls == 2
     assert _processed_ids(wiki_db_path, "ok") == {"content_rerun"}
+    # Reused entity → one entity, one page, one file (UPDATE not duplicate).
+    assert _page_count(wiki_db_path) == 1
+    assert len(list(wiki_dir.glob("*.md"))) == 1
 
 
 def test_synthesize_item_sets_trace_attrs_when_configured(tmp_path: Path, wiki_db_path):

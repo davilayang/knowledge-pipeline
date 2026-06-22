@@ -36,12 +36,12 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   │  spend. See `assets.py` for parallelism options if throughput becomes
   │  a real constraint.
   │
-  │     extract ─→ synthesize_entity (sequential loop, one entity at a time)
-  │             ─→ persist
-  │     pages + aliases + page_sources + processed all written in
-  │     ONE SQLite transaction per item. Aliases use ON CONFLICT DO NOTHING
-  │     for cross-item safety; page_sources uses ON CONFLICT DO NOTHING
-  │     (idempotent under retries).
+  │     extract ─→ resolve_or_mint_batch ─→ synthesize_entity (sequential loop)
+  │             ─→ _persist_graph (ONE transaction: entities + pages +
+  │                page_sources + aliases) ─→ write .md files ─→
+  │                _mark_processed (processed_items row, written LAST).
+  │     Aliases use ON CONFLICT DO NOTHING for cross-item safety;
+  │     page_sources uses ON CONFLICT DO NOTHING (idempotent under retries).
   │
   │  ↻ retry on the same date partition replays the same pending list;
   │    per-item dedup is via the processed ledger (wiki/pending skips
@@ -60,12 +60,12 @@ wiki/index   (key: wiki/index — daily partition; deps wiki/synthesized)
 - **`wiki/pending` empty list** → `wiki/synthesized` materializes a no-op
   result (`_no pending items this tick_`). Run is green; no LLM calls.
 - **`wiki/synthesized` per-item LLM failures** → swallowed into
-  `processed` with `status='error'`; the run continues other items.
+  `processed_items` with `status='error'`; the run continues other items.
   The Dagster run shows green.
 - **`wiki/synthesized` run-level failures** (an item raises out of the
   workflow — auth, infra) → the asset raises `dg.Failure`, the run fails,
   Dagster retry replays the pickled pending list. Items that already have a
-  `processed` row with `status='ok'` are skipped by `wiki/pending`; other
+  `processed_items` row with `status='ok'` are skipped by `wiki/pending`; other
   items re-run from scratch.
 - **`wiki/index` fails** → today's partition for `wiki/index` stays
   unmaterialized; `pages` remains authoritative; re-materialize the
@@ -95,7 +95,7 @@ dg launch --job synthesize_wiki -m orchestrators.defs.definitions \
 Delete the processed marker so the next schedule tick picks it up again:
 
 ```bash
-sqlite3 data/wiki.db "DELETE FROM processed WHERE item_id = '<item_id>';"
+sqlite3 data/wiki.db "DELETE FROM processed_items WHERE item_id = '<item_id>';"
 ```
 
 There are no checkpoints to drop — each run is a fresh execution.
@@ -120,7 +120,7 @@ run. Each item processes its extracted entities sequentially inside one
 - Lower `WIKI_MAX_PER_TICK` in `def_config.py` so fewer items queue
   per tick.
 - Wait — the runner doesn't catch 429; the run fails, you retry, items
-  already recorded in `processed` as `status='ok'` are skipped by
+  already recorded in `processed_items` as `status='ok'` are skipped by
   `wiki/pending`, so only remaining items re-run.
 
 ### TOC missing or stale
@@ -142,14 +142,14 @@ the partition to recompute.
 
 Retry-cost behaviour:
 - An item whose prior attempt **completed successfully** (status='ok' in
-  `processed`) → skipped by `wiki/pending` on retry. No LLM calls re-paid.
+  `processed_items`) → skipped by `wiki/pending` on retry. No LLM calls re-paid.
 - An item whose prior attempt **failed or errored** → re-processed in
   full on retry. LLM cost re-paid; the commit txn is idempotent (ON
   CONFLICT), so no DB conflict, but expect double-billing on the re-run
   items.
 
 This is a deliberate trade — the alternative (re-filtering against
-`processed` inside `synthesized`) reaches back into state that
+`processed_items` inside `synthesized`) reaches back into state that
 `wiki/pending` already owns. Worst-case cost amplification is bounded
 (`max_retries=1`, `WIKI_MAX_PER_TICK=30`).
 
@@ -199,13 +199,13 @@ Direct SQL (sqlite3 against `data/wiki.db`):
 
 ```bash
 # What's been processed, with status.
-sqlite3 data/wiki.db "SELECT status, COUNT(*) FROM processed GROUP BY status;"
+sqlite3 data/wiki.db "SELECT status, COUNT(*) FROM processed_items GROUP BY status;"
 
 # Failed items (workflow caught error, committed an error marker).
-sqlite3 data/wiki.db "SELECT item_id, error FROM processed WHERE status = 'error';"
+sqlite3 data/wiki.db "SELECT item_id, error FROM processed_items WHERE status = 'error';"
 
-# Pages by type.
-sqlite3 data/wiki.db "SELECT page_type, COUNT(*) FROM pages GROUP BY page_type;"
+# Pages by type (page_type lives on entities; join required).
+sqlite3 data/wiki.db "SELECT e.page_type, COUNT(*) FROM pages p JOIN entities e ON e.entity_id = p.entity_id GROUP BY e.page_type;"
 ```
 
 A row with `status='error'` is a *successful* asset run from Dagster's
@@ -254,10 +254,13 @@ re-synthesize. The schema is re-applied by `get_db_path()` on next run.
 
 `synthesized` reads a curator-managed denylist from the Notion "Wiki Pages"
 database (`WikiPagesNotionResource.query_rejected`) at the start of each
-tick: every row with `Rejected` ticked contributes its `Entity ID`, and
-those entity_ids are dropped in `extract` (no page built or updated for
-them). The Notion DB is the edit surface — see the curator columns
-`Rejected` / `Reject category` / `Reject reason`.
+tick: every row with `Rejected` ticked contributes its normalised page
+`Title` (the entity's canonical name), and candidates whose extracted
+normalised name OR resolved entity's normalised_name matches are dropped
+before synthesis. The surrogate `entity_id` is minted post-extraction so
+the denylist keys on the name the curator sees, not an id. The Notion DB
+is the edit surface — see the curator columns `Rejected` / `Reject
+category` / `Reject reason`.
 
 Resolved behind a **fail-closed** loader (`denylist.load_rejected_entities`):
 a successful read atomically refreshes `data/wiki/_index/rejected.json`; a
