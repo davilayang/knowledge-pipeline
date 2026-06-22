@@ -13,9 +13,10 @@ import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+from domains.wiki.identity import Candidate
 from domains.wiki.state import connect, get_all_entities, get_all_pages, get_processed_ids
 from domains.wiki.types import ExtractedEntity, ExtractionResult
-from workflows.wiki_synthesis.synthesize import synthesize_item
+from workflows.wiki_synthesis.synthesize import synthesize_from_candidates, synthesize_item
 
 from tests.wiki_synthesis._helpers import build_synthesis_output, make_item, make_llm_call
 
@@ -76,6 +77,31 @@ def test_synthesize_item_end_to_end(tmp_path: Path, wiki_db_path):
     assert _processed_ids(wiki_db_path, "ok") == {"content_runner"}
     assert _canonical_names(wiki_db_path) == {"Test"}
     assert _page_count(wiki_db_path) == 1
+
+
+def test_synthesize_from_candidates_skips_extraction(tmp_path: Path, wiki_db_path):
+    """synthesize_from_candidates resolves + synthesizes pre-extracted candidates
+    WITHOUT calling the extraction LLM — the decoupling the wiki/extracted asset
+    relies on (extraction runs in its own stage; synthesis consumes its output)."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+    candidates = [Candidate(name="Test", page_type="concept")]
+
+    with (
+        patch("workflows.wiki_synthesis.synthesize.generate_structured_with_usage") as mock_extract,
+        patch(
+            "workflows.wiki_synthesis.synthesize.generate_with_usage",
+            return_value=make_llm_call(content=build_synthesis_output("Test")),
+        ),
+    ):
+        res = synthesize_from_candidates(
+            _runner_item(), candidates, db_path=wiki_db_path, wiki_dir=wiki_dir
+        )
+
+    mock_extract.assert_not_called()  # extraction LLM never touched
+    assert res["status"] == "ok"
+    assert _canonical_names(wiki_db_path) == {"Test"}
+    assert len(list(wiki_dir.glob("*.md"))) == 1
 
 
 def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path):

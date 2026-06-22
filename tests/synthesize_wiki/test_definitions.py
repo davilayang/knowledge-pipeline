@@ -15,6 +15,7 @@ def test_definitions_load_with_expected_shape():
         # backup_readings; surfaces as an implicit node here via AssetDep.
         "snapshots/raw_store",
         "wiki/pending",
+        "wiki/extracted",
         "wiki/synthesized",
         "wiki/index",
         "wiki/aliases_index",

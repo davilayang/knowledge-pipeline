@@ -111,72 +111,171 @@ def synthesize_item(
     """
     wiki_dir = Path(wiki_dir)
     with _trace(item, replay=replay):
-        all_calls: list[LLMCall] = []
-
         ext = extract(item, db_path=db_path)
-        all_calls.extend(ext["llm_calls"])
-        candidates: list[Candidate] = ext["candidates"]
-        extract_error: str | None = ext.get("extract_error")
+        if ext.get("extract_error"):
+            _mark_processed(item, db_path=db_path, status="error", error_text=ext["extract_error"])
+            return {"llm_calls": ext["llm_calls"], "entity_results": [], "status": "error"}
 
-        if extract_error:
+        res = _synthesize_resolved(
+            item,
+            ext["candidates"],
+            db_path=db_path,
+            wiki_dir=wiki_dir,
+            rejected_entities=rejected_entities,
+        )
+        res["llm_calls"] = ext["llm_calls"] + res["llm_calls"]
+        return res
+
+
+def synthesize_from_candidates(
+    item: IngestItem,
+    candidates: list[Candidate],
+    *,
+    db_path: Path | str,
+    wiki_dir: Path | str,
+    rejected_entities: frozenset[str] = frozenset(),
+    replay: bool = False,
+) -> dict:
+    """Synthesize wiki pages from ALREADY-EXTRACTED candidates — the second half
+    of the pipeline, decoupled from extraction.
+
+    This is what the `wiki/synthesized` asset calls once `wiki/extracted` has run
+    the extraction LLM. Resolution reads a LIVE entity-index snapshot here (not a
+    frozen extraction-time one), so within-run dedup stays correct even though
+    extraction happened in an earlier stage; the LLM's matched_id is advisory and
+    re-validated against the live snapshot.
+    """
+    with _trace(item, replay=replay):
+        return _synthesize_resolved(
+            item,
+            candidates,
+            db_path=db_path,
+            wiki_dir=wiki_dir,
+            rejected_entities=rejected_entities,
+        )
+
+
+def extract_item(item: IngestItem, *, db_path: Path | str, replay: bool = False) -> dict:
+    """Run extraction for one item under a Langfuse span — what `wiki/extracted`
+    calls per item. Returns the artifact payload + the LLM calls for cost
+    accounting: {"candidates": [Candidate, ...], "extract_error": str | None,
+    "llm_calls": [LLMCall, ...]}. The stale entity index is intentionally NOT
+    carried forward — resolution re-reads a live snapshot in synthesis.
+    """
+    with _trace(item, replay=replay):
+        ext = extract(item, db_path=db_path)
+    return {
+        "candidates": ext["candidates"],
+        "extract_error": ext.get("extract_error"),
+        "llm_calls": ext["llm_calls"],
+    }
+
+
+def synthesize_extracted_item(
+    item: IngestItem,
+    extraction: dict,
+    *,
+    db_path: Path | str,
+    wiki_dir: Path | str,
+    rejected_entities: frozenset[str] = frozenset(),
+    replay: bool = False,
+) -> dict:
+    """Synthesize one item from its stored extraction payload — what the
+    `wiki/synthesized` asset calls per item.
+
+    `extraction` is the per-item entry the `wiki/extracted` asset produced:
+    {"candidates": [Candidate, ...], "extract_error": str | None}. An extraction
+    failure is marked processed='error' (so it's recorded, not stuck); otherwise
+    the candidates are resolved + synthesized.
+    """
+    extract_error = extraction.get("extract_error")
+    if extract_error:
+        with _trace(item, replay=replay):
             _mark_processed(item, db_path=db_path, status="error", error_text=extract_error)
-            return {"llm_calls": all_calls, "entity_results": [], "status": "error"}
+        return {"llm_calls": [], "entity_results": [], "status": "error"}
+    return synthesize_from_candidates(
+        item,
+        extraction["candidates"],
+        db_path=db_path,
+        wiki_dir=wiki_dir,
+        rejected_entities=rejected_entities,
+        replay=replay,
+    )
 
-        resolution = resolve_or_mint_batch(ext["index"], candidates, now=_now_iso())
 
-        with connection(db_path) as conn:
-            records = [
-                (cand, rec, resolved)
-                for cand, rec, resolved in _resolved_records(conn, candidates, resolution)
-                if not _is_rejected(cand, rec, rejected_entities)
-            ]
+def _synthesize_resolved(
+    item: IngestItem,
+    candidates: list[Candidate],
+    *,
+    db_path: Path | str,
+    wiki_dir: Path | str,
+    rejected_entities: frozenset[str],
+) -> dict:
+    """Resolve candidates → synthesize each entity → persist → mark processed.
 
-        all_ids = [rec.entity_id for _, rec, _ in records]
-        results: list[dict] = []
-        for _, rec, _ in records:
-            siblings = [eid for eid in all_ids if eid != rec.entity_id]
-            res = synthesize_entity(item, rec, siblings, wiki_dir=wiki_dir)
-            all_calls.extend(res.pop("llm_calls", []))
-            results.append(res)
+    No tracing (the caller owns the span) and no extraction. Reads a fresh entity
+    index so resolution is snapshot-LIVE regardless of when extraction ran.
+    """
+    wiki_dir = Path(wiki_dir)
+    all_calls: list[LLMCall] = []
 
-        successes = [r for r in results if r["status"] == "ok"]
-        errors = [r for r in results if r["status"] == "error"]
-        success_ids = {r["entity_id"] for r in successes}
+    with connection(db_path) as conn:
+        index = build_entity_index(conn)
+    resolution = resolve_or_mint_batch(index, candidates, now=_now_iso())
 
-        if not records:
-            status, error_text = "skipped", None
-        elif successes:
-            status, error_text = "ok", (_summarize_errors(errors) if errors else None)
-        else:
-            status, error_text = "error", (_summarize_errors(errors) or "all entities failed")
-
-        new_entities = [e for e in resolution.new_entities if e.entity_id in success_ids]
-        # Aliases come from the SURVIVING (non-rejected) records only — a rejected
-        # candidate that resolved to a shared entity must not leak its aliases.
-        new_aliases = [
-            (alias, rec.entity_id)
-            for _, rec, resolved in records
-            if rec.entity_id in success_ids
-            for alias in resolved.aliases
+    with connection(db_path) as conn:
+        records = [
+            (cand, rec, resolved)
+            for cand, rec, resolved in _resolved_records(conn, candidates, resolution)
+            if not _is_rejected(cand, rec, rejected_entities)
         ]
 
-        # Commit the durable graph (entities + pages + ledger + aliases), then
-        # write the .md files, then mark the item processed — in that order so a
-        # crash leaves a RECOVERABLE state: the entities are committed (a retry
-        # reuses the same surrogates → no orphan files), and the item stays
-        # un-`processed` so `pending` re-queues it and the write is retried.
-        _persist_graph(
-            item,
-            db_path=db_path,
-            new_entities=new_entities,
-            successes=successes,
-            new_aliases=new_aliases,
-        )
-        if successes:
-            _write_pages(successes, wiki_dir=wiki_dir, db_path=db_path)
-        _mark_processed(item, db_path=db_path, status=status, error_text=error_text)
+    all_ids = [rec.entity_id for _, rec, _ in records]
+    results: list[dict] = []
+    for _, rec, _ in records:
+        siblings = [eid for eid in all_ids if eid != rec.entity_id]
+        res = synthesize_entity(item, rec, siblings, wiki_dir=wiki_dir)
+        all_calls.extend(res.pop("llm_calls", []))
+        results.append(res)
 
-        return {"llm_calls": all_calls, "entity_results": results, "status": status}
+    successes = [r for r in results if r["status"] == "ok"]
+    errors = [r for r in results if r["status"] == "error"]
+    success_ids = {r["entity_id"] for r in successes}
+
+    if not records:
+        status, error_text = "skipped", None
+    elif successes:
+        status, error_text = "ok", (_summarize_errors(errors) if errors else None)
+    else:
+        status, error_text = "error", (_summarize_errors(errors) or "all entities failed")
+
+    new_entities = [e for e in resolution.new_entities if e.entity_id in success_ids]
+    # Aliases come from the SURVIVING (non-rejected) records only — a rejected
+    # candidate that resolved to a shared entity must not leak its aliases.
+    new_aliases = [
+        (alias, rec.entity_id)
+        for _, rec, resolved in records
+        if rec.entity_id in success_ids
+        for alias in resolved.aliases
+    ]
+
+    # Commit the durable graph (entities + pages + ledger + aliases), then write
+    # the .md files, then mark the item processed — in that order so a crash
+    # leaves a RECOVERABLE state: the entities are committed (a retry reuses the
+    # same surrogates → no orphan files), and the item stays un-`processed` so
+    # `pending` re-queues it and the write is retried.
+    _persist_graph(
+        item,
+        db_path=db_path,
+        new_entities=new_entities,
+        successes=successes,
+        new_aliases=new_aliases,
+    )
+    if successes:
+        _write_pages(successes, wiki_dir=wiki_dir, db_path=db_path)
+    _mark_processed(item, db_path=db_path, status=status, error_text=error_text)
+
+    return {"llm_calls": all_calls, "entity_results": results, "status": status}
 
 
 def extract(item: IngestItem, *, db_path: Path | str) -> dict:
