@@ -72,11 +72,12 @@ def test_extracted_entity_carries_matched_id():
 
 
 def test_extraction_result_max_length():
-    entities = [ExtractedEntity(title=f"Entity {i}", page_type="concept") for i in range(11)]
-    with pytest.raises(ValidationError, match="List should have at most 10 items"):
+    entities = [ExtractedEntity(title=f"Entity {i}", page_type="concept") for i in range(16)]
+    with pytest.raises(ValidationError, match="List should have at most 15 items"):
         ExtractionResult(entities=entities)
 
 
 def test_extraction_result_within_limit():
-    result = ExtractionResult(entities=[ExtractedEntity(title="RAG", page_type="concept")])
-    assert len(result.entities) == 1
+    entities = [ExtractedEntity(title=f"Entity {i}", page_type="concept") for i in range(15)]
+    result = ExtractionResult(entities=entities)
+    assert len(result.entities) == 15

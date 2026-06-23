@@ -164,4 +164,5 @@ class RawStoreSource:
             text=row.content_md,
             source_type="raw_store",
             source_ref=f"raw_store:{row.content_id}",
+            author=row.author or None,
         )

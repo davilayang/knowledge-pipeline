@@ -83,7 +83,7 @@ from workflows.wiki_synthesis.prompts import (
 
 logger = logging.getLogger(__name__)
 
-EXTRACTION_MODEL = "gpt-4.1-nano"
+EXTRACTION_MODEL = "gpt-4.1-mini"
 SYNTHESIS_MODEL = "gpt-4.1-mini"
 
 
@@ -306,9 +306,14 @@ def extract(item: IngestItem, *, db_path: Path | str) -> dict:
                 len(relevant.entries),
             )
         known_entities = _snapshot_to_yaml(relevant) or "(no known entities yet)"
+        # Surface the byline explicitly — authors/cited researchers are
+        # high-value person entities the model otherwise misses when they sit at
+        # the tail of the body (past share buttons, footers).
+        author_line = f"Author: {item.author}\n" if item.author else ""
         user_prompt = ENTITY_EXTRACTION_USER.format(
             known_entities=known_entities,
             title=item.title,
+            author_line=author_line,
             article_text=item.text,
         )
         extraction, call = generate_structured_with_usage(
