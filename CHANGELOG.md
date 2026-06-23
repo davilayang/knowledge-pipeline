@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`wiki-merge` CLI for curated entity dedup** (`domains.wiki.merge_cli`) folds one wiki entity into another across `wiki.db` and the on-disk `.md` pages in one transaction — re-points the page_sources / entity_relations / aliases ledgers, writes the dropped name as an alias of the survivor (so future mentions fold in instead of re-minting the dup), deletes the dropped page, and re-renders the survivor's frontmatter. `--no-alias` is the homonym escape hatch; `--dry-run` previews. Backed by a new `domains.wiki.state.merge_entities` primitive.
+- **Durable curator denylist foundation** — additive `rejected_entities` table in `wiki.sql` (name-keyed, survives a from-empty rebuild) plus `upsert_rejected` / `get_rejected` helpers, so entity rejections no longer live solely in Notion. (Synthesis consumes it in a follow-up.)
+
 ---
 
 ## [0.24.8] — 2026-06-23

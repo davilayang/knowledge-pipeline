@@ -603,3 +603,175 @@ def is_source_for_entity(conn: sqlite3.Connection, entity_id: str, item_id: str)
         (entity_id, item_id),
     ).fetchone()
     return row is not None
+
+
+# --------------------------------------------------------------------------
+# rejected_entities — curator denylist (#15)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class RejectedRecord:
+    """One curator rejection — an authored "this name is not a page" decision.
+    Name-keyed so it survives a from-empty rebuild (see wiki.sql)."""
+
+    normalized_name: str
+    category: str | None
+    reason: str | None
+    rejected_at: str
+
+
+def upsert_rejected(
+    conn: sqlite3.Connection,
+    *,
+    normalized_name: str,
+    category: str | None = None,
+    reason: str | None = None,
+    rejected_at: str | None = None,
+) -> None:
+    """Upsert a rejected_entities row (name-keyed). Caller manages transaction."""
+    conn.execute(
+        """
+        INSERT INTO rejected_entities (normalized_name, category, reason, rejected_at)
+        VALUES (?, ?, ?, ?)
+        ON CONFLICT (normalized_name)
+        DO UPDATE SET category = excluded.category,
+                      reason = excluded.reason,
+                      rejected_at = excluded.rejected_at
+        """,
+        (normalized_name, category, reason, rejected_at or _now_iso()),
+    )
+
+
+def get_rejected(conn: sqlite3.Connection) -> list[RejectedRecord]:
+    """Return all curator rejections, ordered by normalized_name (deterministic)."""
+    rows = conn.execute(
+        """
+        SELECT normalized_name, category, reason, rejected_at
+        FROM rejected_entities
+        ORDER BY normalized_name
+        """
+    ).fetchall()
+    return [RejectedRecord(*r) for r in rows]
+
+
+# --------------------------------------------------------------------------
+# merge_entities — the destructive dedup primitive (#15)
+# --------------------------------------------------------------------------
+
+
+@dataclass(frozen=True)
+class MergeResult:
+    """What the caller needs after a merge to finish the file-system side:
+    delete drop's `.md` (drop_file_path, may be None if it had no page) and
+    re-render keep's frontmatter from the now-unioned ledgers (keep_id)."""
+
+    keep_id: str
+    drop_id: str
+    drop_file_path: str | None
+
+
+def merge_entities(
+    conn: sqlite3.Connection,
+    *,
+    keep_id: str,
+    drop_id: str,
+    alias: bool = True,
+) -> MergeResult:
+    """Fold `drop_id` into `keep_id` in one transaction (caller brackets `with
+    conn:`). Re-points every ledger drop→keep, then deletes drop's identity row
+    (children cascade). Returns drop's file_path so the caller can unlink the
+    `.md` and re-render keep. Pure DB — no file I/O.
+    """
+    if keep_id == drop_id:
+        raise ValueError(f"cannot merge entity {keep_id} into itself")
+
+    drop = get_entity(conn, drop_id)
+    if drop is None:
+        raise ValueError(f"drop entity {drop_id} does not exist")
+    if get_entity(conn, keep_id) is None:
+        raise ValueError(f"keep entity {keep_id} does not exist")
+
+    drop_row = conn.execute(
+        "SELECT file_path FROM pages WHERE entity_id = ?", (drop_id,)
+    ).fetchone()
+    drop_file_path = drop_row[0] if drop_row else None
+
+    # Pre-flight (before any write): decide whether to alias drop's name onto
+    # keep. If a THIRD entity already owns that normalized name, fail loudly —
+    # a silent skip would re-mint the dup next tick (codex CONCERN 1). If keep or
+    # drop already owns it, the insert is redundant (skipped below).
+    insert_alias_name = False
+    if alias:
+        owner_row = conn.execute(
+            "SELECT entity_id FROM aliases WHERE normalized_alias = ?",
+            (drop.normalized_name,),
+        ).fetchone()
+        owner = owner_row[0] if owner_row else None
+        if owner is not None and owner not in (keep_id, drop_id):
+            raise ValueError(
+                f"cannot alias {drop.normalized_name!r} onto {keep_id}: already "
+                f"owned by a different entity {owner} (likely a homonym) — re-run "
+                f"with alias=False to keep the senses separate"
+            )
+        insert_alias_name = owner is None
+
+    # page_sources: re-point; OR IGNORE drops the row that would collide with an
+    # existing keep contribution (same item) — it's then cascade-deleted below.
+    conn.execute(
+        "UPDATE OR IGNORE page_sources SET entity_id = ? WHERE entity_id = ?",
+        (keep_id, drop_id),
+    )
+
+    # entity_relations: re-point BOTH endpoint columns drop→keep (OR IGNORE
+    # collapses an edge that now duplicates an existing keep edge), then drop the
+    # self-edges that a drop↔keep co-occurrence has become.
+    conn.execute(
+        "UPDATE OR IGNORE entity_relations SET entity_id = ? WHERE entity_id = ?",
+        (keep_id, drop_id),
+    )
+    conn.execute(
+        "UPDATE OR IGNORE entity_relations SET related_entity_id = ? WHERE related_entity_id = ?",
+        (keep_id, drop_id),
+    )
+    # Only keep↔keep self-edges can arise here (a drop↔keep co-occurrence after
+    # the re-point); scope the delete to keep so unrelated rows are never touched.
+    conn.execute(
+        "DELETE FROM entity_relations WHERE entity_id = ? AND related_entity_id = ?",
+        (keep_id, keep_id),
+    )
+
+    # aliases: re-point drop's existing aliases onto keep. normalized_alias is a
+    # globally-unique PK and we don't touch it, so this UPDATE can never collide
+    # (no OR IGNORE needed). With alias=False (the homonym escape hatch) we must
+    # NOT carry drop's own NAME across — re-pointing a pre-existing self-alias
+    # would silently route drop's name to keep anyway. Excluding it leaves the
+    # row on drop, so it cascade-deletes and the name mints fresh next time.
+    if alias:
+        conn.execute(
+            "UPDATE aliases SET entity_id = ? WHERE entity_id = ?",
+            (keep_id, drop_id),
+        )
+    else:
+        conn.execute(
+            "UPDATE aliases SET entity_id = ? WHERE entity_id = ? AND normalized_alias != ?",
+            (keep_id, drop_id, drop.normalized_name),
+        )
+
+    # aliases: write drop's own name as an alias of keep — the load-bearing line
+    # that folds the next "Max plan" mention into keep instead of re-minting the
+    # dup. Direct INSERT (NOT ON CONFLICT DO NOTHING): the third-entity conflict
+    # already failed in pre-flight; here `insert_alias_name` is only True when the
+    # name is unclaimed. `alias=False` is the homonym escape hatch — skip it so a
+    # future different-sense mention mints fresh (safe false-split).
+    if insert_alias_name:
+        conn.execute(
+            "INSERT INTO aliases (alias, normalized_alias, entity_id) VALUES (?, ?, ?)",
+            (drop.canonical_name, drop.normalized_name, keep_id),
+        )
+
+    # Delete drop's identity; pages/page_versions/aliases/page_sources/
+    # entity_relations rows still on drop cascade away (ON DELETE CASCADE).
+    conn.execute("DELETE FROM entities WHERE entity_id = ?", (drop_id,))
+
+    return MergeResult(keep_id=keep_id, drop_id=drop_id, drop_file_path=drop_file_path)

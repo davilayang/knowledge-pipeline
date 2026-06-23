@@ -123,3 +123,19 @@ CREATE TABLE IF NOT EXISTS entity_relations (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_entity_relations_entity_id ON entity_relations (entity_id);
+
+-- ---------------------------------------------------------------------------
+-- rejected_entities — the curator denylist (#15). AUTHORED, not regenerable:
+-- a human's decision that a name should never become a page. Name-keyed
+-- (surrogate ids are random per mint and change on a from-empty rebuild;
+-- normalized names are stable), so this table survives "rebuild-don't-migrate"
+-- while the 7 regenerable tables above are recreated. The from-empty rebuild
+-- runbook must `.dump rejected_entities` and reseed it (the option-(b) tax).
+-- Synthesis reads this directly; Notion is a redundant edit UI synced in.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS rejected_entities (
+    normalized_name TEXT NOT NULL PRIMARY KEY,    -- match key: lower/trim/collapse-ws
+    category        TEXT,
+    reason          TEXT,
+    rejected_at     TEXT NOT NULL                  -- ISO-8601 UTC
+) STRICT;

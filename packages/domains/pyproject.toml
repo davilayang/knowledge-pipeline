@@ -10,6 +10,9 @@ dependencies = [
     "python-frontmatter",
 ]
 
+[project.scripts]
+wiki-merge = "domains.wiki.merge_cli:main"
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"

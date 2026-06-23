@@ -12,6 +12,8 @@ import sqlite3
 import pytest
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import (
+    MergeResult,
+    RejectedRecord,
     build_entity_index,
     count_sources_for_entity,
     get_aliases_for_entity,
@@ -22,6 +24,7 @@ from domains.wiki.state import (
     get_page_history,
     get_page_version,
     get_processed_ids,
+    get_rejected,
     get_related_for_entity,
     get_source_ids_for_entity,
     insert_aliases,
@@ -31,8 +34,10 @@ from domains.wiki.state import (
     insert_page_version,
     insert_processed,
     is_source_for_entity,
+    merge_entities,
     snapshot_aliases,
     upsert_page,
+    upsert_rejected,
 )
 
 NOW = "2026-06-22T00:00:00+00:00"
@@ -516,3 +521,230 @@ def test_is_source_for_entity_reflects_ledger(wiki_db):
 def test_page_source_without_entity_raises_fk(wiki_db):
     with pytest.raises(sqlite3.IntegrityError):
         insert_page_source(wiki_db, entity_id="e_ghost", item_id="x", source_type="raw_store")
+
+
+# --------------------------------------------------------------------------
+# rejected_entities (curator denylist — durable, name-keyed)
+# --------------------------------------------------------------------------
+
+
+def test_upsert_and_get_rejected_round_trip(wiki_db):
+    upsert_rejected(
+        wiki_db,
+        normalized_name="max plan",
+        category="product",
+        reason="dup of claude max",
+        rejected_at=NOW,
+    )
+    wiki_db.commit()
+    assert get_rejected(wiki_db) == [
+        RejectedRecord(
+            normalized_name="max plan",
+            category="product",
+            reason="dup of claude max",
+            rejected_at=NOW,
+        )
+    ]
+
+
+def test_upsert_rejected_updates_in_place_on_conflict(wiki_db):
+    upsert_rejected(wiki_db, normalized_name="max plan", reason="first", rejected_at=NOW)
+    later = "2026-06-23T12:00:00+00:00"
+    upsert_rejected(wiki_db, normalized_name="max plan", reason="revised", rejected_at=later)
+    wiki_db.commit()
+    assert get_rejected(wiki_db) == [
+        RejectedRecord(
+            normalized_name="max plan",
+            category=None,
+            reason="revised",
+            rejected_at=later,
+        )
+    ]
+
+
+# --------------------------------------------------------------------------
+# merge_entities — the destructive dedup primitive (#15)
+# --------------------------------------------------------------------------
+
+
+def test_merge_entities_repoints_page_sources(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    insert_page_source(wiki_db, entity_id="e_drop", item_id="art1", source_type="raw_store")
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert get_source_ids_for_entity(wiki_db, "e_keep") == ["art1"]
+    assert get_entity(wiki_db, "e_drop") is None
+
+
+def test_merge_entities_dedupes_shared_page_source(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    insert_page_source(wiki_db, entity_id="e_keep", item_id="art1", source_type="raw_store")
+    insert_page_source(wiki_db, entity_id="e_drop", item_id="art1", source_type="raw_store")
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert count_sources_for_entity(wiki_db, "e_keep") == 1
+
+
+def test_merge_entities_repoints_entity_relations_both_columns(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    _seed_entity(wiki_db, "e_x", "Anthropic")
+    insert_entity_relation(
+        wiki_db,
+        entity_id="e_drop",
+        related_entity_id="e_x",
+        item_id="art1",
+        source_type="raw_store",
+    )
+    insert_entity_relation(
+        wiki_db,
+        entity_id="e_x",
+        related_entity_id="e_drop",
+        item_id="art1",
+        source_type="raw_store",
+    )
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert get_related_for_entity(wiki_db, "e_keep") == ["e_x"]
+    assert get_related_for_entity(wiki_db, "e_x") == ["e_keep"]
+
+
+def test_merge_entities_deletes_the_drop_keep_self_edge(wiki_db):
+    """A drop↔keep co-occurrence becomes a keep↔keep self-edge on re-point and
+    must be removed; keep's real edges to other entities survive."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    _seed_entity(wiki_db, "e_x", "Anthropic")
+    for a, b in [("e_drop", "e_keep"), ("e_keep", "e_drop"), ("e_drop", "e_x"), ("e_x", "e_drop")]:
+        insert_entity_relation(
+            wiki_db, entity_id=a, related_entity_id=b, item_id="art1", source_type="raw_store"
+        )
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert get_related_for_entity(wiki_db, "e_keep") == ["e_x"]
+
+
+def test_merge_entities_repoints_existing_aliases(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    insert_aliases(wiki_db, [("mp", "e_drop")])
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert build_entity_index(wiki_db).by_normalized_alias["mp"] == "e_keep"
+
+
+def test_merge_entities_aliases_drop_name_onto_keep(wiki_db):
+    """The load-bearing line: drop's name becomes an alias of keep so the next
+    article saying 'Max plan' folds in instead of re-minting the dup."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=True)
+
+    assert build_entity_index(wiki_db).by_normalized_alias["max plan"] == "e_keep"
+
+
+def test_merge_entities_fails_when_drop_name_claimed_by_third_entity(wiki_db):
+    """Codex CONCERN 1: a silent ON CONFLICT skip would leave the alias unwritten
+    and re-mint the dup. Instead fail loudly when a different sense owns the name."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    _seed_entity(wiki_db, "e_other", "Mobile data plan")
+    insert_aliases(wiki_db, [("Max plan", "e_other")])
+    wiki_db.commit()
+
+    with pytest.raises(ValueError, match="max plan"):
+        with wiki_db:
+            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=True)
+
+    # rolled back — drop survives, nothing folded into keep
+    assert get_entity(wiki_db, "e_drop") is not None
+    assert build_entity_index(wiki_db).by_normalized_alias["max plan"] == "e_other"
+
+
+def test_merge_entities_no_alias_leaves_drop_name_unclaimed(wiki_db):
+    """Homonym escape hatch: --no-alias keeps drop's name out of the alias table
+    so a future different-sense mention mints fresh (safe false-split)."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert "max plan" not in build_entity_index(wiki_db).by_normalized_alias
+
+
+def test_merge_entities_no_alias_drops_a_preexisting_self_alias(wiki_db):
+    """--no-alias must keep drop's NAME from resolving to keep even when drop
+    already had a self-alias row — re-pointing it would silently defeat the
+    homonym guard (the sole prevention)."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    insert_aliases(wiki_db, [("Max plan", "e_drop")])  # self-alias: norm == drop's name
+    wiki_db.commit()
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert "max plan" not in build_entity_index(wiki_db).by_normalized_alias
+
+
+def test_merge_entities_removes_drop_page_and_returns_its_path(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    upsert_page(wiki_db, entity_id="e_drop", file_path="max-plan-34db8db7.md", related_ids=[])
+    wiki_db.commit()
+
+    with wiki_db:
+        result = merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert result == MergeResult(
+        keep_id="e_keep", drop_id="e_drop", drop_file_path="max-plan-34db8db7.md"
+    )
+    assert get_page(wiki_db, "e_drop") is None
+
+
+def test_merge_entities_rejects_self_merge(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    wiki_db.commit()
+
+    with pytest.raises(ValueError, match="itself"):
+        with wiki_db:
+            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_keep")
+
+    assert get_entity(wiki_db, "e_keep") is not None
+
+
+def test_merge_entities_rejects_missing_participant(wiki_db):
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    wiki_db.commit()
+
+    with pytest.raises(ValueError, match="e_ghost"):
+        with wiki_db:
+            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_ghost")
+
+    with pytest.raises(ValueError, match="e_ghost"):
+        with wiki_db:
+            merge_entities(wiki_db, keep_id="e_ghost", drop_id="e_keep")
+
+    assert get_entity(wiki_db, "e_keep") is not None
