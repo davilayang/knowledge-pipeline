@@ -20,8 +20,11 @@ src/domains/
 ├── notes/              # Local markdown inbox
 │   └── sources.py      # LocalFileSource
 ├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
+│   ├── types.py        # WikiPage / ExtractedEntity / ExtractionResult + PageType literal
 │   ├── state.py        # processed / pages / page_sources / aliases run state
-│   ├── aliases.py      # alias resolution
+│   ├── aliases.py      # alias resolution + AliasStore
+│   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
+│   ├── relevance.py    # keyword-based catalog filter (select_relevant_entities / extract_keywords)
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   └── schema/wiki.sql # SQLite schema

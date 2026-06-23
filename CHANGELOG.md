@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.3] — 2026-06-23
+
+### Changed
+
+- **Wiki entity extraction is now domain-agnostic.** The system prompt dropped its AI/ML framing and `PageType` widened to add `person`, `organization`, `method`, `dataset`, and an `other` catch-all (`prompts/wiki/entity_extraction_system_v1.md`, `domains.wiki.types`). Entity count is gated by quality, hard-capped at 10.
+- **The known-entity catalog is relevance-filtered before extraction at scale.** Above 50 entities the prompt receives only the article-relevant subset instead of the full catalog (`domains.wiki.relevance`); a no-op for smaller wikis.
+
+---
+
 ## [0.24.2] — 2026-06-22
 
 ### Changed
