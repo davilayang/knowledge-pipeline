@@ -19,10 +19,13 @@ from domains.wiki.state import (
     get_entity,
     get_failed,
     get_page,
+    get_page_history,
+    get_page_version,
     get_processed_ids,
     insert_aliases,
     insert_entity,
     insert_page_source,
+    insert_page_version,
     insert_processed,
     is_source_for_entity,
     snapshot_aliases,
@@ -76,6 +79,131 @@ def test_build_entity_index_includes_names_and_aliases(wiki_db):
     index = build_entity_index(wiki_db)
     assert index.by_normalized_name["model context protocol"] == "e_mcp"
     assert index.by_normalized_alias["mcp"] == "e_mcp"
+
+
+# --- page_versions ---
+
+
+def test_insert_and_read_page_version_roundtrips(wiki_db):
+    """An appended edition stores its full body + provenance, keyed by
+    (entity_id, version), readable back verbatim."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    insert_page_version(
+        wiki_db,
+        entity_id="e_rag",
+        version=1,
+        content_hash="abc123",
+        summary="RAG grounds an LLM in retrieved docs.",
+        num_sources=2,
+        source_id="content_1",
+        source_type="raw_store",
+        content="# RAG\n\nv1 body",
+        created_at=NOW,
+    )
+    wiki_db.commit()
+    row = wiki_db.execute(
+        "SELECT version, content_hash, summary, num_sources, source_id, "
+        "source_type, content, created_at FROM page_versions WHERE entity_id = ?",
+        ("e_rag",),
+    ).fetchone()
+    assert tuple(row) == (
+        1,
+        "abc123",
+        "RAG grounds an LLM in retrieved docs.",
+        2,
+        "content_1",
+        "raw_store",
+        "# RAG\n\nv1 body",
+        NOW,
+    )
+
+
+def _add_version(conn, entity_id, version, *, content, summary="s", source_id="content_1"):
+    insert_page_version(
+        conn,
+        entity_id=entity_id,
+        version=version,
+        content_hash=f"h{version}",
+        summary=summary,
+        num_sources=version,
+        source_id=source_id,
+        source_type="raw_store",
+        content=content,
+        created_at=f"2026-06-2{version}T00:00:00+00:00",
+    )
+
+
+def test_get_page_history_newest_first_metadata(wiki_db):
+    """History is the edition index — metadata newest-first, no full bodies."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _add_version(wiki_db, "e_rag", 1, content="v1 body", source_id="content_1")
+    _add_version(wiki_db, "e_rag", 2, content="v2 body", source_id="content_2")
+    wiki_db.commit()
+
+    history = get_page_history(wiki_db, "e_rag")
+    assert [h.version for h in history] == [2, 1]
+    assert history[0].source_id == "content_2"
+    assert history[0].num_sources == 2
+
+
+def test_get_page_version_returns_body_or_none(wiki_db):
+    """get_page_version fetches one edition's full body; None for a version that
+    was never recorded."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _add_version(wiki_db, "e_rag", 1, content="# RAG\n\nv1 body")
+    _add_version(wiki_db, "e_rag", 2, content="# RAG\n\nv2 body, revised")
+    wiki_db.commit()
+
+    assert get_page_version(wiki_db, "e_rag", 1) == "# RAG\n\nv1 body"
+    assert get_page_version(wiki_db, "e_rag", 2) == "# RAG\n\nv2 body, revised"
+    assert get_page_version(wiki_db, "e_rag", 3) is None
+
+
+def test_get_page_history_empty_for_unknown_entity(wiki_db):
+    assert get_page_history(wiki_db, "e_missing") == []
+
+
+def test_page_version_reads_are_scoped_to_entity(wiki_db):
+    """History and body reads must filter by entity_id — one entity's editions
+    never leak into another's."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _seed_entity(wiki_db, "e_llm", "LLM")
+    _add_version(wiki_db, "e_rag", 1, content="rag body")
+    _add_version(wiki_db, "e_llm", 1, content="llm body")
+    wiki_db.commit()
+
+    assert [h.entity_id for h in get_page_history(wiki_db, "e_rag")] == ["e_rag"]
+    assert get_page_version(wiki_db, "e_rag", 1) == "rag body"
+    assert get_page_version(wiki_db, "e_llm", 1) == "llm body"
+
+
+def test_get_page_version_distinguishes_empty_body_from_missing(wiki_db):
+    """A stored empty body returns '' (not None); None means no such version."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _add_version(wiki_db, "e_rag", 1, content="")
+    wiki_db.commit()
+
+    assert get_page_version(wiki_db, "e_rag", 1) == ""
+    assert get_page_version(wiki_db, "e_rag", 2) is None
+
+
+def test_page_version_requires_provenance(wiki_db):
+    """An edition with no source_id can't answer "what changed it" — the schema
+    rejects it (NOT NULL provenance is the edition-history contract)."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_page_version(
+            wiki_db,
+            entity_id="e_rag",
+            version=1,
+            content_hash="abc123",
+            summary="s",
+            num_sources=1,
+            source_id=None,  # type: ignore[arg-type]
+            source_type="raw_store",
+            content="b",
+            created_at=NOW,
+        )
 
 
 # --- processed_items ---

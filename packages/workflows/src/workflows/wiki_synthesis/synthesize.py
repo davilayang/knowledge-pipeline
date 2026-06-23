@@ -47,6 +47,7 @@ from domains.wiki.identity import (
     EntityRecord,
     ResolvedEntity,
     normalize_name,
+    page_content_hash,
     resolve_or_mint_batch,
     shortid,
 )
@@ -58,9 +59,11 @@ from domains.wiki.state import (
     count_sources_for_entity,
     get_aliases_for_entity,
     get_entity,
+    get_page_head,
     insert_aliases,
     insert_entity,
     insert_page_source,
+    insert_page_version,
     insert_processed,
     snapshot_aliases,
     upsert_page,
@@ -421,16 +424,30 @@ def _persist_graph(
     """
     if not new_entities and not successes and not new_aliases:
         return
+    now = _now_iso()
     with connection(db_path) as conn:
         with conn:
             for entity in new_entities:
                 insert_entity(conn, entity)
             for r in successes:
+                page = r["page"]
+                # Version gate (#47): append a new edition ONLY when the page's
+                # semantic content changed. Read HEAD before upsert overwrites it.
+                # Idempotent under DETERMINISTIC synthesis — a re-run of the same
+                # item produces the same hash and appends nothing. Nondeterministic
+                # LLM prose on a retry hashes differently and appends a new edition
+                # (the gate keys on content, not source_id — by design).
+                new_hash = page_content_hash(page)
+                head_hash, head_version = get_page_head(conn, r["entity_id"])
+                changed = new_hash != head_hash
+                version = head_version + 1 if changed else head_version
                 upsert_page(
                     conn,
                     entity_id=r["entity_id"],
                     file_path=r["file_path"],
                     related_ids=r["related_ids"],
+                    content_hash=new_hash,
+                    current_version=version,
                 )
                 insert_page_source(
                     conn,
@@ -438,6 +455,20 @@ def _persist_graph(
                     item_id=item.item_id,
                     source_type=item.source_type,
                 )
+                if changed:
+                    insert_page_version(
+                        conn,
+                        entity_id=r["entity_id"],
+                        version=version,
+                        content_hash=new_hash,
+                        summary=page.summary,
+                        # Source count AFTER this item's edge is committed above.
+                        num_sources=count_sources_for_entity(conn, r["entity_id"]),
+                        source_id=item.item_id,
+                        source_type=item.source_type,
+                        content=page.content,
+                        created_at=now,
+                    )
             if new_aliases:
                 insert_aliases(conn, new_aliases)
 

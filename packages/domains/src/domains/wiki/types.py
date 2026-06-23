@@ -18,8 +18,24 @@ class WikiPage(BaseModel):
         default="",
         description="One-sentence document-shape summary; names the entity directly.",
     )
-    related: list[str] = Field(default_factory=list, description="Entity IDs of related pages")
-    sources: list[str] = Field(default_factory=list, description="Content IDs of source articles")
+    related: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Entity IDs co-extracted from the SAME triggering article (synthesis "
+            "siblings), or the LLM's `related:` frontmatter if it emits one. "
+            "Per-synthesis and overwritten each tick — NOT a curated, accumulated "
+            "related-pages set."
+        ),
+    )
+    sources: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Defaults to the single triggering item id (`[source_id]`); the LLM may "
+            "override via `sources:` frontmatter (unreliable). NOT authoritative or "
+            "accumulated — the page's true source set is the page_sources ledger "
+            "(num_sources = COUNT(DISTINCT item_id))."
+        ),
+    )
     updated_at: date = Field(description="Last update date")
     content: str = Field(description="Markdown body (below frontmatter)")
 

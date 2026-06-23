@@ -36,6 +36,7 @@ mentions, then for each one decides create-vs-update and writes the result.
 |---|---|---|
 | Entity identity | `entities` row (entity_id PK, canonical_name, normalized_name, slug, page_type) | 1 per real-world thing |
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
+| Page edition history | `page_versions` row (full body + provenance) | 1 per synthesis that **changes** the page's `{summary, content}` |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
 | Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives `num_sources` |
 | Source content_id list (display) | LLM-authored list in page frontmatter | display only, not counted |
@@ -63,6 +64,17 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
   — the synthesis prompt shows it to the LLM and the merge prompt is
   expected to preserve it, but it is not the source of `num_sources`. Do
   not rely on it for counts; query `page_sources` instead.
+
+**Edition history (`page_versions`):** `_persist_graph` appends a full-content
+version row **only when the page's prose changed** — gated by a semantic hash
+over `{summary, content}` (`identity.page_content_hash`) compared against the
+HEAD pointer on `pages` (`content_hash` / `current_version`, read by
+`get_page_head` before the upsert overwrites it). The hash deliberately excludes
+`related` / `sources` / `num_sources` / `updated_at`: those are per-item or
+ledger-tracked, so a re-synthesis from a different article that doesn't change
+the prose updates the file + ledger but appends **no** version. The `.md` write
+is unconditional (gate the append, not the file write). Read history with
+`get_page_history` (metadata, newest-first) and `get_page_version` (one body).
 
 ## Workflow shape
 
@@ -97,6 +109,7 @@ _synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
   │
   ├─ _persist_graph(item, db_path, new_entities, successes, new_aliases)
   │    ONE SQLite transaction: entities + pages + page_sources + aliases
+  │    + page_versions (appended only when {summary, content} changed)
   │    all-or-nothing (FK order: entities first, then pages/aliases/page_sources)
   │
   ├─ _write_pages(successes, wiki_dir, db_path)
