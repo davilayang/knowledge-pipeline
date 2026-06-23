@@ -68,15 +68,26 @@ upload is gated. Recovery options:
 
 ### Snapshot integrity check failed
 
-The `verify_snapshot_*` blocking check trips when the SQLite file is
-suspiciously small, fails `PRAGMA integrity_check`, or has zero tables.
-The downstream upload doesn't run — the corrupt snapshot stays local-only.
+There are two flavours of `verify_snapshot_*` blocking checks:
+
+**SQLite snapshots** (`raw_store.db`, `sessions.db`, `research.db`,
+`queue.db`, `wiki.db`) — check trips when the file is suspiciously small,
+fails `PRAGMA integrity_check`, or has zero tables.
 Common causes: source DB was being written during snapshot (rare, SQLite
 backup API handles concurrent reads), disk full on local backup volume.
 
 ```bash
 sqlite3 backups/<date>/raw_store.db "PRAGMA integrity_check;"
+sqlite3 backups/<date>/wiki.db      "PRAGMA integrity_check;"
 ```
+
+**Archive snapshots** (`notes.tgz`, `wiki.tgz`) — check trips when the
+archive is suspiciously small, fails to open as a gzip-tar, or contains
+zero files. Common causes: source directory was empty (nothing in `notes/`
+or `wiki/` yet) or disk full on local backup volume.
+
+The downstream upload doesn't run in either case — the corrupt or empty
+snapshot stays local-only.
 
 ### Upload count mismatch
 
