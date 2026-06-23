@@ -28,6 +28,7 @@ def _write(path: Path, page: WikiPage, **overrides) -> None:
         aliases=overrides.get("aliases", ["Retrieval-Augmented Generation"]),
         num_sources=overrides.get("num_sources", 1),
         sources=overrides.get("sources", page.sources),
+        related=overrides.get("related", page.related),
     )
 
 
@@ -55,7 +56,14 @@ def test_sources_frontmatter_is_producer_authoritative(tmp_path: Path):
     page = _make_page(sources=["content_123"])  # the volatile per-item value
     path = tmp_path / "rag.md"
 
-    write_page(path, page, aliases=[], num_sources=2, sources=["content_a", "content_b"])
+    write_page(
+        path,
+        page,
+        aliases=[],
+        num_sources=2,
+        sources=["content_a", "content_b"],
+        related=page.related,
+    )
 
     assert read_page(path).sources == ["content_a", "content_b"]
 
@@ -108,7 +116,7 @@ def test_read_empty_lists(tmp_path: Path):
     page = _make_page(related=[], sources=[])
     path = tmp_path / "page.md"
 
-    write_page(path, page, aliases=[], num_sources=0, sources=[])
+    write_page(path, page, aliases=[], num_sources=0, sources=[], related=[])
     loaded = read_page(path)
 
     assert loaded.related == []
@@ -126,6 +134,7 @@ def test_write_page_emits_new_fields_in_stable_order(tmp_path: Path):
         aliases=["RAG", "Retrieval-Augmented Generation"],
         num_sources=3,
         sources=page.sources,
+        related=page.related,
     )
 
     text = path.read_text(encoding="utf-8")
@@ -159,6 +168,7 @@ def test_write_page_serializes_aliases_as_inline_list(tmp_path: Path):
         aliases=["RAG", "Retrieval-Augmented Generation"],
         num_sources=1,
         sources=page.sources,
+        related=page.related,
     )
 
     text = path.read_text(encoding="utf-8")
@@ -171,7 +181,7 @@ def test_write_page_emits_num_sources_as_int(tmp_path: Path):
     page = _make_page()
     path = tmp_path / "page.md"
 
-    write_page(path, page, aliases=[], num_sources=5, sources=page.sources)
+    write_page(path, page, aliases=[], num_sources=5, sources=page.sources, related=page.related)
 
     text = path.read_text(encoding="utf-8")
     assert "num_sources: 5" in text

@@ -60,9 +60,11 @@ from domains.wiki.state import (
     get_aliases_for_entity,
     get_entity,
     get_page_head,
+    get_related_for_entity,
     get_source_ids_for_entity,
     insert_aliases,
     insert_entity,
+    insert_entity_relation,
     insert_page_source,
     insert_page_version,
     insert_processed,
@@ -76,6 +78,7 @@ from workflows.shared.observability import langfuse_enabled
 from workflows.wiki_synthesis.parsing import (
     check_h2_preservation,
     parse_llm_page_output,
+    strip_producer_frontmatter,
 )
 from workflows.wiki_synthesis.prompts import (
     ENTITY_EXTRACTION_SYSTEM,
@@ -371,7 +374,11 @@ def synthesize_entity(
             article_text=item.text,
         )
         if is_update:
-            fields["existing_page"] = existing_page_text
+            # Hide producer-owned frontmatter (aliases/related/sources/
+            # num_sources/updated_at) from the LLM — those are ledger-derived,
+            # not LLM-authored, and feeding accumulated values back risks the
+            # model echoing them into the body (#54).
+            fields["existing_page"] = strip_producer_frontmatter(existing_page_text)
         user_prompt = template.format(**fields)
 
         call = generate_with_usage(user_prompt, system=PAGE_SYNTHESIS_SYSTEM, model=SYNTHESIS_MODEL)
@@ -470,6 +477,22 @@ def _persist_graph(
                         content=page.content,
                         created_at=now,
                     )
+            # Co-occurrence edges (#54): every pair of entities this item
+            # surfaced is linked in BOTH directions, tagged with the item.
+            # Accumulates across articles (idempotent ledger); a solo entity
+            # adds no edges and leaves prior ones untouched.
+            success_ids = [r["entity_id"] for r in successes]
+            for a in success_ids:
+                for b in success_ids:
+                    if a != b:
+                        insert_entity_relation(
+                            conn,
+                            entity_id=a,
+                            related_entity_id=b,
+                            item_id=item.item_id,
+                            source_type=item.source_type,
+                            added_at=now,
+                        )
             if new_aliases:
                 insert_aliases(conn, new_aliases)
 
@@ -509,12 +532,18 @@ def _write_pages(successes: list[dict], *, wiki_dir: Path, db_path: Path | str) 
             aliases = get_aliases_for_entity(conn, r["entity_id"])
             num_sources = count_sources_for_entity(conn, r["entity_id"])
             sources = get_source_ids_for_entity(conn, r["entity_id"])
+            # related is rendered from the ledger (accumulated across articles),
+            # NOT r["page"].related (this article's siblings only). Both num_sources
+            # and sources are likewise ledger-authoritative; the in-memory page
+            # carries the volatile per-tick values that we deliberately don't render.
+            related = get_related_for_entity(conn, r["entity_id"])
             write_page(
                 wiki_dir / r["file_path"],
                 r["page"],
                 aliases=aliases,
                 num_sources=num_sources,
                 sources=sources,
+                related=related,
             )
 
 

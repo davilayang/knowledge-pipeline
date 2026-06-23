@@ -39,6 +39,7 @@ mentions, then for each one decides create-vs-update and writes the result.
 | Page edition history | `page_versions` row (full body + provenance) | 1 per synthesis that **changes** the page's `{summary, content}` |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
 | Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives BOTH `num_sources` and the rendered `sources` list |
+| Co-occurrence edge | `entity_relations` row | 1 per (directed edge, contributing item) — drives the rendered `related` list (derived `co_count`) |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
 
 **Aliases** prevent duplicates. Before extraction, the workflow snapshots the
@@ -64,6 +65,20 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
 - `WikiPage.sources` (the LLM-echoed `[source_id]` in the synthesis
   output) is **ignored** for rendering — it's the single triggering item,
   not the accumulated set. Query `page_sources`, never the LLM output.
+
+**Related edges (`entity_relations`):** the rendered `related` list is also
+producer-authoritative. `_persist_graph` writes a `(directed edge, item)` row
+for every pair of entities an item co-mentions, in both directions (a pure,
+idempotent ledger). `get_related_for_entity` derives `co_count =
+COUNT(DISTINCT item_id)` per neighbour and renders the top-N strongest links
+(`co_count DESC, last_seen DESC`). So `related` **accumulates across every
+article** that co-mentions an entity, not just the latest one's siblings — and
+like `num_sources`, the count is derived (retry-safe, no stored counter).
+`WikiPage.related` (this article's siblings) is no longer rendered; `pages.related_ids`
+remains as a legacy this-tick advisory column. On a page *update*, producer-owned
+frontmatter (`aliases`/`related`/`sources`/`num_sources`/`updated_at`) is stripped
+from the existing page before it re-enters the synthesis prompt, so the LLM never
+echoes accumulated metadata back into the body.
 
 **Edition history (`page_versions`):** `_persist_graph` appends a full-content
 version row **only when the page's prose changed** — gated by a semantic hash

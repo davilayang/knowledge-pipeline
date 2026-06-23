@@ -10,7 +10,42 @@ from pathlib import Path
 from workflows.wiki_synthesis.parsing import (
     check_h2_preservation,
     parse_llm_page_output,
+    strip_producer_frontmatter,
 )
+
+_PAGE = (
+    "---\n"
+    "entity_id: e_x\n"
+    "title: RAG\n"
+    "page_type: concept\n"
+    "summary: RAG grounds an LLM in retrieved\n  documents over a corpus.\n"
+    "aliases: [RAG]\n"
+    "related: [e_y, e_z]\n"
+    "sources: [c1, c2]\n"
+    "num_sources: 2\n"
+    "updated_at: 2026-06-23\n"
+    "---\n\n"
+    "# RAG\n\nBody mentioning sources: not a frontmatter line.\n"
+)
+
+
+def test_strip_producer_frontmatter_removes_producer_keys_only():
+    """Producer-owned frontmatter (aliases/related/sources/num_sources/
+    updated_at) is removed before the page goes back into the update prompt;
+    LLM-authored fields (entity_id/title/page_type/summary) and the body stay."""
+    out = strip_producer_frontmatter(_PAGE)
+
+    for key in ("aliases:", "related:", "sources:", "num_sources:", "updated_at:"):
+        assert key not in out.split("---")[1], f"{key} should be stripped from frontmatter"
+    # Kept fields + wrapped summary continuation + body intact.
+    assert "title: RAG" in out
+    assert "summary: RAG grounds an LLM in retrieved" in out
+    assert "documents over a corpus." in out
+    assert "Body mentioning sources: not a frontmatter line." in out
+
+
+def test_strip_producer_frontmatter_passthrough_without_frontmatter():
+    assert strip_producer_frontmatter("# Just a body\n\ntext") == "# Just a body\n\ntext"
 
 
 class TestParseLlmPageOutput:
@@ -54,12 +89,7 @@ class TestParseLlmPageOutput:
     def test_enforces_expected_entity_id(self):
         """LLM may hallucinate a different entity_id; we enforce the expected one."""
         raw = (
-            "---\n"
-            "entity_id: concept__wrong_id\n"
-            "title: RAG\n"
-            "page_type: concept\n"
-            "---\n"
-            "# RAG\n\nBody."
+            "---\nentity_id: concept__wrong_id\ntitle: RAG\npage_type: concept\n---\n# RAG\n\nBody."
         )
         page = parse_llm_page_output(
             raw=raw,
@@ -74,14 +104,7 @@ class TestParseLlmPageOutput:
 
     def test_enforces_expected_page_type(self):
         """LLM may return a wrong page_type; we enforce the expected one."""
-        raw = (
-            "---\n"
-            "entity_id: concept__rag\n"
-            "title: RAG\n"
-            "page_type: tool\n"
-            "---\n"
-            "# RAG\n\nBody."
-        )
+        raw = "---\nentity_id: concept__rag\ntitle: RAG\npage_type: tool\n---\n# RAG\n\nBody."
         page = parse_llm_page_output(
             raw=raw,
             entity_id="concept__rag",
