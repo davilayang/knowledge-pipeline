@@ -7,7 +7,7 @@ rows + updates queue_items cohort fields, published flips Notion only when
 extraction is complete and reads core_mechanism via the latest topic_card row."""
 
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
@@ -356,7 +356,15 @@ def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
         tier_log=[{"tier": "structurer", "error": "timeout"}],
     )
 
-    with pytest.raises(Exception, match="Structurer cascade exhausted|fetch failed"):
+    # The `fetched` asset carries retry_policy(delay=120); Dagster's in-process
+    # executor waits that delay (against a wall-clock deadline) before its one
+    # retry. The assertion here is only that a transient structurer failure
+    # surfaces as a raised failure — not that Dagster honours the delay — so
+    # zero out the computed retry delay.
+    with (
+        pytest.raises(Exception, match="Structurer cascade exhausted|fetch failed"),
+        patch.object(dg.RetryPolicy, "calculate_delay", return_value=0),
+    ):
         _materialize(
             fetched,
             partition_key="p-ovr",

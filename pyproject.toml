@@ -35,6 +35,7 @@ dev = [
     "pytest>=8.0,<9.0",
     "pytest-postgresql>=6.0,<8.0",
     "pytest-timeout>=2.3,<3.0",
+    "pytest-xdist>=3.8.0",
 ]
 
 # No [build-system] — root is a virtual project (uv handles this implicitly)
@@ -120,8 +121,8 @@ help = "SSH tunnel to remote Dagster UI"
 ## Code QA ##
 
 [tool.poe.tasks.test]
-cmd = "pytest -v"
-help = "Run tests with verbose output"
+cmd = "pytest -n auto"
+help = "Run tests in parallel across CPU cores (pytest-xdist)"
 
 [tool.poe.tasks.check]
 sequence = ["fmt", "lint", "test"]
