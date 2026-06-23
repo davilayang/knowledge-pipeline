@@ -17,7 +17,7 @@ Given a source document (an `IngestItem` — id, title, full text, source_type),
 produce updates to a structured wiki. The `PageType` literal (`domains.wiki.types`)
 covers: `concept`, `tool`, `trend`, `person`, `organization`, `method`, `dataset`,
 `other`. The extraction prompt is domain-agnostic — entity-count guidance caps at
-10 (enforced by `ExtractionResult.entities max_length=10`), with quality-over-count
+15 (enforced by `ExtractionResult.entities max_length=15`), with quality-over-count
 framing.
 
 Each entity has exactly one wiki page on disk (`data/wiki/{slug}-{shortid}.md`
@@ -108,8 +108,8 @@ _synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
        surrogates on retry, no orphan files)
 ```
 
-Entity counts per document are capped at 10 (enforced by `ExtractionResult`
-`max_length=10`); entities are processed one at a time in the sequential loop.
+Entity counts per document are capped at 15 (enforced by `ExtractionResult`
+`max_length=15`); entities are processed one at a time in the sequential loop.
 A writer/evaluator agentic loop (where the synthesis LLM iterates with a
 separate evaluator LLM) is a deferred future option for improving page quality
 — not part of the current implementation.

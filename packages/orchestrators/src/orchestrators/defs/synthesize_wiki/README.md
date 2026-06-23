@@ -237,7 +237,7 @@ from a Dagster run failure (auth error, wiki.db unreachable, etc.).
 The workflow uses two OpenAI models (configurable in
 `packages/workflows/src/workflows/wiki_synthesis/synthesize.py`):
 
-- `gpt-4.1-nano` — entity extraction (`EXTRACTION_MODEL`)
+- `gpt-4.1-mini` — entity extraction (`EXTRACTION_MODEL`)
 - `gpt-4.1-mini` — page synthesis (`SYNTHESIS_MODEL`)
 
 Set `OPENAI_API_KEY` in the server's `.env`. No fallback — an unset key
