@@ -35,6 +35,7 @@ from domains.wiki.state import (
     insert_processed,
     is_source_for_entity,
     merge_entities,
+    reject_entity,
     snapshot_aliases,
     upsert_page,
     upsert_rejected,
@@ -733,6 +734,47 @@ def test_merge_entities_rejects_self_merge(wiki_db):
             merge_entities(wiki_db, keep_id="e_keep", drop_id="e_keep")
 
     assert get_entity(wiki_db, "e_keep") is not None
+
+
+def test_reject_entity_denylists_name_and_deletes(wiki_db):
+    _seed_entity(wiki_db, "e_junk", "Cookie Policy")
+    wiki_db.commit()
+
+    with wiki_db:
+        reject_entity(wiki_db, entity_id="e_junk", category="chrome", reason="site boilerplate")
+
+    assert get_entity(wiki_db, "e_junk") is None
+    assert get_rejected(wiki_db) == [
+        RejectedRecord(
+            normalized_name="cookie policy",
+            category="chrome",
+            reason="site boilerplate",
+            rejected_at=get_rejected(wiki_db)[0].rejected_at,
+        )
+    ]
+
+
+def test_reject_entity_tombstones_the_whole_alias_family(wiki_db):
+    """Rejecting denylists the canonical name AND every alias, so the deleted
+    entity can't re-mint under a known surface form (the re-mint-loop guard)."""
+    _seed_entity(wiki_db, "e_junk", "Cookie Policy")
+    insert_aliases(wiki_db, [("Cookie Settings", "e_junk"), ("Cookie Notice", "e_junk")])
+    wiki_db.commit()
+
+    with wiki_db:
+        reject_entity(wiki_db, entity_id="e_junk")
+
+    assert {r.normalized_name for r in get_rejected(wiki_db)} == {
+        "cookie policy",
+        "cookie settings",
+        "cookie notice",
+    }
+
+
+def test_reject_entity_rejects_missing_entity(wiki_db):
+    with pytest.raises(ValueError, match="e_ghost"):
+        with wiki_db:
+            reject_entity(wiki_db, entity_id="e_ghost")
 
 
 def test_merge_entities_rejects_missing_participant(wiki_db):

@@ -9,7 +9,13 @@ import dagster as dg
 from domains.raw_store.sources import RawStoreSource
 from domains.types import IngestItem
 from domains.wiki.identity import normalize_name
-from domains.wiki.state import PageRecord, connection, get_all_pages, get_processed_ids
+from domains.wiki.state import (
+    PageRecord,
+    connection,
+    get_all_pages,
+    get_processed_ids,
+    get_rejected,
+)
 from domains.wiki.types import PageType
 from workflows.costs import cost_usd, is_priced
 from workflows.llm import LLMCall
@@ -25,8 +31,7 @@ from .def_config import (
     WIKI_MAX_PER_TICK,
     wiki_daily_partition_def,
 )
-from .denylist import load_rejected_entities
-from .resources import WikiPagesNotionResource, WikiResource
+from .resources import WikiResource
 
 
 def _cost_metadata(calls: list[LLMCall]) -> dict[str, dg.MetadataValue]:
@@ -216,7 +221,6 @@ def synthesized(
     context: dg.AssetExecutionContext,
     extracted: dict,
     wiki: WikiResource,
-    wiki_pages_notion: WikiPagesNotionResource,
 ) -> dg.MaterializeResult:
     if not extracted:
         return dg.MaterializeResult(
@@ -241,12 +245,11 @@ def synthesized(
             metadata={"missing": dg.MetadataValue.json(missing[:50])},
         )
     wiki_dir = wiki.get_wiki_dir()
-    # W2.5 denylist: curator-marked rejects from the Notion "Wiki Pages" DB,
-    # fail-closed to a last-known-good snapshot so a Notion outage never
-    # silently re-admits rejected entities.
-    rejected = frozenset(
-        load_rejected_entities(wiki_pages_notion, wiki_dir / "_index" / "rejected.json")
-    )
+    # Denylist: curator rejections from the local rejected_entities table — the
+    # authoritative store (written by wiki-reject; the Notion review surface syncs
+    # INTO it via the separate sync_wiki_curation DAG). No Notion in the hot path.
+    with connection(db_path) as conn:
+        rejected = frozenset(r.normalized_name for r in get_rejected(conn))
     context.log.info("denylist: %d rejected name(s)", len(rejected))
     errors: list[tuple[str, str]] = []
     all_calls: list[LLMCall] = []

@@ -775,3 +775,58 @@ def merge_entities(
     conn.execute("DELETE FROM entities WHERE entity_id = ?", (drop_id,))
 
     return MergeResult(keep_id=keep_id, drop_id=drop_id, drop_file_path=drop_file_path)
+
+
+@dataclass(frozen=True)
+class RejectResult:
+    """What the caller needs after a rejection to finish the file-system side:
+    unlink the entity's `.md` (file_path, may be None) and log which names were
+    tombstoned (rejected_names = the canonical name plus every alias)."""
+
+    entity_id: str
+    file_path: str | None
+    rejected_names: list[str]
+
+
+def reject_entity(
+    conn: sqlite3.Connection,
+    *,
+    entity_id: str,
+    category: str | None = None,
+    reason: str | None = None,
+    rejected_at: str | None = None,
+) -> RejectResult:
+    """Reject (delete) an entity in one transaction (caller brackets `with
+    conn:`). Tombstones the canonical name AND every alias into
+    `rejected_entities` (alias-family tombstone — stops a deleted entity
+    re-minting under a known surface form), then deletes the entity (children
+    cascade). Returns the file_path so the caller can unlink the `.md`. Pure DB.
+    """
+    ent = get_entity(conn, entity_id)
+    if ent is None:
+        raise ValueError(f"entity {entity_id} does not exist")
+
+    page_row = conn.execute(
+        "SELECT file_path FROM pages WHERE entity_id = ?", (entity_id,)
+    ).fetchone()
+    file_path = page_row[0] if page_row else None
+
+    # Alias-family tombstone: the canonical name + every normalized alias.
+    alias_rows = conn.execute(
+        "SELECT normalized_alias FROM aliases WHERE entity_id = ?", (entity_id,)
+    ).fetchall()
+    rejected_names = sorted({ent.normalized_name} | {r[0] for r in alias_rows})
+    for name in rejected_names:
+        upsert_rejected(
+            conn,
+            normalized_name=name,
+            category=category,
+            reason=reason,
+            rejected_at=rejected_at,
+        )
+
+    # Delete the entity; pages/page_versions/aliases/page_sources/
+    # entity_relations rows cascade away (ON DELETE CASCADE).
+    conn.execute("DELETE FROM entities WHERE entity_id = ?", (entity_id,))
+
+    return RejectResult(entity_id=entity_id, file_path=file_path, rejected_names=rejected_names)
