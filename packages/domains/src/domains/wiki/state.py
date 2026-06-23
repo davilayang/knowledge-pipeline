@@ -106,6 +106,22 @@ class PageRecord:
     updated_at: str
 
 
+@dataclass(frozen=True)
+class PageVersionMeta:
+    """One row of a page's edition history (#47) WITHOUT the full body — the
+    index a consumer scans to pick a version. Fetch the body with
+    get_page_version(entity_id, version)."""
+
+    entity_id: str
+    version: int
+    created_at: str
+    content_hash: str
+    summary: str
+    num_sources: int
+    source_id: str
+    source_type: str
+
+
 def _json_list(value: str | None) -> list[str]:
     """Decode a JSON-array TEXT column to a list; tolerate NULL/empty."""
     if not value:
@@ -241,20 +257,45 @@ def upsert_page(
     entity_id: str,
     file_path: str,
     related_ids: list[str],
+    content_hash: str | None = None,
+    current_version: int | None = None,
 ) -> None:
     """Upsert a pages row. Caller manages transaction and has already inserted
-    the entity (pages.entity_id FKs to entities)."""
+    the entity (pages.entity_id FKs to entities).
+
+    content_hash/current_version are the HEAD pointers into page_versions (#47) —
+    the semantic hash of the current edition and its version number. The version
+    gate (see get_page_head) supplies them; callers that don't version pass None.
+    """
     conn.execute(
         """
-        INSERT INTO pages (entity_id, file_path, related_ids, updated_at)
-        VALUES (?, ?, ?, ?)
+        INSERT INTO pages (entity_id, file_path, related_ids, updated_at,
+                           content_hash, current_version)
+        VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (entity_id)
         DO UPDATE SET file_path = excluded.file_path,
                       related_ids = excluded.related_ids,
-                      updated_at = excluded.updated_at
+                      updated_at = excluded.updated_at,
+                      content_hash = excluded.content_hash,
+                      current_version = excluded.current_version
         """,
-        (entity_id, file_path, json.dumps(related_ids), _now_iso()),
+        (entity_id, file_path, json.dumps(related_ids), _now_iso(), content_hash, current_version),
     )
+
+
+def get_page_head(conn: sqlite3.Connection, entity_id: str) -> tuple[str | None, int]:
+    """HEAD pointer for a page's version history (#47): (content_hash, version).
+
+    Returns (None, 0) when the page has no row or no recorded edition yet — so a
+    brand-new page's first synthesis reads version 0 and appends v1. O(1): reads
+    the forward pointers off `pages`, never scans page_versions."""
+    row = conn.execute(
+        "SELECT content_hash, current_version FROM pages WHERE entity_id = ?",
+        (entity_id,),
+    ).fetchone()
+    if row is None or row["current_version"] is None:
+        return (None, 0)
+    return (row["content_hash"], int(row["current_version"]))
 
 
 _PAGE_SELECT = """
@@ -388,6 +429,88 @@ def insert_page_source(
         """,
         (entity_id, item_id, source_type, _now_iso()),
     )
+
+
+def insert_page_version(
+    conn: sqlite3.Connection,
+    *,
+    entity_id: str,
+    version: int,
+    content_hash: str,
+    summary: str,
+    num_sources: int,
+    source_id: str,
+    source_type: str,
+    content: str,
+    created_at: str | None = None,
+) -> None:
+    """Append one immutable edition to page_versions (#47). `version` is the
+    monotonic per-entity edition number (caller derives it from HEAD); `content`
+    is the full markdown body at this edition. source_id/source_type tie the
+    edition to the content item that triggered it — both NOT NULL, since an
+    edition without provenance can't answer "what changed it". Caller manages the
+    transaction and has already inserted the entity (FK)."""
+    conn.execute(
+        """
+        INSERT INTO page_versions (
+            entity_id, version, created_at, content_hash, summary,
+            num_sources, source_id, source_type, content
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        (
+            entity_id,
+            version,
+            created_at or _now_iso(),
+            content_hash,
+            summary,
+            num_sources,
+            source_id,
+            source_type,
+            content,
+        ),
+    )
+
+
+def get_page_history(conn: sqlite3.Connection, entity_id: str) -> list[PageVersionMeta]:
+    """Edition history for a page (#47), newest-first — metadata only, no bodies.
+
+    The index the live agent scans to answer "what changed and when". Fetch a
+    specific body with get_page_version(entity_id, version). Empty list for an
+    entity with no recorded editions."""
+    rows = conn.execute(
+        """
+        SELECT entity_id, version, created_at, content_hash, summary,
+               num_sources, source_id, source_type
+        FROM page_versions
+        WHERE entity_id = ?
+        ORDER BY version DESC
+        """,
+        (entity_id,),
+    ).fetchall()
+    return [
+        PageVersionMeta(
+            entity_id=r["entity_id"],
+            version=int(r["version"]),
+            created_at=r["created_at"],
+            content_hash=r["content_hash"],
+            summary=r["summary"],
+            num_sources=int(r["num_sources"]),
+            source_id=r["source_id"],
+            source_type=r["source_type"],
+        )
+        for r in rows
+    ]
+
+
+def get_page_version(conn: sqlite3.Connection, entity_id: str, version: int) -> str | None:
+    """Full markdown body of one past edition (#47), or None if it doesn't exist.
+    Answers "what did this page say at version N"."""
+    row = conn.execute(
+        "SELECT content FROM page_versions WHERE entity_id = ? AND version = ?",
+        (entity_id, version),
+    ).fetchone()
+    return row["content"] if row is not None else None
 
 
 def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:

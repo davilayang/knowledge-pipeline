@@ -45,10 +45,12 @@ CREATE TABLE IF NOT EXISTS processed_items (
 -- an FK). num_sources is derived from page_sources, not stored.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pages (
-    entity_id    TEXT NOT NULL PRIMARY KEY REFERENCES entities (entity_id) ON DELETE CASCADE,
-    file_path    TEXT NOT NULL UNIQUE,            -- flat: {slug}-{shortid}.md under data/wiki/
-    related_ids  TEXT,                            -- JSON array of related entity_ids
-    updated_at   TEXT NOT NULL                    -- ISO-8601 UTC
+    entity_id       TEXT NOT NULL PRIMARY KEY REFERENCES entities (entity_id) ON DELETE CASCADE,
+    file_path       TEXT NOT NULL UNIQUE,         -- flat: {slug}-{shortid}.md under data/wiki/
+    related_ids     TEXT,                         -- JSON array of related entity_ids
+    updated_at      TEXT NOT NULL,                -- ISO-8601 UTC
+    content_hash    TEXT,                         -- HEAD: semantic hash of the current edition (#47)
+    current_version INTEGER                       -- HEAD: max page_versions.version (forward pointer)
 ) STRICT;
 
 -- ---------------------------------------------------------------------------
@@ -77,3 +79,25 @@ CREATE TABLE IF NOT EXISTS page_sources (
 ) STRICT;
 
 CREATE INDEX IF NOT EXISTS idx_page_sources_entity_id ON page_sources (entity_id);
+
+-- ---------------------------------------------------------------------------
+-- page_versions — immutable edition history per entity (#47).
+-- Each row is the full semantic content of a page at one version: the body is
+-- stored verbatim (no deltas) so any past edition reconstructs without a
+-- rebuild. content_hash is the semantic hash that gated the append (see
+-- identity.page_content_hash); source_id/source_type tie the edition to the
+-- content item that triggered it ((item_id, source_type) is the repo's stable
+-- source identity). version is monotonic per entity; HEAD is the max version.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS page_versions (
+    entity_id    TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
+    version      INTEGER NOT NULL,                -- monotonic per entity
+    created_at   TEXT NOT NULL,                   -- ISO-8601 UTC
+    content_hash TEXT NOT NULL,                   -- semantic hash that gated this append
+    summary      TEXT NOT NULL DEFAULT '',
+    num_sources  INTEGER NOT NULL CHECK (num_sources >= 0),  -- source count at this edition
+    source_id    TEXT NOT NULL,                   -- content item that triggered the change
+    source_type  TEXT NOT NULL,                   -- (source_id, source_type) = stable source identity
+    content      TEXT NOT NULL,                   -- full markdown body at this version
+    PRIMARY KEY (entity_id, version)
+) STRICT;

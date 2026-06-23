@@ -21,7 +21,7 @@ src/domains/
 │   └── sources.py      # LocalFileSource
 ├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
 │   ├── types.py        # WikiPage / ExtractedEntity / ExtractionResult + PageType literal
-│   ├── state.py        # processed / pages / page_sources / aliases run state
+│   ├── state.py        # processed / pages / page_sources / aliases / page_versions run state
 │   ├── aliases.py      # alias resolution + AliasStore
 │   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
 │   ├── relevance.py    # keyword-based catalog filter (select_relevant_entities / extract_keywords)

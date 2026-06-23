@@ -48,10 +48,12 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   │     extraction ran in the prior stage; matched_id is advisory)
   │             ─→ synthesize_entity (call #2, sequential loop)
   │             ─→ _persist_graph (ONE transaction: entities + pages +
-  │                page_sources + aliases) ─→ write .md files ─→
-  │                _mark_processed (processed_items row, written LAST).
+  │                page_sources + aliases + page_versions) ─→ write .md
+  │                files ─→ _mark_processed (processed_items, written LAST).
   │     Aliases use ON CONFLICT DO NOTHING for cross-item safety;
   │     page_sources uses ON CONFLICT DO NOTHING (idempotent under retries).
+  │     page_versions appends a full-content edition ONLY when the page's
+  │     {summary, content} hash differs from HEAD (see wiki_synthesis README).
   │
   │  ↻ retry on the same date partition re-extracts + re-synthesizes;
   │    per-item dedup is via the processed ledger (wiki/pending skips
