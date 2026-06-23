@@ -54,5 +54,5 @@ class ExtractionResult(BaseModel):
     """Structured output from Call 1: entity extraction."""
 
     entities: list[ExtractedEntity] = Field(
-        max_length=10, description="Key entities found in the article (max 10)"
+        max_length=15, description="Key entities found in the article (max 15)"
     )

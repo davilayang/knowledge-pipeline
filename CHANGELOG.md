@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.5] — 2026-06-23
+
+### Changed
+
+- **Wiki entity extraction recovers far more named people and durable entities.** The extraction model moved gpt-4.1-nano → gpt-4.1-mini, the per-article cap raised 10 → 15, and the prompt now targets the article's author + cited individuals while ignoring site chrome (sponsor/nav/cookie/related-posts); the byline is threaded in via `item.author`. ~2× entity recall with correct typing on a 17-article prod cohort (`workflows.wiki_synthesis`, `prompts/wiki/`, `domains.wiki.types`).
+
+---
+
 ## [0.24.4] — 2026-06-23
 
 ### Changed
