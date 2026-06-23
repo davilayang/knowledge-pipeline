@@ -8,6 +8,7 @@ from orchestrators.defs import (
     fetch_extract_queue,
     populate_vector_store,
     shared,
+    sync_wiki_curation,
     synthesize_wiki,
     triage_knowledge_queue,
     upstream_sources,
@@ -18,6 +19,8 @@ defs = dg.Definitions.merge(
     upstream_sources.defs,
     backup_readings.defs,
     synthesize_wiki.defs,
+    # sync_wiki_curation binds synthesize_wiki's "wiki" resource — keep it after.
+    sync_wiki_curation.defs,
     populate_vector_store.defs,
     triage_knowledge_queue.defs,
     fetch_extract_queue.defs,

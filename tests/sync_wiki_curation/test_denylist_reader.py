@@ -9,7 +9,7 @@ the import location, mirroring how the NotionQueueResource pattern is exercised.
 
 from unittest.mock import MagicMock, patch
 
-from orchestrators.defs.synthesize_wiki.resources import WikiPagesNotionResource
+from orchestrators.defs.sync_wiki_curation.resources import WikiPagesNotionResource
 
 
 def _row(title: str, category: str | None, reason: str | None) -> dict:
@@ -33,7 +33,7 @@ def test_query_rejected_returns_denylist_dict():
         "has_more": False,
     }
 
-    with patch("orchestrators.defs.synthesize_wiki.resources.NotionClient", return_value=client):
+    with patch("orchestrators.defs.sync_wiki_curation.resources.NotionClient", return_value=client):
         result = res.query_rejected()
 
     # Keys are normalised (lower/trim/collapse-ws) so they match extracted +
@@ -54,7 +54,7 @@ def test_query_rejected_paginates_until_exhausted():
         {"results": [_row("System Design", "too_broad", "b")], "has_more": False},
     ]
 
-    with patch("orchestrators.defs.synthesize_wiki.resources.NotionClient", return_value=client):
+    with patch("orchestrators.defs.sync_wiki_curation.resources.NotionClient", return_value=client):
         result = res.query_rejected()
 
     assert set(result) == {"cli", "system design"}

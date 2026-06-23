@@ -7,6 +7,8 @@ from .assets import all_assets
 from .resources import build_resources
 from .schedules import run_daily_synthesize_wiki, synthesize_wiki_job
 
+# Declares the "wiki" resource; sync_wiki_curation binds the same key at the
+# top-level Definitions.merge without re-declaring it.
 defs = dg.Definitions(
     assets=all_assets,
     jobs=[synthesize_wiki_job],
