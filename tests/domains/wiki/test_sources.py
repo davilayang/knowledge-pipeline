@@ -38,7 +38,9 @@ def _write(
         updated_at=date(2026, 6, 20),
         content=f"# {title}\n\nBody.",
     )
-    write_page(path, page, aliases=[], num_sources=num_sources, sources=page.sources)
+    write_page(
+        path, page, aliases=[], num_sources=num_sources, sources=page.sources, related=page.related
+    )
 
 
 class TestGetItems:
@@ -136,7 +138,9 @@ class TestFrontmatterAuthoritative:
             updated_at=date(2026, 6, 20),
             content="# RAG\n\nBody.",
         )
-        write_page(path, page, aliases=[], num_sources=1, sources=page.sources)
+        write_page(
+            path, page, aliases=[], num_sources=1, sources=page.sources, related=page.related
+        )
         source = WikiSource(wiki_dir)
 
         assert source.get_item_ids() == ["e_aaaaaaaaaaaaaaaa"]

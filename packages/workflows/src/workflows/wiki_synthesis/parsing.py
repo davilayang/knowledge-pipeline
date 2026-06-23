@@ -22,6 +22,32 @@ _LLM_ACCEPTED_FIELDS = frozenset(
 )
 
 
+_PRODUCER_FRONTMATTER_KEYS = ("aliases", "related", "sources", "num_sources", "updated_at")
+
+
+def strip_producer_frontmatter(page_text: str) -> str:
+    """Drop producer-owned frontmatter keys from a rendered page before it is
+    fed back to the synthesis LLM on update (#54).
+
+    `aliases`, `related`, `sources`, `num_sources`, `updated_at` are derived by
+    the producer from the wiki.db ledgers, not authored by the LLM. Showing them
+    back risks the model echoing volatile or accumulated metadata into the body
+    (which, for an accumulated `related`/`sources`, would also churn the #47
+    version hash if it leaked into `content`). LLM-authored fields
+    (entity_id/title/page_type/summary) and the body are kept untouched. Only the
+    leading frontmatter block is touched; a body line like `sources: …` is safe.
+    """
+    m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", page_text, re.DOTALL)
+    if not m:
+        return page_text
+    kept = [
+        line
+        for line in m.group(1).splitlines()
+        if line.split(":", 1)[0].strip() not in _PRODUCER_FRONTMATTER_KEYS
+    ]
+    return "---\n" + "\n".join(kept) + "\n---\n" + page_text[m.end() :]
+
+
 def _strip_code_fence(text: str) -> str:
     """Drop a wrapping ```lang ... ``` fence the LLM sometimes emits around its
     whole response. Without this the fence bypasses frontmatter parsing and the

@@ -31,6 +31,7 @@ def _write_wiki_page(wiki_dir: Path, *, entity_id: str, title: str, summary: str
         aliases=[],
         num_sources=1,
         sources=page.sources,
+        related=page.related,
     )
 
 

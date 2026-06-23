@@ -525,6 +525,54 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
+def insert_entity_relation(
+    conn: sqlite3.Connection,
+    *,
+    entity_id: str,
+    related_entity_id: str,
+    item_id: str,
+    source_type: str,
+    added_at: str | None = None,
+) -> None:
+    """Record one directed co-occurrence edge (entity_id → related_entity_id)
+    contributed by content item (item_id, source_type) in the entity_relations
+    ledger (#54). Idempotent (ON CONFLICT DO NOTHING) so retries and
+    re-processing don't duplicate the edge — the derived co_count stays stable.
+    Caller manages the transaction and has already inserted both entities (FK)."""
+    conn.execute(
+        """
+        INSERT INTO entity_relations (entity_id, related_entity_id, item_id, source_type, added_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (entity_id, related_entity_id, item_id, source_type) DO NOTHING
+        """,
+        (entity_id, related_entity_id, item_id, source_type, added_at or _now_iso()),
+    )
+
+
+def get_related_for_entity(
+    conn: sqlite3.Connection, entity_id: str, *, limit: int = 20
+) -> list[str]:
+    """Accumulated related entity_ids for a page (#54), strongest first.
+
+    Derives `co_count = COUNT(DISTINCT item_id)` (how many distinct articles
+    co-mention the pair) over the entity_relations ledger, ranked
+    `co_count DESC, last_seen DESC, related_entity_id ASC` — a stable, bounded
+    (top-`limit`) list for the page's `related` frontmatter. Empty for an entity
+    with no recorded edges."""
+    rows = conn.execute(
+        """
+        SELECT related_entity_id
+        FROM entity_relations
+        WHERE entity_id = ?
+        GROUP BY related_entity_id
+        ORDER BY COUNT(DISTINCT item_id) DESC, MAX(added_at) DESC, related_entity_id ASC
+        LIMIT ?
+        """,
+        (entity_id, limit),
+    ).fetchall()
+    return [r["related_entity_id"] for r in rows]
+
+
 def get_source_ids_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[str]:
     """The accumulated, distinct source item_ids for an entity from the
     page_sources ledger — the deterministic list the page's `sources` frontmatter
