@@ -101,3 +101,25 @@ CREATE TABLE IF NOT EXISTS page_versions (
     content      TEXT NOT NULL,                   -- full markdown body at this version
     PRIMARY KEY (entity_id, version)
 ) STRICT;
+
+-- ---------------------------------------------------------------------------
+-- entity_relations — accumulated entity↔entity co-occurrence edges (#54).
+-- A pure LEDGER: one row per (directed edge, contributing content item). The
+-- link strength `co_count` is DERIVED on read (COUNT(DISTINCT item_id)), exactly
+-- as num_sources is derived over page_sources — so it's retry-safe by
+-- construction (idempotent ON CONFLICT DO NOTHING, no counter to double-bump).
+-- entity_id/related_entity_id are graph NODES (both FK→entities); item_id/
+-- source_type are the PROVENANCE (which article co-mentioned them), the repo's
+-- stable (item_id, source_type) content identity. Edges are inserted in BOTH
+-- directions, so get_related_for_entity reads one column.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS entity_relations (
+    entity_id         TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
+    related_entity_id TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
+    item_id           TEXT NOT NULL,
+    source_type       TEXT NOT NULL,
+    added_at          TEXT NOT NULL,                -- ISO-8601 UTC
+    PRIMARY KEY (entity_id, related_entity_id, item_id, source_type)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_entity_relations_entity_id ON entity_relations (entity_id);

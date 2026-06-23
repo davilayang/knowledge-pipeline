@@ -48,7 +48,8 @@ wiki/synthesized   (key: wiki/synthesized — daily partition)
   │     extraction ran in the prior stage; matched_id is advisory)
   │             ─→ synthesize_entity (call #2, sequential loop)
   │             ─→ _persist_graph (ONE transaction: entities + pages +
-  │                page_sources + aliases + page_versions) ─→ write .md
+  │                page_sources + aliases + page_versions + entity_relations)
+  │                ─→ write .md
   │                files ─→ _mark_processed (processed_items, written LAST).
   │     Aliases use ON CONFLICT DO NOTHING for cross-item safety;
   │     page_sources uses ON CONFLICT DO NOTHING (idempotent under retries).

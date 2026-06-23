@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Wiki page `related` now accumulates across every article that co-mentions an entity**, not just the latest synthesis's siblings. A new `entity_relations` ledger records co-occurrence edges (both directions, per contributing item); `domains.wiki.state.get_related_for_entity` derives a `co_count`-ranked top-N list rendered into the page frontmatter. On update, producer-owned frontmatter is stripped from the existing page before it re-enters the synthesis prompt (`parsing.strip_producer_frontmatter`). Requires the `data/wiki.db` rebuild. `SYNTHESIZE_WIKI_DAG_VERSION` → 11.
+
 ---
 
 ## [0.24.6] — 2026-06-23
