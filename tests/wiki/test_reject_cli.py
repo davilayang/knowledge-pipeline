@@ -98,3 +98,8 @@ def test_run_reject_dry_run_changes_nothing(tmp_path, wiki_db_path):
 def test_run_reject_requires_entity_or_name(tmp_path, wiki_db_path):
     with pytest.raises(ValueError, match="entity_id or name"):
         run_reject(wiki_db_path, tmp_path, dry_run=True)
+
+
+def test_run_reject_unknown_name_raises(tmp_path, wiki_db_path):
+    with pytest.raises(ValueError, match="no entity named"):
+        run_reject(wiki_db_path, tmp_path, name="Nonexistent Thing")

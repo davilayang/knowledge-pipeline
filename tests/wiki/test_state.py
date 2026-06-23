@@ -548,6 +548,20 @@ def test_upsert_and_get_rejected_round_trip(wiki_db):
     ]
 
 
+def test_insert_aliases_skips_rejected_names(wiki_db):
+    """An alias must never contradict the denylist: a normalized alias already in
+    rejected_entities is dropped, so a rejected surface form can't re-enter as an
+    alias of a different entity (codex: alias reintroduction)."""
+    _seed_entity(wiki_db, "e_x", "Privacy Stuff")
+    upsert_rejected(wiki_db, normalized_name="cookie settings")
+    insert_aliases(wiki_db, [("Cookie Settings", "e_x"), ("Privacy", "e_x")])
+    wiki_db.commit()
+
+    idx = build_entity_index(wiki_db)
+    assert "cookie settings" not in idx.by_normalized_alias
+    assert idx.by_normalized_alias["privacy"] == "e_x"
+
+
 def test_upsert_rejected_updates_in_place_on_conflict(wiki_db):
     upsert_rejected(wiki_db, normalized_name="max plan", reason="first", rejected_at=NOW)
     later = "2026-06-23T12:00:00+00:00"

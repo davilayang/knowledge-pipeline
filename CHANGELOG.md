@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **Wiki synthesis reads the denylist from the local `rejected_entities` table**, not live Notion. The per-tick `query_rejected()` call + the fail-closed `data/wiki/_index/rejected.json` snapshot are gone — synthesis no longer depends on Notion being reachable. `SYNTHESIZE_WIKI_DAG_VERSION` → 12. (A future `sync_wiki_curation` DAG will sync Notion rejections into the table.)
+- **Aliases can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`, so a rejected surface form can't re-enter as an alias of a different entity and re-resolve to it.
 
 ---
 

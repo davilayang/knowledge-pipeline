@@ -348,6 +348,10 @@ def insert_aliases(
     The normalized_alias (lower/trim/collapse-ws) is the globally-unique match
     key; ON CONFLICT DO NOTHING means the first writer keeps the alias if two
     entities both claim it. Dedupes within the batch on the normalized key.
+
+    A normalized alias already in `rejected_entities` is dropped: an alias must
+    never contradict the denylist (otherwise a rejected surface form could
+    re-enter as an alias of a different entity and re-resolve to it).
     """
     rows: list[tuple[str, str, str]] = []
     seen: set[str] = set()
@@ -360,6 +364,19 @@ def insert_aliases(
         seen.add(norm)
         rows.append((display, norm, entity_id))
 
+    if not rows:
+        return
+
+    placeholders = ",".join("?" * len(rows))
+    rejected = {
+        r[0]
+        for r in conn.execute(
+            f"SELECT normalized_name FROM rejected_entities "
+            f"WHERE normalized_name IN ({placeholders})",
+            [norm for _, norm, _ in rows],
+        ).fetchall()
+    }
+    rows = [r for r in rows if r[1] not in rejected]
     if not rows:
         return
 
@@ -801,6 +818,17 @@ def reject_entity(
     `rejected_entities` (alias-family tombstone — stops a deleted entity
     re-minting under a known surface form), then deletes the entity (children
     cascade). Returns the file_path so the caller can unlink the `.md`. Pure DB.
+
+    Policy: the denylist is name-keyed, so it blocks only KNOWN surface forms
+    (the canonical name + the aliases seen at reject time). A future article that
+    mentions a brand-new synonym never recorded as an alias will re-mint the
+    entity — the curator rejects it again (or merges). This is intentional;
+    name-keyed suppression can't anticipate an unseen synonym.
+
+    Single-writer only: the entity/alias reads happen before the first write, so
+    they are not a locked snapshot under concurrent writers. Safe under the
+    repo's single-writer SQLite model (in-cluster, off the synthesis window);
+    don't run it concurrently with synthesis.
     """
     ent = get_entity(conn, entity_id)
     if ent is None:

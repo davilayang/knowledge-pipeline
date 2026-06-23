@@ -116,12 +116,13 @@ class WikiResource(dg.ConfigurableResource):
 
 
 def build_resources() -> dict[str, dg.ConfigurableResource]:
+    # WikiPagesNotionResource (query_rejected) is intentionally NOT wired here:
+    # synthesis now reads the denylist from the local rejected_entities table, so
+    # nothing in this pipeline consumes Notion. The class is retained for the
+    # forthcoming sync_wiki_curation DAG, which will wire it in its own resources
+    # (keeping the NOTION_* env vars off this code location until then).
     return {
         "wiki": WikiResource(
             backup_dir=dg.EnvVar("BACKUP_DST_DIR"),
-        ),
-        "wiki_pages_notion": WikiPagesNotionResource(
-            integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
-            wiki_pages_data_source_id=dg.EnvVar("NOTION_WIKI_PAGES_DATA_SOURCE_ID"),
         ),
     }
