@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.24.6] — 2026-06-23
+
 ### Added
 
 - **Wiki pages now keep an immutable edition history.** Each synthesis that changes a page's prose appends a full-content version to a new `page_versions` table (provenance-tagged with the content item that triggered it); a semantic-content hash over `{summary, content}` gates the append so re-runs that only touch metadata don't churn the history. Read via `domains.wiki.state.get_page_history` / `get_page_version`. Requires dropping the existing `data/wiki.db` and re-synthesising (rebuild-don't-migrate). `SYNTHESIZE_WIKI_DAG_VERSION` → 10.
