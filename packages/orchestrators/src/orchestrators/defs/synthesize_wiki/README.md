@@ -1,7 +1,7 @@
 # `synthesize_wiki` runbook
 
 Plain-function wiki synthesis pipeline: turns `raw_store` items into a
-structured wiki (concepts, tools, trends) backed by a local SQLite file
+structured wiki (open-domain entity types) backed by a local SQLite file
 (`data/wiki.db`). One scheduled tick per day (06:00 UTC) = one Dagster
 run = full pending → extracted → synthesized → index cycle.
 

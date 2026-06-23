@@ -3,7 +3,9 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PageType = Literal["concept", "tool", "trend"]
+PageType = Literal[
+    "concept", "tool", "trend", "person", "organization", "method", "dataset", "other"
+]
 
 
 class WikiPage(BaseModel):
