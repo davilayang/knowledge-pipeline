@@ -51,6 +51,7 @@ from domains.wiki.identity import (
     shortid,
 )
 from domains.wiki.io import write_page
+from domains.wiki.relevance import select_relevant_entities
 from domains.wiki.state import (
     build_entity_index,
     connection,
@@ -293,7 +294,18 @@ def extract(item: IngestItem, *, db_path: Path | str) -> dict:
         with connection(db_path) as conn:
             store = snapshot_aliases(conn)
 
-        known_entities = _snapshot_to_yaml(store) or "(no known entities yet)"
+        # Trim the catalog to the entities lexically relevant to this article
+        # before it goes into the prompt — a no-op until the catalog outgrows the
+        # relevance cap (see domains.wiki.relevance).
+        relevant = select_relevant_entities(store, item.text)
+        if len(relevant.entries) < len(store.entries):
+            logger.info(
+                "relevance-filtered known entities for %s: %d → %d",
+                item.item_id,
+                len(store.entries),
+                len(relevant.entries),
+            )
+        known_entities = _snapshot_to_yaml(relevant) or "(no known entities yet)"
         user_prompt = ENTITY_EXTRACTION_USER.format(
             known_entities=known_entities,
             title=item.title,
