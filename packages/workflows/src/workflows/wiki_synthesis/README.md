@@ -14,11 +14,11 @@ This document is for engineers modifying the workflow.
 ## What the workflow does
 
 Given a source document (an `IngestItem` — id, title, full text, source_type),
-produce updates to a structured wiki of three entity types:
-
-- **concept** — abstract ideas (e.g. "vector quantization")
-- **tool** — concrete software/products (e.g. "DuckDB")
-- **trend** — emerging patterns or shifts (e.g. "MoE architectures")
+produce updates to a structured wiki. The `PageType` literal (`domains.wiki.types`)
+covers: `concept`, `tool`, `trend`, `person`, `organization`, `method`, `dataset`,
+`other`. The extraction prompt is domain-agnostic — entity-count guidance caps at
+10 (enforced by `ExtractionResult.entities max_length=10`), with quality-over-count
+framing.
 
 Each entity has exactly one wiki page on disk (`data/wiki/{slug}-{shortid}.md`
 — flat under `data/wiki/`, no subdirectory; shortid = first 8 hex of the
@@ -69,8 +69,10 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
 The DAG splits extraction and synthesis into two separate entry points:
 
 - **`extract_item`** — what `wiki/extracted` calls. Snapshots the entity
-  index, calls the extraction LLM (call #1), returns
-  `{candidates, extract_error, llm_calls}`. Writes NO DB state.
+  index, relevance-filters it to the article's keyword set (via
+  `domains.wiki.relevance.select_relevant_entities` — a no-op until the catalog
+  exceeds `RELEVANCE_MAX_ENTITIES=50`), calls the extraction LLM (call #1),
+  returns `{candidates, extract_error, llm_calls}`. Writes NO DB state.
 - **`synthesize_extracted_item`** — what `wiki/synthesized` calls. Takes
   the stored extraction payload, resolves/mints against a LIVE index, then
   delegates to `_synthesize_resolved`.
@@ -106,10 +108,11 @@ _synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
        surrogates on retry, no orphan files)
 ```
 
-Entity counts per document are unbounded; entities are processed one at a
-time in the sequential loop. A writer/evaluator agentic loop (where the
-synthesis LLM iterates with a separate evaluator LLM) is a deferred future
-option for improving page quality — not part of the current implementation.
+Entity counts per document are capped at 10 (enforced by `ExtractionResult`
+`max_length=10`); entities are processed one at a time in the sequential loop.
+A writer/evaluator agentic loop (where the synthesis LLM iterates with a
+separate evaluator LLM) is a deferred future option for improving page quality
+— not part of the current implementation.
 
 ## Update vs create per entity
 
