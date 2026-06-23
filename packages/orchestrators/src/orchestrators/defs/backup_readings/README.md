@@ -1,10 +1,17 @@
 # `backup_readings` runbook
 
-Daily-partitioned snapshot of the newsletter-assistant SQLite databases
-(`raw_store.db`, `sessions.db`, `research.db`) plus a gzip-tar archive of the
-flat-file `notes/` dir, with Google Drive offload via rclone and a
-healthchecks.io ping that turns silence (cron didn't fire, daemon died) into
-a loud alert.
+Daily-partitioned snapshot of the corpus SQLite databases plus gzip-tar
+archives of the flat-file directories, with Google Drive offload via rclone
+and a healthchecks.io ping that turns silence (cron didn't fire, daemon died)
+into a loud alert.
+
+Two owners, two source dirs:
+
+- **newsletter-assistant** (read from `BACKUP_SRC_DIR`): `raw_store.db`,
+  `sessions.db`, `research.db`, and the `notes/` dir.
+- **knowledge-pipeline** (read from this repo's `data/` dir): `queue.db`,
+  `wiki.db`, and the `wiki/` rendered-page dir. These are kp-owned and live
+  in kp's own data dir, *not* under `BACKUP_SRC_DIR`.
 
 ## DAG (per partition)
 
@@ -14,7 +21,10 @@ Failure cascade — what blocks what when a step fails:
 snapshot_raw_store         ─┐
 snapshot_sessions          ─┤
 snapshot_research          ─┤
-snapshot_notes             ─┼─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ──┐
+snapshot_notes             ─┤
+snapshot_queue             ─┤
+snapshot_wiki              ─┤
+snapshot_wiki_pages        ─┼─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ──┐
                                  ↑                          ↑                    ↑              │
                                  │                          │                    │              │
                           catches corrupt              catches Drive >        catches missing   │
@@ -58,15 +68,26 @@ upload is gated. Recovery options:
 
 ### Snapshot integrity check failed
 
-The `verify_snapshot_*` blocking check trips when the SQLite file is
-suspiciously small, fails `PRAGMA integrity_check`, or has zero tables.
-The downstream upload doesn't run — the corrupt snapshot stays local-only.
+There are two flavours of `verify_snapshot_*` blocking checks:
+
+**SQLite snapshots** (`raw_store.db`, `sessions.db`, `research.db`,
+`queue.db`, `wiki.db`) — check trips when the file is suspiciously small,
+fails `PRAGMA integrity_check`, or has zero tables.
 Common causes: source DB was being written during snapshot (rare, SQLite
 backup API handles concurrent reads), disk full on local backup volume.
 
 ```bash
 sqlite3 backups/<date>/raw_store.db "PRAGMA integrity_check;"
+sqlite3 backups/<date>/wiki.db      "PRAGMA integrity_check;"
 ```
+
+**Archive snapshots** (`notes.tgz`, `wiki.tgz`) — check trips when the
+archive is suspiciously small, fails to open as a gzip-tar, or contains
+zero files. Common causes: source directory was empty (nothing in `notes/`
+or `wiki/` yet) or disk full on local backup volume.
+
+The downstream upload doesn't run in either case — the corrupt or empty
+snapshot stays local-only.
 
 ### Upload count mismatch
 
@@ -77,21 +98,28 @@ has fewer files than expected after `rclone copy`. The metadata records
 
 ### Restoring a snapshot
 
+Restore each file back to *its owner's* dir — NA-owned files (`raw_store.db`,
+`sessions.db`, `research.db`, `notes.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
+files (`queue.db`, `wiki.db`, `wiki.tgz`) go to this repo's `data/` dir.
+
 Local (SQLite DBs):
 ```bash
-cp backups/<date>/raw_store.db <BACKUP_SRC_DIR>/raw_store.db
+cp backups/<date>/raw_store.db <BACKUP_SRC_DIR>/raw_store.db   # NA-owned
+cp backups/<date>/wiki.db      <KP_DATA_DIR>/wiki.db           # kp-owned
 ```
 
 Local (tgz archives — extract back over the source dir):
 ```bash
-tar -xzf backups/<date>/notes.tgz -C <BACKUP_SRC_DIR>
+tar -xzf backups/<date>/notes.tgz -C <BACKUP_SRC_DIR>    # → notes/
+tar -xzf backups/<date>/wiki.tgz  -C <KP_DATA_DIR>       # → wiki/  (kp-owned)
 ```
 
 From Drive:
 ```bash
 rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SRC_DIR>/
-rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/notes.tgz /tmp/ \
-  && tar -xzf /tmp/notes.tgz -C <BACKUP_SRC_DIR>
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/wiki.db <KP_DATA_DIR>/
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/wiki.tgz /tmp/ \
+  && tar -xzf /tmp/wiki.tgz -C <KP_DATA_DIR>
 ```
 
 ## External setup
@@ -108,7 +136,7 @@ All resolved via `dg.EnvVar` at run init — unset → fail fast with a clear
 | `DRIVE_REMOTE` | rclone remote name (e.g. `gdrive`) |
 | `DRIVE_BACKUP_ROOT` | Drive folder under the remote (e.g. `knowledge-pipeline/backups`) |
 | `HEALTHCHECK_PING_URL` | healthchecks.io ping URL |
-| `DATABASE_URL` | Postgres URL for Dagster + LangGraph + wiki state |
+| `DATABASE_URL` | Postgres URL for Dagster run history + LangGraph checkpoints |
 
 Set in the deploy `.env` (server) or shell profile (laptop). See
 `.env.example` at the repo root.

@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.8] — 2026-06-23
+
+### Added
+
+- **The entity wiki is now in the daily backup.** `backup_readings` snapshots `wiki.db` (SQLite `.backup` + integrity check) and the rendered `data/wiki/` tree (gzip-tar + archive check), closing the last corpus piece with no recovery path. Both are kp-owned (read from this repo's `data/` dir, not `BACKUP_SRC_DIR`) and anchor on a new `wiki_store` lineage source. `BACKUP_READINGS_DAG_VERSION` → 6.
+
+---
+
 ## [0.24.7] — 2026-06-23
 
 ### Added
