@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.4] — 2026-06-23
+
+### Changed
+
+- **Wiki retrieval-eval source now reads synthesized pages instead of an empty corpus.** `WikiSource` was reading the old page-type subdir layout; it now globs the flat `{slug}-{shortid}.md` files and resolves by frontmatter `entity_id` (`domains.wiki.sources`).
+
+---
+
 ## [0.24.3] — 2026-06-23
 
 ### Changed

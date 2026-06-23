@@ -7,24 +7,27 @@ embedding/Chroma run (covered by test_runner against fakes).
 from datetime import date
 from pathlib import Path
 
+from domains.wiki.identity import shortid, slugify
 from domains.wiki.io import write_page
 from domains.wiki.types import WikiPage
 from evals.retrieval.cli import _load_items, _parse_args
 
 
-def _write_wiki_page(wiki_dir: Path, *, entity_id: str, summary: str) -> None:
-    page_type, slug = entity_id.split("__", 1)
+def _write_wiki_page(wiki_dir: Path, *, entity_id: str, title: str, summary: str) -> None:
+    # Flat layout, as synthesis writes: {slug}-{shortid}.md, surrogate id.
     page = WikiPage(
         entity_id=entity_id,
-        title=slug.replace("_", " "),
-        page_type=page_type,
+        title=title,
+        page_type="concept",
         summary=summary,
         related=[],
         sources=[],
         updated_at=date(2026, 6, 20),
-        content=f"# {slug}\n\nBody.",
+        content=f"# {title}\n\nBody.",
     )
-    write_page(wiki_dir / page_type / f"{slug}.md", page, aliases=[], num_sources=1)
+    write_page(
+        wiki_dir / f"{slugify(title)}-{shortid(entity_id)}.md", page, aliases=[], num_sources=1
+    )
 
 
 class TestParseArgs:
@@ -39,7 +42,8 @@ class TestLoadItems:
         wiki_dir = tmp_path / "wiki"
         _write_wiki_page(
             wiki_dir,
-            entity_id="concept__context_rot",
+            entity_id="e_aaaaaaaaaaaaaaaa",
+            title="Context rot",
             summary="Context rot degrades long-context output.",
         )
 
@@ -47,5 +51,5 @@ class TestLoadItems:
         items = _load_items(args)
 
         assert "wiki" in items
-        assert [i.item_id for i in items["wiki"]] == ["concept__context_rot"]
+        assert [i.item_id for i in items["wiki"]] == ["e_aaaaaaaaaaaaaaaa"]
         assert items["wiki"][0].text == "Context rot degrades long-context output."

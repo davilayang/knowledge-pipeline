@@ -8,14 +8,15 @@ Each page becomes one ``IngestItem`` whose ``text`` is the page **summary**
 the resurfacing unit the recall layer speaks. ``num_sources`` is carried
 through for the index-time sparsity gate (W3).
 
-Identity is **frontmatter-authoritative**: ``entity_id`` always comes from the
-page's frontmatter, never inferred from the file path. The common path of a
-well-formed corpus has ``entity_id == {dir}__{stem}``, so ``get_item`` builds
-the path directly; but a dedup-track failure mode lets a page's frontmatter id
-disagree with its path (e.g. ``concept__x`` frontmatter at ``trend/x.md``).
-``get_item`` therefore verifies the frontmatter id and falls back to a scan on
-a miss, so it never returns a page whose id differs from the request and always
-resolves whatever ``get_item_ids`` advertises.
+Layout: pages are flat ``.md`` files directly under ``data/wiki/`` named
+``{slug}-{shortid}.md``; ``index.md`` (the TOC) and ``_index/`` sidecars
+(aliases.json) carry no page frontmatter and are skipped.
+
+Identity is **frontmatter-authoritative**: ``entity_id`` is the opaque surrogate
+(``e_<hex>``) read from the page's frontmatter, never derived from the filename.
+``get_item`` therefore resolves by scanning for the page whose frontmatter id
+matches the request, so it never returns a page whose id differs from the
+request and always resolves whatever ``get_item_ids`` advertises.
 
 Malformed frontmatter (missing ``entity_id`` / ``title`` / ``updated_at``) is a
 producer bug — the adapter fails loud rather than silently skipping the page.
@@ -26,6 +27,9 @@ from pathlib import Path
 
 from domains.types import IngestItem
 from domains.wiki.io import read_meta
+
+# Root-level ``.md`` files that are not entity pages (no page frontmatter).
+_NON_PAGE_FILES = frozenset({"index.md"})
 
 
 class WikiSource:
@@ -38,19 +42,8 @@ class WikiSource:
         return sorted(read_meta(p)["entity_id"] for p in self._page_paths())
 
     def get_item(self, item_id: str) -> IngestItem | None:
-        if "__" not in item_id:
-            return None
-        page_type, slug = item_id.split("__", 1)
-        # Fast path: a well-formed page lives at {page_type}/{slug}.md and its
-        # frontmatter id matches. Verify the id so a path collision can't return
-        # the wrong page.
-        path = self._wiki_dir / page_type / f"{slug}.md"
-        if path.is_file():
-            meta = read_meta(path)
-            if meta.get("entity_id") == item_id:
-                return _item_from_meta(meta)
-        # Collision fallback: resolve by frontmatter authority so get_item
-        # agrees with get_item_ids even when a page's id disagrees with its path.
+        # The surrogate id is opaque — nothing in the filename is derivable from
+        # it — so resolve by frontmatter authority: scan for the matching id.
         for p in self._page_paths():
             meta = read_meta(p)
             if meta.get("entity_id") == item_id:
@@ -64,9 +57,10 @@ class WikiSource:
         )
 
     def _page_paths(self) -> list[Path]:
-        """Page ``.md`` files under page-type subdirs, skipping sidecar dirs
-        like ``_index/`` (aliases.json / TOC) that carry no page frontmatter."""
-        return [p for p in self._wiki_dir.glob("*/*.md") if not p.parent.name.startswith("_")]
+        """Flat page ``.md`` files directly under the wiki dir, skipping
+        ``index.md`` (the TOC). ``glob("*.md")`` is non-recursive, so ``_index/``
+        sidecars never appear."""
+        return [p for p in self._wiki_dir.glob("*.md") if p.name not in _NON_PAGE_FILES]
 
 
 def _item_from_meta(meta: dict) -> IngestItem:
