@@ -80,6 +80,22 @@ queue_store_source = dg.AssetSpec(
     },
 )
 
+wiki_store_source = dg.AssetSpec(
+    key=["wiki_store"],
+    group_name=UPSTREAM_GROUP,
+    description=(
+        "knowledge-pipeline SQLite — `entities` / `pages` / `page_versions` / "
+        "`page_sources` tables (full edition history + frontmatter ledgers). "
+        "Written by synthesize_wiki assets in this repo; the rendered `.md` "
+        "page tree lives alongside it at data/wiki/. Consumed by snapshot_wiki "
+        "and snapshot_wiki_pages (backup_readings)."
+    ),
+    metadata={
+        "owner": dg.MetadataValue.text("knowledge-pipeline"),
+        "path": dg.MetadataValue.path("data/wiki.db"),
+    },
+)
+
 notion_queue_source = dg.AssetSpec(
     key=["notion_queue"],
     group_name=UPSTREAM_GROUP,
@@ -100,6 +116,7 @@ all_sources = [
     notes_source,
     research_store_source,
     queue_store_source,
+    wiki_store_source,
     notion_queue_source,
 ]
 

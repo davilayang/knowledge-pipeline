@@ -11,7 +11,12 @@ from pathlib import Path
 
 import dagster as dg
 
-from orchestrators.config import BACKUP_READINGS_DAG_VERSION, LOCAL_QUEUE_DB
+from orchestrators.config import (
+    BACKUP_READINGS_DAG_VERSION,
+    LOCAL_QUEUE_DB,
+    LOCAL_WIKI_DB,
+    LOCAL_WIKI_DIR,
+)
 
 from .def_config import (
     DRIVE_USAGE_THRESHOLD,
@@ -80,10 +85,12 @@ def _snapshot_one_db(
 def _snapshot_one_dir(
     context: dg.AssetExecutionContext,
     backup: BackupResource,
-    source_subdir: str,
+    source: Path,
     archive_name: str,
 ) -> dg.MaterializeResult:
-    source = backup.get_source_dir() / source_subdir
+    """Tar a flat-file directory into the partition's backup dir. `source` is an
+    absolute path: notes/ comes from BACKUP_SRC_DIR (NA's data dir), wiki/ from
+    kp's own DATA_DIR — both resolved by the caller."""
     if not source.is_dir():
         raise dg.Failure(
             description=f"Source dir missing: {source}",
@@ -159,7 +166,7 @@ def snapshot_sessions(
 def snapshot_notes(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_dir(context, backup, "notes", "notes.tgz")
+    return _snapshot_one_dir(context, backup, backup.get_source_dir() / "notes", "notes.tgz")
 
 
 @dg.asset(
@@ -200,6 +207,48 @@ def snapshot_queue(
     return _snapshot_one_db(context, backup, LOCAL_QUEUE_DB)
 
 
+@dg.asset(
+    key=["snapshots", "wiki"],
+    group_name="backup",
+    kinds={"sqlite"},
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("wiki_store")],
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "Consistent SQLite snapshot of wiki.db (kp's entity-page state + "
+        "edition history) for the partition's date."
+    ),
+)
+def snapshot_wiki(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    # wiki.db is owned by kp (written by synthesize_wiki). Read from kp's own
+    # data dir, NOT BACKUP_SRC_DIR which points at NA's data dir on prod.
+    return _snapshot_one_db(context, backup, LOCAL_WIKI_DB)
+
+
+@dg.asset(
+    key=["snapshots", "wiki_pages"],
+    group_name="backup",
+    kinds={"file"},
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    deps=[dg.AssetDep("wiki_store")],
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description=(
+        "gzip-tar archive of kp's data/wiki/ rendered entity-page .md tree "
+        "(plus its _index sidecar) for the partition's date."
+    ),
+)
+def snapshot_wiki_pages(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    # data/wiki/ is owned by kp (written by synthesize_wiki). Read from kp's
+    # own data dir, NOT BACKUP_SRC_DIR.
+    return _snapshot_one_dir(context, backup, LOCAL_WIKI_DIR, "wiki.tgz")
+
+
 # ---------- Drive capacity observation ----------
 
 
@@ -215,6 +264,8 @@ def snapshot_queue(
         dg.AssetDep(["snapshots", "notes"]),
         dg.AssetDep(["snapshots", "research"]),
         dg.AssetDep(["snapshots", "queue"]),
+        dg.AssetDep(["snapshots", "wiki"]),
+        dg.AssetDep(["snapshots", "wiki_pages"]),
     ],
     check_specs=[
         dg.AssetCheckSpec(
@@ -450,6 +501,8 @@ all_assets = [
     snapshot_notes,
     snapshot_research,
     snapshot_queue,
+    snapshot_wiki,
+    snapshot_wiki_pages,
     storage_capacity,
     upload_snapshots_to_drive,
     prune_drive_backups,

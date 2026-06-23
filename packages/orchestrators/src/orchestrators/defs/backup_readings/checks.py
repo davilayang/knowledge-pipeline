@@ -178,10 +178,36 @@ def verify_snapshot_queue(
     return _verify_one(context, backup, "queue.db")
 
 
+@dg.asset_check(
+    asset=dg.AssetKey(["snapshots", "wiki"]),
+    name="verify_snapshot_wiki",
+    blocking=True,
+    description="wiki.db opens, integrity_check passes, has tables.",
+)
+def verify_snapshot_wiki(
+    context: dg.AssetCheckExecutionContext, backup: BackupResource
+) -> dg.AssetCheckResult:
+    return _verify_one(context, backup, "wiki.db")
+
+
+@dg.asset_check(
+    asset=dg.AssetKey(["snapshots", "wiki_pages"]),
+    name="verify_snapshot_wiki_pages",
+    blocking=True,
+    description="wiki.tgz opens as gzip-tar and contains at least one file.",
+)
+def verify_snapshot_wiki_pages(
+    context: dg.AssetCheckExecutionContext, backup: BackupResource
+) -> dg.AssetCheckResult:
+    return _verify_one_archive(context, backup, "wiki.tgz")
+
+
 all_checks = [
     verify_snapshot_raw_store,
     verify_snapshot_sessions,
     verify_snapshot_notes,
     verify_snapshot_research,
     verify_snapshot_queue,
+    verify_snapshot_wiki,
+    verify_snapshot_wiki_pages,
 ]
