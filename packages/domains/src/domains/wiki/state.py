@@ -525,6 +525,24 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
+def get_source_ids_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[str]:
+    """The accumulated, distinct source item_ids for an entity from the
+    page_sources ledger — the deterministic list the page's `sources` frontmatter
+    should render (vs the per-item `[source_id]` the LLM emits). Ordered by first
+    contribution (MIN added_at) then item_id; GROUP BY item_id collapses an item
+    that appears under multiple source_types into one entry."""
+    rows = conn.execute(
+        """
+        SELECT item_id FROM page_sources
+        WHERE entity_id = ?
+        GROUP BY item_id
+        ORDER BY MIN(added_at), item_id
+        """,
+        (entity_id,),
+    ).fetchall()
+    return [r["item_id"] for r in rows]
+
+
 def is_source_for_entity(conn: sqlite3.Connection, entity_id: str, item_id: str) -> bool:
     """True if item_id is already a recorded contribution for entity_id.
 

@@ -26,7 +26,11 @@ def _write_wiki_page(wiki_dir: Path, *, entity_id: str, title: str, summary: str
         content=f"# {title}\n\nBody.",
     )
     write_page(
-        wiki_dir / f"{slugify(title)}-{shortid(entity_id)}.md", page, aliases=[], num_sources=1
+        wiki_dir / f"{slugify(title)}-{shortid(entity_id)}.md",
+        page,
+        aliases=[],
+        num_sources=1,
+        sources=page.sources,
     )
 
 

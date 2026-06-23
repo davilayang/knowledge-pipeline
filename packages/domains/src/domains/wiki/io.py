@@ -45,12 +45,15 @@ def write_page(
     *,
     aliases: list[str],
     num_sources: int,
+    sources: list[str],
 ) -> None:
     """Write a wiki page to a markdown file with YAML frontmatter.
 
-    `aliases` and `num_sources` are producer-authoritative (sourced from
-    Postgres at write time), not LLM-supplied. The frontmatter key order is
-    stable for diff-readability:
+    `aliases`, `num_sources`, and `sources` are producer-authoritative (sourced
+    from the wiki.db ledgers at write time), not LLM-supplied. In particular
+    `sources` is the accumulated distinct item_ids from the page_sources ledger,
+    NOT page.sources (which defaults to the single triggering [source_id]). The
+    frontmatter key order is stable for diff-readability:
 
         entity_id, title, page_type, summary, aliases, related, sources,
         num_sources, updated_at
@@ -67,7 +70,7 @@ def write_page(
         f"summary: {_yaml_scalar(page.summary)}",
         f"aliases: {_yaml_inline_list(aliases)}",
         f"related: {_yaml_inline_list(page.related)}",
-        f"sources: {_yaml_inline_list(page.sources)}",
+        f"sources: {_yaml_inline_list(sources)}",
         f"num_sources: {int(num_sources)}",
         f"updated_at: {page.updated_at.isoformat()}",
     ]

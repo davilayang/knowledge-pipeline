@@ -79,3 +79,23 @@ def test_second_distinct_item_counts_two(tmp_path: Path, wiki_db_path):
     )
 
     assert "num_sources: 2" in _only_page(wiki_dir)
+
+
+def test_sources_frontmatter_lists_all_ledger_items(tmp_path: Path, wiki_db_path):
+    """The rendered `sources` list is the accumulated distinct item_ids from the
+    page_sources ledger, not the per-item [source_id] the LLM echoes. After two
+    distinct articles surface the same entity, both ids appear — consistent with
+    num_sources: 2 (which today they contradict)."""
+    wiki_dir = tmp_path / "wiki"
+    wiki_dir.mkdir()
+
+    _run(
+        make_item(item_id="content_abc", source_ref="raw_store:content_abc"), wiki_db_path, wiki_dir
+    )
+    _run(
+        make_item(item_id="content_def", source_ref="raw_store:content_def"), wiki_db_path, wiki_dir
+    )
+
+    page = _only_page(wiki_dir)
+    assert "sources: [content_abc, content_def]" in page
+    assert "num_sources: 2" in page

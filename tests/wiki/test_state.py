@@ -22,6 +22,7 @@ from domains.wiki.state import (
     get_page_history,
     get_page_version,
     get_processed_ids,
+    get_source_ids_for_entity,
     insert_aliases,
     insert_entity,
     insert_page_source,
@@ -392,6 +393,30 @@ def test_count_sources_for_entity_counts_distinct_items(wiki_db):
     insert_page_source(wiki_db, entity_id="e_other", item_id="content_z", source_type="raw_store")
     wiki_db.commit()
     assert count_sources_for_entity(wiki_db, "e_rag") == 2
+
+
+def test_get_source_ids_for_entity_distinct_ordered(wiki_db):
+    """The accumulated, distinct source item_ids for an entity, ordered by first
+    contribution (MIN added_at) then item_id — the deterministic list the page
+    frontmatter should render (vs the per-item [source_id] the LLM emits)."""
+    _seed_entity(wiki_db, "e_rag", "RAG")
+    _seed_entity(wiki_db, "e_other", "Other")
+    # Direct inserts with controlled added_at to pin ordering deterministically.
+    rows = [
+        ("e_rag", "content_b", "raw_store", "2026-06-02T00:00:00+00:00"),
+        ("e_rag", "content_a", "raw_store", "2026-06-01T00:00:00+00:00"),
+        # Same item under a second source_type — one distinct item, earliest wins.
+        ("e_rag", "content_a", "wiki", "2026-05-30T00:00:00+00:00"),
+        ("e_other", "content_z", "raw_store", "2026-06-01T00:00:00+00:00"),
+    ]
+    wiki_db.executemany(
+        "INSERT INTO page_sources (entity_id, item_id, source_type, added_at) VALUES (?,?,?,?)",
+        rows,
+    )
+    wiki_db.commit()
+    # content_a first (MIN added_at 2026-05-30 via the wiki row), then content_b.
+    assert get_source_ids_for_entity(wiki_db, "e_rag") == ["content_a", "content_b"]
+    assert get_source_ids_for_entity(wiki_db, "e_missing") == []
 
 
 def test_count_sources_for_entity_unknown_returns_zero(wiki_db):
