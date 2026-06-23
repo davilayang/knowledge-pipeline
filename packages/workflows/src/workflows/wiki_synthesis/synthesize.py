@@ -60,6 +60,7 @@ from domains.wiki.state import (
     get_aliases_for_entity,
     get_entity,
     get_page_head,
+    get_source_ids_for_entity,
     insert_aliases,
     insert_entity,
     insert_page_source,
@@ -498,15 +499,22 @@ def _mark_processed(
 def _write_pages(successes: list[dict], *, wiki_dir: Path, db_path: Path | str) -> None:
     """Write each successful page's .md AFTER persist committed.
 
-    num_sources comes straight from the page_sources ledger — this item's edge
-    is already committed, so the count needs no adjustment.
+    num_sources AND the sources list both come straight from the page_sources
+    ledger — this item's edge is already committed, so they need no adjustment.
+    Rendering `sources` from the ledger (not page.sources, the per-item
+    [source_id] the LLM echoes) keeps the list consistent with num_sources.
     """
     with connection(db_path) as conn:
         for r in successes:
             aliases = get_aliases_for_entity(conn, r["entity_id"])
             num_sources = count_sources_for_entity(conn, r["entity_id"])
+            sources = get_source_ids_for_entity(conn, r["entity_id"])
             write_page(
-                wiki_dir / r["file_path"], r["page"], aliases=aliases, num_sources=num_sources
+                wiki_dir / r["file_path"],
+                r["page"],
+                aliases=aliases,
+                num_sources=num_sources,
+                sources=sources,
             )
 
 

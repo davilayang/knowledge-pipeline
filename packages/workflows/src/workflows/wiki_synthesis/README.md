@@ -38,8 +38,7 @@ mentions, then for each one decides create-vs-update and writes the result.
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
 | Page edition history | `page_versions` row (full body + provenance) | 1 per synthesis that **changes** the page's `{summary, content}` |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
-| Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives `num_sources` |
-| Source content_id list (display) | LLM-authored list in page frontmatter | display only, not counted |
+| Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives BOTH `num_sources` and the rendered `sources` list |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
 
 **Aliases** prevent duplicates. Before extraction, the workflow snapshots the
@@ -55,15 +54,16 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
 - `page_sources` (ledger table) is the **ground truth** for which
   items have contributed to an entity. `_persist_graph` writes one
   `(entity_id, item_id, source_type)` row per successful entity in the
-  same transaction as `pages`. `num_sources` is
-  `COUNT(DISTINCT item_id)` from this table, not from the LLM output.
-  `count_sources_for_entity` reads the committed ledger after
-  `_persist_graph` so the rendered frontmatter reflects the post-commit
-  count with no off-by-one.
-- The LLM-authored source list in the page frontmatter is **display-only**
-  — the synthesis prompt shows it to the LLM and the merge prompt is
-  expected to preserve it, but it is not the source of `num_sources`. Do
-  not rely on it for counts; query `page_sources` instead.
+  same transaction as `pages`.
+- Both the rendered `num_sources` AND the `sources` list are
+  producer-authoritative, derived from this ledger after `_persist_graph`
+  commits: `count_sources_for_entity` → `num_sources`,
+  `get_source_ids_for_entity` → the `sources` list (accumulated distinct
+  item_ids, ordered by first contribution). They stay consistent by
+  construction.
+- `WikiPage.sources` (the LLM-echoed `[source_id]` in the synthesis
+  output) is **ignored** for rendering — it's the single triggering item,
+  not the accumulated set. Query `page_sources`, never the LLM output.
 
 **Edition history (`page_versions`):** `_persist_graph` appends a full-content
 version row **only when the page's prose changed** — gated by a semantic hash

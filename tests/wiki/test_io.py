@@ -27,6 +27,7 @@ def _write(path: Path, page: WikiPage, **overrides) -> None:
         page,
         aliases=overrides.get("aliases", ["Retrieval-Augmented Generation"]),
         num_sources=overrides.get("num_sources", 1),
+        sources=overrides.get("sources", page.sources),
     )
 
 
@@ -45,6 +46,18 @@ def test_write_then_read_roundtrip(tmp_path: Path):
     assert loaded.sources == page.sources
     assert loaded.updated_at == page.updated_at
     assert loaded.content == page.content
+
+
+def test_sources_frontmatter_is_producer_authoritative(tmp_path: Path):
+    """`sources` rendered to frontmatter comes from the passed-in producer list
+    (the page_sources ledger), NOT page.sources (the per-item [source_id] the LLM
+    emits). Mirrors how aliases / num_sources are already producer-authoritative."""
+    page = _make_page(sources=["content_123"])  # the volatile per-item value
+    path = tmp_path / "rag.md"
+
+    write_page(path, page, aliases=[], num_sources=2, sources=["content_a", "content_b"])
+
+    assert read_page(path).sources == ["content_a", "content_b"]
 
 
 def test_write_creates_parent_dirs(tmp_path: Path):
@@ -95,7 +108,7 @@ def test_read_empty_lists(tmp_path: Path):
     page = _make_page(related=[], sources=[])
     path = tmp_path / "page.md"
 
-    write_page(path, page, aliases=[], num_sources=0)
+    write_page(path, page, aliases=[], num_sources=0, sources=[])
     loaded = read_page(path)
 
     assert loaded.related == []
@@ -112,6 +125,7 @@ def test_write_page_emits_new_fields_in_stable_order(tmp_path: Path):
         page,
         aliases=["RAG", "Retrieval-Augmented Generation"],
         num_sources=3,
+        sources=page.sources,
     )
 
     text = path.read_text(encoding="utf-8")
@@ -144,6 +158,7 @@ def test_write_page_serializes_aliases_as_inline_list(tmp_path: Path):
         page,
         aliases=["RAG", "Retrieval-Augmented Generation"],
         num_sources=1,
+        sources=page.sources,
     )
 
     text = path.read_text(encoding="utf-8")
@@ -156,7 +171,7 @@ def test_write_page_emits_num_sources_as_int(tmp_path: Path):
     page = _make_page()
     path = tmp_path / "page.md"
 
-    write_page(path, page, aliases=[], num_sources=5)
+    write_page(path, page, aliases=[], num_sources=5, sources=page.sources)
 
     text = path.read_text(encoding="utf-8")
     assert "num_sources: 5" in text
