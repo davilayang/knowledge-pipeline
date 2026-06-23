@@ -19,6 +19,7 @@ dependencies = [
 [project.scripts]
 eval-retrieval  = "evals.retrieval.cli:main"
 eval-extraction = "evals.extraction.benchmark:main"
+wiki-dedup-candidates = "evals.wiki_dedup:main"
 
 [build-system]
 requires = ["hatchling"]
