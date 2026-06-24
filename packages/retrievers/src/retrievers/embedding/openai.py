@@ -33,22 +33,40 @@ def _estimate_tokens(text: str) -> int:
 
 class Embedder(Protocol):
     model: str
-    dims: int
+    dims: int | None
 
     def embed_batch(self, texts: list[str]) -> list[list[float]]: ...
 
 
 class OpenAIEmbedder:
-    """Wraps the OpenAI embeddings API with tenacity retry on rate-limit,
-    connection, and 5xx errors. ``dimensions`` exploits Matryoshka
-    representation learning: ``text-embedding-3-{small,large}`` accept
-    ``dimensions=N`` to return a properly truncated vector (N ≤ native_dims).
+    """Embeds via the OpenAI embeddings API — or ANY OpenAI-compatible server
+    (llama.cpp's ``llama-server --embeddings``, Ollama, vLLM, LM Studio) by
+    pointing ``base_url`` at it. Tenacity retry on rate-limit / connection / 5xx.
+
+    ``dims`` controls OpenAI's Matryoshka truncation: ``text-embedding-3-{small,
+    large}`` accept ``dimensions=N`` (N ≤ native_dims). Pass ``dims=None`` for
+    backends that don't support that param — notably llama.cpp's
+    ``/v1/embeddings``, which rejects ``dimensions`` and returns the model's
+    native dim (already L2-normalized). A local-server base_url needs no real
+    key; pass ``api_key="no-key"``.
     """
 
-    def __init__(self, model: str, dims: int, *, api_key: str | None = None):
+    def __init__(
+        self,
+        model: str,
+        dims: int | None = None,
+        *,
+        api_key: str | None = None,
+        base_url: str | None = None,
+    ):
         self.model = model
         self.dims = dims
-        self._client = OpenAI(api_key=api_key) if api_key else OpenAI()
+        client_kwargs: dict[str, str] = {}
+        if api_key:
+            client_kwargs["api_key"] = api_key
+        if base_url:
+            client_kwargs["base_url"] = base_url
+        self._client = OpenAI(**client_kwargs)
         self._retry_policy = Retrying(
             wait=wait_random_exponential(multiplier=1, max=30),
             stop=stop_after_attempt(6),
@@ -59,16 +77,19 @@ class OpenAIEmbedder:
     def embed_batch(self, texts: list[str]) -> list[list[float]]:
         if not texts:
             return []
+        kwargs: dict[str, object] = {"model": self.model}
+        if self.dims is not None:
+            kwargs["dimensions"] = self.dims
         out: list[list[float]] = []
         for sub in self._sub_batches(texts):
             for attempt in self._retry_policy:
                 with attempt:
-                    resp = self._client.embeddings.create(
-                        model=self.model,
-                        input=sub,
-                        dimensions=self.dims,
-                    )
-            out.extend(list(d.embedding) for d in resp.data)
+                    resp = self._client.embeddings.create(input=sub, **kwargs)
+            # Realign by the response's own `index` rather than trusting row
+            # order — a reordered/partial response can't silently misalign
+            # out[i] from texts[i].
+            by_index = {d.index: d.embedding for d in resp.data}
+            out.extend(list(by_index[i]) for i in range(len(sub)))
         return out
 
     @staticmethod

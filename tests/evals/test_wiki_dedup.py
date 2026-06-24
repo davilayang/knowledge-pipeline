@@ -12,7 +12,7 @@ from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.io import write_page
 from domains.wiki.state import connection, insert_entity, upsert_page
 from domains.wiki.types import WikiPage
-from evals.wiki_dedup import pairs_to_json, run_candidates
+from evals.wiki_dedup import embed_batch_with_prefix, pairs_to_json, run_candidates
 
 NOW = "2026-06-22T00:00:00+00:00"
 
@@ -68,6 +68,25 @@ def test_run_candidates_finds_near_dup_pair(tmp_path, wiki_db_path):
     )
 
     assert [(p.a.entity_id, p.b.entity_id) for p in pairs] == [("e_max", "e_plan")]
+
+
+def test_embed_batch_with_prefix_prepends_to_each_text():
+    seen: list[str] = []
+
+    def fake(texts):
+        seen.extend(texts)
+        return [[1.0] for _ in texts]
+
+    wrapped = embed_batch_with_prefix(fake, "search_document: ")
+    wrapped(["RAG\nfoo", "Chroma\nbar"])
+    assert seen == ["search_document: RAG\nfoo", "search_document: Chroma\nbar"]
+
+
+def test_embed_batch_with_prefix_is_passthrough_when_empty():
+    def fake(texts):
+        return [[1.0] for _ in texts]
+
+    assert embed_batch_with_prefix(fake, "") is fake
 
 
 def test_pairs_to_json_is_judging_friendly(tmp_path, wiki_db_path):

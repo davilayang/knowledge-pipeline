@@ -26,6 +26,8 @@ candidate generator only proposes.
 ```
 1. READ      uv run wiki-dedup-candidates --db data/wiki.db --wiki-dir data/wiki \
                --threshold 0.8 > candidates.json
+             (embeds each entity's name+summary; OpenAI by default. To run it
+              free + local, see "Embedding backend" below.)
 2. JUDGE     review candidates.json (a Claude session is good at this): for each
              pair decide keep vs drop, or "not a dup" (skip). Names + summaries
              are in the JSON so no DB lookups are needed.
@@ -63,6 +65,42 @@ uv run wiki-reject --db data/wiki.db --wiki-dir data/wiki --name "Cookie Policy"
   can't anticipate an unseen synonym).
 - `index.md` and `_index/aliases.json` regenerate on the next `synthesize_wiki`
   tick; they're not rewritten by the CLIs.
+
+## Embedding backend (`wiki-dedup-candidates`)
+
+Candidate generation only needs a *similarity heuristic* a human then judges —
+it does NOT need to match the production Chroma embedding space. So it runs on
+either backend; the rest of the loop (judge / merge / reject) is identical.
+
+**OpenAI (default).** Needs `OPENAI_API_KEY`; ~150 short texts costs cents:
+
+```
+uv run wiki-dedup-candidates --db data/wiki.db --wiki-dir data/wiki
+```
+
+**Local (free) via llama.cpp.** `llama-server` serves an OpenAI-compatible
+`/v1/embeddings`, so the same CLI points at it — no extra package. Start the
+server (it pulls the GGUF from HuggingFace on first run), then pass
+`--embed-base-url`:
+
+```
+llama-server -hf nomic-ai/nomic-embed-text-v1.5-GGUF --embeddings --pooling mean --port 8080
+
+uv run wiki-dedup-candidates --db data/wiki.db --wiki-dir data/wiki \
+  --embed-base-url http://localhost:8080/v1 \
+  --embedding-model nomic-embed-text-v1.5 \
+  --embed-prefix "search_document: "
+```
+
+Notes:
+- `--embed-prefix "search_document: "` is required for good nomic-embed quality
+  (the model's task prefix); other models may not need it.
+- `--embedding-dims` is ignored with `--embed-base-url` — llama.cpp's
+  `/v1/embeddings` rejects the `dimensions` param and returns the model's native
+  dim (already L2-normalized). `--pooling` must NOT be `none` for `/v1/embeddings`.
+- The two backends aren't exclusive: if a local pass misses a pair you expected,
+  re-run the same command **without** `--embed-base-url` to fall back to OpenAI's
+  stronger model. Same corpus, one flag.
 
 ## Running against prod
 
