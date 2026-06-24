@@ -37,7 +37,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
     """
 
     integration_token: str
-    wiki_pages_data_source_id: str
+    wiki_data_source_id: str
 
     def _client(self) -> NotionClient:
         return NotionClient(auth=self.integration_token)
@@ -55,7 +55,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
         cursor: str | None = None
         while True:
             kwargs: dict[str, Any] = {
-                "data_source_id": self.wiki_pages_data_source_id,
+                "data_source_id": self.wiki_data_source_id,
                 "filter": {"property": "Rejected", "checkbox": {"equals": True}},
                 "page_size": 100,
             }
