@@ -273,22 +273,21 @@ re-synthesize. The schema is re-applied by `get_db_path()` on next run.
 
 ### Entity rejection list (denylist)
 
-`synthesized` reads a curator-managed denylist from the Notion "Wiki Pages"
-database (`WikiPagesNotionResource.query_rejected`) at the start of each
-tick: every row with `Rejected` ticked contributes its normalised page
-`Title` (the entity's canonical name), and candidates whose extracted
-normalised name OR resolved entity's normalised_name matches are dropped
-before synthesis. The surrogate `entity_id` is minted post-extraction so
-the denylist keys on the name the curator sees, not an id. The Notion DB
-is the edit surface — see the curator columns `Rejected` / `Reject
-category` / `Reject reason`.
+`synthesized` reads a curator-managed denylist from the local
+`rejected_entities` table in `wiki.db` (`state.get_rejected`) at the start of
+each tick: candidates whose extracted normalised name OR resolved entity's
+normalised_name matches a rejected row are dropped before synthesis. The
+surrogate `entity_id` is minted post-extraction, so the denylist keys on the
+normalised name, not an id. Reading the local table keeps Notion off the
+synthesis hot path — synthesis no longer fails or stalls on a Notion outage.
 
-Resolved behind a **fail-closed** loader (`denylist.load_rejected_entities`):
-a successful read atomically refreshes `data/wiki/_index/rejected.json`; a
-Notion error reuses that last-known-good snapshot rather than falling back
-to an empty list (an empty denylist would silently re-admit rejected
-entities). Empty is reachable only on first-run bootstrap, with a loud log
-warning.
+Rejections are written locally by the `wiki-reject` CLI
+(`domains.wiki.reject_cli` → `state.reject_entity`), which tombstones the
+canonical name **and every alias** (so a deleted entity can't re-mint under a
+known surface form) and deletes the page.
 
-Env: `NOTION_WIKI_PAGES_DATA_SOURCE_ID` (the "Wiki Pages" data source id) +
-the shared `NOTION_INTEGRATION_TOKEN`.
+A forthcoming `sync_wiki_curation` DAG will project entities up to the Notion
+"Wiki Pages" review surface and sync the human's `Rejected` toggles back down
+into `rejected_entities` (via `WikiPagesNotionResource.query_rejected`) — so
+Notion stays the optional edit UI without sitting in the synthesis path. Until
+then, curate with `wiki-reject`.

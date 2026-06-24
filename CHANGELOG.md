@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.9] — 2026-06-24
+
+### Added
+
+- **`wiki-merge` CLI folds duplicate wiki entities into one** (`domains.wiki.merge_cli` → `merge_entities`): re-points the page_sources / entity_relations / aliases ledgers, aliases the dropped name onto the survivor so future mentions don't re-mint, and deletes the dropped page. `--no-alias` for homonyms; `--dry-run`.
+- **`wiki-reject` CLI deletes + tombstones noise entities** (`domains.wiki.reject_cli` → `reject_entity`): denylists the canonical name and every alias into the new name-keyed `rejected_entities` table (`wiki.sql`) so it can't re-mint, and removes the page. By `--entity` or `--name`.
+- **`wiki-dedup-candidates` CLI proposes near-duplicate entities for merging** (`evals.wiki_dedup`): embeds each entity's `name + summary` and prints high-cosine pairs as JSON, catching semantic dups (`Claude Max` ≡ `Max plan`) the in-synthesis difflib matcher misses. Reads prod over Tailscale via `--datasette-url` (no file copy) or a local wiki.db (`--db`/`--wiki-dir`); embeds on OpenAI or, free + local, any OpenAI-compatible server via `--embed-base-url` (e.g. `llama-server --embeddings`; `--embed-prefix` for models like nomic-embed). Pure search in `domains.wiki.dedup`; runbook in `domains/wiki/CURATION.md`.
+
+### Changed
+
+- **Wiki synthesis reads the denylist from the local `rejected_entities` table, not live Notion.** The per-tick `query_rejected()` + fail-closed `rejected.json` snapshot are gone, so synthesis no longer depends on Notion. `SYNTHESIZE_WIKI_DAG_VERSION` → 12.
+- **An alias can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`.
+- **`OpenAIEmbedder` now drives any OpenAI-compatible embeddings server** via `base_url` + `dims=None` (skips the OpenAI-only `dimensions` param), e.g. a local llama.cpp `llama-server`. Backward-compatible (OpenAI stays the default); also realigns responses by their `index` so a reordered batch can't misalign vectors.
+
+---
+
 ## [0.24.8] — 2026-06-23
 
 ### Added

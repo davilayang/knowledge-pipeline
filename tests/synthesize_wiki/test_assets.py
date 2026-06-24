@@ -10,7 +10,7 @@ from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
-from domains.wiki.state import PageRecord
+from domains.wiki.state import PageRecord, connection, create_schema, upsert_rejected
 from orchestrators.defs.synthesize_wiki.assets import (
     _cost_metadata,
     _render_toc,
@@ -180,27 +180,28 @@ def test_synthesized_no_op_on_empty_extracted(tmp_path):
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
 
-    result = synthesized.op.compute_fn.decorated_fn(
-        ctx, extracted={}, wiki=wiki, wiki_pages_notion=MagicMock()
-    )
+    result = synthesized.op.compute_fn.decorated_fn(ctx, extracted={}, wiki=wiki)
 
     assert isinstance(result, dg.MaterializeResult)
     assert "_no extracted items this tick_" in result.metadata["summary"].value
 
 
-def test_synthesized_injects_notion_denylist(tmp_path):
-    """The asset loads the rejection list from the Notion 'Wiki Pages' DB and
-    injects the rejected names into the workflow per item (W2.5 Notion seam)."""
+def test_synthesized_injects_table_denylist(tmp_path):
+    """The asset loads the rejection list from the local rejected_entities TABLE
+    (wiki.db) and injects the rejected names into the workflow per item — no
+    Notion in the synthesis hot path."""
+    db_path = tmp_path / "wiki.db"
+    create_schema(db_path=db_path)
+    with connection(db_path) as conn, conn:
+        upsert_rejected(conn, normalized_name="cli", category="generic", reason="z")
+
     wiki = WikiResource(
         backup_dir=str(tmp_path),
         wiki_dir=str(tmp_path / "wiki"),
-        wiki_db_path=str(tmp_path / "wiki.db"),
+        wiki_db_path=str(db_path),
     )
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     ctx.partition_key = "2026-05-07"
-
-    notion = MagicMock()
-    notion.query_rejected.return_value = {"cli": {"category": "generic", "reason": "z"}}
 
     item = MagicMock(item_id="medium::x", source_type="raw_store")
     source = MagicMock()
@@ -217,9 +218,7 @@ def test_synthesized_injects_notion_denylist(tmp_path):
             return_value={"llm_calls": []},
         ) as mock_synth,
     ):
-        synthesized.op.compute_fn.decorated_fn(
-            ctx, extracted=extracted_map, wiki=wiki, wiki_pages_notion=notion
-        )
+        synthesized.op.compute_fn.decorated_fn(ctx, extracted=extracted_map, wiki=wiki)
 
     mock_synth.assert_called_once()
     assert mock_synth.call_args.kwargs["rejected_entities"] == frozenset({"cli"})

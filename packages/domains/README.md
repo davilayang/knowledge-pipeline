@@ -27,6 +27,10 @@ src/domains/
 │   ├── relevance.py    # keyword-based catalog filter (select_relevant_entities / extract_keywords)
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
+│   ├── merge_cli.py    # wiki-merge — fold duplicate entities (merge_entities)
+│   ├── reject_cli.py   # wiki-reject — delete + tombstone noise entities (reject_entity)
+│   ├── dedup.py        # near-dup candidate search (embed name+summary, pairwise cosine)
+│   ├── CURATION.md     # operator runbook: cluster → judge → confirm → merge / reject
 │   └── schema/wiki.sql # SQLite schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
