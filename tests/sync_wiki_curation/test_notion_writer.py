@@ -107,6 +107,32 @@ def test_list_pages_skips_archived_rows():
     assert [r.entity_id for r in refs] == ["e_aaa"]
 
 
+def test_list_pages_reads_last_updated():
+    """The push's change-detection skip compares the row's stored `Last updated`
+    date to the current page.updated_at — so list_pages must surface it."""
+    res = WikiPagesNotionResource(integration_token="t", wiki_pages_data_source_id="ds")
+    client = MagicMock()
+    row = _row("p1", "e_aaa", "active")
+    row["properties"]["Last updated"] = {"date": {"start": "2026-06-24T08:00:00+00:00"}}
+    client.data_sources.query.return_value = {"results": [row], "has_more": False}
+
+    with patch("orchestrators.defs.sync_wiki_curation.resources.NotionClient", return_value=client):
+        refs = res.list_pages()
+
+    assert refs[0].last_updated == "2026-06-24T08:00:00+00:00"
+
+
+def test_list_pages_last_updated_none_when_absent():
+    res = WikiPagesNotionResource(integration_token="t", wiki_pages_data_source_id="ds")
+    client = MagicMock()
+    client.data_sources.query.return_value = {"results": [_row("p1", "e_aaa")], "has_more": False}
+
+    with patch("orchestrators.defs.sync_wiki_curation.resources.NotionClient", return_value=client):
+        refs = res.list_pages()
+
+    assert refs[0].last_updated is None
+
+
 def test_upsert_page_creates_when_no_page_id():
     res = WikiPagesNotionResource(integration_token="t", wiki_pages_data_source_id="ds")
     client = MagicMock()

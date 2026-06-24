@@ -595,6 +595,28 @@ def test_merge_entities_repoints_page_sources(wiki_db):
     assert get_entity(wiki_db, "e_drop") is None
 
 
+def test_merge_entities_bumps_keep_page_updated_at(wiki_db):
+    """The survivor's aliases + source_count change on merge, so its page
+    updated_at must advance. The sync push's change-detection skip relies on
+    EVERY producer-relevant change bumping updated_at; merge is the one path
+    that mutates a surviving page without re-rendering through synthesis."""
+    _seed_entity(wiki_db, "e_keep", "Claude Max")
+    _seed_entity(wiki_db, "e_drop", "Max plan")
+    upsert_page(wiki_db, entity_id="e_keep", file_path="claude-max.md", related_ids=[])
+    # Force a clearly-stale updated_at so the bump is observable.
+    wiki_db.execute(
+        "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
+        ("2020-01-01T00:00:00+00:00", "e_keep"),
+    )
+    wiki_db.commit()
+    before = get_page(wiki_db, "e_keep").updated_at
+
+    with wiki_db:
+        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
+
+    assert get_page(wiki_db, "e_keep").updated_at > before
+
+
 def test_merge_entities_dedupes_shared_page_source(wiki_db):
     _seed_entity(wiki_db, "e_keep", "Claude Max")
     _seed_entity(wiki_db, "e_drop", "Max plan")

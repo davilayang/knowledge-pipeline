@@ -36,12 +36,15 @@ def _retry_after_seconds(exc: Exception, attempt: int) -> float:
 @dataclass(frozen=True)
 class NotionPageRef:
     """A handle to an existing "Wiki Pages" row — the page_id to update, the
-    Entity ID the push keys on (= wiki.db's surrogate entity_id), and the
-    current Page status so the push can skip a row that's already orphaned."""
+    Entity ID the push keys on (= wiki.db's surrogate entity_id), the current
+    Page status (so the push can re-assert an orphaned row), and the stored
+    Last updated date (the page.updated_at at last push — the change-detection
+    anchor that lets the push skip an unchanged row)."""
 
     page_id: str
     entity_id: str
     page_status: str
+    last_updated: str | None = None
 
 
 def _plain_text(prop: dict[str, Any]) -> str:
@@ -53,6 +56,12 @@ def _plain_text(prop: dict[str, Any]) -> str:
 def _select_name(prop: dict[str, Any]) -> str | None:
     sel = prop.get("select")
     return sel.get("name") if sel else None
+
+
+def _date_start(prop: dict[str, Any]) -> str | None:
+    """The `start` of a Notion date property, or None if unset."""
+    date = prop.get("date")
+    return date.get("start") if date else None
 
 
 class WikiPagesNotionResource(dg.ConfigurableResource):
@@ -166,6 +175,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
                         page_id=row["id"],
                         entity_id=_plain_text(props.get("Entity ID", {})),
                         page_status=_select_name(props.get("Page status", {})) or "",
+                        last_updated=_date_start(props.get("Last updated", {})),
                     )
                 )
             if not resp.get("has_more"):
