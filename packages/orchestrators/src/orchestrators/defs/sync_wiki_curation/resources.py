@@ -62,8 +62,8 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
     NORMALISED page Title (the entity's canonical name): {normalized_name:
     {category, reason}} for every row with Rejected=true. The surrogate Entity
     ID is minted post-extraction, so the denylist can't anchor on it — it
-    matches on the name the curator sees instead. Reuses the shared
-    NOTION_INTEGRATION_TOKEN; the data source id is the "Wiki Pages"
+    matches on the name the curator sees instead. Uses NOTION_WIKI_TOKEN
+    (read + write on the Wiki Pages DB); the data source id is the "Wiki Pages"
     collection.
 
     Producer columns (Title / Entity ID / Summary / Aliases / Source count /
@@ -206,7 +206,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "wiki_pages_notion": WikiPagesNotionResource(
-            integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
+            integration_token=dg.EnvVar("NOTION_WIKI_TOKEN"),
             wiki_pages_data_source_id=dg.EnvVar("NOTION_WIKI_PAGES_DATA_SOURCE_ID"),
             # Stay under Notion's ~3 req/s during the ~150-row push.
             min_request_interval_s=0.34,
