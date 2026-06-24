@@ -286,8 +286,9 @@ Rejections are written locally by the `wiki-reject` CLI
 canonical name **and every alias** (so a deleted entity can't re-mint under a
 known surface form) and deletes the page.
 
-A forthcoming `sync_wiki_curation` DAG will project entities up to the Notion
-"Wiki Pages" review surface and sync the human's `Rejected` toggles back down
-into `rejected_entities` (via `WikiPagesNotionResource.query_rejected`) — so
-Notion stays the optional edit UI without sitting in the synthesis path. Until
-then, curate with `wiki-reject`.
+The `sync_wiki_curation` DAG projects entities up to the Notion "Wiki Pages"
+review surface and syncs the human's `Rejected` toggles back down into
+`rejected_entities` (via `WikiPagesNotionResource.query_rejected`) — so Notion
+stays the optional edit UI without sitting in the synthesis path. Curate via
+Notion's `Rejected` toggle (picked up on the next `sync_wiki_curation` tick)
+or directly with `wiki-reject`.

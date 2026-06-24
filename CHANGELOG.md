@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.11] — 2026-06-24
+
+### Added
+
+- **`sync_wiki_curation` DAG** adds a daily (07:00 UTC) two-way sync between wiki.db and the Notion "Wiki Pages" review DB. `wiki/rejections_pulled` imports curator `Rejected=true` toggles into `rejected_entities`; `wiki/pages_pushed` projects every current entity up to Notion with producer-only columns, flipping departed entities to `Page status=orphaned`. Requires `NOTION_WIKI_TOKEN`; `SYNC_WIKI_CURATION_DAG_VERSION` 1.
+
+---
+
 ## [0.24.10] — 2026-06-24
 
 ### Changed

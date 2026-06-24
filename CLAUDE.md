@@ -130,6 +130,7 @@ packages/
       fetch_extract_queue/
       synthesize_wiki/
       populate_vector_store/
+      sync_wiki_curation/
       upstream_sources.py
 
 services/
