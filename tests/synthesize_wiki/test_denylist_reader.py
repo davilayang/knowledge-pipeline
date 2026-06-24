@@ -23,7 +23,7 @@ def _row(title: str, category: str | None, reason: str | None) -> dict:
 
 
 def test_query_rejected_returns_denylist_dict():
-    res = WikiPagesNotionResource(integration_token="t", wiki_pages_data_source_id="ds")
+    res = WikiPagesNotionResource(integration_token="t", wiki_data_source_id="ds")
     client = MagicMock()
     client.data_sources.query.return_value = {
         "results": [
@@ -47,7 +47,7 @@ def test_query_rejected_returns_denylist_dict():
 def test_query_rejected_paginates_until_exhausted():
     """Must scan every page (has_more) — a denylist truncated at a page
     boundary would silently re-admit rejected entities."""
-    res = WikiPagesNotionResource(integration_token="t", wiki_pages_data_source_id="ds")
+    res = WikiPagesNotionResource(integration_token="t", wiki_data_source_id="ds")
     client = MagicMock()
     client.data_sources.query.side_effect = [
         {"results": [_row("CLI", "generic", "a")], "has_more": True, "next_cursor": "c1"},
