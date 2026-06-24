@@ -33,25 +33,31 @@ def _rich_text(value: str) -> dict:
 
 
 def _same_instant(a: str | None, b: str | None) -> bool:
-    """True iff two ISO-8601 timestamps name the same instant at whole-second
-    precision (UTC-normalised). Used to compare a Notion row's stored `Last
-    updated` against the live page.updated_at: exact equality, so Notion's date
-    round-trip (tz form, sub-second) can't cause a false diff, and a stored
-    value that is merely *newer* (clock skew / manual edit) is NOT equal → the
-    push re-asserts rather than wrongly skipping. None never matches (force push)."""
+    """True iff two ISO-8601 timestamps name the same UTC minute. Used to compare
+    a Notion row's stored `Last updated` against the live page.updated_at.
+
+    Minute (not second) precision is REQUIRED: Notion floors a date property to
+    the minute on round-trip, so a page.updated_at of ...:10:48 is read back as
+    ...:10:00 — a second-precision compare would never match and the push would
+    re-write every row every tick. A change between two daily pushes always lands
+    in a different minute (and the shared concurrency key keeps synthesis from
+    mutating a page mid-push), so minute granularity loses nothing in practice.
+    Exact match only: a merely-newer stored value (clock skew / manual edit) is
+    NOT equal → the push re-asserts rather than wrongly skipping. None never
+    matches (force push)."""
     if not a or not b:
         return False
     try:
-        return _to_utc_seconds(a) == _to_utc_seconds(b)
+        return _to_utc_minute(a) == _to_utc_minute(b)
     except ValueError:
         return False
 
 
-def _to_utc_seconds(value: str) -> datetime:
+def _to_utc_minute(value: str) -> datetime:
     dt = datetime.fromisoformat(value)
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=UTC)
-    return dt.astimezone(UTC).replace(microsecond=0)
+    return dt.astimezone(UTC).replace(second=0, microsecond=0)
 
 
 def _build_page_properties(

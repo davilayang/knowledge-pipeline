@@ -130,19 +130,29 @@ def test_push_creates_new_and_updates_existing(tmp_path):
 
 
 def test_push_skips_unchanged_active_row(tmp_path):
-    """An active row whose stored `Last updated` still equals the page's current
-    updated_at hasn't changed since last push — skip it (no Notion write)."""
+    """An active row whose stored `Last updated` matches the page's current
+    updated_at hasn't changed since last push — skip it (no Notion write).
+
+    Notion date properties FLOOR to the minute on round-trip (a page.updated_at
+    of ...:10:48 comes back as ...:10:00), so the comparison must be
+    minute-precision — a page with non-zero seconds must still match its
+    minute-floored stored value."""
     wiki = _wiki(tmp_path)
     wiki_dir = wiki.get_wiki_dir()
     with connection(wiki.get_db_path()) as conn, conn:
         _seed_page(conn, wiki_dir, "e_same", "Same")
-    with connection(wiki.get_db_path()) as conn:
-        updated_at = get_page(conn, "e_same").updated_at
+        conn.execute(
+            "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
+            ("2026-06-23T15:10:48+00:00", "e_same"),  # non-zero seconds
+        )
 
     notion = _notion(
         [
             NotionPageRef(
-                page_id="p1", entity_id="e_same", page_status="active", last_updated=updated_at
+                page_id="p1",
+                entity_id="e_same",
+                page_status="active",
+                last_updated="2026-06-23T15:10:00.000+00:00",  # Notion floored to the minute
             )
         ]
     )
