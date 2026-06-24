@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.24.12] — 2026-06-24
+
+### Changed
+
+- **`sync_wiki_curation` push skips unchanged rows.** `push_wiki_pages` re-writes a Notion row only when its entity's `page.updated_at` (minute precision) differs from the stored `Last updated`, or its status needs re-asserting — cutting the daily push to the changed set. `merge_entities` now bumps the survivor's `updated_at` so a merge can't leave Notion stale.
+
+---
+
 ## [0.24.11] — 2026-06-24
 
 ### Added

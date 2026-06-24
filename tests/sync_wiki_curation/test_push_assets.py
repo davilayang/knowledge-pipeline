@@ -12,7 +12,13 @@ from unittest.mock import MagicMock
 import dagster as dg
 import pytest
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
-from domains.wiki.state import connection, insert_aliases, insert_entity, upsert_page
+from domains.wiki.state import (
+    connection,
+    get_page,
+    insert_aliases,
+    insert_entity,
+    upsert_page,
+)
 from orchestrators.defs.sync_wiki_curation.assets import (
     PRODUCER_PROPERTIES,
     _build_page_properties,
@@ -121,6 +127,91 @@ def test_push_creates_new_and_updates_existing(tmp_path):
     assert calls["e_new"]["properties"]["Page status"]["select"]["name"] == "active"
     assert result.metadata["created"].value == 1
     assert result.metadata["updated"].value == 1
+
+
+def test_push_skips_unchanged_active_row(tmp_path):
+    """An active row whose stored `Last updated` matches the page's current
+    updated_at hasn't changed since last push — skip it (no Notion write).
+
+    Notion date properties FLOOR to the minute on round-trip (a page.updated_at
+    of ...:10:48 comes back as ...:10:00), so the comparison must be
+    minute-precision — a page with non-zero seconds must still match its
+    minute-floored stored value."""
+    wiki = _wiki(tmp_path)
+    wiki_dir = wiki.get_wiki_dir()
+    with connection(wiki.get_db_path()) as conn, conn:
+        _seed_page(conn, wiki_dir, "e_same", "Same")
+        conn.execute(
+            "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
+            ("2026-06-23T15:10:48+00:00", "e_same"),  # non-zero seconds
+        )
+
+    notion = _notion(
+        [
+            NotionPageRef(
+                page_id="p1",
+                entity_id="e_same",
+                page_status="active",
+                last_updated="2026-06-23T15:10:00.000+00:00",  # Notion floored to the minute
+            )
+        ]
+    )
+    result = _invoke(wiki, notion)
+
+    assert "e_same" not in _active_calls(notion)  # not re-pushed
+    assert result.metadata["updated"].value == 0
+    assert result.metadata["skipped"].value == 1
+
+
+def test_push_updates_changed_active_row(tmp_path):
+    """An active row whose stored Last updated differs from the page's current
+    updated_at has changed since last push — re-push it (not skipped)."""
+    wiki = _wiki(tmp_path)
+    wiki_dir = wiki.get_wiki_dir()
+    with connection(wiki.get_db_path()) as conn, conn:
+        _seed_page(conn, wiki_dir, "e_chg", "Changed")
+
+    notion = _notion(
+        [
+            NotionPageRef(
+                page_id="p1",
+                entity_id="e_chg",
+                page_status="active",
+                last_updated="2020-01-01T00:00:00+00:00",
+            )
+        ]
+    )
+    result = _invoke(wiki, notion)
+
+    assert _active_calls(notion)["e_chg"]["page_id"] == "p1"  # updated, not skipped
+    assert result.metadata["updated"].value == 1
+    assert result.metadata["skipped"].value == 0
+
+
+def test_push_reasserts_orphaned_row_whose_entity_is_active_again(tmp_path):
+    """A row currently `orphaned` whose entity is a live page again must be
+    re-pushed as active EVEN IF the stored timestamp matches — status is a
+    producer field the timestamp alone can't speak for."""
+    wiki = _wiki(tmp_path)
+    wiki_dir = wiki.get_wiki_dir()
+    with connection(wiki.get_db_path()) as conn, conn:
+        _seed_page(conn, wiki_dir, "e_back", "Back")
+    with connection(wiki.get_db_path()) as conn:
+        updated_at = get_page(conn, "e_back").updated_at
+
+    notion = _notion(
+        [
+            NotionPageRef(
+                page_id="p1", entity_id="e_back", page_status="orphaned", last_updated=updated_at
+            )
+        ]
+    )
+    result = _invoke(wiki, notion)
+
+    call = _active_calls(notion)["e_back"]
+    assert call["page_id"] == "p1"
+    assert call["properties"]["Page status"]["select"]["name"] == "active"
+    assert result.metadata["skipped"].value == 0
 
 
 def test_push_writes_alias_family_from_table(tmp_path):

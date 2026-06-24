@@ -4,6 +4,7 @@
 # PULL runs before PUSH within the job: delete the rejected set first, then push
 # the survivors, so we never re-push a row we are about to delete.
 
+from datetime import UTC, datetime
 from pathlib import Path
 
 import dagster as dg
@@ -29,6 +30,34 @@ def _rich_text(value: str) -> dict:
     # An empty rich_text array clears the cell (Notion rejects a text item with
     # empty content), so only wrap non-empty values.
     return {"rich_text": [{"text": {"content": value}}] if value else []}
+
+
+def _same_instant(a: str | None, b: str | None) -> bool:
+    """True iff two ISO-8601 timestamps name the same UTC minute. Used to compare
+    a Notion row's stored `Last updated` against the live page.updated_at.
+
+    Minute (not second) precision is REQUIRED: Notion floors a date property to
+    the minute on round-trip, so a page.updated_at of ...:10:48 is read back as
+    ...:10:00 — a second-precision compare would never match and the push would
+    re-write every row every tick. A change between two daily pushes always lands
+    in a different minute (and the shared concurrency key keeps synthesis from
+    mutating a page mid-push), so minute granularity loses nothing in practice.
+    Exact match only: a merely-newer stored value (clock skew / manual edit) is
+    NOT equal → the push re-asserts rather than wrongly skipping. None never
+    matches (force push)."""
+    if not a or not b:
+        return False
+    try:
+        return _to_utc_minute(a) == _to_utc_minute(b)
+    except ValueError:
+        return False
+
+
+def _to_utc_minute(value: str) -> datetime:
+    dt = datetime.fromisoformat(value)
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).replace(second=0, microsecond=0)
 
 
 def _build_page_properties(
@@ -201,11 +230,25 @@ def push_wiki_pages(
     active_ids = {p.entity_id for p in pages}
 
     refs = wiki_pages_notion.list_pages()
-    page_id_by_entity = {r.entity_id: r.page_id for r in refs if r.entity_id}
+    ref_by_entity = {r.entity_id: r for r in refs if r.entity_id}
 
     created = 0
     updated = 0
+    skipped = 0
     for page in pages:
+        ref = ref_by_entity.get(page.entity_id)
+        # Skip the write if this row is unchanged since last push. CHANGE-DETECTION
+        # INVARIANT: the stored `Last updated` is the page.updated_at we wrote last
+        # tick, so an equal timestamp means no producer field moved — which holds
+        # ONLY because every producer-field change bumps page.updated_at (synthesis
+        # re-renders; merge_entities bumps it explicitly — see state.py). Status is
+        # checked too: an orphaned row whose entity is live again must be re-asserted
+        # active even when the timestamp matches. If you add a producer column fed by
+        # a table that can change without bumping page.updated_at, this skip serves
+        # stale data — bump updated_at on that write or switch to a payload hash.
+        if ref and ref.page_status == "active" and _same_instant(ref.last_updated, page.updated_at):
+            skipped += 1
+            continue
         props = _build_page_properties(
             entity_id=page.entity_id,
             title=page.canonical_name,
@@ -216,7 +259,7 @@ def push_wiki_pages(
             updated_at=page.updated_at,
             page_status="active",
         )
-        page_id = page_id_by_entity.get(page.entity_id)
+        page_id = ref.page_id if ref else None
         wiki_pages_notion.upsert_page(properties=props, page_id=page_id)
         if page_id:
             updated += 1
@@ -237,11 +280,13 @@ def push_wiki_pages(
     return dg.MaterializeResult(
         metadata={
             "summary": dg.MetadataValue.md(
-                f"**{created + updated} active** — {created} created, {updated} updated"
+                f"**{created + updated} written** — {created} created, {updated} updated"
+                + f"; {skipped} unchanged"
                 + (f"; {orphaned} orphaned" if orphaned else "")
             ),
             "created": dg.MetadataValue.int(created),
             "updated": dg.MetadataValue.int(updated),
+            "skipped": dg.MetadataValue.int(skipped),
             "orphaned": dg.MetadataValue.int(orphaned),
             "pages_total": dg.MetadataValue.int(len(pages)),
         }

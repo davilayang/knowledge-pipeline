@@ -782,6 +782,18 @@ def merge_entities(
             (drop.canonical_name, drop.normalized_name, keep_id),
         )
 
+    # Bump keep's page updated_at: the merge changed its aliases + source_count,
+    # but (unlike synthesis) re-points ledgers without re-rendering, so nothing
+    # else moves the timestamp. LOAD-BEARING: sync_wiki_curation.push_wiki_pages
+    # skips re-pushing a Notion row whose stored "Last updated" still equals
+    # page.updated_at — i.e. it assumes EVERY producer-field change bumps
+    # updated_at. Merge is the one path that would violate that; this line
+    # upholds it. Don't remove it without switching the push to a payload hash.
+    conn.execute(
+        "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
+        (_now_iso(), keep_id),
+    )
+
     # Delete drop's identity; pages/page_versions/aliases/page_sources/
     # entity_relations rows still on drop cascade away (ON DELETE CASCADE).
     conn.execute("DELETE FROM entities WHERE entity_id = ?", (drop_id,))
