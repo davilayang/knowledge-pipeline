@@ -63,14 +63,20 @@ def find_merge_candidates(
         return []
 
     texts = [f"{it.canonical_name}\n{it.summary}" for it in items]
-    normed = [_normalize(v) for v in embed_batch(texts)]
+    vecs = embed_batch(texts)
+    if len(vecs) != len(items):
+        raise ValueError(f"embedding count {len(vecs)} != item count {len(items)}")
+    normed = [_normalize(v) for v in vecs]
 
     pairs: list[CandidatePair] = []
     for i in range(len(items)):
         for j in range(i + 1, len(items)):
             score = sum(a * b for a, b in zip(normed[i], normed[j], strict=True))
             if score >= threshold:
-                pairs.append(CandidatePair(a=items[i], b=items[j], score=score))
+                # Canonicalise endpoints by entity_id so the proposal is identical
+                # regardless of input order (a < b), not just within one run.
+                lo, hi = sorted((items[i], items[j]), key=lambda it: it.entity_id)
+                pairs.append(CandidatePair(a=lo, b=hi, score=score))
 
     pairs.sort(key=lambda p: (-p.score, p.a.entity_id, p.b.entity_id))
     return pairs

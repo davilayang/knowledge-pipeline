@@ -17,37 +17,87 @@ Three CLIs, all read/operate on `wiki.db` + the `data/wiki/*.md` pages:
 | `wiki-merge` | `domains` | fold one entity into another (re-point ledgers, alias the dropped name, delete its page) |
 | `wiki-reject` | `domains` | delete a noise entity + tombstone its name + every alias |
 
-## The loop (cluster → judge → confirm → merge)
+## How to run it — laptop-driven, against prod data
 
-**Rehearse on the LOCAL copy first** (`data/wiki.db`), then repeat against prod
-in-cluster once the calls are validated. The human gates every merge — the
-candidate generator only proposes.
+You drive the whole flow **from the laptop** with a Claude session helping. The
+split that keeps it both convenient and safe:
 
-```
-1. READ      uv run wiki-dedup-candidates --db data/wiki.db --wiki-dir data/wiki \
-               --threshold 0.8 > candidates.json
-2. JUDGE     review candidates.json (a Claude session is good at this): for each
-             pair decide keep vs drop, or "not a dup" (skip). Names + summaries
-             are in the JSON so no DB lookups are needed.
-3. CONFIRM   you approve each merge and pick --alias (default) or --no-alias.
-             --no-alias is the homonym escape hatch: use it when the dropped
-             name could later mean something else (a future "Max plan" telecom
-             tier shouldn't route to Claude Max).
-4. SNAPSHOT  pre-merge rollback point (merges are destructive):
-               sqlite3 data/wiki.db ".backup data/wiki.bak.db"
-               tar czf data/wiki.bak.tgz -C data wiki
-5. MERGE     per approved pair (loop for multi-drop clusters):
-               uv run wiki-merge --db data/wiki.db --wiki-dir data/wiki \
-                 --keep e_<survivor> --drop e_<dup> [--no-alias]
-             (--dry-run first to preview.)
-```
+- **Reads are remote + free.** The candidate generator reads prod's entities +
+  summaries straight from the Datasette-exposed `wiki.db` over Tailscale (no file
+  copy), embeds locally against a llama.cpp embedder (no OpenAI cost), and Claude
+  judges the `candidates.json` on the laptop.
+- **Writes happen in-cluster.** The destructive `wiki-merge` / `wiki-reject` run
+  via `ssh hcloud … docker exec …` against prod's live files. Entity ids are
+  stable surrogates, so a slightly-stale read is fine for judging. *Don't* pull
+  the DB, mutate it locally, and push it back — that clobbers any synthesis
+  writes made in between.
 
-Reject noise the same way, no candidate step needed:
+**Never run a write during the 06:00 UTC synthesis window** — SQLite is
+single-writer; a concurrent destructive write can corrupt a read-resolve-write
+tick.
+
+`data/` and `backups/` are host-bind-mounted, so the container's `/app/data` and
+the host's `~/knowledge-pipeline/data` are the same files; `<dagster-code>` is
+the user-code container name.
+
+## The loop
 
 ```
-uv run wiki-reject --db data/wiki.db --wiki-dir data/wiki --name "Cookie Policy" \
-  --category chrome --reason "site boilerplate"
+1. READ      prod entities over Tailscale, embed locally (free). One command —
+             no file copy: --datasette-url reads wiki.db over HTTP; llama.cpp
+             does the embeddings:
+               llama-server -hf nomic-ai/nomic-embed-text-v1.5-GGUF \
+                 --embeddings --pooling mean --port 8080 &
+               uv run wiki-dedup-candidates \
+                 --datasette-url https://ubuntu-16gb-hel1-1.tailb6592a.ts.net/databases/wiki \
+                 --embed-base-url http://localhost:8080/v1 \
+                 --embedding-model nomic-embed-text-v1.5 --embed-prefix "search_document: " \
+                 --threshold 0.8 > candidates.json
+             (Drop the --embed-* flags to embed via OpenAI; swap --datasette-url
+              for --db/--wiki-dir to rehearse on a local copy.)
+
+2. JUDGE     Claude reads candidates.json: for each pair, keep vs drop, or skip
+             ("not a dup"). Names + summaries are in the JSON — no DB lookups.
+
+3. CONFIRM   you approve each merge + pick --no-alias for homonyms (a dropped
+             name that could later mean something else — a future "Max plan"
+             telecom tier shouldn't route to Claude Max).
+
+4. SNAPSHOT  timestamped pre-merge rollback point on prod. Loose files at the
+             backups/ top level — the daily-backup prune only touches date dirs,
+             so these survive (delete them yourself once the merge has stuck):
+               ssh hcloud 'cd knowledge-pipeline && TS=$(date +%Y%m%d-%H%M%S) && \
+                 sqlite3 data/wiki.db ".backup backups/wiki-premerge-$TS.db" && \
+                 tar czf backups/wiki-premerge-$TS.tgz -C data wiki && \
+                 echo "snapshot: backups/wiki-premerge-$TS.{db,tgz}"'
+
+5. MERGE     in-cluster, per approved pair (Claude scripts the loop; --dry-run first):
+               ssh hcloud 'docker exec -w /app <dagster-code> uv run wiki-merge \
+                 --db data/wiki.db --wiki-dir data/wiki \
+                 --keep e_<survivor> --drop e_<dup> [--no-alias]'
 ```
+
+Reject noise the same way (no candidate step):
+
+```
+ssh hcloud 'docker exec -w /app <dagster-code> uv run wiki-reject \
+  --db data/wiki.db --wiki-dir data/wiki --name "Cookie Policy" \
+  --category chrome --reason "site boilerplate"'
+```
+
+**Roll back** a bad batch (synthesis stopped) from a step-4 snapshot:
+
+```
+ssh hcloud 'cd knowledge-pipeline && cp backups/wiki-premerge-<TS>.db data/wiki.db && \
+  rm -rf data/wiki && tar xzf backups/wiki-premerge-<TS>.tgz -C data'
+```
+
+### Local rehearsal (no prod)
+
+Validate the flow on a throwaway copy first: point every command at a local
+`data/wiki.db` + `data/wiki` and drop the `ssh hcloud` / `docker exec` wrappers
+(snapshot to a local `wiki-premerge-$TS.{db,tgz}`). This is the safe way to test
+a merge before touching prod.
 
 ### Effect on the next synthesis run
 
@@ -64,21 +114,22 @@ uv run wiki-reject --db data/wiki.db --wiki-dir data/wiki --name "Cookie Policy"
 - `index.md` and `_index/aliases.json` regenerate on the next `synthesize_wiki`
   tick; they're not rewritten by the CLIs.
 
-## Running against prod
+## Embedding backend (`wiki-dedup-candidates`)
 
-`wiki.db` and the `.md` files live inside the `dagster-code` container. Run the
-candidate READ from the laptop against a recent snapshot or via Datasette, but
-execute the destructive steps in-cluster:
+Candidate generation only needs a *similarity heuristic* a human then judges —
+it does NOT need to match the production Chroma embedding space, so a local model
+is fine (and free).
 
-```
-ssh hcloud
-docker exec -w /app <dagster-code> uv run wiki-merge --db data/wiki.db \
-  --wiki-dir data/wiki --keep e_… --drop e_…
-```
-
-**Do NOT run a merge/reject during the synthesis window** — SQLite is
-single-writer and synthesis does read-resolve-write; a concurrent destructive
-write can corrupt the tick. The primitives assume a single writer.
+- **Local (default in this runbook):** `llama-server --embeddings` exposes an
+  OpenAI-compatible `/v1/embeddings`, so the same CLI points at it via
+  `--embed-base-url` — no extra package. `--embed-prefix "search_document: "` is
+  required for good nomic-embed quality (its task prefix). `--embedding-dims` is
+  ignored here — llama.cpp returns the model's native, already-L2-normalized dim
+  and rejects the `dimensions` param; `--pooling` must not be `none`.
+- **OpenAI fallback:** drop the `--embed-*` flags (needs `OPENAI_API_KEY`; ~150
+  short texts costs cents). The two aren't exclusive — if a local pass misses a
+  pair you expected, re-run without `--embed-base-url` to use OpenAI's stronger
+  model. Same corpus, one flag.
 
 ## Rebuild carve-out (the option-(b) tax)
 

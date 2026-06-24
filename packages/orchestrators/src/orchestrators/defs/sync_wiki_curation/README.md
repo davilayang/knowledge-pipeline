@@ -47,7 +47,7 @@ delete. **This is the single most important correctness control here.**
 
 ## Notion "Wiki Pages" DB — column ownership
 
-Data source id: `NOTION_WIKI_PAGES_DATA_SOURCE_ID`
+Data source id: `NOTION_WIKI_DATA_SOURCE_ID`
 (`385d130d-6131-8051-ad03-000b53cb61ef`). The DB already has all ten columns;
 the push must match these names/types exactly (the drift guard fails the run if
 a producer column is missing). Columns split by writer:

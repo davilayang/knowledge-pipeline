@@ -7,6 +7,7 @@ summary from each page's `.md` frontmatter.
 
 from datetime import date
 
+import pytest
 from domains.wiki.dedup import CandidatePair, EntityText, find_merge_candidates, load_entity_texts
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.io import write_page
@@ -70,6 +71,24 @@ def test_find_merge_candidates_orders_by_score_then_tie_breaks_deterministically
 def test_find_merge_candidates_empty_for_fewer_than_two():
     assert find_merge_candidates([], _fake_embed({})) == []
     assert find_merge_candidates([EntityText("e", "N", "s")], _fake_embed({})) == []
+
+
+def test_find_merge_candidates_orientation_is_input_order_independent():
+    a = EntityText("e_a", "A", "x")
+    b = EntityText("e_b", "B", "x")
+    embed = _fake_embed({"A\nx": [1.0, 0.0], "B\nx": [1.0, 0.0]})
+
+    fwd = find_merge_candidates([a, b], embed, threshold=0.8)
+    rev = find_merge_candidates([b, a], embed, threshold=0.8)
+
+    assert fwd == rev
+    assert (fwd[0].a.entity_id, fwd[0].b.entity_id) == ("e_a", "e_b")  # canonical: a < b
+
+
+def test_find_merge_candidates_rejects_misaligned_embeddings():
+    items = [EntityText("e_a", "A", "x"), EntityText("e_b", "B", "x")]
+    with pytest.raises(ValueError, match="embedding count"):
+        find_merge_candidates(items, lambda texts: [[1.0, 0.0]], threshold=0.8)  # 1 vec, 2 items
 
 
 def _seed(conn, wiki_dir, entity_id, name, summary, file_name):

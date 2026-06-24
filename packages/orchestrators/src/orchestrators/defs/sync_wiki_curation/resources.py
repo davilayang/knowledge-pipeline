@@ -207,7 +207,7 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "wiki_pages_notion": WikiPagesNotionResource(
             integration_token=dg.EnvVar("NOTION_WIKI_TOKEN"),
-            wiki_pages_data_source_id=dg.EnvVar("NOTION_WIKI_PAGES_DATA_SOURCE_ID"),
+            wiki_pages_data_source_id=dg.EnvVar("NOTION_WIKI_DATA_SOURCE_ID"),
             # Stay under Notion's ~3 req/s during the ~150-row push.
             min_request_interval_s=0.34,
         ),

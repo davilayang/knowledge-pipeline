@@ -4,10 +4,9 @@ judges to be noise (site chrome, mis-extraction), and tombstone it (#15).
 The DB side is the atomic ``state.reject_entity`` transaction (tombstones the
 canonical name + every alias into ``rejected_entities``, then deletes the
 entity + cascades); this module adds the file op (unlink the ``.md``) and the
-operator interface. Rejection DELETES the page — rejected entities are garbage
-that must leave recall / vectors / the toc; the name-keyed ``rejected_entities``
-table is the durable audit + undo (drop the row and it re-synthesises if it
-genuinely re-appears).
+operator interface. Rejection deletes the page (rejected entities must leave
+recall / vectors / toc); the name-keyed ``rejected_entities`` table is the
+durable audit + undo.
 
 Runs in-cluster (where wiki.db AND the wiki/ files live):
 

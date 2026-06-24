@@ -67,7 +67,7 @@ No new env vars beyond what `fetch_extract_queue` already requires:
 
 | Var | Required | Description |
 |---|---|---|
-| `NOTION_INTEGRATION_TOKEN` | yes | Internal Integration secret |
+| `NOTION_QUEUE_TOKEN` | yes | Integration secret scoped to the Queue DB (read + update) |
 | `NOTION_QUEUE_DB_ID` | yes | Knowledge OS Queue DB id |
 | `NOTION_QUEUE_DATA_SOURCE_ID` | yes | Data source id under the Queue DB |
 

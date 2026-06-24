@@ -8,16 +8,31 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **`wiki-merge` CLI for curated entity dedup** (`domains.wiki.merge_cli`) folds one wiki entity into another across `wiki.db` and the on-disk `.md` pages in one transaction — re-points the page_sources / entity_relations / aliases ledgers, writes the dropped name as an alias of the survivor (so future mentions fold in instead of re-minting the dup), deletes the dropped page, and re-renders the survivor's frontmatter. `--no-alias` is the homonym escape hatch; `--dry-run` previews. Backed by a new `domains.wiki.state.merge_entities` primitive.
-- **Durable curator denylist** — additive `rejected_entities` table in `wiki.sql` (name-keyed, survives a from-empty rebuild) plus `upsert_rejected` / `get_rejected` helpers, so entity rejections live in `wiki.db` rather than solely in Notion.
-- **`wiki-reject` CLI for curating out noise entities** (`domains.wiki.reject_cli`) deletes an auto-discovered entity (site chrome, mis-extraction) across `wiki.db` and the `.md` files and tombstones it — backed by a new `domains.wiki.state.reject_entity` primitive that denylists the canonical name **and every alias** (so a deleted entity can't re-mint under a known surface form). Resolve by `--entity` id or `--name`; `--dry-run` previews.
-- **`wiki-dedup-candidates` CLI surfaces near-duplicate entities for curated merging** (`evals.wiki_dedup`) — embeds each entity's `name + summary` and prints the high-cosine pairs as JSON, catching semantic dups (`Claude Max` ≡ `Max plan`) the in-synthesis difflib matcher structurally misses. Pure search + wiki reader in `domains.wiki.dedup`; operator runbook (cluster → judge → confirm → merge / reject) in `packages/domains/src/domains/wiki/CURATION.md`.
-- **`sync_wiki_curation` DAG — the Notion curation surface.** A new daily pipeline (07:00 UTC) two-way syncs the wiki with the Notion "Wiki Pages" DB. `wiki/rejections_pulled` pulls curator `Rejected=true` toggles into `rejected_entities` (deleting live entities via `reject_entity`); `wiki/pages_pushed` then projects every page-backed entity up (keyed on the `Entity ID` = wiki.db surrogate id) so the human has the latest set to browse + reject. Push writes **only** producer columns (Title / Entity ID / Summary / Aliases / Source count / Page type / Last updated / Page status), never the curator columns, and fails loud on Notion schema drift; a row whose entity has left wiki.pages is flipped to `Page status=orphaned` (kept, not deleted, so the curator annotation survives). Both assets share `synthesize_wiki`'s concurrency key (single-writer `wiki.db`). The Notion "Wiki Pages" I/O — including the existing denylist reader — now lives **only** in this pipeline. `SYNC_WIKI_CURATION_DAG_VERSION` 1.
+- **`sync_wiki_curation` DAG — the Notion curation surface.** A new daily pipeline (07:00 UTC) two-way syncs the wiki with the Notion "Wiki Pages" DB. `wiki/rejections_pulled` pulls curator `Rejected=true` toggles into `rejected_entities` (deleting live entities via `reject_entity`); `wiki/pages_pushed` then projects every page-backed entity up (keyed on the `Entity ID` = wiki.db surrogate id) so the human has the latest set to browse + reject. Push writes **only** producer columns (Title / Entity ID / Summary / Aliases / Source count / Page type / Last updated / Page status), never the curator columns, and fails loud on Notion schema drift; a row whose entity has left wiki.pages is flipped to `Page status=orphaned` (kept, not deleted, so the curator annotation survives). Both assets share `synthesize_wiki`'s concurrency key (single-writer `wiki.db`). The Notion "Wiki Pages" I/O — including the denylist reader — now lives **only** in this pipeline, on `NOTION_WIKI_TOKEN`. `SYNC_WIKI_CURATION_DAG_VERSION` 1.
+
+---
+
+## [0.24.10] — 2026-06-24
 
 ### Changed
 
-- **Wiki synthesis reads the denylist from the local `rejected_entities` table**, not live Notion. The per-tick `query_rejected()` call + the fail-closed `data/wiki/_index/rejected.json` snapshot are gone — synthesis no longer depends on Notion being reachable. `SYNTHESIZE_WIKI_DAG_VERSION` → 12. The `sync_wiki_curation` DAG (above) now owns the Notion ↔ `rejected_entities` sync.
-- **Aliases can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`, so a rejected surface form can't re-enter as an alias of a different entity and re-resolve to it.
+- **Notion access is now per-database for least privilege.** The single `NOTION_INTEGRATION_TOKEN` is replaced by `NOTION_QUEUE_TOKEN` (Knowledge OS Queue DB — `triage_knowledge_queue` + `fetch_extract_queue`) and `NOTION_WIKI_TOKEN` (Wiki Pages DB — reserved for the forthcoming `sync_wiki_curation` DAG). Each integration is connected only to its own DB, so a leaked token can't reach the other. `NOTION_WIKI_PAGES_DATA_SOURCE_ID` is also renamed `NOTION_WIKI_DATA_SOURCE_ID` to match the `NOTION_{QUEUE,WIKI}_*` pattern. **Deploy:** set the new env vars; `NOTION_INTEGRATION_TOKEN` is no longer read.
+
+---
+
+## [0.24.9] — 2026-06-24
+
+### Added
+
+- **`wiki-merge` CLI folds duplicate wiki entities into one** (`domains.wiki.merge_cli` → `merge_entities`): re-points the page_sources / entity_relations / aliases ledgers, aliases the dropped name onto the survivor so future mentions don't re-mint, and deletes the dropped page. `--no-alias` for homonyms; `--dry-run`.
+- **`wiki-reject` CLI deletes + tombstones noise entities** (`domains.wiki.reject_cli` → `reject_entity`): denylists the canonical name and every alias into the new name-keyed `rejected_entities` table (`wiki.sql`) so it can't re-mint, and removes the page. By `--entity` or `--name`.
+- **`wiki-dedup-candidates` CLI proposes near-duplicate entities for merging** (`evals.wiki_dedup`): embeds each entity's `name + summary` and prints high-cosine pairs as JSON, catching semantic dups (`Claude Max` ≡ `Max plan`) the in-synthesis difflib matcher misses. Reads prod over Tailscale via `--datasette-url` (no file copy) or a local wiki.db (`--db`/`--wiki-dir`); embeds on OpenAI or, free + local, any OpenAI-compatible server via `--embed-base-url` (e.g. `llama-server --embeddings`; `--embed-prefix` for models like nomic-embed). Pure search in `domains.wiki.dedup`; runbook in `domains/wiki/CURATION.md`.
+
+### Changed
+
+- **Wiki synthesis reads the denylist from the local `rejected_entities` table, not live Notion.** The per-tick `query_rejected()` + fail-closed `rejected.json` snapshot are gone, so synthesis no longer depends on Notion. `SYNTHESIZE_WIKI_DAG_VERSION` → 12.
+- **An alias can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`.
+- **`OpenAIEmbedder` now drives any OpenAI-compatible embeddings server** via `base_url` + `dims=None` (skips the OpenAI-only `dimensions` param), e.g. a local llama.cpp `llama-server`. Backward-compatible (OpenAI stays the default); also realigns responses by their `index` so a reordered batch can't misalign vectors.
 
 ---
 
