@@ -4,12 +4,33 @@
 # curator-read (query_rejected, consumed by the PULL) and the producer-write
 # (list_pages / upsert_page, consumed by the PUSH) sides.
 
+import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
 import dagster as dg
 from domains.wiki.identity import normalize_name
 from notion_client import Client as NotionClient
+from pydantic import PrivateAttr
+
+
+def _is_rate_limited(exc: Exception) -> bool:
+    """True for a Notion 429 (rate-limit) error — duck-typed so we don't couple
+    to notion_client's exception class hierarchy."""
+    return getattr(exc, "status", None) == 429 or getattr(exc, "code", None) == "rate_limited"
+
+
+def _retry_after_seconds(exc: Exception, attempt: int) -> float:
+    """Honour Notion's Retry-After header if present, else exponential backoff."""
+    headers = getattr(exc, "headers", None) or {}
+    raw = headers.get("retry-after") or headers.get("Retry-After")
+    if raw is not None:
+        try:
+            return float(raw)
+        except (TypeError, ValueError):
+            pass
+    return float(2**attempt)
 
 
 @dataclass(frozen=True)
@@ -53,9 +74,36 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
 
     integration_token: str
     wiki_pages_data_source_id: str
+    # Notion allows ~3 req/s per integration; throttle proactively to stay under
+    # it, and retry on the occasional 429 (honouring Retry-After). The push of
+    # ~150 rows would otherwise blow the limit mid-run. Default 0 (no throttle)
+    # keeps unit tests fast; production wiring (build_resources) sets the live
+    # interval. The 429 retry is always on.
+    min_request_interval_s: float = 0.0
+    max_retries: int = 6
+
+    _last_request_at: float = PrivateAttr(default=0.0)
 
     def _client(self) -> NotionClient:
         return NotionClient(auth=self.integration_token)
+
+    def _request(self, fn: Callable[..., Any], **kwargs: Any) -> Any:
+        """Call a Notion client method with proactive throttle + 429 retry."""
+        for attempt in range(self.max_retries + 1):
+            wait = self.min_request_interval_s - (time.monotonic() - self._last_request_at)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                result = fn(**kwargs)
+            except Exception as exc:  # noqa: BLE001 — re-raised unless it's a 429
+                if not _is_rate_limited(exc) or attempt == self.max_retries:
+                    raise
+                time.sleep(_retry_after_seconds(exc, attempt))
+                continue
+            finally:
+                self._last_request_at = time.monotonic()
+            return result
+        raise RuntimeError("unreachable")  # loop returns or raises
 
     def query_rejected(self) -> dict[str, dict[str, str | None]]:
         """All Rejected=true rows → {normalized_title: {category, reason}}.
@@ -76,7 +124,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
             }
             if cursor:
                 kwargs["start_cursor"] = cursor
-            resp = client.data_sources.query(**kwargs)
+            resp = self._request(client.data_sources.query, **kwargs)
             for row in resp.get("results", []):
                 props = row.get("properties", {})
                 title = _plain_text(props.get("Title", {}))
@@ -108,7 +156,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
             }
             if cursor:
                 kwargs["start_cursor"] = cursor
-            resp = client.data_sources.query(**kwargs)
+            resp = self._request(client.data_sources.query, **kwargs)
             for row in resp.get("results", []):
                 if row.get("archived") or row.get("in_trash"):
                     continue
@@ -131,7 +179,10 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
         """The data source's current property names — read once per push so a
         renamed/removed producer column fails the run loudly instead of silently
         writing garbage."""
-        schema = self._client().data_sources.retrieve(data_source_id=self.wiki_pages_data_source_id)
+        schema = self._request(
+            self._client().data_sources.retrieve,
+            data_source_id=self.wiki_pages_data_source_id,
+        )
         return set(schema.get("properties", {}))
 
     def upsert_page(self, *, properties: dict[str, Any], page_id: str | None = None) -> str:
@@ -142,12 +193,13 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
         other."""
         client = self._client()
         if page_id is None:
-            resp = client.pages.create(
+            resp = self._request(
+                client.pages.create,
                 parent={"type": "data_source_id", "data_source_id": self.wiki_pages_data_source_id},
                 properties=properties,
             )
         else:
-            resp = client.pages.update(page_id=page_id, properties=properties)
+            resp = self._request(client.pages.update, page_id=page_id, properties=properties)
         return resp["id"]
 
 
@@ -156,6 +208,8 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
         "wiki_pages_notion": WikiPagesNotionResource(
             integration_token=dg.EnvVar("NOTION_INTEGRATION_TOKEN"),
             wiki_pages_data_source_id=dg.EnvVar("NOTION_WIKI_PAGES_DATA_SOURCE_ID"),
+            # Stay under Notion's ~3 req/s during the ~150-row push.
+            min_request_interval_s=0.34,
         ),
     }
 

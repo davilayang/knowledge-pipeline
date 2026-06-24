@@ -8,10 +8,46 @@ row's producer columns. The Notion Client is mocked at the import location.
 
 from unittest.mock import MagicMock, patch
 
+import pytest
 from orchestrators.defs.sync_wiki_curation.resources import (
     NotionPageRef,
     WikiPagesNotionResource,
 )
+
+
+class _RateLimited(Exception):
+    status = 429
+    headers = {"retry-after": "0"}
+
+
+def test_request_retries_on_rate_limit():
+    """A 429 is retried (honouring Retry-After) so a ~150-row push survives
+    Notion's ~3 req/s ceiling instead of dying mid-run."""
+    res = WikiPagesNotionResource(
+        integration_token="t", wiki_pages_data_source_id="ds", min_request_interval_s=0.0
+    )
+    attempts = []
+
+    def fn(**kw):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise _RateLimited("rate limited")
+        return {"ok": True}
+
+    assert res._request(fn) == {"ok": True}
+    assert len(attempts) == 2  # failed once, retried, succeeded
+
+
+def test_request_reraises_non_rate_limit_immediately():
+    res = WikiPagesNotionResource(
+        integration_token="t", wiki_pages_data_source_id="ds", min_request_interval_s=0.0
+    )
+
+    def fn(**kw):
+        raise ValueError("boom")
+
+    with pytest.raises(ValueError, match="boom"):
+        res._request(fn)
 
 
 def _row(
