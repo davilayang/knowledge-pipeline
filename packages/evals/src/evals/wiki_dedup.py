@@ -67,6 +67,11 @@ def fetch_entity_texts_via_datasette(
     query = urllib.parse.urlencode({"sql": _DATASETTE_SQL, "_shape": "array"})
     with opener(f"{base_url.rstrip('/')}.json?{query}") as resp:
         rows = json.loads(resp.read())
+    if not isinstance(rows, list):
+        raise ValueError(
+            f"Datasette did not return a row array (custom SQL may be disabled): "
+            f"{str(rows)[:200]}"
+        )
     return [
         EntityText(
             entity_id=r["entity_id"],

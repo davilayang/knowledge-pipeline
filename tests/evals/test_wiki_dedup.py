@@ -8,6 +8,7 @@ without OpenAI. `main` wraps it with an `OpenAIEmbedder`.
 import json
 from datetime import date
 
+import pytest
 from domains.wiki.dedup import EntityText
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.io import write_page
@@ -112,6 +113,16 @@ def test_fetch_entity_texts_via_datasette_parses_rows():
     ]
     assert seen[0].startswith("https://host/databases/wiki.json?")
     assert "sql=" in seen[0]
+
+
+def test_fetch_entity_texts_via_datasette_rejects_error_shaped_json():
+    # Datasette returns an error object (not an array) when custom SQL is
+    # disabled / auth fails — fail loud, not with a cryptic KeyError.
+    def fake_opener(url):
+        return _FakeResp(json.dumps({"error": "custom SQL not allowed", "ok": False}).encode())
+
+    with pytest.raises(ValueError, match="array"):
+        fetch_entity_texts_via_datasette("https://host/databases/wiki", opener=fake_opener)
 
 
 def test_run_candidates_reads_from_datasette_when_url_given(monkeypatch):
