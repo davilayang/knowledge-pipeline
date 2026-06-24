@@ -22,14 +22,15 @@ Three CLIs, all read/operate on `wiki.db` + the `data/wiki/*.md` pages:
 You drive the whole flow **from the laptop** with a Claude session helping. The
 split that keeps it both convenient and safe:
 
-- **Reads are local + free.** Pull prod's `wiki.db` + `wiki/` down, generate
-  candidates locally against a local llama.cpp embedder (no OpenAI cost), and
-  Claude judges the `candidates.json` on the laptop.
+- **Reads are remote + free.** The candidate generator reads prod's entities +
+  summaries straight from the Datasette-exposed `wiki.db` over Tailscale (no file
+  copy), embeds locally against a llama.cpp embedder (no OpenAI cost), and Claude
+  judges the `candidates.json` on the laptop.
 - **Writes happen in-cluster.** The destructive `wiki-merge` / `wiki-reject` run
   via `ssh hcloud … docker exec …` against prod's live files. Entity ids are
-  stable surrogates, so a slightly-stale pulled copy is fine for judging.
-  *Don't* pull the DB, mutate it locally, and push it back — that clobbers any
-  synthesis writes made in between.
+  stable surrogates, so a slightly-stale read is fine for judging. *Don't* pull
+  the DB, mutate it locally, and push it back — that clobbers any synthesis
+  writes made in between.
 
 **Never run a write during the 06:00 UTC synthesis window** — SQLite is
 single-writer; a concurrent destructive write can corrupt a read-resolve-write
@@ -42,18 +43,18 @@ the user-code container name.
 ## The loop
 
 ```
-0. PULL      prod wiki.db + pages to the laptop (read-only candidate gen):
-               rsync -az hcloud:knowledge-pipeline/data/wiki.db ./prod-wiki/wiki.db
-               rsync -az hcloud:knowledge-pipeline/data/wiki/   ./prod-wiki/wiki/
-
-1. READ      candidates locally, free (llama.cpp embeddings):
+1. READ      prod entities over Tailscale, embed locally (free). One command —
+             no file copy: --datasette-url reads wiki.db over HTTP; llama.cpp
+             does the embeddings:
                llama-server -hf nomic-ai/nomic-embed-text-v1.5-GGUF \
                  --embeddings --pooling mean --port 8080 &
-               uv run wiki-dedup-candidates --db ./prod-wiki/wiki.db --wiki-dir ./prod-wiki/wiki \
+               uv run wiki-dedup-candidates \
+                 --datasette-url https://ubuntu-16gb-hel1-1.tailb6592a.ts.net/databases/wiki \
                  --embed-base-url http://localhost:8080/v1 \
                  --embedding-model nomic-embed-text-v1.5 --embed-prefix "search_document: " \
                  --threshold 0.8 > candidates.json
-             (Drop the --embed-* flags to use OpenAI instead — see "Embedding backend".)
+             (Drop the --embed-* flags to embed via OpenAI; swap --datasette-url
+              for --db/--wiki-dir to rehearse on a local copy.)
 
 2. JUDGE     Claude reads candidates.json: for each pair, keep vs drop, or skip
              ("not a dup"). Names + summaries are in the JSON — no DB lookups.

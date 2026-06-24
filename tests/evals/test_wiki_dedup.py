@@ -8,11 +8,17 @@ without OpenAI. `main` wraps it with an `OpenAIEmbedder`.
 import json
 from datetime import date
 
+from domains.wiki.dedup import EntityText
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.io import write_page
 from domains.wiki.state import connection, insert_entity, upsert_page
 from domains.wiki.types import WikiPage
-from evals.wiki_dedup import embed_batch_with_prefix, pairs_to_json, run_candidates
+from evals.wiki_dedup import (
+    embed_batch_with_prefix,
+    fetch_entity_texts_via_datasette,
+    pairs_to_json,
+    run_candidates,
+)
 
 NOW = "2026-06-22T00:00:00+00:00"
 
@@ -64,7 +70,67 @@ def test_run_candidates_finds_near_dup_pair(tmp_path, wiki_db_path):
     }
 
     pairs = run_candidates(
-        wiki_db_path, wiki_dir, lambda texts: [vecs[t] for t in texts], threshold=0.8
+        lambda texts: [vecs[t] for t in texts],
+        db_path=wiki_db_path,
+        wiki_dir=wiki_dir,
+        threshold=0.8,
+    )
+
+    assert [(p.a.entity_id, p.b.entity_id) for p in pairs] == [("e_max", "e_plan")]
+
+
+class _FakeResp:
+    def __init__(self, data: bytes):
+        self._data = data
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+    def read(self) -> bytes:
+        return self._data
+
+
+def test_fetch_entity_texts_via_datasette_parses_rows():
+    rows = [
+        {"entity_id": "e_max", "canonical_name": "Claude Max", "summary": "Anthropic tier."},
+        {"entity_id": "e_x", "canonical_name": "Chroma", "summary": None},  # no page version
+    ]
+    seen: list[str] = []
+
+    def fake_opener(url):
+        seen.append(url)
+        return _FakeResp(json.dumps(rows).encode())
+
+    items = fetch_entity_texts_via_datasette("https://host/databases/wiki", opener=fake_opener)
+
+    assert items == [
+        EntityText("e_max", "Claude Max", "Anthropic tier."),
+        EntityText("e_x", "Chroma", ""),  # NULL summary → ""
+    ]
+    assert seen[0].startswith("https://host/databases/wiki.json?")
+    assert "sql=" in seen[0]
+
+
+def test_run_candidates_reads_from_datasette_when_url_given(monkeypatch):
+    items = [
+        EntityText("e_max", "Claude Max", "Anthropic tier."),
+        EntityText("e_plan", "Max plan", "Anthropic tier."),
+        EntityText("e_chroma", "Chroma", "Vector database."),
+    ]
+    monkeypatch.setattr("evals.wiki_dedup.fetch_entity_texts_via_datasette", lambda url: items)
+    vecs = {
+        "Claude Max\nAnthropic tier.": [1.0, 0.0],
+        "Max plan\nAnthropic tier.": [0.98, 0.04],
+        "Chroma\nVector database.": [0.0, 1.0],
+    }
+
+    pairs = run_candidates(
+        lambda texts: [vecs[t] for t in texts],
+        datasette_url="https://host/databases/wiki",
+        threshold=0.8,
     )
 
     assert [(p.a.entity_id, p.b.entity_id) for p in pairs] == [("e_max", "e_plan")]
