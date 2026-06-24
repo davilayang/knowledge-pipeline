@@ -17,10 +17,8 @@ alias of keep so a future different-sense mention mints fresh (safe false-split)
 NEVER run against prod during the synthesis window — SQLite is single-writer and
 a concurrent merge can corrupt a read-resolve-write tick.
 
-Atomicity is DB-only: the transaction commits BEFORE the file ops (unlink drop's
-.md, re-render keep). A crash in that window leaves drop's .md orphaned on disk
-while drop is gone from the DB — harmless (synthesis reads the DB, never re-mints
-drop), cleared by a manual `rm data/wiki/<drop-file>` if it bothers you.
+Atomicity is DB-only: the txn commits before the file ops. A crash in between
+orphans drop's .md (harmless — synthesis reads the DB; `rm` it if you like).
 """
 
 import argparse

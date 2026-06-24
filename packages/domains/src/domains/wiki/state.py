@@ -758,12 +758,10 @@ def merge_entities(
         (keep_id, keep_id),
     )
 
-    # aliases: re-point drop's existing aliases onto keep. normalized_alias is a
-    # globally-unique PK and we don't touch it, so this UPDATE can never collide
-    # (no OR IGNORE needed). With alias=False (the homonym escape hatch) we must
-    # NOT carry drop's own NAME across — re-pointing a pre-existing self-alias
-    # would silently route drop's name to keep anyway. Excluding it leaves the
-    # row on drop, so it cascade-deletes and the name mints fresh next time.
+    # Re-point drop's aliases onto keep. normalized_alias is a globally-unique PK
+    # we don't touch, so this UPDATE can't collide (no OR IGNORE). alias=False
+    # excludes drop's own name so a pre-existing self-alias cascade-deletes with
+    # drop instead of routing the name to keep (homonym escape hatch).
     if alias:
         conn.execute(
             "UPDATE aliases SET entity_id = ? WHERE entity_id = ?",
@@ -775,12 +773,9 @@ def merge_entities(
             (keep_id, drop_id, drop.normalized_name),
         )
 
-    # aliases: write drop's own name as an alias of keep — the load-bearing line
-    # that folds the next "Max plan" mention into keep instead of re-minting the
-    # dup. Direct INSERT (NOT ON CONFLICT DO NOTHING): the third-entity conflict
-    # already failed in pre-flight; here `insert_alias_name` is only True when the
-    # name is unclaimed. `alias=False` is the homonym escape hatch — skip it so a
-    # future different-sense mention mints fresh (safe false-split).
+    # Write drop's name as an alias of keep so the next mention folds in instead
+    # of re-minting. Plain INSERT — pre-flight guaranteed the name is unclaimed
+    # (insert_alias_name) and not owned by a third entity.
     if insert_alias_name:
         conn.execute(
             "INSERT INTO aliases (alias, normalized_alias, entity_id) VALUES (?, ?, ?)",

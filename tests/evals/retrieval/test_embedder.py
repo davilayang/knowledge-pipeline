@@ -117,3 +117,11 @@ class TestOpenAICompatible:
         resp = _stub_response([[9.0], [1.0], [5.0]], indices=[2, 0, 1])
         embedder, _ = _build_embedder([resp])
         assert embedder.embed_batch(["a", "b", "c"]) == [[1.0], [5.0], [9.0]]
+
+    def test_raises_on_misaligned_response_indices(self):
+        # A non-compliant backend returns the wrong index set → fail loud, not
+        # with a cryptic KeyError or silent misalignment.
+        resp = _stub_response([[1.0], [2.0]], indices=[0, 5])  # expected {0,1}
+        embedder, _ = _build_embedder([resp])
+        with pytest.raises(ValueError, match="index"):
+            embedder.embed_batch(["a", "b"])

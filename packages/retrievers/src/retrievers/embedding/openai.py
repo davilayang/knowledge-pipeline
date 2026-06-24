@@ -47,8 +47,8 @@ class OpenAIEmbedder:
     large}`` accept ``dimensions=N`` (N ≤ native_dims). Pass ``dims=None`` for
     backends that don't support that param — notably llama.cpp's
     ``/v1/embeddings``, which rejects ``dimensions`` and returns the model's
-    native dim (already L2-normalized). A local-server base_url needs no real
-    key; pass ``api_key="no-key"``.
+    native dim (already L2-normalized). A local server enforces no key — pass
+    ``api_key="no-key"``.
     """
 
     def __init__(
@@ -85,10 +85,13 @@ class OpenAIEmbedder:
             for attempt in self._retry_policy:
                 with attempt:
                     resp = self._client.embeddings.create(input=sub, **kwargs)
-            # Realign by the response's own `index` rather than trusting row
-            # order — a reordered/partial response can't silently misalign
-            # out[i] from texts[i].
+            # Realign by `index` to handle a reordered/partial response.
             by_index = {d.index: d.embedding for d in resp.data}
+            if by_index.keys() != set(range(len(sub))):
+                raise ValueError(
+                    f"embeddings response index set {sorted(by_index)} != "
+                    f"expected 0..{len(sub) - 1}"
+                )
             out.extend(list(by_index[i]) for i in range(len(sub)))
         return out
 
