@@ -29,10 +29,10 @@ candidate generator only proposes.
 2. JUDGE     review candidates.json (a Claude session is good at this): for each
              pair decide keep vs drop, or "not a dup" (skip). Names + summaries
              are in the JSON so no DB lookups are needed.
-3. CONFIRM   you approve each merge and pick --alias (default) or --no-alias.
-             --no-alias is the homonym escape hatch: use it when the dropped
-             name could later mean something else (a future "Max plan" telecom
-             tier shouldn't route to Claude Max).
+3. CONFIRM   you approve each merge; aliasing the dropped name onto the survivor
+             is the default. Pass --no-alias as the homonym escape hatch: use it
+             when the dropped name could later mean something else (a future
+             "Max plan" telecom tier shouldn't route to Claude Max).
 4. SNAPSHOT  pre-merge rollback point (merges are destructive):
                sqlite3 data/wiki.db ".backup data/wiki.bak.db"
                tar czf data/wiki.bak.tgz -C data wiki
