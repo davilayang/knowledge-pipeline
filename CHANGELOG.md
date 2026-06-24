@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.24.11] — 2026-06-24
+
 ### Added
 
-- **`sync_wiki_curation` DAG — the Notion curation surface.** A new daily pipeline (07:00 UTC) two-way syncs the wiki with the Notion "Wiki Pages" DB. `wiki/rejections_pulled` pulls curator `Rejected=true` toggles into `rejected_entities` (deleting live entities via `reject_entity`); `wiki/pages_pushed` then projects every page-backed entity up (keyed on the `Entity ID` = wiki.db surrogate id) so the human has the latest set to browse + reject. Push writes **only** producer columns (Title / Entity ID / Summary / Aliases / Source count / Page type / Last updated / Page status), never the curator columns, and fails loud on Notion schema drift; a row whose entity has left wiki.pages is flipped to `Page status=orphaned` (kept, not deleted, so the curator annotation survives). Both assets share `synthesize_wiki`'s concurrency key (single-writer `wiki.db`). The Notion "Wiki Pages" I/O — including the denylist reader — now lives **only** in this pipeline, on `NOTION_WIKI_TOKEN`. `SYNC_WIKI_CURATION_DAG_VERSION` 1.
+- **`sync_wiki_curation` DAG** adds a daily (07:00 UTC) two-way sync between wiki.db and the Notion "Wiki Pages" review DB. `wiki/rejections_pulled` imports curator `Rejected=true` toggles into `rejected_entities`; `wiki/pages_pushed` projects every current entity up to Notion with producer-only columns, flipping departed entities to `Page status=orphaned`. Requires `NOTION_WIKI_TOKEN`; `SYNC_WIKI_CURATION_DAG_VERSION` 1.
 
 ---
 
