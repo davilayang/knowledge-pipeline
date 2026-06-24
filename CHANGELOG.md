@@ -6,17 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.24.9] — 2026-06-24
+
 ### Added
 
-- **`wiki-merge` CLI for curated entity dedup** (`domains.wiki.merge_cli`) folds one wiki entity into another across `wiki.db` and the on-disk `.md` pages in one transaction — re-points the page_sources / entity_relations / aliases ledgers, writes the dropped name as an alias of the survivor (so future mentions fold in instead of re-minting the dup), deletes the dropped page, and re-renders the survivor's frontmatter. `--no-alias` is the homonym escape hatch; `--dry-run` previews. Backed by a new `domains.wiki.state.merge_entities` primitive.
-- **Durable curator denylist** — additive `rejected_entities` table in `wiki.sql` (name-keyed, survives a from-empty rebuild) plus `upsert_rejected` / `get_rejected` helpers, so entity rejections live in `wiki.db` rather than solely in Notion.
-- **`wiki-reject` CLI for curating out noise entities** (`domains.wiki.reject_cli`) deletes an auto-discovered entity (site chrome, mis-extraction) across `wiki.db` and the `.md` files and tombstones it — backed by a new `domains.wiki.state.reject_entity` primitive that denylists the canonical name **and every alias** (so a deleted entity can't re-mint under a known surface form). Resolve by `--entity` id or `--name`; `--dry-run` previews.
-- **`wiki-dedup-candidates` CLI surfaces near-duplicate entities for curated merging** (`evals.wiki_dedup`) — embeds each entity's `name + summary` and prints the high-cosine pairs as JSON, catching semantic dups (`Claude Max` ≡ `Max plan`) the in-synthesis difflib matcher structurally misses. Pure search + wiki reader in `domains.wiki.dedup`; operator runbook (cluster → judge → confirm → merge / reject) in `packages/domains/src/domains/wiki/CURATION.md`.
+- **`wiki-merge` CLI folds duplicate wiki entities into one** (`domains.wiki.merge_cli` → `merge_entities`): re-points the page_sources / entity_relations / aliases ledgers, aliases the dropped name onto the survivor so future mentions don't re-mint, and deletes the dropped page. `--no-alias` for homonyms; `--dry-run`.
+- **`wiki-reject` CLI deletes + tombstones noise entities** (`domains.wiki.reject_cli` → `reject_entity`): denylists the canonical name and every alias into the new name-keyed `rejected_entities` table (`wiki.sql`) so it can't re-mint, and removes the page. By `--entity` or `--name`.
+- **`wiki-dedup-candidates` CLI proposes near-duplicate entities for merging** (`evals.wiki_dedup`): embeds each entity's `name + summary` and prints high-cosine pairs as JSON, catching semantic dups (`Claude Max` ≡ `Max plan`) the in-synthesis difflib matcher misses. Pure search in `domains.wiki.dedup`.
 
 ### Changed
 
-- **Wiki synthesis reads the denylist from the local `rejected_entities` table**, not live Notion. The per-tick `query_rejected()` call + the fail-closed `data/wiki/_index/rejected.json` snapshot are gone — synthesis no longer depends on Notion being reachable. `SYNTHESIZE_WIKI_DAG_VERSION` → 12. (A future `sync_wiki_curation` DAG will sync Notion rejections into the table.)
-- **Aliases can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`, so a rejected surface form can't re-enter as an alias of a different entity and re-resolve to it.
+- **Wiki synthesis reads the denylist from the local `rejected_entities` table, not live Notion.** The per-tick `query_rejected()` + fail-closed `rejected.json` snapshot are gone, so synthesis no longer depends on Notion. `SYNTHESIZE_WIKI_DAG_VERSION` → 12.
+- **An alias can no longer contradict the denylist** — `insert_aliases` drops any normalized alias already in `rejected_entities`.
 
 ---
 
