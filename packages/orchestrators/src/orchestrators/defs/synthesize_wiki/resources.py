@@ -29,13 +29,15 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
     NORMALISED page Title (the entity's canonical name): {normalized_name:
     {category, reason}} for every row with Rejected=true. The surrogate Entity
     ID is minted post-extraction, so the denylist can't anchor on it — it
-    matches on the name the curator sees instead. Reuses the shared
-    NOTION_INTEGRATION_TOKEN; the data source id is the "Wiki Pages"
-    collection. Read-only — never writes curator columns.
+    matches on the name the curator sees instead. Uses the per-database
+    NOTION_WIKI_TOKEN (scoped to the "Wiki Pages" DB, read+write); the data
+    source id is the "Wiki Pages" collection. NOT wired today — synthesis reads
+    the denylist from the local rejected_entities table; this resource is for
+    the forthcoming sync_wiki_curation DAG (read Rejected, write entities).
     """
 
     integration_token: str
-    wiki_pages_data_source_id: str
+    wiki_data_source_id: str
 
     def _client(self) -> NotionClient:
         return NotionClient(auth=self.integration_token)
@@ -53,7 +55,7 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
         cursor: str | None = None
         while True:
             kwargs: dict[str, Any] = {
-                "data_source_id": self.wiki_pages_data_source_id,
+                "data_source_id": self.wiki_data_source_id,
                 "filter": {"property": "Rejected", "checkbox": {"equals": True}},
                 "page_size": 100,
             }
