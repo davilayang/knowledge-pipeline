@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.24.10] — 2026-06-24
+
 ### Changed
 
 - **Notion access is now per-database for least privilege.** The single `NOTION_INTEGRATION_TOKEN` is replaced by `NOTION_QUEUE_TOKEN` (Knowledge OS Queue DB — `triage_knowledge_queue` + `fetch_extract_queue`) and `NOTION_WIKI_TOKEN` (Wiki Pages DB — reserved for the forthcoming `sync_wiki_curation` DAG). Each integration is connected only to its own DB, so a leaked token can't reach the other. `NOTION_WIKI_PAGES_DATA_SOURCE_ID` is also renamed `NOTION_WIKI_DATA_SOURCE_ID` to match the `NOTION_{QUEUE,WIKI}_*` pattern. **Deploy:** set the new env vars; `NOTION_INTEGRATION_TOKEN` is no longer read.
