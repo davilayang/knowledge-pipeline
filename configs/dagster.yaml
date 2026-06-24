@@ -25,6 +25,10 @@ concurrency:
   runs:
     max_concurrent_runs: 5
   pools:
+    # default_limit: 1 is load-bearing for the wiki single-writer guarantee:
+    # synthesize_wiki and sync_wiki_curation share the "synthesize-wiki" op pool
+    # (WIKI_DB_CONCURRENCY_KEY) so their wiki.db writes can never overlap. Raising
+    # this — or giving that pool an explicit higher limit — breaks it silently.
     granularity: op
     default_limit: 1
 

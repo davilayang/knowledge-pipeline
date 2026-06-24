@@ -8,6 +8,12 @@ from orchestrators.defs.synthesize_wiki.def_config import PIPELINE_TAG
 # FK-error against a concurrent entity delete). We bind synthesize_wiki's own
 # key here — NOT a separate per-DAG key — which is the single most important
 # correctness control for this pipeline.
+#
+# Load-bearing dependency: the serialisation only holds because
+# configs/dagster.yaml sets `concurrency.pools.{granularity: op, default_limit: 1}`,
+# which caps this shared pool at one concurrent op globally. Raising default_limit
+# (or setting an explicit higher limit on this pool) silently breaks the
+# single-writer guarantee with no test failing — keep that config in lockstep.
 WIKI_DB_CONCURRENCY_KEY = PIPELINE_TAG
 
 # Run-group tag for the curation job (UI filtering only — distinct from the
