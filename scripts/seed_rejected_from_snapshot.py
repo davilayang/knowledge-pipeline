@@ -102,7 +102,12 @@ def main(argv: list[str] | None = None) -> int:
         return 0
 
     # Import here so the script doesn't pull dagster/orchestrators on the host.
-    from domains.wiki.state import connection, get_rejected, upsert_rejected
+    from domains.wiki.state import connection, create_schema, get_rejected, upsert_rejected
+
+    # Ensure the schema (idempotent — CREATE TABLE IF NOT EXISTS) the same way
+    # WikiResource.get_db_path does, so this runs against a wiki.db that predates
+    # the rejected_entities table (e.g. a prod DB built before the denylist landed).
+    create_schema(db_path=args.db)
 
     with connection(args.db) as conn:
         with conn:  # one atomic transaction
