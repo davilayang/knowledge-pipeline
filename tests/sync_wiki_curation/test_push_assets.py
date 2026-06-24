@@ -12,7 +12,7 @@ from unittest.mock import MagicMock
 import dagster as dg
 import pytest
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
-from domains.wiki.state import connection, insert_entity, upsert_page
+from domains.wiki.state import connection, insert_aliases, insert_entity, upsert_page
 from orchestrators.defs.sync_wiki_curation.assets import (
     PRODUCER_PROPERTIES,
     _build_page_properties,
@@ -72,6 +72,7 @@ def test_build_page_properties_writes_producer_columns_only():
         title="Claude Code",
         page_type="tool",
         summary="A CLI coding agent.",
+        aliases=["claude-code", "cc"],
         source_count=3,
         updated_at="2026-06-22T00:00:00Z",
         page_status="active",
@@ -80,6 +81,7 @@ def test_build_page_properties_writes_producer_columns_only():
     assert props["Title"]["title"][0]["text"]["content"] == "Claude Code"
     assert props["Entity ID"]["rich_text"][0]["text"]["content"] == "e_cc"
     assert props["Summary"]["rich_text"][0]["text"]["content"] == "A CLI coding agent."
+    assert props["Aliases"]["rich_text"][0]["text"]["content"] == "claude-code, cc"
     assert props["Source count"]["number"] == 3
     assert props["Page type"]["select"]["name"] == "tool"
     assert props["Last updated"]["date"]["start"] == "2026-06-22T00:00:00Z"
@@ -119,6 +121,24 @@ def test_push_creates_new_and_updates_existing(tmp_path):
     assert calls["e_new"]["properties"]["Page status"]["select"]["name"] == "active"
     assert result.metadata["created"].value == 1
     assert result.metadata["updated"].value == 1
+
+
+def test_push_writes_alias_family_from_table(tmp_path):
+    """Aliases column = the authoritative alias table for the entity (comma-
+    joined). A homonym suppressed at merge time (wiki-merge --no-alias) is simply
+    absent from the table, so it never reaches the column — the push is read-only
+    over aliases and never affects resolution."""
+    wiki = _wiki(tmp_path)
+    wiki_dir = wiki.get_wiki_dir()
+    with connection(wiki.get_db_path()) as conn, conn:
+        _seed_page(conn, wiki_dir, "e_max", "Claude Max")
+        insert_aliases(conn, [("Max plan", "e_max")])  # an aliased surface form
+
+    notion = _notion([])
+    _invoke(wiki, notion)
+
+    (call,) = notion.upsert_page.call_args_list
+    assert call.kwargs["properties"]["Aliases"]["rich_text"][0]["text"]["content"] == "Max plan"
 
 
 def test_push_orphans_rows_whose_entity_left_wiki(tmp_path):

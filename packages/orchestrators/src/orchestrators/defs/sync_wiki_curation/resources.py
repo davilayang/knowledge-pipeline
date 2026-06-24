@@ -45,10 +45,10 @@ class WikiPagesNotionResource(dg.ConfigurableResource):
     NOTION_INTEGRATION_TOKEN; the data source id is the "Wiki Pages"
     collection.
 
-    Producer columns (Title / Entity ID / Summary / Source count / Page type /
-    Last updated / Page status) are written by the PUSH; the curator columns
-    (Rejected / Reject category / Reject reason) are NEVER written here — that
-    column-ownership split is what prevents human/sync write-write conflicts.
+    Producer columns (Title / Entity ID / Summary / Aliases / Source count /
+    Page type / Last updated / Page status) are written by the PUSH; the curator
+    columns (Rejected / Reject category / Reject reason) are NEVER written here —
+    that column-ownership split is what prevents human/sync write-write conflicts.
     """
 
     integration_token: str

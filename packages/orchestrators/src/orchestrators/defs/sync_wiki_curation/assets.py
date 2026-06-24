@@ -12,6 +12,7 @@ from domains.wiki.state import (
     PageRecord,
     connection,
     count_sources_for_entity,
+    get_aliases_for_entity,
     get_all_pages,
     reject_entity,
     upsert_rejected,
@@ -36,14 +37,17 @@ def _build_page_properties(
     title: str,
     page_type: str,
     summary: str,
+    aliases: list[str],
     source_count: int,
     updated_at: str,
     page_status: str,
 ) -> dict:
     """Build the Notion property payload for one row — PRODUCER columns only,
     matching the live "Wiki Pages" schema. `Entity ID` is wiki.db's surrogate
-    entity_id (the upsert + denylist key). `Page status` is active for a
-    page-backed entity, orphaned for a row whose entity has left wiki.pages.
+    entity_id (the upsert + denylist key). `Aliases` is the comma-joined alias
+    family (so the curator can reject the whole family knowingly). `Page status`
+    is active for a page-backed entity, orphaned for a row whose entity has left
+    wiki.pages.
 
     The curator columns (Rejected / Reject category / Reject reason) are never
     emitted here; that column-ownership split is what stops the sync from
@@ -52,6 +56,7 @@ def _build_page_properties(
         "Title": {"title": [{"text": {"content": title}}]},
         "Entity ID": _rich_text(entity_id),
         "Summary": _rich_text(summary),
+        "Aliases": _rich_text(", ".join(aliases)),
         "Source count": {"number": source_count},
         "Page type": {"select": {"name": page_type}},
         "Last updated": {"date": {"start": updated_at}},
@@ -63,7 +68,16 @@ def _build_page_properties(
 # schema each push to fail loud on drift (a human renaming/removing one) rather
 # than writing garbage. Excludes the curator columns by construction.
 PRODUCER_PROPERTIES = frozenset(
-    {"Title", "Entity ID", "Summary", "Source count", "Page type", "Last updated", "Page status"}
+    {
+        "Title",
+        "Entity ID",
+        "Summary",
+        "Aliases",
+        "Source count",
+        "Page type",
+        "Last updated",
+        "Page status",
+    }
 )
 
 
@@ -179,6 +193,10 @@ def push_wiki_pages(
     with connection(db_path) as conn:
         pages = get_all_pages(conn)
         source_counts = {p.entity_id: count_sources_for_entity(conn, p.entity_id) for p in pages}
+        # Display only — the authoritative alias table (homonyms suppressed via
+        # wiki-merge --no-alias are simply absent here). The push never writes
+        # back to aliases, so it can't affect resolution / next synthesis.
+        aliases = {p.entity_id: get_aliases_for_entity(conn, p.entity_id) for p in pages}
     # entity_id is wiki.db's surrogate; a page-backed entity is "active".
     active_ids = {p.entity_id for p in pages}
 
@@ -193,6 +211,7 @@ def push_wiki_pages(
             title=page.canonical_name,
             page_type=page.page_type,
             summary=_page_summary(wiki_dir, page),
+            aliases=aliases[page.entity_id],
             source_count=source_counts[page.entity_id],
             updated_at=page.updated_at,
             page_status="active",
