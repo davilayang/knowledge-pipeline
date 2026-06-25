@@ -72,4 +72,4 @@ class TestGroupBySource:
         assert len(grouped["raw_store"]) == 2
         assert len(grouped["notes"]) == 1
         assert grouped["sessions"] == []
-        assert grouped["research"] == []
+        assert grouped["wiki"] == []

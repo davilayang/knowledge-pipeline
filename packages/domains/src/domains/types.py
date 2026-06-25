@@ -19,7 +19,7 @@ class IngestItem:
     title: str
     date: date | None
     text: str
-    source_type: str  # e.g. "raw_store" | "local_file" | "sessions" | "research"
+    source_type: str  # e.g. "raw_store" | "local_file" | "sessions"
     source_ref: str  # e.g. "raw_store:content_123" or "local:notes.md"
     author: str | None = None
     url: str | None = None

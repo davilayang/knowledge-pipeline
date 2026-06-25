@@ -1,6 +1,6 @@
 # `populate_vector_store` runbook
 
-30-min-cadence ingest of pending items from each of the four domain sources
+30-min-cadence ingest of pending items from each of the three domain sources
 into ChromaDB collections. The pipeline writes pre-computed OpenAI embeddings
 (`text-embedding-3-small @ 1536` by default) and is the producer side of the
 RAG split — query-side cutover happens in Phase F.
@@ -15,7 +15,7 @@ schedule run_populate_vector_store   (cron */30 * * * *, STOPPED)
   │  fires the current half-hour's partition (YYYY-MM-DD-HH:MM)
   ▼
 vector_store/pending   (30-min partition)
-  │  for each of {raw_store, notes, sessions, research}:
+  │  for each of {raw_store, notes, sessions}:
   │    - source.get_item_ids()
   │    - collection.get(where={"content_id": {"$in": ...}}) in 500-id batches
   │      to find already-indexed content_ids
@@ -23,7 +23,7 @@ vector_store/pending   (30-min partition)
   │  outputs dict[source_name, list[item_id]]
   ▼
 vector_store/contents             vector_store/conversations
-vector_store/notes                vector_store/research_documents
+vector_store/notes
   │  sequential per-item loop:
   │    - source.get_item(id) → IngestItem
   │    - chunker(item.text) per CHUNKER_BY_SOURCE
@@ -45,7 +45,7 @@ vector_store/notes                vector_store/research_documents
   via `VectorStoreResource`; the resource's embedding-fn path is unused on
   write. Query-side OpenAI EF wiring is deferred to Phase F.
 - **Heading-aware embeddings for markdown chunkers.** For sources whose
-  chunker is `markdown` (raw_store, notes, research), the chunk's heading
+  chunker is `markdown` (raw_store, notes), the chunk's heading
   breadcrumb is prepended to the text before embedding (e.g.
   `"Introduction > Setup\n\n<chunk body>"`) to improve retrieval ranking
   within document sections. The stored Chroma `document` field stays
@@ -73,7 +73,7 @@ Every upserted chunk carries this metadata:
 
 | Var | Required | Purpose |
 |---|---|---|
-| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `research.db`, and `notes/`. Bound to `SourcesResource.backup_source_dir`. |
+| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, and `notes/`. Bound to `SourcesResource.backup_source_dir`. |
 | `OPENAI_API_KEY` | yes | OpenAI embeddings calls. |
 | `CHROMA_HOST` | yes | Chroma HTTP host — `chroma` in compose; `localhost` for local `poe dagster-dev` against an external `chroma run`. |
 | `CHROMA_PORT` | yes | Chroma HTTP port (8000 default). |
@@ -112,7 +112,7 @@ uv run dg launch -m orchestrators.definitions --job populate_vector_store \
 Data persists in the `chroma_data` named volume — wipe with
 `docker compose down -v` to reset.
 
-Verify the four collections:
+Verify the three collections:
 
 ```bash
 uv run python -c "
@@ -121,7 +121,7 @@ c = chromadb.HttpClient(
     host=os.environ.get('CHROMA_HOST', 'localhost'),
     port=int(os.environ.get('CHROMA_PORT', 8000)),
 )
-for name in ('contents','conversations','notes','research_documents'):
+for name in ('contents','conversations','notes'):
     print(name, c.get_or_create_collection(name, embedding_function=None).count())
 "
 ```

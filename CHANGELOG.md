@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.25.0] — 2026-06-25
+
+### Removed
+
+- **Deprecated research-panel source dropped end-to-end.** `backup_readings` no longer snapshots `research.db` (`BACKUP_READINGS_DAG_VERSION` 6 → 7) and `populate_vector_store` no longer embeds it (`research_documents` asset + collection gone; `POPULATE_VECTOR_STORE_DAG_VERSION` 2 → 3). Deletes the `domains.research.ResearchSource` adapter, the `evals.retrieval` `--research-db` flag + `research` source, and the 21 advisory `research` pairs from `retrieval_eval.jsonl` (166 → 145).
+
+---
+
 ## [0.24.12] — 2026-06-24
 
 ### Changed

@@ -105,7 +105,6 @@ packages/
     fetches_store/ # fetches.db SQLite layer — cache_lookup/upsert, insert_job, update_job, get_job, get_job_status, canonicalize_lookup/upsert, mark_orphans_failed, create_schema
     extraction/    # Extraction schemas + records (schemas.py, records.py)
     sessions/
-    research/
     notes/
     wiki/
   workflows/       # LangGraph workflows + agents (wiki synthesis, research, extraction)
