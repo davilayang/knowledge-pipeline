@@ -10,7 +10,7 @@ populate_vector_store_job = dg.define_asset_job(
     name="populate_vector_store",
     description=(
         "Embed pending items from each source into ChromaDB collections "
-        "(contents, conversations, notes, research_documents)."
+        "(contents, conversations, notes)."
     ),
     selection=dg.AssetSelection.assets(*[a.key for a in all_assets]),
     tags={"project": PIPELINE_TAG},

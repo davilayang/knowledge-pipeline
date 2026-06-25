@@ -93,27 +93,6 @@
 {"query": "How can I make studying more enjoyable?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/QVWINTeyUOk"}
 {"query": "How can I improve my attention span?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/ZXHrPfWJcCI"}
 {"query": "How can I organize YouTube videos into a knowledge system?", "source": "raw_store", "expected_content_id": "youtube::https://youtu.be/sboNwYmH3AY"}
-{"query": "How can I assess the quality of voice agent responses?", "source": "research", "expected_content_id": "10"}
-{"query": "What are effective metrics for evaluating voice assistants?", "source": "research", "expected_content_id": "10"}
-{"query": "What innovative evaluation methods exist for voice agents?", "source": "research", "expected_content_id": "10"}
-{"query": "How does the newsletter-assistant rate in security and reliability?", "source": "research", "expected_content_id": "3"}
-{"query": "What are the strengths of the newsletter-assistant project?", "source": "research", "expected_content_id": "3"}
-{"query": "What skills are evaluated in the agentic engineering review?", "source": "research", "expected_content_id": "3"}
-{"query": "How can I improve my knowledge retrieval system?", "source": "research", "expected_content_id": "4"}
-{"query": "How does LLM Wiki differ from traditional retrieval systems?", "source": "research", "expected_content_id": "4"}
-{"query": "What are the limitations of the current knowledge pipeline?", "source": "research", "expected_content_id": "4"}
-{"query": "Explain the relationship between RAG and LLM Wiki.", "source": "research", "expected_content_id": "5"}
-{"query": "How to integrate voice agents with knowledge retrieval?", "source": "research", "expected_content_id": "5"}
-{"query": "What are the components of a knowledge retrieval system?", "source": "research", "expected_content_id": "5"}
-{"query": "Describe the roles of QuickVoiceAgent and TaskWorkerAgent.", "source": "research", "expected_content_id": "7"}
-{"query": "How can I reduce latency in a newsletter assistant?", "source": "research", "expected_content_id": "7"}
-{"query": "What is the dual-agent architecture in software design?", "source": "research", "expected_content_id": "7"}
-{"query": "Can you explain the proposed retrieval pipeline upgrades?", "source": "research", "expected_content_id": "8"}
-{"query": "What are the key differences between current memory and MemPalace?", "source": "research", "expected_content_id": "8"}
-{"query": "What are the memory improvements for the Newsletter Assistant?", "source": "research", "expected_content_id": "8"}
-{"query": "Details on the implementation plan for evaluating AI assistants.", "source": "research", "expected_content_id": "9"}
-{"query": "How to evaluate a newsletter assistant's performance?", "source": "research", "expected_content_id": "9"}
-{"query": "What are the best practices for AI evaluation in 2026?", "source": "research", "expected_content_id": "9"}
 {"query": "Can you summarize the article on OpenClaw setup?", "source": "sessions", "expected_content_id": "27859f9b-a0ee-46dd-aa41-48a81b94d042"}
 {"query": "What topics are covered in the March 10, 2026 newsletter?", "source": "sessions", "expected_content_id": "27859f9b-a0ee-46dd-aa41-48a81b94d042"}
 {"query": "How can SaaS companies increase user engagement?", "source": "sessions", "expected_content_id": "newsletter-02d19c69d987"}

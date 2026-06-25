@@ -71,12 +71,10 @@ class _StubSources:
         raw_store=None,
         notes=None,
         sessions=None,
-        research=None,
     ):
         self._raw_store = raw_store or _StubSource()
         self._notes = notes or _StubSource()
         self._sessions = sessions or _StubSource()
-        self._research = research or _StubSource()
 
     def raw_store(self):
         return self._raw_store
@@ -86,9 +84,6 @@ class _StubSources:
 
     def sessions(self):
         return self._sessions
-
-    def research(self):
-        return self._research
 
 
 class _StubSource:
@@ -168,7 +163,6 @@ def test_pending_returns_only_unindexed_per_source():
     # Other sources are empty (their stubs returned no items).
     assert result.value["notes"] == []
     assert result.value["sessions"] == []
-    assert result.value["research"] == []
 
 
 def test_pending_in_batching_caps_at_500_ids():
@@ -188,12 +182,12 @@ def test_pending_in_batching_caps_at_500_ids():
 def test_pending_zero_items_in_source_short_circuits():
     """A source that returns no ids yields an empty pending list without crashing."""
     vector_store = _StubVectorStore({})
-    sources = _StubSources()  # all four sources empty by default
+    sources = _StubSources()  # all three sources empty by default
 
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
 
-    assert result.value == {"raw_store": [], "notes": [], "sessions": [], "research": []}
+    assert result.value == {"raw_store": [], "notes": [], "sessions": []}
 
 
 # ------------------------------------------------------------------
@@ -346,8 +340,8 @@ def test_ingest_raises_on_per_item_failure():
 # ------------------------------------------------------------------
 
 
-def test_source_to_collection_covers_all_four_sources():
-    assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions", "research"}
+def test_source_to_collection_covers_all_sources():
+    assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions"}
 
 
 # ------------------------------------------------------------------

@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Removed
+
+- **Research-panel source dropped end-to-end.** The deprecated research panel no longer produces content, so `research.db` is removed from every pipeline that read it: `backup_readings` no longer snapshots/verifies it (`snapshot_research` + `verify_snapshot_research` + the `research_store` upstream anchor gone; `BACKUP_READINGS_DAG_VERSION` 6 → 7), `populate_vector_store` no longer embeds it (`research_documents` asset + `research_documents` Chroma collection gone, now three sources/collections; `POPULATE_VECTOR_STORE_DAG_VERSION` 2 → 3), and the `evals.retrieval` harness drops `--research-db` / `--chunker-research` and removes `research` from `VALID_SOURCES`. The `domains.research.ResearchSource` adapter is deleted. `retrieval_eval.jsonl` loses its 21 advisory `research` pairs (166 → 145). Existing on-Drive `research.db` snapshots and the `research_documents` Chroma collection are left in place; retention prunes the former.
+
 ---
 
 ## [0.24.12] — 2026-06-24
