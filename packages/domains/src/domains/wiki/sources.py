@@ -1,7 +1,7 @@
 """WikiSource — read synthesized wiki pages from ``data/wiki/`` as IngestItems.
 
-Mirrors the other source adapters (``raw_store``, ``research``, ``sessions``,
-``notes``) so the index/eval pipelines treat wiki pages as just another source.
+Mirrors the other source adapters (``raw_store``, ``sessions``, ``notes``) so
+the index/eval pipelines treat wiki pages as just another source.
 
 Each page becomes one ``IngestItem`` whose ``text`` is the page **summary**
 (the one-sentence document-shape distillation), not the body — the summary is

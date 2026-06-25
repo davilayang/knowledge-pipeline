@@ -8,7 +8,7 @@ Pure data adapters. Files or DBs → typed `IngestItem`s.
 - **No Dagster imports.** Anything that schedules goes in `orchestrators/`.
 - **No ML deps.** Embedding/chunking/RAG infra lives in `retrievers/`.
 - **No internal imports.** `domains` is the foundation — `workflows`, `retrievers`, `evals`, and `orchestrators` may depend on it; it does not depend on them.
-- **Read-only by default.** Sources expose enumeration + by-id lookup; mutation is the writer's job (newsletter-assistant for sessions/research, scrapers for raw_store).
+- **Read-only by default.** Sources expose enumeration + by-id lookup; mutation is the writer's job (newsletter-assistant for sessions, scrapers for raw_store).
 
 ## Layout
 
@@ -36,8 +36,6 @@ src/domains/
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,
 │                       # the marker format consumed by the turn_grouping
 │                       # chunker in retrievers
-├── research/           # Research-panel SQLite (newsletter-assistant)
-│   └── sources.py      # ResearchSource
 ├── queue_store/        # queue.db — Notion Queue pipeline SQLite store
 │   └── sources.py      # queue_items + extraction_calls tables; upsert/read helpers
 │                       # consumed by triage + fetch_extract_queue pipelines
@@ -59,7 +57,7 @@ class IngestItem:
     title: str
     date: date | None
     text: str
-    source_type: str          # "raw_store" | "local_file" | "sessions" | "research" | "wiki"
+    source_type: str          # "raw_store" | "local_file" | "sessions" | "wiki"
     source_ref: str           # e.g. "raw_store:abc123" or "sessions:s_done"
     author: str | None = None
     url: str | None = None
@@ -101,14 +99,13 @@ permanently marked processed before the fetcher fills it.
 | `RawStoreSource` | `raw_store.db` | none — immutable append | takes a `db_path`; pin or live |
 | `LocalFileSource` | a directory of `*.md` | none — caller filters mtime | YAML frontmatter respected |
 | `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `turns` into a marker-delimited body |
-| `ResearchSource` | `research.db` | row in `documents` | reads `documents.content` directly (committed atomically with the row) |
 | `WikiSource` | a `data/wiki/` dir of `.md` pages | none — page on disk | one page → one item; `text` is the page **summary**, `num_sources` carried for the W3 sparsity gate; skips `_index/` sidecars |
 
 ## SQLite reads
 
-All upstream SQLite stores (`raw_store.db`, `sessions.db`, `research.db`) run
-in WAL mode — concurrent reads don't block writers. `SessionsSource` and
-`ResearchSource` assert `PRAGMA journal_mode == 'wal'` on connect and raise
+All upstream SQLite stores (`raw_store.db`, `sessions.db`) run
+in WAL mode — concurrent reads don't block writers. `SessionsSource`
+asserts `PRAGMA journal_mode == 'wal'` on connect and raises
 loudly if a future deploy flips it; otherwise we'd silently degrade to
 blocking reads.
 
@@ -133,7 +130,7 @@ the same way they would any other markdown.
 
 ## Adding a new source
 
-1. Pick a sub-package (`wiki/`, `sessions/`, `research/`, or a new one).
+1. Pick a sub-package (`wiki/`, `sessions/`, or a new one).
 2. Lock the upstream schema in a top-of-file docstring — pin the columns
    and indices the source reads, plus where the writer lives.
 3. Implement the three `IngestSource` methods.

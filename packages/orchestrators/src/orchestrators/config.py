@@ -27,12 +27,12 @@ LOCAL_WIKI_DIR = DATA_DIR / "wiki"
 # downstream assets as stale until re-materialized. Decoupled from package
 # versions on purpose (the version-bump skill rolls package versions on every
 # release, which would otherwise mark every asset stale on every release).
-BACKUP_READINGS_DAG_VERSION = "6"
+BACKUP_READINGS_DAG_VERSION = "7"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNTHESIZE_WIKI_DAG_VERSION = "12"
 SYNC_WIKI_CURATION_DAG_VERSION = "1"
-POPULATE_VECTOR_STORE_DAG_VERSION = "2"
+POPULATE_VECTOR_STORE_DAG_VERSION = "3"
 FETCH_EXTRACT_QUEUE_DAG_VERSION = "2"
 TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION = "2"
 # EXTRACT_QUEUED_ITEMS_DAG_VERSION = "1"  # deprecated 2026-06-01 — kept as
@@ -40,9 +40,9 @@ TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION = "2"
 
 
 # Backup settings — snapshot filenames expected in each partition dir.
-# SQLite snapshots (.backup): raw/sessions/research are NA-owned (read from
+# SQLite snapshots (.backup): raw/sessions are NA-owned (read from
 # BACKUP_SRC_DIR); queue/wiki are kp-owned (read from this repo's DATA_DIR).
-DB_FILES = ["raw_store.db", "sessions.db", "research.db", "queue.db", "wiki.db"]
+DB_FILES = ["raw_store.db", "sessions.db", "queue.db", "wiki.db"]
 
 # Per-partition gzip-tar archives of flat-file directories. notes/ is NA-owned
 # (under BACKUP_SRC_DIR); wiki/ is kp-owned (DATA_DIR/wiki — the synthesized

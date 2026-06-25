@@ -52,20 +52,6 @@ notes_source = dg.AssetSpec(
 )
 
 
-research_store_source = dg.AssetSpec(
-    key=["research_store"],
-    group_name=UPSTREAM_GROUP,
-    description=(
-        "newsletter-assistant SQLite — research-panel output (Claude/Gemini "
-        "CLI sessions against `data/codebases/`). Consumed by "
-        "snapshot_research (backup_readings)."
-    ),
-    metadata={
-        "owner": dg.MetadataValue.text("newsletter-assistant"),
-        "path": dg.MetadataValue.path("data/research.db"),
-    },
-)
-
 queue_store_source = dg.AssetSpec(
     key=["queue_store"],
     group_name=UPSTREAM_GROUP,
@@ -114,7 +100,6 @@ all_sources = [
     raw_store_source,
     session_store_source,
     notes_source,
-    research_store_source,
     queue_store_source,
     wiki_store_source,
     notion_queue_source,

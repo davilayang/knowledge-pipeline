@@ -5,12 +5,11 @@ Drives the retrieval eval harness end-to-end:
     uv run eval-retrieval \\
       --embedding-model text-embedding-3-small --embedding-dims 1536 \\
       --chunker-raw-store markdown --chunker-notes markdown \\
-      --chunker-sessions turn_grouping --chunker-research markdown \\
+      --chunker-sessions turn_grouping \\
       --chunker-wiki markdown \\
       --chroma-host localhost --chroma-port 8000 \\
       --raw-store-db ${BACKUP_SRC_DIR}/raw_store.db \\
       --sessions-db ${BACKUP_SRC_DIR}/sessions.db \\
-      --research-db ${BACKUP_SRC_DIR}/research.db \\
       --notes-dir   ${BACKUP_SRC_DIR}/notes \\
       --wiki-dir    data/wiki
 
@@ -37,12 +36,10 @@ from .types import EvalConfig, EvalRunResult
 def main(argv: list[str] | None = None) -> int:
     args = _parse_args(argv)
 
-    if not any(
-        [args.raw_store_db, args.notes_dir, args.sessions_db, args.research_db, args.wiki_dir]
-    ):
+    if not any([args.raw_store_db, args.notes_dir, args.sessions_db, args.wiki_dir]):
         raise SystemExit(
             "no source paths supplied — pass at least one of "
-            "--raw-store-db / --notes-dir / --sessions-db / --research-db / --wiki-dir."
+            "--raw-store-db / --notes-dir / --sessions-db / --wiki-dir."
         )
 
     embedder = CachedEmbedder(
@@ -64,7 +61,6 @@ def main(argv: list[str] | None = None) -> int:
             "raw_store": args.chunker_raw_store,
             "notes": args.chunker_notes,
             "sessions": args.chunker_sessions,
-            "research": args.chunker_research,
             "wiki": args.chunker_wiki,
         },
         chunk_size=args.chunk_size,
@@ -98,7 +94,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     p.add_argument("--chunker-raw-store", default="markdown")
     p.add_argument("--chunker-notes", default="markdown")
     p.add_argument("--chunker-sessions", default="turn_grouping")
-    p.add_argument("--chunker-research", default="markdown")
     p.add_argument("--chunker-wiki", default="markdown")
     p.add_argument("--chunk-size", type=int, default=800)
     p.add_argument("--chunk-overlap", type=int, default=100)
@@ -112,7 +107,6 @@ def _parse_args(argv: list[str] | None) -> argparse.Namespace:
     )
     p.add_argument("--raw-store-db", type=Path, default=None)
     p.add_argument("--sessions-db", type=Path, default=None)
-    p.add_argument("--research-db", type=Path, default=None)
     p.add_argument("--notes-dir", type=Path, default=None)
     p.add_argument("--wiki-dir", type=Path, default=None, help="data/wiki dir of .md pages.")
     p.add_argument("--results-dir", type=Path, default=Path("data/eval_results"))
@@ -142,11 +136,6 @@ def _load_items(args: argparse.Namespace) -> dict[str, list[IngestItem]]:
         from domains.sessions.sources import SessionsSource
 
         items["sessions"] = SessionsSource(args.sessions_db).get_items()
-
-    if args.research_db is not None:
-        from domains.research.sources import ResearchSource
-
-        items["research"] = ResearchSource(args.research_db).get_items()
 
     if args.wiki_dir is not None:
         from domains.wiki.sources import WikiSource

@@ -8,7 +8,7 @@ into a loud alert.
 Two owners, two source dirs:
 
 - **newsletter-assistant** (read from `BACKUP_SRC_DIR`): `raw_store.db`,
-  `sessions.db`, `research.db`, and the `notes/` dir.
+  `sessions.db`, and the `notes/` dir.
 - **knowledge-pipeline** (read from this repo's `data/` dir): `queue.db`,
   `wiki.db`, and the `wiki/` rendered-page dir. These are kp-owned and live
   in kp's own data dir, *not* under `BACKUP_SRC_DIR`.
@@ -20,7 +20,6 @@ Failure cascade — what blocks what when a step fails:
 ```
 snapshot_raw_store         ─┐
 snapshot_sessions          ─┤
-snapshot_research          ─┤
 snapshot_notes             ─┤
 snapshot_queue             ─┤
 snapshot_wiki              ─┤
@@ -70,8 +69,8 @@ upload is gated. Recovery options:
 
 There are two flavours of `verify_snapshot_*` blocking checks:
 
-**SQLite snapshots** (`raw_store.db`, `sessions.db`, `research.db`,
-`queue.db`, `wiki.db`) — check trips when the file is suspiciously small,
+**SQLite snapshots** (`raw_store.db`, `sessions.db`, `queue.db`, `wiki.db`)
+— check trips when the file is suspiciously small,
 fails `PRAGMA integrity_check`, or has zero tables.
 Common causes: source DB was being written during snapshot (rare, SQLite
 backup API handles concurrent reads), disk full on local backup volume.
@@ -99,7 +98,7 @@ has fewer files than expected after `rclone copy`. The metadata records
 ### Restoring a snapshot
 
 Restore each file back to *its owner's* dir — NA-owned files (`raw_store.db`,
-`sessions.db`, `research.db`, `notes.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
+`sessions.db`, `notes.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
 files (`queue.db`, `wiki.db`, `wiki.tgz`) go to this repo's `data/` dir.
 
 Local (SQLite DBs):

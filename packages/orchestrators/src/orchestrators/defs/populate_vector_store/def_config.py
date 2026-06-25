@@ -23,13 +23,11 @@ EMBEDDING_DIMS_DEFAULT = 1536
 COLLECTION_CONTENTS = "contents"
 COLLECTION_CONVERSATIONS = "conversations"
 COLLECTION_NOTES = "notes"
-COLLECTION_RESEARCH = "research_documents"
 
 CHUNKER_BY_SOURCE = {
     "raw_store": "markdown",
     "notes": "markdown",
     "sessions": "turn_grouping",
-    "research": "markdown",
 }
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100

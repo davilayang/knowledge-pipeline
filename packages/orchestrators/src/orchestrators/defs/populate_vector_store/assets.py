@@ -18,7 +18,6 @@ from .def_config import (
     COLLECTION_CONTENTS,
     COLLECTION_CONVERSATIONS,
     COLLECTION_NOTES,
-    COLLECTION_RESEARCH,
     EMBEDDING_DIMS_DEFAULT,
     EMBEDDING_MODEL_DEFAULT,
     MAX_PER_TICK_DEFAULT,
@@ -35,7 +34,6 @@ SOURCE_TO_COLLECTION: list[tuple[str, str]] = [
     ("raw_store", COLLECTION_CONTENTS),
     ("notes", COLLECTION_NOTES),
     ("sessions", COLLECTION_CONVERSATIONS),
-    ("research", COLLECTION_RESEARCH),
 ]
 
 
@@ -302,22 +300,4 @@ def notes(
     return _run_ingest(context, pending, sources, vector_store, "notes", COLLECTION_NOTES)
 
 
-@dg.asset(
-    key=["vector_store", "research_documents"],
-    group_name="vector_store",
-    partitions_def=vector_store_partition_def,
-    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
-    kinds={"chromadb", "openai"},
-    ins={"pending": dg.AssetIn(["vector_store", "pending"])},
-)
-def research_documents(
-    context: dg.AssetExecutionContext,
-    pending: dict[str, list[str]],
-    sources: SourcesResource,
-    vector_store: VectorStoreResource,
-) -> dg.MaterializeResult:
-    return _run_ingest(context, pending, sources, vector_store, "research", COLLECTION_RESEARCH)
-
-
-all_assets = [pending, contents, conversations, notes, research_documents]
+all_assets = [pending, contents, conversations, notes]

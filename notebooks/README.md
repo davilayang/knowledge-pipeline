@@ -43,7 +43,7 @@ The token is a **localhost-only dev string**, not a secret. Don't expose port 88
 
 | Notebook | Purpose |
 |---|---|
-| `01_explore_sources.ipynb` | Read-only scan of `raw_store` / `sessions.db` / `notes/` / `research.db` — counts, sample items, content-length distributions |
+| `01_explore_sources.ipynb` | Read-only scan of `raw_store` / `sessions.db` / `notes/` — counts, sample items, content-length distributions |
 | `02_build_retrieval_eval_set.ipynb` | Phase C: bootstrap `datasets/retrieval_eval.jsonl` — summarize items → generate candidate queries → n-gram-overlap reject → hand-curate → write JSONL |
 | `03_compare_eval_runs.ipynb` | Glob `data/eval_results/retrieval_*.json`, join on `(model, chunker)`, plot per-source metric bars, highlight winners |
 | `04_inspect_retrieval_misses.ipynb` | For a query that scored Recall@5 = 0, pull the actual top-K chunks and the expected document's chunks side-by-side |
@@ -51,7 +51,7 @@ The token is a **localhost-only dev string**, not a secret. Don't expose port 88
 ## Conventions
 
 - **No long-running cells in committed state.** Run, capture insight, clear outputs (`Edit → Clear All Outputs`) before committing if outputs include large data.
-- **Read source DBs read-only.** None of these notebooks should mutate `raw_store.db`, `sessions.db`, `research.db`, or `notes/`. The Phase A `*Source` classes are read-only by construction.
+- **Read source DBs read-only.** None of these notebooks should mutate `raw_store.db`, `sessions.db`, or `notes/`. The Phase A `*Source` classes are read-only by construction.
 - **Eval results live in `data/eval_results/`.** Notebook 03 reads from there; never writes a new result JSON (that's the `eval-retrieval` CLI's job).
 - **Datasets land in `datasets/`.** Notebook 02 writes the curated eval set to `datasets/retrieval_eval.jsonl`; commit the file, not the cells that built it.
 
