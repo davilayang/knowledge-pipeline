@@ -12,8 +12,12 @@ import sys
 from workflows.costs import cost_usd
 from workflows.llm import LLMCall
 
-from evals.wiki.chat import make_faithfulness_chat_fn, make_specificity_chat_fn
-from evals.wiki.judges import FaithfulnessJudge, SpecificityJudge
+from evals.wiki.chat import (
+    make_faithfulness_chat_fn,
+    make_relevance_chat_fn,
+    make_specificity_chat_fn,
+)
+from evals.wiki.judges import FaithfulnessJudge, RelevanceJudge, SpecificityJudge
 
 
 def _load_key() -> None:
@@ -32,6 +36,7 @@ def main(path: str) -> None:
     calls: list[LLMCall] = []
     fj = FaithfulnessJudge(chat_fn=make_faithfulness_chat_fn(calls_sink=calls))
     sj = SpecificityJudge(chat_fn=make_specificity_chat_fn(calls_sink=calls))
+    rj = RelevanceJudge(chat_fn=make_relevance_chat_fn(calls_sink=calls))
 
     for line in pathlib.Path(path).read_text().splitlines():
         r = json.loads(line)
@@ -40,6 +45,7 @@ def main(path: str) -> None:
 
         f = fj.score(page=page, sources=sources)
         s = sj.score(entity=r["canonical_name"], page=page, sources=sources)
+        rel = rj.score(entity=r["canonical_name"], page=page)
 
         print(f"\n=== {r['canonical_name']} ({r['page_type']}, {r['n_sources']} src) ===")
         kept = len(f.claims) - f.unsupported_count
@@ -59,6 +65,13 @@ def main(path: str) -> None:
             print(
                 f"    abstraction: {ab.get('source_specific')!r} → {ab.get('page_placeholder')!r}"
             )
+        kept_rel = len(rel.passages) - rel.drift_count
+        print(
+            f"RELEVANCE     on_topic {rel.on_topic_fraction:.2f}  "
+            f"({kept_rel}/{len(rel.passages)} passages, {rel.drift_count} drift)"
+        )
+        for subj in rel.drift_subjects:
+            print(f"    ↪ drift into: {subj}")
 
     tin = sum(c.input_tokens for c in calls)
     tout = sum(c.output_tokens for c in calls)

@@ -45,6 +45,16 @@ class SpecificityAnalysisModel(BaseModel):
     abstractions: list[_AbstractionModel]
 
 
+class _PassageModel(BaseModel):
+    text: str
+    on_topic: bool
+    subject: str | None = None
+
+
+class RelevancePassagesModel(BaseModel):
+    passages: list[_PassageModel]
+
+
 def _make_chat_fn(
     schema: type[BaseModel], model: str, calls_sink: list[LLMCall] | None
 ) -> Callable[[str], dict]:
@@ -69,3 +79,10 @@ def make_specificity_chat_fn(
 ) -> Callable[[str], dict]:
     """Build the specificity judge's `chat_fn` over structured LLM output."""
     return _make_chat_fn(SpecificityAnalysisModel, model, calls_sink)
+
+
+def make_relevance_chat_fn(
+    *, model: str = JUDGE_MODEL, calls_sink: list[LLMCall] | None = None
+) -> Callable[[str], dict]:
+    """Build the relevance judge's `chat_fn` over structured LLM output."""
+    return _make_chat_fn(RelevancePassagesModel, model, calls_sink)
