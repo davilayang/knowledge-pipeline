@@ -26,6 +26,40 @@ def extract_numeric_anchors(text: str) -> set[str]:
     return set(_NUMERIC_ANCHOR_RE.findall(text))
 
 
+_MONTH = (
+    r"Jan(?:uary)?|Feb(?:ruary)?|Mar(?:ch)?|Apr(?:il)?|May|Jun(?:e)?|"
+    r"Jul(?:y)?|Aug(?:ust)?|Sep(?:tember)?|Oct(?:ober)?|Nov(?:ember)?|Dec(?:ember)?"
+)
+# Month-precision dates only: ISO (2010-03-15) or "Month YYYY". Bare years are
+# already covered by extract_numeric_anchors; here we capture the finer specific.
+_DATE_ANCHOR_RE = re.compile(rf"\b\d{{4}}-\d{{2}}-\d{{2}}\b|\b(?:{_MONTH})\s+\d{{4}}\b")
+
+
+def extract_date_anchors(text: str) -> set[str]:
+    """Deterministic month-precision date specifics from `text`."""
+    return set(_DATE_ANCHOR_RE.findall(text))
+
+
+def anchor_recall(anchors: set[str], page: str) -> float:
+    """Fraction of source `anchors` that survive (appear verbatim) on the `page` —
+    the specificity preservation metric."""
+    if not anchors:
+        return 1.0
+    present = sum(1 for a in anchors if a in page)
+    return present / len(anchors)
+
+
+def numbers_dates_recall(sources: Sequence[str], page: str) -> float:
+    """Deterministic recall of numeric + date specifics from `sources` onto `page`.
+    (A date and the bare year inside it count as distinct anchors — a small
+    double-count that mildly over-weights dropped dates; revisit after calibration.)"""
+    anchors: set[str] = set()
+    for source in sources:
+        anchors |= extract_numeric_anchors(source)
+        anchors |= extract_date_anchors(source)
+    return anchor_recall(anchors, page)
+
+
 FAITHFULNESS_PROMPT = """\
 You are grading a wiki page for faithfulness to its sources. Decompose the page
 into atomic factual claims. For EACH claim decide whether it is directly

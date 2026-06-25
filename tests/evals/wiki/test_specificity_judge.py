@@ -4,7 +4,12 @@ Built bottom-up: the deterministic anchor extractors first (numbers/dates), then
 the LLM-backed name/quote anchors + abstraction flag, then the composed score.
 """
 
-from evals.wiki.judges import extract_numeric_anchors
+from evals.wiki.judges import (
+    anchor_recall,
+    extract_date_anchors,
+    extract_numeric_anchors,
+    numbers_dates_recall,
+)
 
 
 def test_extract_numeric_anchors_keeps_money_percent_year_drops_bare_numbers():
@@ -14,3 +19,31 @@ def test_extract_numeric_anchors_keeps_money_percent_year_drops_bare_numbers():
 
     # high-signal specifics kept; bare "12" dropped as noise (codex: regex over-extracts)
     assert anchors == {"$5M", "2010", "30%"}
+
+
+def test_anchor_recall_is_fraction_of_source_anchors_present_on_page():
+    anchors = {"$5M", "2010", "30%"}
+    page = "Acme raised $5M in 2010; momentum was strong."  # 30% dropped
+
+    assert anchor_recall(anchors, page) == 2 / 3
+
+
+def test_anchor_recall_no_source_anchors_is_vacuously_one():
+    # nothing to preserve → no penalty (mirrors faithfulness's empty-claims = 1.0)
+    assert anchor_recall(set(), "any page text") == 1.0
+
+
+def test_extract_date_anchors_iso_and_month_year():
+    text = "Released 2010-03-15, updated March 2011, and again in Jan 2012."
+
+    anchors = extract_date_anchors(text)
+
+    assert anchors == {"2010-03-15", "March 2011", "Jan 2012"}
+
+
+def test_numbers_dates_recall_unions_numeric_and_date_anchors_across_sources():
+    sources = ["Acme raised $5M in March 2011."]
+    # source anchors: {$5M, 2011 (year), "March 2011" (date)} = 3
+    page = "Acme raised $5M last decade."  # only $5M survives
+
+    assert numbers_dates_recall(sources, page) == 1 / 3
