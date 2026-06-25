@@ -11,6 +11,8 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from evals.wiki.prompts import load_prompt
+
 # High-signal numeric specifics only — money, percentages, 4-digit years. Bare
 # integers are deliberately excluded: codex flagged that an unguarded \d+ regex
 # over-extracts noise (publication dates, IDs, benchmark names, team counts).
@@ -60,21 +62,7 @@ def numbers_dates_recall(sources: Sequence[str], page: str) -> float:
     return anchor_recall(anchors, page)
 
 
-FAITHFULNESS_PROMPT = """\
-You are grading a wiki page for faithfulness to its sources. Decompose the page
-into atomic factual claims. For EACH claim decide whether it is directly
-supported by the SOURCES below; quote the supporting span as evidence, or null
-if unsupported.
-
-Return JSON with a "claims" array; each item has "text" (the claim), "supported"
-(boolean), and "evidence" (a source quote or null).
-
-SOURCES:
-{sources}
-
-PAGE:
-{page}
-"""
+FAITHFULNESS_PROMPT = load_prompt("faithfulness_v1")
 
 
 def _grounding_block(sources: Sequence[str], prior_sources: Sequence[str]) -> str:
@@ -141,26 +129,7 @@ class FaithfulnessJudge:
         )
 
 
-SPECIFICITY_PROMPT = """\
-You are grading whether a wiki page about "{entity}" preserves the concrete
-specifics from its sources. Considering ONLY specifics relevant to {entity}:
-
-- names_orgs: named people and organisations in the SOURCES; for each, is it
-  preserved on the PAGE?
-- quotes: direct quotes in the SOURCES; for each, is it preserved on the PAGE?
-- abstractions: places where the PAGE replaced a source specific (a name, number,
-  or quote) with a vague placeholder (e.g. "a researcher" for a named person).
-  Omitting a low-value mention is NOT an abstraction.
-
-Return JSON with "names_orgs" (items: anchor, preserved), "quotes" (items: quote,
-preserved), and "abstractions" (items: source_specific, page_placeholder).
-
-SOURCES:
-{sources}
-
-PAGE:
-{page}
-"""
+SPECIFICITY_PROMPT = load_prompt("specificity_v1")
 
 
 def _recall_from_flags(items: list[dict]) -> float:
