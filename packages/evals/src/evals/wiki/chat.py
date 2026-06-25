@@ -24,19 +24,48 @@ class FaithfulnessClaimsModel(BaseModel):
     claims: list[_ClaimModel]
 
 
-def make_faithfulness_chat_fn(
-    *,
-    model: str = JUDGE_MODEL,
-    calls_sink: list[LLMCall] | None = None,
-) -> Callable[[str], dict]:
-    """Build the faithfulness judge's `chat_fn` over structured LLM output."""
+class _NameOrgModel(BaseModel):
+    anchor: str
+    preserved: bool
 
+
+class _QuoteModel(BaseModel):
+    quote: str
+    preserved: bool
+
+
+class _AbstractionModel(BaseModel):
+    source_specific: str
+    page_placeholder: str
+
+
+class SpecificityAnalysisModel(BaseModel):
+    names_orgs: list[_NameOrgModel]
+    quotes: list[_QuoteModel]
+    abstractions: list[_AbstractionModel]
+
+
+def _make_chat_fn(
+    schema: type[BaseModel], model: str, calls_sink: list[LLMCall] | None
+) -> Callable[[str], dict]:
     def chat_fn(prompt: str) -> dict:
-        parsed, call = generate_structured_with_usage(
-            prompt, schema=FaithfulnessClaimsModel, model=model
-        )
+        parsed, call = generate_structured_with_usage(prompt, schema=schema, model=model)
         if calls_sink is not None:
             calls_sink.append(call)
         return parsed.model_dump()
 
     return chat_fn
+
+
+def make_faithfulness_chat_fn(
+    *, model: str = JUDGE_MODEL, calls_sink: list[LLMCall] | None = None
+) -> Callable[[str], dict]:
+    """Build the faithfulness judge's `chat_fn` over structured LLM output."""
+    return _make_chat_fn(FaithfulnessClaimsModel, model, calls_sink)
+
+
+def make_specificity_chat_fn(
+    *, model: str = JUDGE_MODEL, calls_sink: list[LLMCall] | None = None
+) -> Callable[[str], dict]:
+    """Build the specificity judge's `chat_fn` over structured LLM output."""
+    return _make_chat_fn(SpecificityAnalysisModel, model, calls_sink)

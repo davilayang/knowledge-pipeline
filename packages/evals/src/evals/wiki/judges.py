@@ -139,3 +139,74 @@ class FaithfulnessJudge:
             grounded_fraction=grounded,
             metadata={"raw": raw},
         )
+
+
+SPECIFICITY_PROMPT = """\
+You are grading whether a wiki page about "{entity}" preserves the concrete
+specifics from its sources. Considering ONLY specifics relevant to {entity}:
+
+- names_orgs: named people and organisations in the SOURCES; for each, is it
+  preserved on the PAGE?
+- quotes: direct quotes in the SOURCES; for each, is it preserved on the PAGE?
+- abstractions: places where the PAGE replaced a source specific (a name, number,
+  or quote) with a vague placeholder (e.g. "a researcher" for a named person).
+  Omitting a low-value mention is NOT an abstraction.
+
+Return JSON with "names_orgs" (items: anchor, preserved), "quotes" (items: quote,
+preserved), and "abstractions" (items: source_specific, page_placeholder).
+
+SOURCES:
+{sources}
+
+PAGE:
+{page}
+"""
+
+
+def _recall_from_flags(items: list[dict]) -> float:
+    """Recall over LLM-flagged anchors: preserved / total (vacuous 1.0 if none)."""
+    if not items:
+        return 1.0
+    return sum(1 for it in items if it.get("preserved")) / len(items)
+
+
+@dataclass(frozen=True)
+class SpecificityScore:
+    numbers_dates_recall: float
+    names_orgs_recall: float
+    quote_recall: float
+    abstraction_penalty: int  # count of source-specific → page-placeholder swaps
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class SpecificityJudge:
+    """Hybrid specificity judge: deterministic numeric/date recall + LLM-judged
+    name/org/quote preservation and abstraction penalty. Sub-recalls are kept
+    SEPARATE (not blended) so a single failure mode can't hide (codex)."""
+
+    chat_fn: Callable[[str], dict]
+    prompt_template: str = SPECIFICITY_PROMPT
+
+    def score(
+        self,
+        *,
+        entity: str,
+        page: str,
+        sources: Sequence[str],
+        prior_sources: Sequence[str] = (),
+    ) -> SpecificityScore:
+        nd_recall = numbers_dates_recall([*sources, *prior_sources], page)
+        prompt = self.prompt_template.format(
+            entity=entity,
+            page=page,
+            sources=_grounding_block(sources, prior_sources),
+        )
+        raw = self.chat_fn(prompt)
+        return SpecificityScore(
+            numbers_dates_recall=nd_recall,
+            names_orgs_recall=_recall_from_flags(raw.get("names_orgs", [])),
+            quote_recall=_recall_from_flags(raw.get("quotes", [])),
+            abstraction_penalty=len(raw.get("abstractions", [])),
+            metadata={"raw": raw},
+        )

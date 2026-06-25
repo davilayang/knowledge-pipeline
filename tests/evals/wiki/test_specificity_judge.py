@@ -5,6 +5,7 @@ the LLM-backed name/quote anchors + abstraction flag, then the composed score.
 """
 
 from evals.wiki.judges import (
+    SpecificityJudge,
     anchor_recall,
     extract_date_anchors,
     extract_numeric_anchors,
@@ -47,3 +48,29 @@ def test_numbers_dates_recall_unions_numeric_and_date_anchors_across_sources():
     page = "Acme raised $5M last decade."  # only $5M survives
 
     assert numbers_dates_recall(sources, page) == 1 / 3
+
+
+def _stub_specifics(_prompt: str) -> dict:
+    return {
+        "names_orgs": [
+            {"anchor": "Alice Smith", "preserved": True},
+            {"anchor": "Globex", "preserved": False},
+        ],
+        "quotes": [{"quote": "we ship daily", "preserved": True}],
+        "abstractions": [{"source_specific": "Alice Smith", "page_placeholder": "a researcher"}],
+    }
+
+
+def test_specificity_judge_composes_recalls_and_abstraction_penalty():
+    judge = SpecificityJudge(chat_fn=_stub_specifics)
+
+    score = judge.score(
+        entity="Acme",
+        page="Acme raised $5M.",
+        sources=["Acme raised $5M; Alice Smith and Globex were involved."],
+    )
+
+    assert score.numbers_dates_recall == 1.0  # $5M survives
+    assert score.names_orgs_recall == 1 / 2  # Alice kept, Globex dropped
+    assert score.quote_recall == 1.0
+    assert score.abstraction_penalty == 1
