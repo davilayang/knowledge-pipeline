@@ -7,8 +7,24 @@ judge LLM and returns parsed JSON. Tests pass a stub; production wires a thin
 wrapper around `workflows.llm.generate_structured_with_usage`.
 """
 
+import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
+
+# High-signal numeric specifics only — money, percentages, 4-digit years. Bare
+# integers are deliberately excluded: codex flagged that an unguarded \d+ regex
+# over-extracts noise (publication dates, IDs, benchmark names, team counts).
+_NUMERIC_ANCHOR_RE = re.compile(
+    r"\$\d[\d,]*(?:\.\d+)?[KMB]?"  # money: $5M, $1,000, $5
+    r"|\d+(?:\.\d+)?%"  # percent: 30%, 30.5%
+    r"|\b(?:19|20)\d{2}\b"  # year: 1900-2099
+)
+
+
+def extract_numeric_anchors(text: str) -> set[str]:
+    """Deterministic high-signal numeric specifics from `text` (money/percent/year)."""
+    return set(_NUMERIC_ANCHOR_RE.findall(text))
+
 
 FAITHFULNESS_PROMPT = """\
 You are grading a wiki page for faithfulness to its sources. Decompose the page
