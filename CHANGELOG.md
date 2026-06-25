@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.25.1] — 2026-06-25
+
+### Added
+
+- **Wiki page-quality eval** (`evals.wiki`) ships two judges: `FaithfulnessJudge` scores claim grounding against source passages; `SpecificityJudge` combines deterministic number/date anchor recall with LLM-judged name/quote preservation and an abstraction penalty. Provider-free via injected `chat_fn`; production wrappers target structured gpt-4.1 output. Judge prompts versioned under `prompts/eval/`.
+
+---
+
 ## [0.25.0] — 2026-06-25
 
 ### Removed
