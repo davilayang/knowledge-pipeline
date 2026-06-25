@@ -4,6 +4,7 @@ The judge LLM is injected as `chat_fn` (Callable[[str], dict]); tests pass a stu
 returning a fixed claim analysis, so no real LLM runs.
 """
 
+import pytest
 from evals.wiki.judges import FaithfulnessJudge
 
 
@@ -53,3 +54,16 @@ def test_update_grounds_against_prior_sources_too():
 
     assert "NEW-SOURCE-TEXT" in captured["prompt"]
     assert "OLD-SOURCE-TEXT" in captured["prompt"]
+
+
+def test_malformed_judge_output_missing_claims_raises():
+    """A judge LLM that returns no `claims` array failed — surface it as an error
+    rather than silently scoring the page as fully grounded."""
+
+    def _no_claims(_prompt: str) -> dict:
+        return {"summary": "I could not analyse this."}
+
+    judge = FaithfulnessJudge(chat_fn=_no_claims)
+
+    with pytest.raises(ValueError, match="claims"):
+        judge.score(page="<page md>", sources=["<source>"])

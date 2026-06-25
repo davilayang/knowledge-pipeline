@@ -69,6 +69,10 @@ class FaithfulnessJudge:
             page=page, sources=_grounding_block(sources, prior_sources)
         )
         raw = self.chat_fn(prompt)
+        if not isinstance(raw.get("claims"), list):
+            raise ValueError(
+                f"faithfulness judge returned no 'claims' array (got keys: {sorted(raw)})"
+            )
         claims = [
             Claim(
                 text=c["text"],
