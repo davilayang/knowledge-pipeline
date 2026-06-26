@@ -94,6 +94,9 @@ logger = logging.getLogger(__name__)
 EXTRACTION_MODEL = "gpt-4.1-mini"
 SYNTHESIS_MODEL = "gpt-4.1-mini"
 
+# A resolved candidate paired with its authoritative entity + resolution.
+_RecordTriple = tuple[Candidate, EntityRecord, ResolvedEntity]
+
 
 def _now_iso() -> str:
     return datetime.now(UTC).isoformat(timespec="seconds")
@@ -601,17 +604,19 @@ def _is_rejected(cand: Candidate, rec: EntityRecord, rejected: frozenset[str]) -
 
 def _partition_by_salience(
     item: IngestItem,
-    records: list[tuple[Candidate, EntityRecord, ResolvedEntity]],
-) -> tuple[list, list]:
+    records: list[_RecordTriple],
+) -> tuple[list[_RecordTriple], list[_RecordTriple]]:
     """Split resolved records into (salient, peripheral) by the deterministic
     gate. Mentions are counted over every surface form we know for the entity —
     its stored canonical name plus the article-local name + aliases the LLM
     extracted — so an entity named here by an alias (e.g. "MCP" for "Model
     Context Protocol") is still counted."""
-    salient: list = []
-    peripheral: list = []
+    salient: list[_RecordTriple] = []
+    peripheral: list[_RecordTriple] = []
     for cand, rec, resolved in records:
-        surface_aliases = list({cand.name, *cand.aliases, *resolved.aliases} - {rec.canonical_name})
+        surface_aliases = sorted(
+            {cand.name, *cand.aliases, *resolved.aliases} - {rec.canonical_name}
+        )
         feats = salience_features(
             name=rec.canonical_name,
             aliases=surface_aliases,

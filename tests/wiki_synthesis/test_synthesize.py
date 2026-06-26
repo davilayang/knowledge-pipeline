@@ -244,7 +244,9 @@ def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path)
         ),
     ):
         synthesize_item(
-            _runner_item(),
+            # Both salient (in title) so CLI's absence is the denylist, not the
+            # salience gate — a peripheral CLI would never get a page anyway.
+            make_item(item_id="content_runner", title="Test and CLI"),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli"}),
