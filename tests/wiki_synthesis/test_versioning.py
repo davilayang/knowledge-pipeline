@@ -18,8 +18,10 @@ from tests.wiki_synthesis._helpers import (
 
 
 def _run(item, wiki_db_path, wiki_dir, *, synthesis: str) -> None:
+    from dataclasses import replace
     from unittest.mock import patch
 
+    item = replace(item, title="RAG")  # entity in title → clears the salience gate
     with (
         patch(
             "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",
@@ -36,8 +38,10 @@ def _run(item, wiki_db_path, wiki_dir, *, synthesis: str) -> None:
 def _run_multi(item, wiki_db_path, wiki_dir, *, names, synthesis_side_effect) -> None:
     """Drive synthesize_item with N extracted entities and a per-entity synthesis
     side_effect (a value or an Exception per synthesis call)."""
+    from dataclasses import replace
     from unittest.mock import patch
 
+    item = replace(item, title=" and ".join(names))  # all entities in title → salient
     with (
         patch(
             "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",

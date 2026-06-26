@@ -54,7 +54,9 @@ def test_denylisted_entity_gets_no_page(tmp_path: Path, wiki_db_path):
         ),
     ):
         synthesize_item(
-            make_item(),
+            # Both salient (in title) so CLI's absence is the denylist's doing, not
+            # the salience gate's — otherwise a peripheral CLI would vanish anyway.
+            make_item(title="RAG and CLI"),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli"}),
@@ -85,7 +87,9 @@ def test_all_denylisted_commits_skipped(tmp_path: Path, wiki_db_path):
         return_value=(extraction, make_llm_call(model="gpt-4.1-nano")),
     ):
         synthesize_item(
-            make_item(),
+            # Both salient (in title) so they'd synthesize if not rejected — the
+            # empty-md assertion below then proves the denylist, not the gate.
+            make_item(title="CLI and API"),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli", "api"}),
@@ -117,7 +121,9 @@ def test_denylisted_new_entity_leaves_no_alias(tmp_path: Path, wiki_db_path):
         ),
     ):
         synthesize_item(
-            make_item(),
+            # CLI salient (in title) so its alias would persist if not rejected —
+            # the alias-count assertion then proves the denylist, not the gate.
+            make_item(title="RAG and CLI"),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli"}),

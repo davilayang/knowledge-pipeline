@@ -116,6 +116,8 @@ def test_two_candidates_one_entity_synthesizes_once(tmp_path: Path, wiki_db_path
             ExtractedEntity(title="model costs", page_type="trend"),  # same normalised name
         ]
     )
+    # Entity in the title so it clears the salience gate and synthesizes.
+    item = make_item(item_id="content_runner", title="Model Costs", text="On model costs.")
     synthesis_calls = 0
 
     def counting_generate(prompt, *, system="", model=""):
@@ -133,7 +135,7 @@ def test_two_candidates_one_entity_synthesizes_once(tmp_path: Path, wiki_db_path
             side_effect=counting_generate,
         ),
     ):
-        synthesize_item(_runner_item(), db_path=wiki_db_path, wiki_dir=wiki_dir)
+        synthesize_item(item, db_path=wiki_db_path, wiki_dir=wiki_dir)
 
     assert synthesis_calls == 1  # synthesized once, not once per candidate
     assert _page_count(wiki_db_path) == 1
@@ -242,7 +244,9 @@ def test_synthesize_item_honours_rejected_entities(tmp_path: Path, wiki_db_path)
         ),
     ):
         synthesize_item(
-            _runner_item(),
+            # Both salient (in title) so CLI's absence is the denylist, not the
+            # salience gate — a peripheral CLI would never get a page anyway.
+            make_item(item_id="content_runner", title="Test and CLI"),
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli"}),
@@ -261,7 +265,8 @@ def test_synthesize_item_re_runs_on_completed_item(tmp_path: Path, wiki_db_path)
     wiki_dir.mkdir()
 
     extraction = ExtractionResult(entities=[ExtractedEntity(title="Rerun", page_type="concept")])
-    item = make_item(item_id="content_rerun", source_ref="raw_store:content_rerun")
+    # Entity in the title so it clears the salience gate on both runs.
+    item = make_item(item_id="content_rerun", title="Rerun", source_ref="raw_store:content_rerun")
     synthesis_calls = 0
 
     def counting_generate(prompt, *, system="", model=""):

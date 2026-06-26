@@ -57,7 +57,10 @@ def test_graph_rolls_back_when_insert_entity_fails(tmp_path: Path, wiki_db_path)
     ):
         with pytest.raises(RuntimeError, match="simulated DB failure"):
             synthesize_item(
-                make_item(item_id="early_fail_test"), db_path=wiki_db_path, wiki_dir=wiki_dir
+                # Entity in the title so a page is in flight when the insert aborts.
+                make_item(item_id="early_fail_test", title="Early Fail"),
+                db_path=wiki_db_path,
+                wiki_dir=wiki_dir,
             )
 
     conn = connect(wiki_db_path)
@@ -96,7 +99,10 @@ def test_processed_failure_leaves_recoverable_state(tmp_path: Path, wiki_db_path
     ):
         with pytest.raises(RuntimeError, match="simulated DB failure"):
             synthesize_item(
-                make_item(item_id="recoverable_test"), db_path=wiki_db_path, wiki_dir=wiki_dir
+                # Entity in the title so it clears the salience gate and a page commits.
+                make_item(item_id="recoverable_test", title="Recoverable"),
+                db_path=wiki_db_path,
+                wiki_dir=wiki_dir,
             )
 
     conn = connect(wiki_db_path)

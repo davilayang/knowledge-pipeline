@@ -139,6 +139,60 @@ def _recall_from_flags(items: list[dict]) -> float:
     return sum(1 for it in items if it.get("preserved")) / len(items)
 
 
+RELEVANCE_PROMPT = load_prompt("relevance_v1")
+
+
+@dataclass(frozen=True)
+class Passage:
+    text: str
+    on_topic: bool
+    subject: str | None = None
+
+
+@dataclass(frozen=True)
+class RelevanceScore:
+    passages: list[Passage]
+    drift_count: int
+    on_topic_fraction: float
+    drift_subjects: list[str] = field(default_factory=list)
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class RelevanceJudge:
+    """Does the page stay ABOUT the entity, or drift into other subjects? The axis
+    faithfulness (grounded) + specificity (preserved) both miss: a page can be
+    fully grounded and specific yet drift into a tangential co-occurring subject."""
+
+    chat_fn: Callable[[str], dict]
+    prompt_template: str = RELEVANCE_PROMPT
+
+    def score(self, *, entity: str, page: str) -> RelevanceScore:
+        prompt = self.prompt_template.format(entity=entity, page=page)
+        raw = self.chat_fn(prompt)
+        if not isinstance(raw.get("passages"), list):
+            raise ValueError(
+                f"relevance judge returned no 'passages' array (got keys: {sorted(raw)})"
+            )
+        passages = [
+            Passage(
+                text=p["text"],
+                on_topic=bool(p["on_topic"]),
+                subject=p.get("subject"),
+            )
+            for p in raw["passages"]
+        ]
+        drift = sum(1 for p in passages if not p.on_topic)
+        on_topic = (len(passages) - drift) / len(passages) if passages else 1.0
+        return RelevanceScore(
+            passages=passages,
+            drift_count=drift,
+            on_topic_fraction=on_topic,
+            drift_subjects=[p.subject for p in passages if not p.on_topic and p.subject],
+            metadata={"raw": raw},
+        )
+
+
 @dataclass(frozen=True)
 class SpecificityScore:
     numbers_dates_recall: float

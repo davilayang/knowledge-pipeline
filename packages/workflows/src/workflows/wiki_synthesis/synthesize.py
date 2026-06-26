@@ -53,6 +53,7 @@ from domains.wiki.identity import (
 )
 from domains.wiki.io import write_page
 from domains.wiki.relevance import select_relevant_entities
+from domains.wiki.salience import is_salient, salience_features
 from domains.wiki.state import (
     build_entity_index,
     connection,
@@ -92,6 +93,9 @@ logger = logging.getLogger(__name__)
 
 EXTRACTION_MODEL = "gpt-4.1-mini"
 SYNTHESIS_MODEL = "gpt-4.1-mini"
+
+# A resolved candidate paired with its authoritative entity + resolution.
+_RecordTriple = tuple[Candidate, EntityRecord, ResolvedEntity]
 
 
 def _now_iso() -> str:
@@ -243,9 +247,21 @@ def _synthesize_resolved(
             seen_ids.add(rec.entity_id)
             unique_records.append((cand, rec, resolved))
 
-    all_ids = [rec.entity_id for _, rec, _ in unique_records]
+    # Salience gate: only sources where the entity is central to THIS article
+    # drive its page. A peripheral mention (an entity named once in passing) is
+    # still MINTED as an entity row so a later article naming it the SAME way
+    # reuses that id instead of minting a duplicate — but gets no page, no
+    # page_sources edge, and no aliases (a one-mention extraction is too
+    # low-confidence to seed an authoritative alias key — that could cause a
+    # destructive false-merge; a false-split is the safe failure). So the page
+    # body, num_sources, and the co-occurrence graph reflect only substantive
+    # sources. A later article that flips to an alias as its canonical name can
+    # still split the entity; that residual is left to the curated merge.
+    salient_records, peripheral_records = _partition_by_salience(item, unique_records)
+
+    all_ids = [rec.entity_id for _, rec, _ in salient_records]
     results: list[dict] = []
-    for _, rec, _ in unique_records:
+    for _, rec, _ in salient_records:
         siblings = [eid for eid in all_ids if eid != rec.entity_id]
         res = synthesize_entity(item, rec, siblings, wiki_dir=wiki_dir)
         all_calls.extend(res.pop("llm_calls", []))
@@ -255,14 +271,25 @@ def _synthesize_resolved(
     errors = [r for r in results if r["status"] == "error"]
     success_ids = {r["entity_id"] for r in successes}
 
-    if not records:
+    if not salient_records:
+        # No salient source this tick (no entities, all rejected, or all
+        # peripheral) — nothing to synthesize. Peripheral entities are still
+        # minted below; the item is fully processed, not retried.
         status, error_text = "skipped", None
     elif successes:
         status, error_text = "ok", (_summarize_errors(errors) if errors else None)
     else:
         status, error_text = "error", (_summarize_errors(errors) or "all entities failed")
 
-    new_entities = [e for e in resolution.new_entities if e.entity_id in success_ids]
+    # Mint NEW entities that either synthesized OK or were gated as peripheral
+    # (row only — no page). A salient entity whose synthesis FAILED is excluded
+    # so a retry re-mints under the same surrogate (unchanged no-orphan-on-error).
+    peripheral_new_ids = {rec.entity_id for _, rec, _ in peripheral_records}
+    new_entities = [
+        e
+        for e in resolution.new_entities
+        if e.entity_id in success_ids or e.entity_id in peripheral_new_ids
+    ]
     # Aliases come from the SURVIVING (non-rejected) records only — a rejected
     # candidate that resolved to a shared entity must not leak its aliases.
     new_aliases = [
@@ -573,6 +600,31 @@ def _is_rejected(cand: Candidate, rec: EntityRecord, rejected: frozenset[str]) -
     if not rejected:
         return False
     return normalize_name(cand.name) in rejected or rec.normalized_name in rejected
+
+
+def _partition_by_salience(
+    item: IngestItem,
+    records: list[_RecordTriple],
+) -> tuple[list[_RecordTriple], list[_RecordTriple]]:
+    """Split resolved records into (salient, peripheral) by the deterministic
+    gate. Mentions are counted over every surface form we know for the entity —
+    its stored canonical name plus the article-local name + aliases the LLM
+    extracted — so an entity named here by an alias (e.g. "MCP" for "Model
+    Context Protocol") is still counted."""
+    salient: list[_RecordTriple] = []
+    peripheral: list[_RecordTriple] = []
+    for cand, rec, resolved in records:
+        surface_aliases = sorted(
+            {cand.name, *cand.aliases, *resolved.aliases} - {rec.canonical_name}
+        )
+        feats = salience_features(
+            name=rec.canonical_name,
+            aliases=surface_aliases,
+            title=item.title,
+            text=item.text,
+        )
+        (salient if is_salient(feats) else peripheral).append((cand, rec, resolved))
+    return salient, peripheral
 
 
 def _to_candidate(entity: ExtractedEntity) -> Candidate:
