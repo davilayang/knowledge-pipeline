@@ -54,7 +54,7 @@ def test_denylisted_entity_gets_no_page(tmp_path: Path, wiki_db_path):
         ),
     ):
         synthesize_item(
-            make_item(),
+            make_item(title="RAG"),  # RAG salient (in title) so it synthesizes; CLI rejected
             db_path=wiki_db_path,
             wiki_dir=wiki_dir,
             rejected_entities=frozenset({"cli"}),

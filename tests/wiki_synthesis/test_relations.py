@@ -3,6 +3,7 @@ co-occurrence edges among the entities an item surfaces, in BOTH directions,
 tagged with the contributing item. Drives the public synthesize_item with
 mocked LLMs + a real wiki.db."""
 
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -18,6 +19,9 @@ from tests.wiki_synthesis._helpers import (
 
 
 def _run(item, wiki_db_path, wiki_dir, *, names):
+    # Put every co-occurring entity in the title so all clear the salience gate —
+    # co-occurrence edges only form among salient entities.
+    item = replace(item, title=" and ".join(names))
     with (
         patch(
             "workflows.wiki_synthesis.synthesize.generate_structured_with_usage",

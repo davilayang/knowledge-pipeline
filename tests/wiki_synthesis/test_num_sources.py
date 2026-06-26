@@ -34,6 +34,12 @@ def _synthesis_output() -> str:
     )
 
 
+def _rag_item(**kw):
+    """An item the salience gate keeps for RAG — entity in the title."""
+    kw.setdefault("title", "RAG explained")
+    return make_item(**kw)
+
+
 def _only_page(wiki_dir: Path) -> str:
     files = list(wiki_dir.glob("*.md"))
     assert len(files) == 1, f"expected one page, found {files}"
@@ -58,7 +64,7 @@ def test_fresh_single_source_page_counts_one(tmp_path: Path, wiki_db_path):
     wiki_dir = tmp_path / "wiki"
     wiki_dir.mkdir()
 
-    _run(make_item(), wiki_db_path, wiki_dir)
+    _run(_rag_item(), wiki_db_path, wiki_dir)
 
     assert "num_sources: 1" in _only_page(wiki_dir)
 
@@ -72,10 +78,10 @@ def test_second_distinct_item_counts_two(tmp_path: Path, wiki_db_path):
     wiki_dir.mkdir()
 
     _run(
-        make_item(item_id="content_abc", source_ref="raw_store:content_abc"), wiki_db_path, wiki_dir
+        _rag_item(item_id="content_abc", source_ref="raw_store:content_abc"), wiki_db_path, wiki_dir
     )
     _run(
-        make_item(item_id="content_def", source_ref="raw_store:content_def"), wiki_db_path, wiki_dir
+        _rag_item(item_id="content_def", source_ref="raw_store:content_def"), wiki_db_path, wiki_dir
     )
 
     assert "num_sources: 2" in _only_page(wiki_dir)
@@ -90,10 +96,10 @@ def test_sources_frontmatter_lists_all_ledger_items(tmp_path: Path, wiki_db_path
     wiki_dir.mkdir()
 
     _run(
-        make_item(item_id="content_abc", source_ref="raw_store:content_abc"), wiki_db_path, wiki_dir
+        _rag_item(item_id="content_abc", source_ref="raw_store:content_abc"), wiki_db_path, wiki_dir
     )
     _run(
-        make_item(item_id="content_def", source_ref="raw_store:content_def"), wiki_db_path, wiki_dir
+        _rag_item(item_id="content_def", source_ref="raw_store:content_def"), wiki_db_path, wiki_dir
     )
 
     page = _only_page(wiki_dir)
