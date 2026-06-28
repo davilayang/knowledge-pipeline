@@ -29,6 +29,12 @@ LEAD_CHARS = 600
 # many times OR appears in the title. Tunable; calibrated on hand-labelled edges.
 MENTION_FLOOR = 3
 
+# Characters of context kept on each side of a mention when slicing the article
+# down to the entity's passages for synthesis (entity_windows). Wide enough to
+# carry the sentence that explains the mention, narrow enough to drop unrelated
+# sections. Tunable against the page-quality judges.
+WINDOW_CHARS = 400
+
 
 def _surface_pattern(name: str, aliases: Sequence[str]) -> re.Pattern[str]:
     """Word-boundary, case-insensitive alternation over the entity's surface forms
@@ -46,6 +52,33 @@ def count_mentions(name: str, aliases: Sequence[str], text: str) -> int:
     if not name.strip():
         return 0
     return len(_surface_pattern(name, aliases).findall(text))
+
+
+def entity_windows(
+    *, name: str, aliases: Sequence[str], text: str, window_chars: int = WINDOW_CHARS
+) -> list[str]:
+    """Slice `text` down to the passages around each mention of the entity.
+
+    Each mention (canonical name or any alias, via the same word-boundary surface
+    pattern the gate uses) is expanded by `window_chars` on both sides. Returns one
+    string per mention passage, in document order; an empty list when the entity is
+    absent. Used to feed synthesis only the entity's own passages instead of the
+    whole article (the de-pollution lever)."""
+    if not name.strip() or not text:
+        return []
+    pattern = _surface_pattern(name, aliases)
+    # Expanded half-open [start, end) interval per mention; finditer yields them in
+    # document order, so a running merge collapses overlapping/adjacent windows (two
+    # nearby mentions share one passage instead of duplicating the overlap).
+    merged: list[list[int]] = []
+    for m in pattern.finditer(text):
+        start = max(0, m.start() - window_chars)
+        end = min(len(text), m.end() + window_chars)
+        if merged and start <= merged[-1][1]:
+            merged[-1][1] = max(merged[-1][1], end)
+        else:
+            merged.append([start, end])
+    return [text[start:end] for start, end in merged]
 
 
 @dataclass(frozen=True)

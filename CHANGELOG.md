@@ -6,13 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.26.0] — 2026-06-28
+
 ### Added
 
-- **Relevance judge** (`evals.wiki`) adds a third wiki page-quality axis — does the page stay about its entity, or drift into a co-occurring subject? `RelevanceJudge` splits the page into passages, an injected `chat_fn` labels each on/off-topic, and it reports `on_topic_fraction` + `drift_count` + named `drift_subjects`. Provider-free; production wrapper targets structured gpt-4.1. Prompt versioned at `prompts/eval/relevance_v1.md`.
+- **Relevance judge** (`evals.wiki.RelevanceJudge`) — a third wiki page-quality axis scoring whether a page stays on its entity or drifts into a co-occurring subject; reports `on_topic_fraction` + `drift_count` + `drift_subjects`. Provider-free; prompt at `prompts/eval/relevance_v1.md`.
 
 ### Changed
 
-- **Wiki synthesis gates sources by entity salience.** A page (and its `page_sources` edge) is now written only for entities an article is substantially about — named in the title or ≥3× in the body — so a one-mention tangential article no longer pollutes an entity's page. Peripheral entities are still minted (row only, no page/aliases) so a later substantive article reuses the id. New `domains.wiki.salience` (`count_mentions` / `salience_features` / `is_salient`), wired into `_synthesize_resolved`.
+- **Wiki synthesis gates sources by entity salience.** A page is written only for entities an article is substantially about (in the title or ≥3× in the body), so a one-mention tangential article no longer pollutes it. Peripheral entities are still minted (row only). New `domains.wiki.salience`.
+- **Wiki pages are synthesised from the entity's own passages, not the whole article.** Per-entity synthesis feeds only the windows around each mention (± 400 chars, overlaps merged) instead of the full source, cutting off-topic drift. New `domains.wiki.entity_windows` in `synthesize_entity`.
 
 ---
 

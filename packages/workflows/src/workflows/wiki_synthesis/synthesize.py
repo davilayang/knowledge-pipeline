@@ -34,7 +34,7 @@ it. Unconfigured → a no-op passthrough, no warnings.
 """
 
 import logging
-from collections.abc import Iterator
+from collections.abc import Iterator, Sequence
 from contextlib import contextmanager
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,7 +53,7 @@ from domains.wiki.identity import (
 )
 from domains.wiki.io import write_page
 from domains.wiki.relevance import select_relevant_entities
-from domains.wiki.salience import is_salient, salience_features
+from domains.wiki.salience import entity_windows, is_salient, salience_features
 from domains.wiki.state import (
     build_entity_index,
     connection,
@@ -261,9 +261,12 @@ def _synthesize_resolved(
 
     all_ids = [rec.entity_id for _, rec, _ in salient_records]
     results: list[dict] = []
-    for _, rec, _ in salient_records:
+    for triple in salient_records:
+        _, rec, _ = triple
         siblings = [eid for eid in all_ids if eid != rec.entity_id]
-        res = synthesize_entity(item, rec, siblings, wiki_dir=wiki_dir)
+        res = synthesize_entity(
+            item, rec, siblings, surface_aliases=_surface_aliases(triple), wiki_dir=wiki_dir
+        )
         all_calls.extend(res.pop("llm_calls", []))
         results.append(res)
 
@@ -374,9 +377,15 @@ def synthesize_entity(
     entity: EntityRecord,
     sibling_ids: list[str],
     *,
+    surface_aliases: Sequence[str],
     wiki_dir: Path,
 ) -> dict:
     """End-to-end synthesis for one entity — builds the page in memory only.
+
+    Synthesis is fed only the entity's own passages (mention + context window)
+    rather than the whole article — the de-pollution lever (span grounding). The
+    title is always passed separately, so a title-only-salient entity with no body
+    windows still falls back to the full body text (it has no passages to narrow).
 
     The .md file is written later, after persist commits (write-after-persist).
     Catches every failure mode and returns one result record:
@@ -390,6 +399,19 @@ def synthesize_entity(
         is_update = page_path.exists()
         existing_page_text = page_path.read_text(encoding="utf-8") if is_update else None
 
+        windows = entity_windows(
+            name=entity.canonical_name, aliases=surface_aliases, text=item.text
+        )
+        if not windows:
+            # Salient but no body window — title-only salience (named in the title,
+            # not the body). Falls back to the full body; logged so title-only
+            # pollution is visible if it shows up (the known span-grounding gap).
+            logger.info(
+                "span-grounding: no body windows for salient entity %s — full-text fallback",
+                entity.entity_id,
+            )
+        article_text = "\n\n[...]\n\n".join(windows) if windows else item.text
+
         template = PAGE_SYNTHESIS_USER_UPDATE if is_update else PAGE_SYNTHESIS_USER_CREATE
         fields = dict(
             entity_id=entity.entity_id,
@@ -398,7 +420,7 @@ def synthesize_entity(
             related=", ".join(sibling_ids),
             source_id=item.item_id,
             article_title=item.title,
-            article_text=item.text,
+            article_text=article_text,
         )
         if is_update:
             # Hide producer-owned frontmatter (aliases/related/sources/
@@ -602,6 +624,16 @@ def _is_rejected(cand: Candidate, rec: EntityRecord, rejected: frozenset[str]) -
     return normalize_name(cand.name) in rejected or rec.normalized_name in rejected
 
 
+def _surface_aliases(triple: _RecordTriple) -> list[str]:
+    """Every surface form known for the entity in THIS item — the LLM's extracted
+    name + aliases plus the resolver's aliases, minus the stored canonical name
+    (passed separately). Shared by the salience gate and span windowing so both
+    count an entity named here by an alias (e.g. "MCP" for "Model Context
+    Protocol")."""
+    cand, rec, resolved = triple
+    return sorted({cand.name, *cand.aliases, *resolved.aliases} - {rec.canonical_name})
+
+
 def _partition_by_salience(
     item: IngestItem,
     records: list[_RecordTriple],
@@ -613,17 +645,15 @@ def _partition_by_salience(
     Context Protocol") is still counted."""
     salient: list[_RecordTriple] = []
     peripheral: list[_RecordTriple] = []
-    for cand, rec, resolved in records:
-        surface_aliases = sorted(
-            {cand.name, *cand.aliases, *resolved.aliases} - {rec.canonical_name}
-        )
+    for triple in records:
+        _, rec, _ = triple
         feats = salience_features(
             name=rec.canonical_name,
-            aliases=surface_aliases,
+            aliases=_surface_aliases(triple),
             title=item.title,
             text=item.text,
         )
-        (salient if is_salient(feats) else peripheral).append((cand, rec, resolved))
+        (salient if is_salient(feats) else peripheral).append(triple)
     return salient, peripheral
 
 
