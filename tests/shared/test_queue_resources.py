@@ -4,9 +4,7 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource
 
 
 def _resource() -> NotionQueueResource:
-    return NotionQueueResource(
-        integration_token="t", queue_db_id="d", queue_data_source_id="s"
-    )
+    return NotionQueueResource(integration_token="t", queue_db_id="d", queue_data_source_id="s")
 
 
 def test_get_page_comments_extracts_text_author_time():
