@@ -25,6 +25,7 @@ src/domains/
 │   ├── aliases.py      # alias resolution + AliasStore
 │   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
 │   ├── relevance.py    # keyword-based catalog filter (select_relevant_entities / extract_keywords)
+│   ├── salience.py     # deterministic salience gate (is_salient / salience_features / count_mentions) + entity_windows — passage-windowing for span-grounded synthesis
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   ├── merge_cli.py    # wiki-merge — fold duplicate entities (merge_entities)

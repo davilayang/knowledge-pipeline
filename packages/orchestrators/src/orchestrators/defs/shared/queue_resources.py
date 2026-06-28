@@ -264,6 +264,38 @@ class NotionQueueResource(dg.ConfigurableResource):
                 break
         return blocks_to_markdown(results)
 
+    def get_page_comments(self, page_id: str) -> list[dict[str, str]]:
+        """Fetch all unresolved comments on a page, newest-first as Notion returns
+        them. Each entry: {author (Notion user id), text (concatenated rich_text),
+        created_at (ISO-8601)}. Comments whose text is empty after strip are
+        dropped. Empty/commentless page → []. Requires the integration token to
+        hold the 'Read comments' capability, else Notion returns no results."""
+        client = self._client()
+        out: list[dict[str, str]] = []
+        cursor: str | None = None
+        while True:
+            kwargs: dict[str, Any] = {"block_id": page_id}
+            if cursor:
+                kwargs["start_cursor"] = cursor
+            resp = client.comments.list(**kwargs)
+            for c in resp.get("results") or []:
+                text = "".join(rt.get("plain_text") or "" for rt in c.get("rich_text") or []).strip()
+                if not text:
+                    continue
+                out.append(
+                    {
+                        "author": (c.get("created_by") or {}).get("id") or "",
+                        "text": text,
+                        "created_at": c.get("created_time") or "",
+                    }
+                )
+            if not resp.get("has_more"):
+                break
+            cursor = resp.get("next_cursor")
+            if not cursor:
+                break
+        return out
+
 
 class QueueStoreResource(dg.ConfigurableResource):
     """Thin wrapper over domains.queue_store.sources covering both pipelines.
