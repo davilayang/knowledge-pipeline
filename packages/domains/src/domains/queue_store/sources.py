@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS queue_items (
     enrichment_json             TEXT,              -- JSON; signals cache from `enriched` asset
     raw_content                 TEXT,              -- fetched body
     raw_content_override        TEXT NOT NULL DEFAULT '',  -- user-pasted body
+    user_comments_json          TEXT,              -- verbatim Notion comments; cohort-scoped
     fetched_at                  TEXT,              -- ISO-8601 UTC
     fetch_tier                  TEXT,              -- winning fetcher
     fetch_tier_log              TEXT,              -- JSON; per-tier attempts
@@ -154,6 +155,7 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN tokens_in_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
+            "ALTER TABLE queue_items ADD COLUMN user_comments_json TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -198,6 +200,7 @@ def upsert_triaged(
     content_type: str,
     content_shape: str | None = None,
     raw_content_override: str = "",
+    user_comments_json: str | None = None,
 ) -> None:
     """Re-triage is a cohort boundary: clear every downstream-produced column
     so `fetched` / `extracted` re-run on the fresh routing. Without this, the
@@ -217,15 +220,16 @@ def upsert_triaged(
             """
             INSERT INTO queue_items (
                 notion_page_id, url, canonical_url, content_type, content_shape,
-                raw_content_override
+                raw_content_override, user_comments_json
             )
-            VALUES (?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 canonical_url = excluded.canonical_url,
                 content_type = excluded.content_type,
                 content_shape = excluded.content_shape,
                 raw_content_override = excluded.raw_content_override,
+                user_comments_json = excluded.user_comments_json,
                 raw_content = NULL,
                 fetched_at = NULL,
                 fetch_tier = NULL,
@@ -248,6 +252,7 @@ def upsert_triaged(
                 content_type,
                 content_shape,
                 raw_content_override,
+                user_comments_json,
             ),
         )
         # FK CASCADE on extraction_calls.notion_page_id only fires on DELETE of
