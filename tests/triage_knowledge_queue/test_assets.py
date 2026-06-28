@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import dagster as dg
 import pytest
+from domains.queue_store import sources as queue_db
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
 from orchestrators.defs.triage_knowledge_queue.assets import triaged
 from orchestrators.defs.triage_knowledge_queue.def_config import queue_items_partition_def
@@ -437,8 +438,6 @@ def test_triaged_persists_canonical_url_to_store_and_notion(tmp_path: Path):
         url=dirty_url,
     )
     assert result.success
-    from domains.queue_store import sources as queue_db
-
     row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-1")
     assert row is not None
     assert row["canonical_url"] == "https://example.com/p"
@@ -481,8 +480,6 @@ def _seed_existing_triaged(
 ) -> None:
     """Seed queue.db as if a prior triage row already exists for `page_id`.
     Used to simulate the "second capture of an already-queued URL" case."""
-    from domains.queue_store import sources as queue_db
-
     queue_db.create_schema(db_path=Path(store.db_path))
     queue_db.upsert_triaged(
         db_path=Path(store.db_path),
@@ -528,8 +525,6 @@ def test_triaged_flags_duplicate_canonical_url_as_skipped(tmp_path: Path):
     notion.update_status_failed.assert_not_called()
     notion.write_triaged.assert_not_called()
     # Queue.db is NOT polluted with a row for p-dup.
-    from domains.queue_store import sources as queue_db
-
     assert (
         queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-dup")
         is None
@@ -698,8 +693,6 @@ def _seed_enrichment(store: QueueStoreResource, *, page_id: str, url: str, paylo
     """Pre-populate queue_items.enrichment_json as the `enriched` sibling
     asset would. Lets the triaged-asset tests cover the cross-asset wiring
     without orchestrating a full two-asset materialization."""
-    from domains.queue_store import sources as queue_db
-
     queue_db.create_schema(db_path=Path(store.db_path))
     queue_db.upsert_enriched(
         db_path=Path(store.db_path),
@@ -733,8 +726,6 @@ def test_triaged_classifies_content_shape_from_enrichment_youtube_channel(tmp_pa
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_shape"].text == "conference_talk"
-    from domains.queue_store import sources as queue_db
-
     row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
     assert row["content_shape"] == "conference_talk"
     call_kwargs = classifier.classify.call_args.kwargs
@@ -755,8 +746,6 @@ def test_triaged_classifies_unknown_when_no_enrichment_row(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_shape"].text == "unknown"
-    from domains.queue_store import sources as queue_db
-
     row = queue_db.get_row(db_path=Path(resources["triage_store"].db_path), notion_page_id="p-1")
     assert row["content_shape"] == "unknown"
 
@@ -990,8 +979,6 @@ def test_triaged_persists_page_comments(tmp_path: Path):
     )
     assert result.success
     notion.get_page_comments.assert_called_once_with("p-1")
-    from domains.queue_store import sources as queue_db
-
     row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-1")
     assert json.loads(row["user_comments_json"]) == [
         {"author": "u1", "text": "focus on chunking", "created_at": "t1"}
@@ -1004,7 +991,5 @@ def test_triaged_stores_null_when_no_comments(tmp_path: Path):
     notion.get_page_comments.return_value = []
     result = _materialize(partition_key="p-2", resources=resources, url="https://example.com/x")
     assert result.success
-    from domains.queue_store import sources as queue_db
-
     row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-2")
     assert row["user_comments_json"] is None

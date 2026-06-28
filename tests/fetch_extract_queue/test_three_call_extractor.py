@@ -13,6 +13,7 @@ from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from workflows.extraction import PromptBundle
 from workflows.extraction.three_call_openai import (
     ThreeCallOpenAIExtractor,
+    _sha,
 )
 
 
@@ -442,3 +443,7 @@ def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
     _, noted = _followups_sha(extractor, user_notes="- compare with dbt")
     assert noted["followups"].prompt_sha256 != base["followups"].prompt_sha256
     assert noted["topic_card"].prompt_sha256 == base["topic_card"].prompt_sha256
+    # Positive assertion: the no-notes followups sha equals the sha of the raw
+    # base followups prompt text, proving it's carried through unmodified and
+    # not recomputed from a mutated value.
+    assert base["followups"].prompt_sha256 == _sha(_bundle().followups[0])

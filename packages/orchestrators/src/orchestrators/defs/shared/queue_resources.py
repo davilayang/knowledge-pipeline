@@ -19,6 +19,7 @@ from typing import Any
 
 import dagster as dg
 from domains.queue_store import sources as queue_db
+from notion_client import APIResponseError as NotionAPIResponseError
 from notion_client import Client as NotionClient
 
 from orchestrators.config import LOCAL_QUEUE_DB
@@ -265,11 +266,18 @@ class NotionQueueResource(dg.ConfigurableResource):
         return blocks_to_markdown(results)
 
     def get_page_comments(self, page_id: str) -> list[dict[str, str]]:
-        """Fetch all unresolved comments on a page, newest-first as Notion returns
-        them. Each entry: {author (Notion user id), text (concatenated rich_text),
-        created_at (ISO-8601)}. Comments whose text is empty after strip are
-        dropped. Empty/commentless page → []. Requires the integration token to
-        hold the 'Read comments' capability, else Notion returns no results."""
+        """Fetch all unresolved comments on a page. Each entry: {author (Notion user id),
+        text (concatenated rich_text), created_at (ISO-8601)}. Comments whose text is
+        empty after strip are dropped. Empty/commentless page → [].
+
+        Comments are oldest-first as Notion returns them (chronological order).
+
+        Best-effort: if the API call fails (e.g. the integration token lacks the
+        'Read comments' capability, which causes a 403 NotionAPIResponseError), a
+        warning is logged and whatever comments were collected so far (or []) are
+        returned so triage is never blocked by an optional feature.
+        """
+        log = dg.get_dagster_logger()
         client = self._client()
         out: list[dict[str, str]] = []
         cursor: str | None = None
@@ -277,7 +285,20 @@ class NotionQueueResource(dg.ConfigurableResource):
             kwargs: dict[str, Any] = {"block_id": page_id}
             if cursor:
                 kwargs["start_cursor"] = cursor
-            resp = client.comments.list(**kwargs)
+            try:
+                resp = client.comments.list(**kwargs)
+            except NotionAPIResponseError as exc:
+                log.warning(
+                    f"get_page_comments: Notion API error for page {page_id!r} — "
+                    f"{exc}. Returning {len(out)} comment(s) collected before failure."
+                )
+                return out
+            except Exception as exc:
+                log.warning(
+                    f"get_page_comments: unexpected error for page {page_id!r} — "
+                    f"{exc}. Returning {len(out)} comment(s) collected before failure."
+                )
+                return out
             for c in resp.get("results") or []:
                 text = "".join(
                     rt.get("plain_text") or "" for rt in c.get("rich_text") or []
