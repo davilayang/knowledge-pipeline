@@ -45,10 +45,7 @@ from workflows.extraction.types import PromptBundle
 
 _GENERIC_SHAPE = "unknown"
 
-# Appended to the followups system prompt when the caller supplies user_notes.
-# Option B per-call sha: the recorded prompt_sha256 for comment-bearing rows
-# reflects the ACTUAL system prompt that ran (base + fold), so a future edit
-# to this instruction flags those rows stale independently of no-comment rows.
+# Appended to the followups system prompt only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
     "\n\n---\n"
     "The user message may include a `[reader's notes — NOT part of the source "
@@ -287,8 +284,8 @@ class ThreeCallOpenAIExtractor:
         prompt_text, prompt_label, prompt_sha = prompt_triple
         user_content = f"[content_type: {content_type}]\n\n{content}"
         if user_notes:
-            # Option B: the recorded sha reflects the ACTUAL system prompt that
-            # ran, so a future edit to the fold instruction flags comment-bearing
+            # Recompute the per-call sha over the actual prompt that ran (base +
+            # fold) so a later edit to the fold instruction marks comment-bearing
             # rows stale; the no-comment path keeps the base sha untouched.
             prompt_text = prompt_text + _READER_THREADS_FOLD
             prompt_sha = _sha(prompt_text)
