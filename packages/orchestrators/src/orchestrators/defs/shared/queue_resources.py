@@ -323,6 +323,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         content_type: str,
         content_shape: str | None = None,
         raw_content_override: str = "",
+        user_comments_json: str | None = None,
     ) -> None:
         queue_db.upsert_triaged(
             db_path=self._path(),
@@ -332,6 +333,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             content_type=content_type,
             content_shape=content_shape,
             raw_content_override=raw_content_override,
+            user_comments_json=user_comments_json,
         )
 
     def upsert_enriched(

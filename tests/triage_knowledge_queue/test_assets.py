@@ -1,5 +1,6 @@
 """Tests for the triaged asset."""
 
+import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -80,6 +81,9 @@ def _resources(tmp_path: Path):
     # Default: behave as if no LLM key is configured. Individual tests
     # that exercise the LLM path override .classify.return_value.
     classifier.classify.return_value = ("unknown", {"status": "skipped_no_key"})
+    # Default: no page comments. Individual tests that check comments
+    # override .get_page_comments.return_value.
+    notion.get_page_comments.return_value = []
     return {
         "triage_notion": notion,
         "triage_store": store,
@@ -967,3 +971,42 @@ def test_triaged_survives_malformed_enrichment_json(tmp_path: Path):
     )
     assert result.success
     assert _get_metadata(result)["content_shape"].text == "unknown"
+
+
+# -------- page comments --------
+
+
+def test_triaged_persists_page_comments(tmp_path: Path):
+    """Asset reads page comments from Notion, serializes them as JSON,
+    and stores in user_comments_json column."""
+    resources, notion = _resources(tmp_path)
+    notion.get_page_comments.return_value = [
+        {"author": "u1", "text": "focus on chunking", "created_at": "t1"}
+    ]
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://example.com/article",
+    )
+    assert result.success
+    notion.get_page_comments.assert_called_once_with("p-1")
+    from domains.queue_store import sources as queue_db
+
+    row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-1")
+    assert json.loads(row["user_comments_json"]) == [
+        {"author": "u1", "text": "focus on chunking", "created_at": "t1"}
+    ]
+
+
+def test_triaged_stores_null_when_no_comments(tmp_path: Path):
+    """Asset stores None (NULL in database) when there are no page comments."""
+    resources, notion = _resources(tmp_path)
+    notion.get_page_comments.return_value = []
+    result = _materialize(
+        partition_key="p-2", resources=resources, url="https://example.com/x"
+    )
+    assert result.success
+    from domains.queue_store import sources as queue_db
+
+    row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-2")
+    assert row["user_comments_json"] is None
