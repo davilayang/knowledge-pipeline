@@ -13,6 +13,7 @@ from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from workflows.extraction import PromptBundle
 from workflows.extraction.three_call_openai import (
     ThreeCallOpenAIExtractor,
+    _sha,
 )
 
 
@@ -375,3 +376,74 @@ def test_bundle_sha256_falls_back_to_unknown_for_unregistered_shape():
         prompt_sets={"unknown": _bundle()},
     )
     assert ex.bundle_sha256("conference_talk") == ex.bundle_sha256("unknown")
+
+
+# -------- user_notes / reader_threads --------
+
+
+def _wire_client_capturing(captured, create_text, topic_obj, followups_obj):
+    """Like _wire_client but records the `messages` passed to each call,
+    keyed by call kind, so tests can assert on the constructed prompts."""
+    client = MagicMock()
+
+    async def _create(*, model, max_tokens, messages):
+        captured["narrative"] = messages
+        return _create_resp(create_text)
+
+    async def _parse(*, model, max_tokens, messages, response_format):
+        if response_format is TopicCard:
+            captured["topic_card"] = messages
+            return _parse_resp(topic_obj)
+        if response_format is Followups:
+            captured["followups"] = messages
+            return _parse_resp(followups_obj)
+        raise AssertionError(f"unexpected response_format: {response_format}")
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.close = AsyncMock()
+    return client
+
+
+def _followups_sha(extractor, *, user_notes):
+    captured = {}
+    client = _wire_client_capturing(captured, "# n", _topic_card_obj(), _followups_obj())
+    with patch.object(extractor, "_client", client):
+        _payload, calls = extractor.extract(
+            content="raw",
+            content_type="Article",
+            content_shape="unknown",
+            user_notes=user_notes,
+        )
+    by_kind = {c.call_kind: c for c in calls}
+    return captured, by_kind
+
+
+def test_no_user_notes_leaves_followups_unchanged(extractor):
+    captured, _ = _followups_sha(extractor, user_notes=None)
+    assert "reader's notes" not in captured["followups"][1]["content"]
+    assert "reader_threads" not in captured["followups"][0]["content"]
+
+
+def test_user_notes_injected_only_into_followups(extractor):
+    captured, _ = _followups_sha(extractor, user_notes="- compare with dbt")
+    # followups user message carries the labeled notes block verbatim
+    fu_user = captured["followups"][1]["content"]
+    assert "[reader's notes — NOT part of the source article]" in fu_user
+    assert "compare with dbt" in fu_user
+    # followups system prompt carries the fold instruction
+    assert "reader_threads" in captured["followups"][0]["content"]
+    # topic_card + narrative are untouched
+    assert "reader's notes" not in captured["topic_card"][1]["content"]
+    assert "reader's notes" not in captured["narrative"][1]["content"]
+
+
+def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
+    _, base = _followups_sha(extractor, user_notes=None)
+    _, noted = _followups_sha(extractor, user_notes="- compare with dbt")
+    assert noted["followups"].prompt_sha256 != base["followups"].prompt_sha256
+    assert noted["topic_card"].prompt_sha256 == base["topic_card"].prompt_sha256
+    # Positive assertion: the no-notes followups sha equals the sha of the raw
+    # base followups prompt text, proving it's carried through unmodified and
+    # not recomputed from a mutated value.
+    assert base["followups"].prompt_sha256 == _sha(_bundle().followups[0])

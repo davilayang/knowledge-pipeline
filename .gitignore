@@ -51,3 +51,6 @@ backups/
 # Kubernetes secrets with real values
 k8s/secret.yaml
 k8s/secret.env
+
+# Superpowers working docs (specs, plans) — local-only, not part of the codebase
+docs/superpowers/

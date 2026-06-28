@@ -789,3 +789,37 @@ def test_list_with_stale_extraction_returns_extractor_label_not_raw_content(db_p
     assert "raw_content" not in row
     assert row["extractor_label"] == "3call_v1"
     assert row["extractor_sha256"] == "b" * 64
+
+
+def test_upsert_triaged_stores_user_comments_json(db_path: Path):
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p1",
+        url="u",
+        canonical_url="c",
+        content_type="Article",
+        user_comments_json='[{"text": "focus X"}]',
+    )
+    row = get_row(db_path=db_path, notion_page_id="p1")
+    assert row["user_comments_json"] == '[{"text": "focus X"}]'
+
+
+def test_retriage_without_comments_wipes_user_comments_json(db_path: Path):
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p1",
+        url="u",
+        canonical_url="c",
+        content_type="Article",
+        user_comments_json='[{"text": "focus X"}]',
+    )
+    upsert_triaged(  # re-triage, no comments this pass
+        db_path=db_path,
+        notion_page_id="p1",
+        url="u",
+        canonical_url="c",
+        content_type="Article",
+        user_comments_json=None,
+    )
+    row = get_row(db_path=db_path, notion_page_id="p1")
+    assert row["user_comments_json"] is None

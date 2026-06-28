@@ -81,6 +81,16 @@ class Followups(BaseModel):
             "restate Topic Card fields."
         ),
     )
+    reader_threads: list[str] = Field(
+        default_factory=list,
+        description=(
+            "The reader's own threads, extracted ONLY from the "
+            "[reader's notes] block in the user message — a focus they "
+            "asked for, an open-loop/action, or context they gave. Empty "
+            "when no reader notes are present. Never source claims; never "
+            "invented; never treat a note as a fact stated by the source."
+        ),
+    )
 
 
 class ExtractionPayload(BaseModel):

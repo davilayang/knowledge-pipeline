@@ -280,6 +280,9 @@ def triaged(
         llm_duration_ms = int((time.monotonic() - t0) * 1000)
         content_shape_source = "llm_classified" if content_shape != SHAPE_UNKNOWN else "unknown"
 
+    comments = triage_notion.get_page_comments(page_id)
+    user_comments_json = json.dumps(comments) if comments else None
+
     triage_store.upsert_triaged(
         notion_page_id=page_id,
         url=config.url,
@@ -287,6 +290,7 @@ def triaged(
         content_type=content_type,
         content_shape=content_shape,
         raw_content_override=config.raw_content_override,
+        user_comments_json=user_comments_json,
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.
