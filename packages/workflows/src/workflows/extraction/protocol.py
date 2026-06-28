@@ -17,5 +17,6 @@ class ExtractionUsage:
 
 class ExtractorProtocol(Protocol):
     def extract(
-        self, content: str, *, content_type: str, content_shape: str
+        self, content: str, *, content_type: str, content_shape: str,
+        user_notes: str | None = None,
     ) -> tuple[dict[str, Any], ExtractionUsage]: ...

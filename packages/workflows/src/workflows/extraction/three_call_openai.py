@@ -45,6 +45,20 @@ from workflows.extraction.types import PromptBundle
 
 _GENERIC_SHAPE = "unknown"
 
+# Appended to the followups system prompt when the caller supplies user_notes.
+# Option B per-call sha: the recorded prompt_sha256 for comment-bearing rows
+# reflects the ACTUAL system prompt that ran (base + fold), so a future edit
+# to this instruction flags those rows stale independently of no-comment rows.
+_READER_THREADS_FOLD = (
+    "\n\n---\n"
+    "The user message may include a `[reader's notes — NOT part of the source "
+    "article]` block: the reader's own annotations, NOT source content. Populate "
+    "`reader_threads` with each note restated as the reader's own thread (a focus "
+    "they asked for, an open-loop/action, or context they gave). Never answer reader "
+    "notes from the source, never invent threads, and never treat a note as a fact "
+    "stated by the source. Leave `reader_threads` empty if the block is absent."
+)
+
 
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
@@ -144,7 +158,8 @@ class ThreeCallOpenAIExtractor:
         )
 
     def extract(
-        self, content: str, *, content_type: str, content_shape: str
+        self, content: str, *, content_type: str, content_shape: str,
+        user_notes: str | None = None,
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
         """Sync wrapper. Dagster ops run in their own threads, so asyncio.run
         does not collide with the daemon's event loop."""
@@ -153,11 +168,13 @@ class ThreeCallOpenAIExtractor:
                 content=content,
                 content_type=content_type,
                 content_shape=content_shape,
+                user_notes=user_notes,
             )
         )
 
     async def _extract_async(
-        self, *, content: str, content_type: str, content_shape: str
+        self, *, content: str, content_type: str, content_shape: str,
+        user_notes: str | None = None,
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
         # Record the shape that actually drove the bundle selection — when
         # the caller passes an unregistered shape (e.g. a future
@@ -186,6 +203,7 @@ class ThreeCallOpenAIExtractor:
                     Followups,
                     "followups",
                     resolved_shape,
+                    user_notes=user_notes or None,
                 ),
                 return_exceptions=True,
             )
@@ -255,18 +273,27 @@ class ThreeCallOpenAIExtractor:
         schema: type,
         call_kind: str,
         resolved_shape: str,
+        *,
+        user_notes: str | None = None,
     ) -> tuple[Any, ExtractionCallRecord]:
         prompt_text, prompt_label, prompt_sha = prompt_triple
+        user_content = f"[content_type: {content_type}]\n\n{content}"
+        if user_notes:
+            # Option B: the recorded sha reflects the ACTUAL system prompt that
+            # ran, so a future edit to the fold instruction flags comment-bearing
+            # rows stale; the no-comment path keeps the base sha untouched.
+            prompt_text = prompt_text + _READER_THREADS_FOLD
+            prompt_sha = _sha(prompt_text)
+            user_content += (
+                "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
+            )
         t0 = time.monotonic()
         resp = await self._client.beta.chat.completions.parse(
             model=self._model,
             max_tokens=self._max_tokens,
             messages=[
                 {"role": "system", "content": prompt_text},
-                {
-                    "role": "user",
-                    "content": f"[content_type: {content_type}]\n\n{content}",
-                },
+                {"role": "user", "content": user_content},
             ],
             response_format=schema,
         )
