@@ -10,6 +10,7 @@ of page_source edges were low-salience).
 from domains.wiki.salience import (
     SalienceFeatures,
     count_mentions,
+    entity_windows,
     is_salient,
     salience_features,
 )
@@ -76,3 +77,84 @@ def test_one_mention_not_in_title_is_peripheral():
     # the YOYO case: named once, not in title → dropped from page_sources
     assert is_salient(_features(mention_count=1, in_title=False)) is False
     assert is_salient(_features(mention_count=2, in_title=False)) is False
+
+
+def test_entity_windows_single_mention_returns_only_the_passage():
+    # A long article that names the entity once — windowing returns just the
+    # passage around the mention, not the whole article.
+    text = ("filler. " * 50) + "Globex makes turbines." + (" filler." * 50)
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=20)
+
+    assert len(windows) == 1
+    assert "Globex makes turbines" in windows[0]
+    assert windows[0] != text  # not the whole article
+    assert len(windows[0]) < len(text)
+
+
+def test_entity_windows_two_far_apart_mentions_return_two_windows():
+    text = "Globex builds turbines. " + ("filler. " * 100) + "Globex also sells gears."
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=20)
+
+    assert len(windows) == 2
+    assert "turbines" in windows[0]
+    assert "gears" in windows[1]
+
+
+def test_entity_windows_overlapping_mentions_merge_into_one():
+    # Two mentions close together: their expanded windows overlap, so they merge
+    # into a single passage rather than emitting the shared middle twice.
+    text = ("x " * 50) + "Globex and then Globex again." + (" y" * 50)
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=100)
+
+    assert len(windows) == 1
+    assert windows[0].count("Globex") == 2  # both mentions, shared span not duplicated
+
+
+def test_entity_windows_absent_entity_returns_empty():
+    text = "This article is entirely about other, unrelated things."
+
+    assert entity_windows(name="Globex", aliases=[], text=text, window_chars=20) == []
+
+
+def test_entity_windows_matches_aliases():
+    # An entity named here by an alias ("MCP") is still windowed — same surface
+    # pattern as the gate, so canonical + aliases all count.
+    text = ("filler. " * 30) + "The MCP spec was published." + (" filler." * 30)
+
+    windows = entity_windows(
+        name="Model Context Protocol", aliases=["MCP"], text=text, window_chars=20
+    )
+
+    assert len(windows) == 1
+    assert "MCP spec" in windows[0]
+
+
+def test_entity_windows_clamps_to_text_start():
+    # Mention at the very start — the window must not run before index 0.
+    text = "Globex." + (" filler" * 100)
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=50)
+
+    assert len(windows) == 1
+    assert windows[0].startswith("Globex")
+
+
+def test_entity_windows_window_larger_than_text_returns_whole_text():
+    text = "A short note on Globex here."
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=10_000)
+
+    assert windows == [text]
+
+
+def test_entity_windows_adjacent_nonoverlapping_mentions_stay_separate():
+    # Two mentions whose expanded windows do NOT touch → two windows (the merge
+    # boundary complement of the overlapping case).
+    text = "Globex" + (" " * 44) + "Globex"  # second mention at offset 50
+
+    windows = entity_windows(name="Globex", aliases=[], text=text, window_chars=20)
+
+    assert len(windows) == 2

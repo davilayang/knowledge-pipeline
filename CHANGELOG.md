@@ -13,6 +13,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **Wiki synthesis gates sources by entity salience.** A page (and its `page_sources` edge) is now written only for entities an article is substantially about — named in the title or ≥3× in the body — so a one-mention tangential article no longer pollutes an entity's page. Peripheral entities are still minted (row only, no page/aliases) so a later substantive article reuses the id. New `domains.wiki.salience` (`count_mentions` / `salience_features` / `is_salient`), wired into `_synthesize_resolved`.
+- **Wiki pages are synthesised from the entity's own passages, not the whole article.** Per-entity synthesis now feeds only the text windows around each mention (mention ± 400 chars, overlapping windows merged) instead of the full source, cutting off-topic drift in the generated page. New `domains.wiki.entity_windows` threaded through `synthesize_entity`; a title-only-salient entity (no body mentions) falls back to the full body.
 
 ---
 
