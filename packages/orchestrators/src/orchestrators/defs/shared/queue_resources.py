@@ -279,7 +279,9 @@ class NotionQueueResource(dg.ConfigurableResource):
                 kwargs["start_cursor"] = cursor
             resp = client.comments.list(**kwargs)
             for c in resp.get("results") or []:
-                text = "".join(rt.get("plain_text") or "" for rt in c.get("rich_text") or []).strip()
+                text = "".join(
+                    rt.get("plain_text") or "" for rt in c.get("rich_text") or []
+                ).strip()
                 if not text:
                     continue
                 out.append(

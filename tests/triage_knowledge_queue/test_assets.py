@@ -1002,9 +1002,7 @@ def test_triaged_stores_null_when_no_comments(tmp_path: Path):
     """Asset stores None (NULL in database) when there are no page comments."""
     resources, notion = _resources(tmp_path)
     notion.get_page_comments.return_value = []
-    result = _materialize(
-        partition_key="p-2", resources=resources, url="https://example.com/x"
-    )
+    result = _materialize(partition_key="p-2", resources=resources, url="https://example.com/x")
     assert result.success
     from domains.queue_store import sources as queue_db
 

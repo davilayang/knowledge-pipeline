@@ -409,7 +409,9 @@ def _followups_sha(extractor, *, user_notes):
     client = _wire_client_capturing(captured, "# n", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
         _payload, calls = extractor.extract(
-            content="raw", content_type="Article", content_shape="unknown",
+            content="raw",
+            content_type="Article",
+            content_shape="unknown",
             user_notes=user_notes,
         )
     by_kind = {c.call_kind: c for c in calls}

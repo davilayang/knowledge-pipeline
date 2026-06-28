@@ -158,7 +158,11 @@ class ThreeCallOpenAIExtractor:
         )
 
     def extract(
-        self, content: str, *, content_type: str, content_shape: str,
+        self,
+        content: str,
+        *,
+        content_type: str,
+        content_shape: str,
         user_notes: str | None = None,
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
         """Sync wrapper. Dagster ops run in their own threads, so asyncio.run
@@ -173,7 +177,11 @@ class ThreeCallOpenAIExtractor:
         )
 
     async def _extract_async(
-        self, *, content: str, content_type: str, content_shape: str,
+        self,
+        *,
+        content: str,
+        content_type: str,
+        content_shape: str,
         user_notes: str | None = None,
     ) -> tuple[ExtractionPayload, list[ExtractionCallRecord]]:
         # Record the shape that actually drove the bundle selection — when
@@ -284,9 +292,7 @@ class ThreeCallOpenAIExtractor:
             # rows stale; the no-comment path keeps the base sha untouched.
             prompt_text = prompt_text + _READER_THREADS_FOLD
             prompt_sha = _sha(prompt_text)
-            user_content += (
-                "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
-            )
+            user_content += "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
         t0 = time.monotonic()
         resp = await self._client.beta.chat.completions.parse(
             model=self._model,

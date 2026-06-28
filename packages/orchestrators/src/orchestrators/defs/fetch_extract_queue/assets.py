@@ -46,9 +46,7 @@ def comments_json_to_user_notes(raw: str | None) -> str | None:
     if not raw:
         return None
     texts = [
-        (c.get("text") or "").strip()
-        for c in json.loads(raw)
-        if (c.get("text") or "").strip()
+        (c.get("text") or "").strip() for c in json.loads(raw) if (c.get("text") or "").strip()
     ]
     return "\n".join(f"- {t}" for t in texts) if texts else None
 
