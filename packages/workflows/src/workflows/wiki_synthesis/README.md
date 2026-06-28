@@ -160,6 +160,13 @@ else:
     prompt = PAGE_SYNTHESIS_USER_CREATE
 ```
 
+The article text fed to either prompt is **span-grounded** — narrowed to the
+passages around the entity's mentions (`domains.wiki.entity_windows`, each
+mention ± `WINDOW_CHARS`, overlapping windows merged) instead of the full
+source, so the page isn't polluted by off-topic sections. A title-only-salient
+entity (named in the title but not the body, so no window) falls back to the
+full body.
+
 The H2 preservation check is the safety net: the synthesis LLM is allowed to
 *expand* sections (add bullets, refine prose) but not *delete* them. Deletes
 fail the entity, which is recorded as a per-entity error and surfaces in
