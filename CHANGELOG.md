@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.1] — 2026-06-28
+
+### Added
+
+- **Reader comments on a queued Notion page now surface in extraction as a
+  `reader_threads` artifact** — captured at triage and stored in the new
+  `queue_items.user_comments_json` column, then folded into the extractor's
+  followups call via a `user_notes` param, without biasing the source-grounded
+  narrative or topic card.
+- **`NotionQueueResource.get_page_comments`** reads page comments best-effort:
+  a missing "Read comments" token capability logs a warning and returns empty
+  rather than blocking triage.
+
+---
+
 ## [0.26.0] — 2026-06-28
 
 ### Added
