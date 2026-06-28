@@ -1,4 +1,5 @@
 import hashlib
+import json
 import textwrap
 
 import dagster as dg
@@ -36,6 +37,20 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
         return content
     omitted = len(content) - head - tail
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
+
+
+def comments_json_to_user_notes(raw: str | None) -> str | None:
+    """Turn the stored `user_comments_json` into the bullet-list string the
+    extractor wraps in its `[reader's notes]` block. Returns None when there
+    are no non-empty comments, so the extractor's no-comment path runs."""
+    if not raw:
+        return None
+    texts = [
+        (c.get("text") or "").strip()
+        for c in json.loads(raw)
+        if (c.get("text") or "").strip()
+    ]
+    return "\n".join(f"- {t}" for t in texts) if texts else None
 
 
 @dg.asset(
@@ -234,10 +249,12 @@ def extracted(
     # `unknown` for) falls back to the unknown bundle inside the extractor
     # — bundle selection is the extractor's concern.
     content_shape = row.get("content_shape") or "unknown"
+    user_notes = comments_json_to_user_notes(row.get("user_comments_json"))
     payload, calls = ex.extract(
         content=row["raw_content"],
         content_type=content_type,
         content_shape=content_shape,
+        user_notes=user_notes,
     )
 
     tokens_in_total = sum(c.tokens_in for c in calls)

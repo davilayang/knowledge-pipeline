@@ -15,6 +15,7 @@ from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from domains.queue_store import sources as queue_db
 from orchestrators.defs.fetch_extract_queue.assets import (
+    comments_json_to_user_notes,
     extracted,
     fetched,
     published,
@@ -536,6 +537,20 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     assert "total_model_time_ms" in metadata
     assert "wall_clock_ms" in metadata
     assert metadata["wall_clock_ms"].value <= metadata["total_model_time_ms"].value
+
+
+# -------- comments_json_to_user_notes helper --------
+
+
+def test_comments_json_to_user_notes_formats_bullets():
+    raw = '[{"text": "focus on chunking"}, {"text": "compare with dbt"}]'
+    assert comments_json_to_user_notes(raw) == "- focus on chunking\n- compare with dbt"
+
+
+def test_comments_json_to_user_notes_none_when_empty():
+    assert comments_json_to_user_notes(None) is None
+    assert comments_json_to_user_notes("[]") is None
+    assert comments_json_to_user_notes('[{"text": "   "}]') is None
 
 
 # -------- published --------
