@@ -82,3 +82,15 @@ def test_extraction_payload_composes_three_calls():
     assert rehydrated.narrative_md.startswith("# Narrative")
     assert rehydrated.topic_card.extracted_title == "t"
     assert len(rehydrated.followups.questions) == 4
+
+
+_Q = ["a?", "b?", "c?", "d?"]
+
+
+def test_followups_reader_threads_defaults_empty():
+    assert Followups(questions=_Q).reader_threads == []
+
+
+def test_followups_accepts_reader_threads():
+    f = Followups(questions=_Q, reader_threads=["compare with dbt"])
+    assert f.reader_threads == ["compare with dbt"]
