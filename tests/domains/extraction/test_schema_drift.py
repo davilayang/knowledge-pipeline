@@ -28,10 +28,21 @@ def test_extraction_payload_v1_fixture_parses_against_current_schema():
     assert rehydrated == payload
 
 
-def test_extraction_payload_v1_fixture_field_names_match_current_schema():
+def test_extraction_payload_v2_fixture_parses_against_current_schema():
+    fixture_path = FIXTURES / "extraction_payload_v2.json"
+    raw = fixture_path.read_text()
+    payload = ExtractionPayload.model_validate_json(raw)
+    # Round-trip equality (object → JSON → object) confirms no field is silently dropped.
+    rehydrated = ExtractionPayload.model_validate_json(payload.model_dump_json())
+    assert rehydrated == payload
+
+
+def test_extraction_payload_v2_fixture_field_names_match_current_schema():
     """A field rename on one side leaves stale keys in the fixture or new keys
-    in the schema; this test flags either by comparing top-level + nested keys."""
-    raw = json.loads((FIXTURES / "extraction_payload_v1.json").read_text())
+    in the schema; this test flags either by comparing top-level + nested keys.
+    Pinned to the latest fixture version (v2 added `followups.reader_threads`);
+    v1 stays frozen as the backward-compat read-path test above."""
+    raw = json.loads((FIXTURES / "extraction_payload_v2.json").read_text())
     payload = ExtractionPayload.model_validate_json(json.dumps(raw))
     assert set(raw) == set(payload.model_dump().keys())
     assert set(raw["topic_card"]) == set(payload.topic_card.model_dump().keys())
