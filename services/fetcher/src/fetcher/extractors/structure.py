@@ -1,4 +1,4 @@
-"""Structurer cascade: trafilatura → markdown-passthrough heuristic → cloud LLM chain.
+"""Structurer cascade: trafilatura → cloud LLM chain.
 
 Content-keyed, not URL-keyed. Used by POST /v1/structure to clean noisy
 user-pasted article bodies into structured markdown.
@@ -11,7 +11,6 @@ existing callers and tests.
 
 import logging
 import os
-import re
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
@@ -47,21 +46,6 @@ logger = logging.getLogger(__name__)
 
 
 _MIN_CHARS = 3000
-
-_BOILERPLATE_PHRASES = (
-    "sign in",
-    "subscribe",
-    "comments (0)",
-    "share this",
-    "related posts",
-)
-
-_HTML_TAG = re.compile(r"<[a-z][^>]{0,200}>", re.IGNORECASE)
-_ALLOWED_VOID_TAGS = re.compile(r"<\s*(br|hr)\s*/?\s*>", re.IGNORECASE)
-_HEADING_LINE = re.compile(r"^#{1,6}\s", re.MULTILINE)
-_LIST_BULLET = re.compile(r"^[-*]\s", re.MULTILINE)
-_BOLD_RUN = re.compile(r"\*\*[^*]+\*\*")
-_BLOCKQUOTE = re.compile(r"^>\s", re.MULTILINE)
 
 
 _CHAIN: list[ChainEntry] = _load_chain(
@@ -106,7 +90,7 @@ def get_chain() -> list[ChainEntry]:
 
 
 class StructurerCascadeFailed(Exception):
-    """Raised when all three stages (trafilatura, passthrough, cloud) produced nothing."""
+    """Raised when both stages (trafilatura, cloud) produced nothing."""
 
     def __init__(
         self,
@@ -130,34 +114,6 @@ def _stage_trafilatura(raw_content: str) -> str | None:
         return None
     return result
 
-
-def _stage_passthrough_heuristic(raw_content: str) -> str | None:
-    if len(raw_content) < _MIN_CHARS:
-        return None
-
-    stripped_for_html = _ALLOWED_VOID_TAGS.sub("", raw_content)
-    if len(_HTML_TAG.findall(stripped_for_html)) > 2:
-        return None
-
-    lowered = raw_content.lower()
-    boilerplate_hits = sum(1 for phrase in _BOILERPLATE_PHRASES if phrase in lowered)
-    if boilerplate_hits > 1:
-        return None
-
-    signals = 0
-    if len(_HEADING_LINE.findall(raw_content)) >= 2:
-        signals += 1
-    if len(_LIST_BULLET.findall(raw_content)) >= 3:
-        signals += 1
-    if len(_BOLD_RUN.findall(raw_content)) >= 2:
-        signals += 1
-    if len(_BLOCKQUOTE.findall(raw_content)) >= 1:
-        signals += 1
-
-    if signals < 2:
-        return None
-
-    return raw_content
 
 
 async def _stage_cloud_chain(
@@ -199,7 +155,7 @@ async def run_cascade(
     author_name: str | None,
     prompt: str,
 ) -> FetchResult:
-    """Run trafilatura → passthrough → cloud chain. Return FetchResult or raise."""
+    """Run trafilatura → cloud chain. Return FetchResult or raise."""
     tier_log: list[TierLogEntry] = []
 
     traf = _stage_trafilatura(raw_content)
@@ -217,22 +173,6 @@ async def run_cascade(
             metadata={},
         )
     tier_log.append(_log_entry("trafilatura", chars=0, error="below floor or empty"))
-
-    passthrough = _stage_passthrough_heuristic(raw_content)
-    if passthrough is not None:
-        tier_log.append(_log_entry("passthrough", chars=len(passthrough), error=None))
-        return FetchResult(
-            markdown=passthrough,
-            kind="structured",
-            canonical_url=source_url,
-            tier_used="passthrough",
-            fetched_at=_iso_now(),
-            cache_hit=False,
-            etag="",
-            tier_log=tier_log,
-            metadata={},
-        )
-    tier_log.append(_log_entry("passthrough", chars=0, error="heuristic rejected"))
 
     try:
         markdown, tier_name, usage = await _stage_cloud_chain(

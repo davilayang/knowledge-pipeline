@@ -1,4 +1,4 @@
-"""Tests for the structurer cascade (trafilatura → passthrough → cloud chain)."""
+"""Tests for the structurer cascade (trafilatura → cloud chain)."""
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -40,6 +40,37 @@ def _make_ctx() -> MagicMock:
     return ctx
 
 
+async def test_run_cascade_routes_clean_markdown_to_cloud_chain(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Markdown the (now-removed) passthrough heuristic would have accepted must
+    reach the cloud chain — pasted content is always LLM-cleaned, never passed
+    through with boilerplate intact."""
+    monkeypatch.setattr(structure, "_stage_trafilatura", lambda _raw: None)
+
+    async def _fake_chain(*_a, **_kw):
+        return ("# cleaned body", "structurer:gpt-4.1-mini", {"provider": "openai"})
+
+    monkeypatch.setattr(structure, "_stage_cloud_chain", _fake_chain)
+
+    ctx = _make_ctx()
+    ctx.openai_api_key = "sk-test"
+
+    result = await structure.run_cascade(
+        ctx,
+        raw_content=_AUTHORED_MARKDOWN,
+        source_url="https://example.com/a",
+        title=None,
+        content_date=None,
+        author_name=None,
+        prompt="SYSTEM PROMPT",
+    )
+
+    assert result.markdown == "# cleaned body"
+    assert result.tier_used == "structurer:gpt-4.1-mini"
+    assert [e.tier for e in result.tier_log] == ["trafilatura", "structurer:gpt-4.1-mini"]
+
+
 async def test_stage_trafilatura_returns_when_input_is_html_with_clean_body() -> None:
     result = structure._stage_trafilatura(_CLEAN_HTML)
     assert result is not None
@@ -47,45 +78,11 @@ async def test_stage_trafilatura_returns_when_input_is_html_with_clean_body() ->
     assert "Real Article" in result
 
 
-async def test_stage_passthrough_recognizes_clean_authored_markdown() -> None:
-    result = structure._stage_passthrough_heuristic(_AUTHORED_MARKDOWN)
-    assert result == _AUTHORED_MARKDOWN
-
-
-async def test_stage_passthrough_rejects_single_heading_with_no_other_signals() -> None:
-    text = "# Lonely Heading\n\n" + ("A long paragraph with no other markdown signals. " * 80)
-    assert structure._stage_passthrough_heuristic(text) is None
-
-
-async def test_stage_passthrough_rejects_text_with_boilerplate_phrases() -> None:
-    text = (
-        "# Title\n\n" + ("A long paragraph of content. " * 60) + "\n\n"
-        "## Section\n\n"
-        "- One\n- Two\n- Three\n\n"
-        "Some **bold** and **other bold** content.\n\n"
-        "Subscribe to our newsletter.\n\n"
-        "Comments (0)\n\n"
-        "Share this article.\n\n" + ("More content to satisfy the length floor. " * 40)
-    )
-    assert structure._stage_passthrough_heuristic(text) is None
-
-
-async def test_stage_passthrough_allows_occasional_stray_br_tags() -> None:
-    text = (
-        "# Title\n\n" + ("A long paragraph of content. " * 60) + "\n\n"
-        "## Section<br>\n\n"
-        "- One\n- Two\n- Three\n\n"
-        "Some **bold** and **other bold** content.<br>\n\n"
-        + ("More content to satisfy the length floor. " * 60)
-    )
-    assert structure._stage_passthrough_heuristic(text) == text
-
 
 async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     monkeypatch.setattr(structure, "_stage_trafilatura", lambda _raw: None)
-    monkeypatch.setattr(structure, "_stage_passthrough_heuristic", lambda _raw: None)
 
     async def _raise(*_a, **_kw):
         raise StructurerChainFailed("all entries failed", retryable=True)
@@ -109,7 +106,7 @@ async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     err = excinfo.value
     assert err.retryable is True
     assert err.last_error == "all entries failed"
-    assert [e.tier for e in err.tier_log] == ["trafilatura", "passthrough", "structurer"]
+    assert [e.tier for e in err.tier_log] == ["trafilatura", "structurer"]
 
 
 # --- Cloud chain tests (SF4) ---
