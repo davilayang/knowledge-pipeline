@@ -308,30 +308,6 @@ def test_structure_endpoint_does_not_cache_trafilatura(monkeypatch, tmp_db_path:
     assert cascade.await_count == 2
 
 
-def test_structure_endpoint_does_not_cache_non_structurer_tier(monkeypatch, tmp_db_path: str) -> None:
-    _setup_envs(monkeypatch, tmp_db_path)
-    app = create_app()
-    with (
-        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
-        patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
-    ):
-        can_mock.return_value = CanonicalResult(
-            "https://example.com/a", "https://example.com/a", [], []
-        )
-        cascade.return_value = _trafilatura_result()
-        with TestClient(app) as client:
-            client.post(
-                "/v1/structure",
-                json={"raw_content": "clean md", "source_url": "https://example.com/a"},
-            )
-            client.post(
-                "/v1/structure",
-                json={"raw_content": "clean md", "source_url": "https://example.com/a"},
-            )
-
-    assert cascade.await_count == 2
-
-
 def test_structure_endpoint_does_not_collide_with_fetch_cache(
     monkeypatch, tmp_db_path: str
 ) -> None:
