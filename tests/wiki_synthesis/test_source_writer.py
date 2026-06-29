@@ -75,6 +75,33 @@ def test_none_response_yields_an_empty_summary_not_an_error(caplog):
     assert not [r for r in caplog.records if r.levelname == "WARNING"]
 
 
+def test_spoken_content_shape_primes_the_prompt():
+    captured = {}
+
+    def fake(prompt, *, system, model, temperature):
+        captured["prompt"] = prompt
+        return _call("- [speculation] The speaker predicts X.")
+
+    with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
+        summarize_source(_item(), content_shape="podcast_episode")
+
+    # The spoken prime tells the model the source is mostly opinion/prediction.
+    assert "prediction" in captured["prompt"].lower()
+
+
+def test_text_content_shape_does_not_prime():
+    captured = {}
+
+    def fake(prompt, *, system, model, temperature):
+        captured["prompt"] = prompt
+        return _call("- [fact] X shipped.")
+
+    with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
+        summarize_source(_item(), content_shape="opinion_essay")
+
+    assert "prediction" not in captured["prompt"].lower()
+
+
 def test_malformed_response_with_no_tags_logs_a_warning(caplog):
     # The model ignored the format and answered in prose: zero claims parsed, but
     # this is a silent extraction failure (not an honest NONE) — surface it.

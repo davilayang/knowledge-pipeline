@@ -52,15 +52,22 @@ def _usage(response: Any) -> tuple[int, int]:
     return usage.prompt_tokens or 0, usage.completion_tokens or 0
 
 
+def _create_kwargs(temperature: float | None) -> dict[str, Any]:
+    """Optional create() kwargs. `temperature=None` omits it (provider default);
+    a value pins it — pass 0 for a deterministic, faithful-extraction call."""
+    return {} if temperature is None else {"temperature": temperature}
+
+
 def generate(
     prompt: str,
     *,
     system: str = "",
     model: str = _DEFAULT_MODEL,
+    temperature: float | None = None,
 ) -> str:
     """Generate a chat completion and return the assistant's text response."""
     response = _get_client().chat.completions.create(
-        model=model, messages=_messages(prompt, system)
+        model=model, messages=_messages(prompt, system), **_create_kwargs(temperature)
     )
     return response.choices[0].message.content or ""
 
@@ -70,10 +77,11 @@ def generate_with_usage(
     *,
     system: str = "",
     model: str = _DEFAULT_MODEL,
+    temperature: float | None = None,
 ) -> LLMCall:
     """Like generate(), but also returns token usage metadata."""
     response = _get_client().chat.completions.create(
-        model=model, messages=_messages(prompt, system)
+        model=model, messages=_messages(prompt, system), **_create_kwargs(temperature)
     )
     in_tokens, out_tokens = _usage(response)
     return LLMCall(
