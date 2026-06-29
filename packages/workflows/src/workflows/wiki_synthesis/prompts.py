@@ -20,6 +20,8 @@ def _load(label: str) -> str:
 
 ENTITY_EXTRACTION_SYSTEM = _load("entity_extraction_system_v1")
 ENTITY_EXTRACTION_USER = _load("entity_extraction_user_v1")
+SOURCE_SUMMARY_SYSTEM = _load("source_summary_system_v1")
+SOURCE_SUMMARY_USER = _load("source_summary_user_v1")
 PAGE_SYNTHESIS_SYSTEM = _load("page_synthesis_system_v1")
 PAGE_SYNTHESIS_USER_CREATE = _load("page_synthesis_user_create_v1")
 PAGE_SYNTHESIS_USER_UPDATE = _load("page_synthesis_user_update_v1")
