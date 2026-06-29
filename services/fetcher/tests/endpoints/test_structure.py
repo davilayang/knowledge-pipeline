@@ -29,7 +29,7 @@ def _ok_result() -> FetchResult:
         tier_log=[
             TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
             TierLogEntry(
-                tier="passthrough", status=None, chars=0, error="rejected", validated=False
+                tier="trafilatura", status=None, chars=0, error="rejected", validated=False
             ),
             TierLogEntry(
                 tier="structurer:test-model", status=None, chars=14, error=None, validated=True
@@ -164,7 +164,7 @@ def test_structure_endpoint_returns_502_problem_when_cascade_exhausts_with_trans
     app = create_app()
     tier_log = [
         TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
-        TierLogEntry(tier="passthrough", status=None, chars=0, error="rejected", validated=False),
+        TierLogEntry(tier="trafilatura", status=None, chars=0, error="rejected", validated=False),
         TierLogEntry(
             tier="structurer", status=None, chars=0, error="upstream timeout", validated=False
         ),
@@ -286,15 +286,6 @@ def _trafilatura_result() -> FetchResult:
     )
 
 
-def _passthrough_result() -> FetchResult:
-    r = _trafilatura_result()
-    r.tier_used = "passthrough"
-    r.tier_log = [
-        TierLogEntry(tier="passthrough", status=None, chars=8, error=None, validated=True),
-    ]
-    return r
-
-
 def test_structure_endpoint_does_not_cache_trafilatura(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
@@ -321,7 +312,7 @@ def test_structure_endpoint_does_not_cache_trafilatura(monkeypatch, tmp_db_path:
     assert cascade.await_count == 2
 
 
-def test_structure_endpoint_does_not_cache_passthrough(monkeypatch, tmp_db_path: str) -> None:
+def test_structure_endpoint_does_not_cache_non_structurer_tier(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with (
@@ -331,7 +322,7 @@ def test_structure_endpoint_does_not_cache_passthrough(monkeypatch, tmp_db_path:
         can_mock.return_value = CanonicalResult(
             "https://example.com/a", "https://example.com/a", [], []
         )
-        cascade.return_value = _passthrough_result()
+        cascade.return_value = _trafilatura_result()
         with TestClient(app) as client:
             client.post(
                 "/v1/structure",
