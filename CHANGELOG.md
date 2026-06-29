@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.3] — 2026-06-29
+
+### Changed
+
+- **URL-fetched articles no longer carry Jina Reader's metadata preamble into
+  extraction.** The fetcher strips Jina's `Title: / URL Source: / Published Time:
+  / Markdown Content:` header from fetched bodies (`jina.strip_preamble`, applied
+  on the Jina success path in the article + medium handlers); runs after
+  upstream-error detection, so paywalled/blocked handling is unaffected.
+
+---
+
 ## [0.26.2] — 2026-06-29
 
 ### Changed
