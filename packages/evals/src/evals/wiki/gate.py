@@ -172,9 +172,11 @@ def gate_claims(
 ) -> list[RoutedClaim]:
     """The admission gate (§3a): cluster claims by agreement, then route each
     cluster into a confidence lane. `credibility_of` maps a source_id to its
-    domain credibility; `is_specific` judges a claim's representative text (the
-    specificity floor). A cluster is speculative if any of its sources tagged it
-    so (fail-closed). Independence is distinct source_ids in v1 — echo collapse
+    domain credibility; `is_specific` judges each claim's text (the specificity
+    floor). A cluster is specific only if EVERY paraphrase in it is — one vague
+    member floors the whole cluster, so the lane can't depend on which paraphrase
+    happened to arrive first. A cluster is speculative if any source tagged it so
+    (both fail-closed). Independence is distinct source_ids in v1 — echo collapse
     over near-duplicate sources is the next refinement (§3a step 2)."""
     routed: list[RoutedClaim] = []
     for cluster in cluster_claims(claims, embed_batch, threshold=threshold):
@@ -185,7 +187,7 @@ def gate_claims(
         lane = route_lane(
             independent_source_count=len(cluster.source_ids),
             max_credibility=max_credibility,
-            is_specific=is_specific(cluster.claims[0].text),
+            is_specific=all(is_specific(c.text) for c in cluster.claims),
             is_speculative=any(c.speculative for c in cluster.claims),
         )
         routed.append(RoutedClaim(cluster=cluster, lane=lane))

@@ -157,3 +157,25 @@ def test_gate_claims_speculative_tag_on_any_source_opens_the_cluster():
     )
 
     assert routed[0].lane == Lane.OPEN_SPECULATIVE
+
+
+def test_gate_claims_specificity_floor_is_order_independent_for_mixed_cluster():
+    # A vague and a specific paraphrase cluster together (high cosine). The lane
+    # must not depend on which arrived first — one vague member floors the whole
+    # cluster to attributed-only, regardless of input order (codex).
+    vague = SourceClaim(text="Anthropic is involved with AI", source_id="s1")
+    specific = SourceClaim(text="Anthropic develops Claude", source_id="s2")
+    vectors = {
+        "Anthropic is involved with AI": [1.0, 0.0],
+        "Anthropic develops Claude": [0.99, 0.01],
+    }
+    is_specific = lambda text: text == "Anthropic develops Claude"  # noqa: E731
+
+    for order in ([vague, specific], [specific, vague]):
+        routed = gate_claims(
+            order,
+            embed_batch=_fake_embed(vectors),
+            credibility_of=lambda _sid: Credibility.MEDIUM,
+            is_specific=is_specific,
+        )
+        assert routed[0].lane == Lane.SINGLE_SOURCE_ATTRIBUTED
