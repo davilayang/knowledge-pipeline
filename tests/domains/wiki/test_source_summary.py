@@ -9,6 +9,7 @@ SourceClaim shape the confidence-lane gate consumes downstream.
 
 import re
 
+import pytest
 from domains.wiki.source_summary import (
     SourceClaim,
     SourceSummary,
@@ -84,6 +85,22 @@ def test_render_then_parse_doc_round_trips_the_source_summary():
     assert parse_source_summary_doc(text) == summary
 
 
+def test_render_rejects_a_claim_whose_source_id_is_not_the_summary_item_id():
+    # render drops per-claim source_id and parse re-stamps from the frontmatter
+    # item_id, so a foreign-source claim would be silently re-attributed. Fail loud.
+    summary = SourceSummary(
+        item_id="medium::https://x.com/a",
+        content_date=None,
+        claims=[
+            SourceClaim(text="Mine.", source_id="medium::https://x.com/a"),
+            SourceClaim(text="Not mine.", source_id="medium::https://x.com/OTHER"),
+        ],
+    )
+
+    with pytest.raises(ValueError, match="source_id"):
+        render_source_summary(summary)
+
+
 def test_source_file_slug_is_deterministic_and_item_id_keyed():
     item_id = "medium::https://x.com/a"
 
@@ -95,6 +112,26 @@ def test_source_file_slug_is_deterministic_and_item_id_keyed():
     assert slug != source_file_slug("medium::https://x.com/b")
     assert slug.startswith("src_")
     assert re.fullmatch(r"src_[0-9a-f]{16}", slug)
+
+
+def test_round_trips_an_item_id_containing_a_triple_dash():
+    # A URL can contain '---'; a naive split('---') truncates the frontmatter and
+    # corrupts the item_id (and drops content_date). The parse must be line-aware.
+    summary = SourceSummary(
+        item_id="medium::https://example.com/a---b/post",
+        content_date="2026-03-15",
+        claims=[
+            SourceClaim(
+                text="A claim from the triple-dash URL.",
+                source_id="medium::https://example.com/a---b/post",
+                speculative=False,
+            ),
+        ],
+    )
+
+    text = render_source_summary(summary)
+
+    assert parse_source_summary_doc(text) == summary
 
 
 def test_round_trips_a_source_with_no_content_date():

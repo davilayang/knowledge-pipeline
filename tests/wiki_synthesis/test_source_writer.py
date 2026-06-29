@@ -62,7 +62,7 @@ def test_stamps_item_id_and_content_date_and_parses_tagged_claims():
     ]
 
 
-def test_none_response_yields_an_empty_summary_not_an_error():
+def test_none_response_yields_an_empty_summary_not_an_error(caplog):
     with patch(
         "workflows.wiki_synthesis.source_writer.generate_with_usage",
         return_value=_call("NONE"),
@@ -71,3 +71,21 @@ def test_none_response_yields_an_empty_summary_not_an_error():
 
     assert summary.item_id == "medium::https://x.com/a"
     assert summary.claims == []
+    # NONE is an expected outcome — no warning.
+    assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
+def test_malformed_response_with_no_tags_logs_a_warning(caplog):
+    # The model ignored the format and answered in prose: zero claims parsed, but
+    # this is a silent extraction failure (not an honest NONE) — surface it.
+    with patch(
+        "workflows.wiki_synthesis.source_writer.generate_with_usage",
+        return_value=_call("Here are the key claims: Claude Code shipped subagents."),
+    ):
+        summary, _call_meta = summarize_source(_item())
+
+    assert summary.claims == []
+    assert any(
+        r.levelname == "WARNING" and "medium::https://x.com/a" in r.getMessage()
+        for r in caplog.records
+    )

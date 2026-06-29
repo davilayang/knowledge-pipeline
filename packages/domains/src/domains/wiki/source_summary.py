@@ -75,7 +75,17 @@ def source_file_slug(item_id: str) -> str:
 def render_source_summary(summary: SourceSummary) -> str:
     """Render a SourceSummary to the on-disk `wiki/sources/<slug>.md` format —
     YAML frontmatter (`item_id`, `content_date`) above a `[fact]`/`[speculation]`
-    tagged bullet per claim. Inverse of `parse_source_summary_doc`."""
+    tagged bullet per claim. Inverse of `parse_source_summary_doc`.
+
+    Every claim must belong to this source: render drops per-claim `source_id`
+    and the doc parser re-stamps it from the frontmatter `item_id`, so a claim
+    from another source would be silently re-attributed. Reject it instead."""
+    foreign = {c.source_id for c in summary.claims if c.source_id != summary.item_id}
+    if foreign:
+        raise ValueError(
+            f"source summary for {summary.item_id} carries claims from other "
+            f"source_id(s): {sorted(foreign)}"
+        )
     frontmatter = yaml.dump(
         {"item_id": summary.item_id, "content_date": summary.content_date},
         default_flow_style=False,
@@ -91,9 +101,16 @@ def parse_source_summary_doc(text: str) -> SourceSummary:
     """Parse a rendered `wiki/sources/<slug>.md` doc into a SourceSummary —
     reads `item_id` / `content_date` from the frontmatter and the tagged claims
     from the body. Inverse of `render_source_summary`."""
-    if not text.startswith("---"):
+    lines = text.splitlines(keepends=True)
+    if not lines or not lines[0].startswith("---"):
         raise ValueError("source summary does not start with frontmatter delimiter '---'")
-    _, frontmatter, body = text.split("---", 2)
+    # Line-aware split on the closing '---' delimiter — a substring split would
+    # break on a frontmatter value (e.g. an item_id URL) that contains '---'.
+    close = next((i for i in range(1, len(lines)) if lines[i].startswith("---")), None)
+    if close is None:
+        raise ValueError("source summary has no closing frontmatter delimiter '---'")
+    frontmatter = "".join(lines[1:close])
+    body = "".join(lines[close + 1 :])
     meta = yaml.safe_load(frontmatter) or {}
     item_id = meta["item_id"]
     return SourceSummary(

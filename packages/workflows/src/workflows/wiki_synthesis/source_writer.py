@@ -35,9 +35,19 @@ def summarize_source(item: IngestItem) -> tuple[SourceSummary, LLMCall]:
     call = generate_with_usage(
         user_prompt, system=SOURCE_SUMMARY_SYSTEM, model=SOURCE_SUMMARY_MODEL
     )
+    claims = parse_source_summary(call.content, source_id=item.item_id)
+    if not claims and "NONE" not in call.content:
+        # Zero claims with no honest NONE — the model ignored the tagged-bullet
+        # format. A silent empty summary would look identical to "no claims";
+        # surface it so the failure is auditable rather than invisible.
+        logger.warning(
+            "source_writer parsed no claims for %s (no NONE marker); output starts: %r",
+            item.item_id,
+            call.content[:200],
+        )
     summary = SourceSummary(
         item_id=item.item_id,
         content_date=item.date.isoformat() if item.date else None,
-        claims=parse_source_summary(call.content, source_id=item.item_id),
+        claims=claims,
     )
     return summary, call

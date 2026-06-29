@@ -5,7 +5,9 @@ article supports it. Downstream, every claim is attributed back to THIS source
 assert. Faithfulness to this one article is everything: never add a claim the
 article does not make, and never soften or strengthen one it does.
 
-Output ONLY a markdown bullet list. One claim per bullet, in this exact form:
+Output ONLY a flat markdown bullet list. One claim per bullet, each bullet on a
+single line, starting at the left margin (no indentation, no sub-bullets, no
+numbering). Use this exact form:
 
 - [fact] <the claim, stated concretely>
 - [speculation] <the claim, stated concretely>
