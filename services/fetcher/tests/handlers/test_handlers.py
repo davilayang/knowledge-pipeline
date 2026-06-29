@@ -386,3 +386,28 @@ async def test_article_jina_demotes_upstream_404_wrapper() -> None:
     result = await _jina_fetch(ctx, "https://example.com/gone")
     assert result.status == 200
     assert result.content == ""
+
+
+async def test_article_jina_strips_preamble_on_success() -> None:
+    """A clean 200 stores the article body with Jina's metadata preamble stripped."""
+    from unittest.mock import AsyncMock, MagicMock
+
+    from fetcher.handlers.article import _jina_fetch
+
+    ctx = MagicMock()
+    response = MagicMock()
+    response.status_code = 200
+    response.text = (
+        "Title: Real Article\n"
+        "URL Source: https://example.com/a\n"
+        "Published Time: 2026-06-29T00:00:00Z\n\n"
+        "Markdown Content:\n"
+        "# Real Article\n\nThe actual body."
+    )
+    ctx.jina_client.get = AsyncMock(return_value=response)
+
+    result = await _jina_fetch(ctx, "https://example.com/a")
+    assert result.status == 200
+    assert result.content == "# Real Article\n\nThe actual body."
+    assert "Title:" not in result.content
+    assert "Markdown Content:" not in result.content

@@ -9,7 +9,6 @@ from fetcher.extractors import trafilatura as trafilatura_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
 from fetcher.validator import is_acceptable
 
-
 logger = logging.getLogger(__name__)
 
 NAME = "article"
@@ -59,7 +58,9 @@ async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
             status=status,
             detail=f"jina wrapped upstream error: {_truncate(body)}",
         )
-    return RawTierResult(content=body, status=status)
+    # Strip Jina's metadata preamble only after the error check above — the
+    # upstream-error marker lives in that preamble region.
+    return RawTierResult(content=jina_extractor.strip_preamble(body), status=status)
 
 
 async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
