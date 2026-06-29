@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.4] — 2026-06-29
+
+### Added
+
+- **Offline confidence-lane admission gate for wiki synthesis.** Routes each claim
+  into a lane (corpus-corroborated / single-credible / attributed / open) by
+  claim agreement, source credibility, a specificity floor, and a speculation tag —
+  rather than asserting everything as fact. Pure logic with injected
+  embeddings/specificity in `evals.wiki.gate`; foundation for the wiki shadow audit.
+
+---
+
 ## [0.26.3] — 2026-06-29
 
 ### Changed

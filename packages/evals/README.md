@@ -47,7 +47,8 @@ packages/evals/
 │       ├── judges.py             # FaithfulnessJudge, SpecificityJudge (injected chat_fn)
 │       ├── chat.py               # production chat_fn builders (workflows.llm)
 │       ├── prompts.py            # prompt loader (KP_PROMPTS_ROOT / eval/)
-│       └── calibrate.py          # calibration helpers
+│       ├── calibrate.py          # calibration helpers
+│       └── gate.py               # offline confidence-lane admission gate (claim matching + lanes)
 └── pyproject.toml
 ```
 
@@ -74,7 +75,7 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
 | `evals.extraction` | ✅ active | Topic Card field scoring with variant comparison + per-content-type stratification. Composes `workflows.extraction.ThreeCallOpenAIExtractor` via injected callables. | `uv run eval-extraction` |
-| `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding) and `SpecificityJudge` (numeric/date/name/quote recall). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. | (imported by harnesses; no standalone CLI) |
+| `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding) and `SpecificityJudge` (numeric/date/name/quote recall). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`): clusters claims by embedding agreement, routes each cluster into a `Lane` via `Credibility` tier + specificity floor; injected `embed_batch` + specificity predicate, no LLM/HTTP dep. | (imported by harnesses; no standalone CLI) |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |
 
 ## Substrate primitives + composition patterns
