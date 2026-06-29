@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.2] — 2026-06-29
+
+### Changed
+
+- **User-pasted article bodies are now always boilerplate-stripped before
+  extraction.** The fetcher's `/v1/structure` cascade dropped its passthrough
+  short-circuit, which let muddied pastes (e.g. Medium logged-in sidebar/footer)
+  skip the cleaning LLM stage; pasted content now runs `trafilatura → cloud LLM`
+  every time.
+
+---
+
 ## [0.26.1] — 2026-06-28
 
 ### Added

@@ -1,10 +1,10 @@
 """POST /v1/structure-transcript: cloud LLM structuring over a transcript blob.
 
 Thin wrapper around `transcript_structurer.structure_transcript`. Differs from
-`/v1/structure`: no cascade (single LLM call, no trafilatura/passthrough
-stages), and surfaces structurer failures (502/503) to the caller rather than
-falling back to raw input — eval harnesses and debug tools want failures
-explicit.
+`/v1/structure`: no cascade (single LLM call, unlike `/v1/structure`'s
+trafilatura→cloud-chain cascade), and surfaces structurer failures (502/503)
+to the caller rather than falling back to raw input — eval harnesses and debug
+tools want failures explicit.
 
 Cache key shares the helpers from `_cloud_chain` introduced in Phase A, but is
 namespaced by endpoint so identical text routed through both endpoints can't
