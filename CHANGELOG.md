@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.26.4] — 2026-06-29
+
 ### Added
 
 - **Offline confidence-lane admission gate for wiki synthesis.** Routes each claim
