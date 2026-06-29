@@ -7,6 +7,7 @@ the confidence-lane gate clusters and routes downstream. Pure + dependency-free
 (regex over the summary text): no LLM, no I/O.
 """
 
+import hashlib
 import re
 from dataclasses import dataclass
 
@@ -60,6 +61,15 @@ def parse_source_summary(body: str, *, source_id: str) -> list[SourceClaim]:
             )
         )
     return claims
+
+
+def source_file_slug(item_id: str) -> str:
+    """Deterministic `src_<16hex>` filename stem for a source's summary, keyed by
+    its item_id. Stable on the item_id so re-summarising a source overwrites its
+    file rather than orphaning it, and lets the entity writer locate a source's
+    summary by item_id alone — independent of the (cosmetic, mutable) title."""
+    digest = hashlib.sha256(item_id.encode("utf-8")).hexdigest()[:16]
+    return f"src_{digest}"
 
 
 def render_source_summary(summary: SourceSummary) -> str:

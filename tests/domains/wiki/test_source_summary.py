@@ -7,12 +7,15 @@ every claim and carries the tag as the `speculative` flag, producing the exact
 SourceClaim shape the confidence-lane gate consumes downstream.
 """
 
+import re
+
 from domains.wiki.source_summary import (
     SourceClaim,
     SourceSummary,
     parse_source_summary,
     parse_source_summary_doc,
     render_source_summary,
+    source_file_slug,
 )
 
 
@@ -79,6 +82,19 @@ def test_render_then_parse_doc_round_trips_the_source_summary():
     text = render_source_summary(summary)
 
     assert parse_source_summary_doc(text) == summary
+
+
+def test_source_file_slug_is_deterministic_and_item_id_keyed():
+    item_id = "medium::https://x.com/a"
+
+    slug = source_file_slug(item_id)
+
+    # Stable on the item_id (same source → same file, so writes overwrite
+    # rather than orphan), and distinct from a different source.
+    assert slug == source_file_slug(item_id)
+    assert slug != source_file_slug("medium::https://x.com/b")
+    assert slug.startswith("src_")
+    assert re.fullmatch(r"src_[0-9a-f]{16}", slug)
 
 
 def test_round_trips_a_source_with_no_content_date():
