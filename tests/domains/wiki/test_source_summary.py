@@ -7,7 +7,13 @@ every claim and carries the tag as the `speculative` flag, producing the exact
 SourceClaim shape the confidence-lane gate consumes downstream.
 """
 
-from domains.wiki.source_summary import SourceClaim, parse_source_summary
+from domains.wiki.source_summary import (
+    SourceClaim,
+    SourceSummary,
+    parse_source_summary,
+    parse_source_summary_doc,
+    render_source_summary,
+)
 
 
 def test_parses_fact_and_speculation_tagged_lines_into_source_claims():
@@ -50,3 +56,44 @@ def test_ignores_untagged_lines_headings_prose_and_blanks():
             speculative=False,
         ),
     ]
+
+
+def test_render_then_parse_doc_round_trips_the_source_summary():
+    summary = SourceSummary(
+        item_id="medium::https://x.com/a",
+        content_date="2026-03-15",
+        claims=[
+            SourceClaim(
+                text="Claude Code shipped subagents in March 2026.",
+                source_id="medium::https://x.com/a",
+                speculative=False,
+            ),
+            SourceClaim(
+                text="Agentic orchestration will replace most RAG by 2027.",
+                source_id="medium::https://x.com/a",
+                speculative=True,
+            ),
+        ],
+    )
+
+    text = render_source_summary(summary)
+
+    assert parse_source_summary_doc(text) == summary
+
+
+def test_round_trips_a_source_with_no_content_date():
+    summary = SourceSummary(
+        item_id="medium::https://x.com/c",
+        content_date=None,
+        claims=[
+            SourceClaim(
+                text="The post is undated.",
+                source_id="medium::https://x.com/c",
+                speculative=False,
+            ),
+        ],
+    )
+
+    text = render_source_summary(summary)
+
+    assert parse_source_summary_doc(text) == summary
