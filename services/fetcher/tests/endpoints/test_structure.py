@@ -29,9 +29,6 @@ def _ok_result() -> FetchResult:
         tier_log=[
             TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
             TierLogEntry(
-                tier="trafilatura", status=None, chars=0, error="rejected", validated=False
-            ),
-            TierLogEntry(
                 tier="structurer:test-model", status=None, chars=14, error=None, validated=True
             ),
         ],
@@ -74,7 +71,7 @@ def test_structure_endpoint_returns_fetchresult_wire_shape(monkeypatch, tmp_db_p
     assert body["tier_used"] == "structurer:test-model"
     assert body["cache_hit"] is False
     assert body["metadata"]["prompt_version"] == "v1"
-    assert len(body["tier_log"]) == 3
+    assert len(body["tier_log"]) == 2
 
 
 def test_structure_endpoint_threads_hint_kwargs_into_cascade(monkeypatch, tmp_db_path: str) -> None:
@@ -164,7 +161,6 @@ def test_structure_endpoint_returns_502_problem_when_cascade_exhausts_with_trans
     app = create_app()
     tier_log = [
         TierLogEntry(tier="trafilatura", status=None, chars=0, error="empty", validated=False),
-        TierLogEntry(tier="trafilatura", status=None, chars=0, error="rejected", validated=False),
         TierLogEntry(
             tier="structurer", status=None, chars=0, error="upstream timeout", validated=False
         ),
@@ -193,7 +189,7 @@ def test_structure_endpoint_returns_502_problem_when_cascade_exhausts_with_trans
     body = response.json()
     assert body["code"] == "STRUCTURER_UPSTREAM_FAILURE"
     assert body["retryable"] is True
-    assert len(body["tier_log"]) == 3
+    assert len(body["tier_log"]) == 2
 
 
 def test_structure_endpoint_returns_503_problem_when_no_api_keys_configured(

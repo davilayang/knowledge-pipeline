@@ -43,9 +43,9 @@ def _make_ctx() -> MagicMock:
 async def test_run_cascade_routes_clean_markdown_to_cloud_chain(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    """Markdown the (now-removed) passthrough heuristic would have accepted must
-    reach the cloud chain — pasted content is always LLM-cleaned, never passed
-    through with boilerplate intact."""
+    """Markdown the cascade previously returned unchanged as already-clean must
+    now reach the cloud chain — pasted content is always LLM-cleaned, never
+    returned with boilerplate intact."""
     monkeypatch.setattr(structure, "_stage_trafilatura", lambda _raw: None)
 
     async def _fake_chain(*_a, **_kw):
