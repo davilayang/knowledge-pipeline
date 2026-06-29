@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Per-source claim summaries (Layer 1.5) for the attributed-lane wiki.**
+  `summarize_source` (`workflows.wiki_synthesis.source_writer`) distils one
+  article into `[fact]`/`[speculation]`-tagged claims attributed to the source —
+  the substrate the entity writer and confidence-lane gate read instead of raw
+  articles. Types + parse/render/slug live in `domains.wiki.source_summary`.
+
 ---
 
 ## [0.26.4] — 2026-06-29
