@@ -8,7 +8,7 @@ Dagster dependency and is testable with fakes.
 """
 
 import math
-from collections.abc import Callable
+from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 
@@ -26,20 +26,61 @@ class Credibility(Enum):
 
 
 # Primary / authoritative sources: a single one of these can carry a claim into a
-# voice-safe section (the `single-credible` lane).
-HIGH_CREDIBILITY_DOMAINS = frozenset({"arxiv.org"})
+# voice-safe section (the `single-credible` lane). Registrable domains only —
+# subdomains inherit the tier. A tunable seed; the shadow audit calibrates it.
+HIGH_CREDIBILITY_DOMAINS = frozenset(
+    {
+        "arxiv.org",
+        "nature.com",
+        "science.org",
+        "openai.com",
+        "anthropic.com",
+        "deepmind.com",
+        "blog.google",
+        "research.google",
+        "ai.meta.com",
+        "microsoft.com",
+        "nvidia.com",
+        "huggingface.co",
+        "pytorch.org",
+        "distill.pub",
+        "simonwillison.net",
+        "arstechnica.com",
+        "deeplearning.ai",
+    }
+)
 
 # Aggregator / open-publishing platforms: the corpus's bulk source (56% Medium).
-# Two of these echoing one claim must not count as corroboration.
-LOW_CREDIBILITY_DOMAINS = frozenset({"medium.com"})
+# Two of these echoing one claim must not count as corroboration. A tunable seed.
+LOW_CREDIBILITY_DOMAINS = frozenset(
+    {
+        "medium.com",
+        "towardsdatascience.com",
+        "towardsai.net",
+        "gitconnected.com",
+        "hackernoon.com",
+        "dev.to",
+        "plainenglish.io",
+        "betterprogramming.pub",
+    }
+)
+
+
+def _matches(domain: str, allowlist: frozenset[str]) -> bool:
+    """True if `domain` is, or is a subdomain of, any registrable domain in
+    `allowlist` — so `export.arxiv.org` matches `arxiv.org`."""
+    return any(domain == d or domain.endswith(f".{d}") for d in allowlist)
 
 
 def domain_credibility(domain: str) -> Credibility:
-    """Map a source domain to its credibility tier. Unknown domains default to
-    MEDIUM — neither trusted enough to admit alone nor dismissed as an echo."""
-    if domain in HIGH_CREDIBILITY_DOMAINS:
+    """Map a source domain to its credibility tier. Domains are normalised
+    (lowercased, `www.` stripped) and matched against the allowlists by
+    registrable suffix, so subdomains inherit the tier. Unknown domains default
+    to MEDIUM — neither trusted enough to admit alone nor dismissed as an echo."""
+    domain = domain.strip().lower().removeprefix("www.")
+    if _matches(domain, HIGH_CREDIBILITY_DOMAINS):
         return Credibility.HIGH
-    if domain in LOW_CREDIBILITY_DOMAINS:
+    if _matches(domain, LOW_CREDIBILITY_DOMAINS):
         return Credibility.LOW
     return Credibility.MEDIUM
 
@@ -150,6 +191,38 @@ def cluster_claims(
     return clusters
 
 
+def count_independent_sources(
+    source_ids: Iterable[str],
+    embeddings: Mapping[str, list[float]],
+    *,
+    threshold: float = 0.80,
+) -> int:
+    """Count distinct INDEPENDENT sources among `source_ids`, collapsing any whose
+    embeddings are within `threshold` cosine into one (a republished / echoed
+    article corroborates nothing). `embeddings` maps source_id → source vector.
+    This is what stops two Medium echoes from manufacturing corroboration."""
+    ids = list(dict.fromkeys(source_ids))  # de-dup, preserve order
+    if len(ids) < 2:
+        return len(ids)
+    normed = {sid: _normalize(embeddings[sid]) for sid in ids}
+
+    parent = {sid: sid for sid in ids}
+
+    def find(x: str) -> str:
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    for i, a in enumerate(ids):
+        for b in ids[i + 1 :]:
+            cosine = sum(x * y for x, y in zip(normed[a], normed[b], strict=True))
+            if cosine >= threshold:
+                parent[find(a)] = find(b)
+
+    return len({find(sid) for sid in ids})
+
+
 @dataclass(frozen=True)
 class RoutedClaim:
     """A claim cluster after the gate has assigned it a confidence lane."""
@@ -168,6 +241,7 @@ def gate_claims(
     *,
     credibility_of: Callable[[str], Credibility],
     is_specific: Callable[[str], bool],
+    independent_count: Callable[[frozenset[str]], int] = len,
     threshold: float = 0.80,
 ) -> list[RoutedClaim]:
     """The admission gate (§3a): cluster claims by agreement, then route each
@@ -176,8 +250,9 @@ def gate_claims(
     floor). A cluster is specific only if EVERY paraphrase in it is — one vague
     member floors the whole cluster, so the lane can't depend on which paraphrase
     happened to arrive first. A cluster is speculative if any source tagged it so
-    (both fail-closed). Independence is distinct source_ids in v1 — echo collapse
-    over near-duplicate sources is the next refinement (§3a step 2)."""
+    (both fail-closed). `independent_count` collapses echoed sources before
+    counting corroboration — defaults to `len` (every distinct source_id counts);
+    pass one backed by `count_independent_sources` to fold near-duplicate echoes."""
     routed: list[RoutedClaim] = []
     for cluster in cluster_claims(claims, embed_batch, threshold=threshold):
         max_credibility = max(
@@ -185,7 +260,7 @@ def gate_claims(
             key=lambda c: _CREDIBILITY_RANK[c],
         )
         lane = route_lane(
-            independent_source_count=len(cluster.source_ids),
+            independent_source_count=independent_count(cluster.source_ids),
             max_credibility=max_credibility,
             is_specific=all(is_specific(c.text) for c in cluster.claims),
             is_speculative=any(c.speculative for c in cluster.claims),
