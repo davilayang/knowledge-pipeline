@@ -31,7 +31,7 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 
 - **`POST /v1/fetch`** — sync single-URL fetch; returns markdown + provenance with ETag / `If-None-Match` → 304 support.
 - **`POST /v1/fetches`** — async batch; per-item job_id, `GET /v1/fetches/{job_id}` for status, `DELETE` for real in-process cancellation.
-- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Three-stage cascade (trafilatura → conservative markdown passthrough → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v1.md` (server-side `_PROMPT_VERSION` — bumping is a service change, not a client header).
+- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v1.md` (server-side `_PROMPT_VERSION` — bumping is a service change, not a client header).
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
 - **Handlers:**
   - `article` — Jina → curl_cffi+trafilatura → Tavily Extract (paid).

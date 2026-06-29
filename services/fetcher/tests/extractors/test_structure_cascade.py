@@ -78,7 +78,6 @@ async def test_stage_trafilatura_returns_when_input_is_html_with_clean_body() ->
     assert "Real Article" in result
 
 
-
 async def test_run_cascade_returns_problem_when_all_stages_produce_nothing(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

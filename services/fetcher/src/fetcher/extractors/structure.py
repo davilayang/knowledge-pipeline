@@ -115,7 +115,6 @@ def _stage_trafilatura(raw_content: str) -> str | None:
     return result
 
 
-
 async def _stage_cloud_chain(
     ctx: "FetchContext",
     raw_content: str,
