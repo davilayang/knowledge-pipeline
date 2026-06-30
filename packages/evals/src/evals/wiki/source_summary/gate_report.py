@@ -10,6 +10,7 @@ claims, and aggregates — parse failures included, never swallowed.
 
 import re
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
@@ -25,20 +26,27 @@ def credibility_of(source_id: str) -> Credibility:
     return domain_credibility(domain)
 
 
-# A proper noun: a capitalised token of length ≥3 (skips "I", "A", sentence-lead
-# stopwords are mostly <3 after the capital). Two of them = a named, checkable claim.
+# A proper noun: a capitalised token of length ≥3. Two distinct ones = a named,
+# checkable claim. Sentence-lead capitals ("The", "This", "Our") are excluded so a
+# vague sentence isn't mistaken for a named one just because it starts capitalised.
 _PROPER_NOUN = re.compile(r"\b[A-Z][A-Za-z0-9.\-]{2,}\b")
+_SENTENCE_LEAD = frozenset(
+    "The This That These Those Our Their Its They We You It If When While After "
+    "Before Because However And But Or For With Without As At By In On To Of "
+    "There Here Now Then Today".split()
+)
 
 
 def is_specific(text: str) -> bool:
     """Deterministic specificity floor (v0): a claim is specific if it carries a
-    concrete anchor (a number or a date) or names ≥2 proper nouns. Vague, anchor-free
-    prose is floored to the attributed lane — this is what blocks abstraction
-    laundering. Name/quote nuance is LLM-judged elsewhere; this is the cheap,
-    pure production-side proxy the gate needs."""
+    concrete anchor (a number or a date) or names ≥2 proper nouns (sentence-lead
+    capitals excluded). Vague, anchor-free prose is floored to the attributed lane —
+    this is what blocks abstraction laundering. Name/quote nuance is LLM-judged
+    elsewhere; this is the cheap, pure production-side proxy the gate needs."""
     if extract_numeric_anchors(text) or extract_date_anchors(text):
         return True
-    return len(set(_PROPER_NOUN.findall(text))) >= 2
+    proper_nouns = {w for w in _PROPER_NOUN.findall(text) if w not in _SENTENCE_LEAD}
+    return len(proper_nouns) >= 2
 
 
 @dataclass(frozen=True)
@@ -53,9 +61,9 @@ class GateReport:
 def build_gate_report(
     summaries: list[tuple[str, str]],
     *,
-    embed_batch,
-    credibility_of,
-    is_specific,
+    embed_batch: Callable[[list[str]], list[list[float]]],
+    credibility_of: Callable[[str], Credibility],
+    is_specific: Callable[[str], bool],
     threshold: float = 0.80,
 ) -> GateReport:
     """Parse `(page_id, rendered_doc)` summaries, gate the pooled claims, aggregate

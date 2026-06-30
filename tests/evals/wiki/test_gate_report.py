@@ -19,6 +19,9 @@ def test_is_specific_true_only_with_a_concrete_anchor():
     assert is_specific("PAT achieves a 34% improvement on SPOT.") is True  # percent
     assert is_specific("Released in March 2026 to all users.") is True  # date
     assert is_specific("This will fundamentally change how teams work.") is False  # vague
+    assert is_specific("Kubernetes replaced Docker as the default runtime.") is True  # 2 names
+    # Sentence-lead capital must not count as a proper noun (the over-admission fix).
+    assert is_specific("The API is very fast.") is False  # only "API" once The is excluded
 
 
 def test_build_gate_report_aggregates_lanes_and_parse_failures():
