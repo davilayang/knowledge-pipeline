@@ -253,6 +253,13 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     assert metadata["arxiv_id"].text == "2401.00001"
     assert metadata["title"].text == "Attention Is All You Need"
 
+    # The fetcher metadata is persisted on the queue row (self-sufficient for
+    # source summarisation — no raw_store join).
+    row = store.get_row("p-1")
+    assert row["title"] == "Attention Is All You Need"
+    assert row["author"] == "Vaswani"
+    assert row["content_date"] == "2024-01-01"
+
 
 def test_fetched_fails_when_below_extraction_floor(tmp_path: Path):
     """Service's cascade may return sub-floor content (`best_result`

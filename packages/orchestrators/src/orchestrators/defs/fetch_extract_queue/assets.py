@@ -160,6 +160,14 @@ def fetched(
             },
         )
     content_hash = hashlib.sha256(result.content.encode()).hexdigest()
+    extras = result.extras or {}
+    authors = extras.get("authors")
+    author = (
+        ", ".join(str(a) for a in authors)
+        if isinstance(authors, list)
+        else (str(authors) if authors else None)
+    )
+    published = extras.get("published")
     store.upsert_fetched(
         notion_page_id=page_id,
         url=url,
@@ -168,9 +176,11 @@ def fetched(
         fetch_tier_log=result.tier_log,
         fetched_content_char_count=char_count,
         content_hash=content_hash,
+        title=result.title or None,
+        author=author,
+        content_date=str(published) if published else None,
     )
 
-    extras = result.extras or {}
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),
         "url": dg.MetadataValue.url(url),

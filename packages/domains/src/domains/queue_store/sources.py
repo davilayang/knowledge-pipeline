@@ -48,6 +48,9 @@ CREATE TABLE IF NOT EXISTS queue_items (
     fetch_tier_log              TEXT,              -- JSON; per-tier attempts
     fetched_content_char_count  INTEGER,           -- gates "below floor"
     content_hash                TEXT,              -- SHA-256 of raw_content
+    title                       TEXT,              -- fetcher metadata: article title
+    author                      TEXT,              -- fetcher metadata: author/byline
+    content_date                TEXT,              -- fetcher metadata: publication date (ISO)
     extracted_at                TEXT,              -- cohort completion ts
     extraction_model            TEXT,              -- cohort model
     extractor_label             TEXT,              -- "3call_v1" etc.
@@ -156,6 +159,9 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN tokens_out_total INTEGER",
             "ALTER TABLE queue_items ADD COLUMN langfuse_trace_id TEXT",
             "ALTER TABLE queue_items ADD COLUMN user_comments_json TEXT",
+            "ALTER TABLE queue_items ADD COLUMN title TEXT",
+            "ALTER TABLE queue_items ADD COLUMN author TEXT",
+            "ALTER TABLE queue_items ADD COLUMN content_date TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -236,6 +242,9 @@ def upsert_triaged(
                 fetch_tier_log = NULL,
                 fetched_content_char_count = NULL,
                 content_hash = NULL,
+                title = NULL,
+                author = NULL,
+                content_date = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -369,15 +378,19 @@ def upsert_fetched(
     fetch_tier_log: list[dict[str, Any]],
     fetched_content_char_count: int,
     content_hash: str,
+    title: str | None = None,
+    author: str | None = None,
+    content_date: str | None = None,
 ) -> None:
     with _connect(db_path) as conn:
         conn.execute(
             """
             INSERT INTO queue_items (
                 notion_page_id, url, raw_content, fetched_at, fetch_tier,
-                fetch_tier_log, fetched_content_char_count, content_hash
+                fetch_tier_log, fetched_content_char_count, content_hash,
+                title, author, content_date
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 raw_content = excluded.raw_content,
@@ -386,6 +399,9 @@ def upsert_fetched(
                 fetch_tier_log = excluded.fetch_tier_log,
                 fetched_content_char_count = excluded.fetched_content_char_count,
                 content_hash = excluded.content_hash,
+                title = excluded.title,
+                author = excluded.author,
+                content_date = excluded.content_date,
                 error_text = NULL
             """,
             (
@@ -397,6 +413,9 @@ def upsert_fetched(
                 json.dumps(fetch_tier_log),
                 fetched_content_char_count,
                 content_hash,
+                title,
+                author,
+                content_date,
             ),
         )
 

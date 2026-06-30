@@ -266,6 +266,28 @@ def test_upsert_fetched_inserts_new_row(db_path: Path):
     assert row["raw_content"].startswith("raw markdown")
 
 
+def test_upsert_fetched_persists_title_author_content_date(db_path: Path):
+    # The fetcher returns title/author/content_date; persisting them on the queue
+    # row makes it self-sufficient for source summarisation (no raw_store join).
+    upsert_fetched(
+        db_path=db_path,
+        notion_page_id="p-meta",
+        url="https://example.com/a",
+        raw_content="body",
+        fetch_tier="jina",
+        fetch_tier_log=[],
+        fetched_content_char_count=4,
+        content_hash="h",
+        title="Real Title",
+        author="Jane Doe",
+        content_date="2026-06-01",
+    )
+    row = get_row(db_path=db_path, notion_page_id="p-meta")
+    assert row["title"] == "Real Title"
+    assert row["author"] == "Jane Doe"
+    assert row["content_date"] == "2026-06-01"
+
+
 def test_upsert_fetched_round_trips_fetch_tier_log(db_path: Path):
     upsert_fetched(
         db_path=db_path,
@@ -569,13 +591,26 @@ def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):
         canonical_url="https://example.com/x",
         content_type="Article",
     )
-    _insert_fetched(db_path, page_id=page_id)
+    upsert_fetched(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        raw_content="raw markdown body, long enough to be useful.",
+        fetch_tier="jina",
+        fetch_tier_log=[{"tier": "jina", "status": 200, "chars": 5000}],
+        fetched_content_char_count=5000,
+        content_hash="abc123",
+        title="Stale Title",
+        author="Stale Author",
+        content_date="2026-06-01",
+    )
     _record_three_call(db_path, page_id=page_id)
 
     pre = get_row(db_path=db_path, notion_page_id=page_id)
     assert pre is not None
     assert pre["raw_content"] is not None
     assert pre["extracted_at"] is not None
+    assert pre["title"] == "Stale Title"
 
     upsert_triaged(
         db_path=db_path,
@@ -601,6 +636,9 @@ def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):
         "extractor_sha256",
         "tokens_in_total",
         "tokens_out_total",
+        "title",
+        "author",
+        "content_date",
         "error_text",
     ):
         assert post[col] is None, f"{col} should be cleared on re-triage, got {post[col]!r}"
