@@ -15,6 +15,7 @@ from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from domains.queue_store import sources as queue_db
 from orchestrators.defs.fetch_extract_queue.assets import (
+    _coerce_author,
     comments_json_to_user_notes,
     extracted,
     fetched,
@@ -25,6 +26,15 @@ from orchestrators.defs.fetch_extract_queue.def_config import (
 )
 from orchestrators.defs.fetch_extract_queue.resources import FetchResult
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
+
+
+def test_coerce_author_normalizes_to_clean_string_or_none():
+    assert _coerce_author(None) is None
+    assert _coerce_author([]) is None  # no authors → NULL, not ""
+    assert _coerce_author("") is None
+    assert _coerce_author(["Vaswani"]) == "Vaswani"
+    assert _coerce_author(["A", "B"]) == "A, B"
+    assert _coerce_author("Jane Doe") == "Jane Doe"
 
 
 def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
