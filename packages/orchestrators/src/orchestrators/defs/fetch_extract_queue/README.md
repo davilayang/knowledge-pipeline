@@ -31,7 +31,7 @@ fetched ──► extracted ──► published
    │           └─ on failure (LLM error / required-fields check):
    │              run_failure_sensor → Notion: Status=Failed + Error
    │
-   ├──► source_summary  (parallel with extracted; [fact]/[speculation] claims
+   ├──► source_summary  (parallel with extracted; [reported]/[opinion] claims
    │                     → extraction_calls source_summary row — attributed-lane wiki substrate)
    │
    └─ on failure (fetcher service returns problem+json or unreachable):

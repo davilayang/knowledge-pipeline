@@ -1,6 +1,7 @@
 """Faithfulness scoring for source summaries — is each claim actually in the
-source? Reuses `FaithfulnessJudge` (#71): `page` = the producer's claims, `sources`
-= the source body. Per-source `grounded_fraction`, aggregated per content shape.
+source? Reuses `FaithfulnessJudge` from `evals.wiki.judges`: `page` = the
+producer's claims, `sources` = the source body. Per-source `grounded_fraction`,
+aggregated per content shape.
 
 The producer (`summarize_source`) and the judge are injected so the wiring is
 unit-tested with fakes; the real run lives in the benchmark.

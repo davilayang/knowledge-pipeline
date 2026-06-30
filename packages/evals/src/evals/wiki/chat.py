@@ -58,7 +58,7 @@ class RelevancePassagesModel(BaseModel):
 
 class _TagVerdictModel(BaseModel):
     claim_number: int
-    correct_tag: Literal["fact", "speculation"]
+    correct_tag: Literal["reported", "opinion"]
 
 
 class TaggingVerdictsModel(BaseModel):

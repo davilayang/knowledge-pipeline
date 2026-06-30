@@ -13,7 +13,7 @@ class _FakeJudge:
 
     def score(self, *, claims, source):
         verdicts = [
-            ClaimTagVerdict(text=c.text, producer_tag="fact", correct_tag=t, agree=True)
+            ClaimTagVerdict(text=c.text, producer_tag="reported", correct_tag=t, agree=True)
             for c, t in zip(claims, self._canned[source], strict=True)
         ]
         return TaggingScore(verdicts=verdicts, accuracy=1.0)
@@ -21,14 +21,14 @@ class _FakeJudge:
 
 def test_calibrate_scores_judge_against_gold():
     gold = [
-        GoldClaim("s1", "claim a", producer_tag="fact", gold_tag="fact"),
-        GoldClaim("s1", "claim b", producer_tag="fact", gold_tag="speculation"),
-        GoldClaim("s2", "claim c", producer_tag="speculation", gold_tag="speculation"),
+        GoldClaim("s1", "claim a", producer_tag="reported", gold_tag="reported"),
+        GoldClaim("s1", "claim b", producer_tag="reported", gold_tag="opinion"),
+        GoldClaim("s2", "claim c", producer_tag="opinion", gold_tag="opinion"),
     ]
     bodies = {"s1": "body one", "s2": "body two"}
-    # Judge says: s1 -> [fact, fact], s2 -> [speculation]. Gold: [fact, spec, spec].
-    # Judge matches gold on a (fact=fact) and c (spec=spec) but not b (judge fact, gold spec).
-    judge = _FakeJudge({"body one": ["fact", "fact"], "body two": ["speculation"]})
+    # Judge: s1 -> [reported, reported], s2 -> [opinion]. Gold: [reported, opinion, opinion].
+    # Agrees on a (reported) and c (opinion); disagrees on b (judge reported, gold opinion).
+    judge = _FakeJudge({"body one": ["reported", "reported"], "body two": ["opinion"]})
 
     result = calibrate(gold, bodies, judge=judge)
 
@@ -37,5 +37,5 @@ def test_calibrate_scores_judge_against_gold():
     assert len(result.disagreements) == 1
     d = result.disagreements[0]
     assert d.claim_text == "claim b"
-    assert d.judge_tag == "fact"
-    assert d.gold_tag == "speculation"
+    assert d.judge_tag == "reported"
+    assert d.gold_tag == "opinion"

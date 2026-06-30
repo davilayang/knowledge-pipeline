@@ -31,6 +31,7 @@ src/domains/
 │   ├── merge_cli.py    # wiki-merge — fold duplicate entities (merge_entities)
 │   ├── reject_cli.py   # wiki-reject — delete + tombstone noise entities (reject_entity)
 │   ├── dedup.py        # near-dup candidate search (embed name+summary, pairwise cosine)
+│   ├── source_summary.py # parse/render per-source [reported]/[opinion] claim files (Layer 1.5)
 │   ├── CURATION.md     # operator runbook: cluster → judge → confirm → merge / reject
 │   └── schema/wiki.sql # SQLite schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)

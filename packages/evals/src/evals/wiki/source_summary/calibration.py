@@ -69,7 +69,7 @@ def calibrate(
     for source_id, golds in by_source.items():
         claims = [
             SourceClaim(
-                text=g.claim_text, source_id=source_id, speculative=g.producer_tag == "speculation"
+                text=g.claim_text, source_id=source_id, speculative=g.producer_tag == "opinion"
             )
             for g in golds
         ]

@@ -50,7 +50,7 @@ def test_run_source_combines_faithfulness_and_tagging():
     )
     assert r.id == "art_1"
     assert r.n_claims == 2
-    assert r.n_speculation == 1
+    assert r.n_opinion == 1
     assert r.grounded_fraction == 0.5
     assert r.tagging_accuracy == 1.0
 

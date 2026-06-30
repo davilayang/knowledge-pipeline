@@ -245,7 +245,7 @@ class ClaimTagVerdict:
     """One claim's tag-correctness: the producer's tag vs the judge's call."""
 
     text: str
-    producer_tag: str  # "fact" | "speculation"
+    producer_tag: str  # "reported" | "opinion"
     correct_tag: str  # the judge's verdict
     agree: bool
 
@@ -259,10 +259,10 @@ class TaggingScore:
 
 @dataclass(frozen=True)
 class TaggingJudge:
-    """Judges whether each claim's [fact]/[speculation] tag is correct against the
+    """Judges whether each claim's [reported]/[opinion] tag is correct against the
     source — the source_summary prompt's own rule (reported predictions and
-    embedded editorializing are speculation, not fact). `chat_fn` returns
-    `{"verdicts": [{"claim_number": 1, "correct_tag": "fact"|"speculation"}, ...]}`.
+    embedded editorializing are opinion, not reported). `chat_fn` returns
+    `{"verdicts": [{"claim_number": 1, "correct_tag": "reported"|"opinion"}, ...]}`.
     Verdicts are keyed by 1-based claim number, so the LLM returning extra or
     duplicate verdicts (a frequent off-by-one on long claim lists) is tolerated;
     a claim with no verdict still raises."""
@@ -274,7 +274,7 @@ class TaggingJudge:
         if not claims:
             return TaggingScore(verdicts=[], accuracy=1.0)
         rendered = "\n".join(
-            f"{i + 1}. [{'speculation' if c.speculative else 'fact'}] {c.text}"
+            f"{i + 1}. [{'opinion' if c.speculative else 'reported'}] {c.text}"
             for i, c in enumerate(claims)
         )
         raw = self.chat_fn(self.prompt_template.format(claims=rendered, source=source))
@@ -288,7 +288,7 @@ class TaggingJudge:
             raise ValueError(f"tagging judge missing verdicts for claim numbers {missing}")
         verdicts = []
         for i, claim in enumerate(claims, start=1):
-            producer_tag = "speculation" if claim.speculative else "fact"
+            producer_tag = "opinion" if claim.speculative else "reported"
             correct = by_number[i]
             verdicts.append(
                 ClaimTagVerdict(

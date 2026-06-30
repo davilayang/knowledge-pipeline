@@ -6,7 +6,7 @@ Markdown prompt bodies consumed by the workflow layer. Treated as **content arte
 
 ````
 prompts/
-  eval/           # consumed by evals.wiki (FaithfulnessJudge, SpecificityJudge)
+  eval/           # consumed by evals.wiki (FaithfulnessJudge, SpecificityJudge, TaggingJudge)
   extraction/     # consumed by workflows.extraction (ThreeCallOpenAIExtractor)
   triage/         # consumed by orchestrators.defs.triage_knowledge_queue
   wiki/           # consumed by workflows.wiki_synthesis (synthesize.py / orchestrators.defs.synthesize_wiki)

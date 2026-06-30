@@ -18,7 +18,7 @@ class SourceResult:
     id: str
     content_shape: str
     n_claims: int
-    n_speculation: int
+    n_opinion: int
     grounded_fraction: float
     tagging_accuracy: float
 
@@ -30,7 +30,7 @@ class ShapeAgg:
     mean_grounded: float
     mean_tagging: float
     mean_claims: float
-    mean_speculation_rate: float
+    mean_opinion_rate: float
 
 
 def run_source(
@@ -45,7 +45,7 @@ def run_source(
         id=fx.id,
         content_shape=fx.content_shape,
         n_claims=len(summary.claims),
-        n_speculation=sum(c.speculative for c in summary.claims),
+        n_opinion=sum(c.speculative for c in summary.claims),
         grounded_fraction=fs.grounded_fraction,
         tagging_accuracy=ts.accuracy,
     )
@@ -59,7 +59,7 @@ def aggregate(results: list[SourceResult]) -> list[ShapeAgg]:
     for shape, rs in sorted(by_shape.items()):
         n = len(rs)
         claims = sum(r.n_claims for r in rs)
-        spec = sum(r.n_speculation for r in rs)
+        opinion = sum(r.n_opinion for r in rs)
         out.append(
             ShapeAgg(
                 content_shape=shape,
@@ -67,19 +67,19 @@ def aggregate(results: list[SourceResult]) -> list[ShapeAgg]:
                 mean_grounded=sum(r.grounded_fraction for r in rs) / n,
                 mean_tagging=sum(r.tagging_accuracy for r in rs) / n,
                 mean_claims=claims / n,
-                mean_speculation_rate=spec / claims if claims else 0.0,
+                mean_opinion_rate=opinion / claims if claims else 0.0,
             )
         )
     return out
 
 
 def format_report(aggs: list[ShapeAgg]) -> str:
-    header = f"{'shape':18} {'n':>2} {'faithful':>9} {'tagging':>8} {'claims/src':>11} {'spec%':>6}"
+    header = f"{'shape':18} {'n':>2} {'faithful':>9} {'tagging':>8} {'claims/src':>11} {'opin%':>6}"
     lines = [header, "-" * len(header)]
     for a in aggs:
         lines.append(
             f"{a.content_shape:18} {a.n_sources:>2} {a.mean_grounded:>9.2%} "
-            f"{a.mean_tagging:>8.2%} {a.mean_claims:>11.1f} {a.mean_speculation_rate:>6.0%}"
+            f"{a.mean_tagging:>8.2%} {a.mean_claims:>11.1f} {a.mean_opinion_rate:>6.0%}"
         )
     return "\n".join(lines)
 

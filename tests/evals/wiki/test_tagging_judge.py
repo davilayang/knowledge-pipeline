@@ -1,4 +1,4 @@
-"""TaggingJudge — does the producer's [fact]/[speculation] tag match the source?
+"""TaggingJudge — does the producer's [reported]/[opinion] tag match the source?
 Verdicts are keyed by claim number, so the LLM returning extra/duplicate verdicts
 (an off-by-one on long lists) is tolerated; a genuinely missing claim still raises.
 Score logic TDD'd with a fake chat_fn; the real judge run is empirical."""
@@ -17,14 +17,14 @@ def _claims():
 
 
 def test_tagging_judge_scores_agreement_per_claim():
-    # Judge correct tags (by claim number): 1=fact, 2=speculation, 3=speculation.
-    # Producer tags:                         1=fact, 2=fact,        3=speculation → 2/3 agree.
+    # Judge correct tags (by claim number): 1=reported, 2=opinion, 3=opinion.
+    # Producer tags:                         1=reported, 2=reported,        3=opinion → 2/3 agree.
     def fake_chat(prompt):
         return {
             "verdicts": [
-                {"claim_number": 1, "correct_tag": "fact"},
-                {"claim_number": 2, "correct_tag": "speculation"},
-                {"claim_number": 3, "correct_tag": "speculation"},
+                {"claim_number": 1, "correct_tag": "reported"},
+                {"claim_number": 2, "correct_tag": "opinion"},
+                {"claim_number": 3, "correct_tag": "opinion"},
             ]
         }
 
@@ -41,10 +41,10 @@ def test_tagging_judge_tolerates_extra_verdicts():
     def fake_chat(prompt):
         return {
             "verdicts": [
-                {"claim_number": 1, "correct_tag": "fact"},
-                {"claim_number": 2, "correct_tag": "fact"},
-                {"claim_number": 3, "correct_tag": "speculation"},
-                {"claim_number": 4, "correct_tag": "fact"},  # spurious
+                {"claim_number": 1, "correct_tag": "reported"},
+                {"claim_number": 2, "correct_tag": "reported"},
+                {"claim_number": 3, "correct_tag": "opinion"},
+                {"claim_number": 4, "correct_tag": "reported"},  # spurious
             ]
         }
 
@@ -55,7 +55,7 @@ def test_tagging_judge_tolerates_extra_verdicts():
 
 def test_tagging_judge_raises_when_a_claim_has_no_verdict():
     def fake_chat(prompt):
-        return {"verdicts": [{"claim_number": 1, "correct_tag": "fact"}]}  # 2 and 3 missing
+        return {"verdicts": [{"claim_number": 1, "correct_tag": "reported"}]}  # 2 and 3 missing
 
     with pytest.raises(ValueError, match="missing"):
         TaggingJudge(chat_fn=fake_chat).score(claims=_claims(), source="body")

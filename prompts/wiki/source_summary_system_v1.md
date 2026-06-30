@@ -15,33 +15,33 @@ Output ONLY a flat markdown bullet list. One claim per bullet, each bullet on a
 single line, starting at the left margin (no indentation, no sub-bullets, no
 numbering). Use this exact form:
 
-- [fact] <the claim, stated concretely>
-- [speculation] <the claim, stated concretely>
+- [reported] <the claim, stated concretely>
+- [opinion] <the claim, stated concretely>
 
 Tagging:
-- [fact] — the source presents it as established, reported, or having actually
+- [reported] — the source presents it as established, reported, or having actually
   happened: a named event, a release, a number, a measured result, an attributed
-  quote. Reported *results* stay [fact] even from one source ("the paper reports
+  quote. Reported *results* stay [reported] even from one source ("the paper reports
   34% on benchmark Y") — corroboration is judged later, not here.
-- [speculation] — the source presents it as a prediction, forecast, opinion,
+- [opinion] — the source presents it as a prediction, forecast, opinion,
   recommendation, marketing pitch, or otherwise unverified ("will", "could", "we
-  believe", "the future of X is..."). When genuinely unsure, use [speculation].
+  believe", "the future of X is..."). When genuinely unsure, use [opinion].
 
 Look THROUGH reported speech to the claim itself. When the source says someone
 predicts / hopes / expects / believes / argues / warns that something is or will
-be the case, tag the embedded claim [speculation] — "Brockman predicts compute
-stays scarce" is a forecast, not a fact, even though it is a fact that he said
-it. This holds however neutral the reporting verb looks: "X characterizes /
+be the case, tag the embedded claim [opinion] — "Brockman predicts compute
+stays scarce" is a forecast, tag it [opinion] — even though it is true that he
+said it. This holds however neutral the reporting verb looks: "X characterizes /
 describes / frames / compares / sees Y as ..." still carries an opinion or
-forecast — tag it [speculation].
+forecast — tag it [opinion].
 
-Two traps that hide as fact and are [speculation]:
+Two traps that hide as [reported] and are [opinion]:
 - Forward-looking analogies and characterizations — "AI is the new electricity",
   "X is like the early internet", "this will transform software development".
 - Superlative / marketing claims — "X is the number one / best / leading product",
   "the most advanced Y" — a judgment, not a measured ranking.
 
-Reserve [fact] for what actually happened or was measured — events, releases,
+Reserve [reported] for what actually happened or was measured — events, releases,
 numbers, dated results — whoever reports it.
 
 What makes a good claim:

@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Source-summary claim tags renamed `fact`/`speculation` → `reported`/`opinion`**
+  (producer prompt markers, the `domains.wiki.source_summary` parser/renderer, the
+  tagging judge, the eval harness). "fact" wrongly implied *true* when it only meant
+  *reported-as-established*. The internal `SourceClaim.speculative` bool is unchanged
+  (`True` ⟺ `[opinion]`), so the gate is untouched; no DAG-version bump.
+
+### Added
+
+- **Human-labelled tagging gold + judge calibration** (`datasets/source_summary_tagging_gold.jsonl`).
+  60 claims, 6 content shapes, user-labelled. Producer 85% vs gold (exact; weak only
+  on `unknown`-shape news, over-tagging unverified claims as `reported`); judge
+  ~90% (88–98% across runs — noisy, anchored). Taxonomy in `packages/evals/datasets/README.md`.
+
 ---
 
 ## [0.27.0] — 2026-06-30

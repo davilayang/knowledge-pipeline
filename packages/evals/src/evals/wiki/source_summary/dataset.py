@@ -3,7 +3,7 @@
 The cohort (`packages/evals/datasets/source_summary_eval.jsonl`) is the
 load-bearing pinned artifact: a fixed set of real sources (2 per content shape)
 scored run-over-run so faithfulness / tagging / stability trends are comparable.
-Built once by `data/shadow_audit/build_eval_cohort.py`; this module reads it.
+The JSONL is the checked-in artifact; this module reads it.
 """
 
 from dataclasses import dataclass
