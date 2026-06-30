@@ -15,6 +15,29 @@ from evals.wiki.gate import (
 )
 
 
+def test_two_low_credibility_sources_do_not_corroborate():
+    # Two Medium-tier (LOW) articles echoing one specific claim must NOT count as
+    # corpus corroboration — all-low echoes stay single-source-attributed.
+    lane = route_lane(
+        independent_source_count=2,
+        max_credibility=Credibility.LOW,
+        is_specific=True,
+        is_speculative=False,
+    )
+    assert lane == Lane.SINGLE_SOURCE_ATTRIBUTED
+
+
+def test_two_sources_corroborate_when_one_is_at_least_medium():
+    # ≥2 independent sources corroborate only when the cluster carries a non-LOW source.
+    lane = route_lane(
+        independent_source_count=2,
+        max_credibility=Credibility.MEDIUM,
+        is_specific=True,
+        is_speculative=False,
+    )
+    assert lane == Lane.CORPUS_CORROBORATED
+
+
 def test_domain_credibility_high_for_allowlisted_primary_source():
     # arxiv is on the high-credibility allowlist — a single such source can admit.
     assert domain_credibility("arxiv.org") == Credibility.HIGH

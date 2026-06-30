@@ -72,7 +72,10 @@ def route_lane(
     # when corroborated — this is what blocks abstraction laundering (§7 #2).
     if not is_specific:
         return Lane.SINGLE_SOURCE_ATTRIBUTED
-    if independent_source_count >= 2:
+    # Corroboration needs ≥2 independent sources AND at least one that isn't LOW —
+    # two low-credibility echoes (the corpus's bulk case) are not corroboration,
+    # they stay single-source-attributed.
+    if independent_source_count >= 2 and max_credibility != Credibility.LOW:
         return Lane.CORPUS_CORROBORATED
     if max_credibility == Credibility.HIGH:
         return Lane.SINGLE_CREDIBLE
