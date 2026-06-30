@@ -6,6 +6,7 @@ by content_type via FetcherResource, extracted persists three extraction_calls
 rows + updates queue_items cohort fields, published flips Notion only when
 extraction is complete and reads core_mechanism via the latest topic_card row."""
 
+from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -14,8 +15,10 @@ import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from domains.queue_store import sources as queue_db
+from domains.types import IngestItem
 from orchestrators.defs.fetch_extract_queue.assets import (
     _coerce_author,
+    _ingest_item_from_row,
     comments_json_to_user_notes,
     extracted,
     fetched,
@@ -35,6 +38,43 @@ def test_coerce_author_normalizes_to_clean_string_or_none():
     assert _coerce_author(["Vaswani"]) == "Vaswani"
     assert _coerce_author(["A", "B"]) == "A, B"
     assert _coerce_author("Jane Doe") == "Jane Doe"
+
+
+def test_ingest_item_from_row_maps_queue_row_for_source_summary():
+    row = {
+        "notion_page_id": "p-1",
+        "url": "https://example.com/a?utm=1",
+        "canonical_url": "https://example.com/a",
+        "title": "A Title",
+        "author": "Jane Doe",
+        "content_date": "2026-03-15",
+        "raw_content": "body text",
+    }
+    item = _ingest_item_from_row(row)
+    assert isinstance(item, IngestItem)
+    assert item.item_id == "https://example.com/a"  # canonical_url — stable key
+    assert item.title == "A Title"
+    assert item.author == "Jane Doe"
+    assert item.date == date(2026, 3, 15)
+    assert item.text == "body text"
+    assert item.source_ref == "p-1"
+
+
+def test_ingest_item_from_row_tolerates_missing_metadata():
+    row = {
+        "notion_page_id": "p-2",
+        "url": "https://example.com/b",
+        "canonical_url": None,
+        "title": None,
+        "author": None,
+        "content_date": None,
+        "raw_content": "body",
+    }
+    item = _ingest_item_from_row(row)
+    assert item.item_id == "https://example.com/b"  # falls back to url
+    assert item.title == ""
+    assert item.author is None
+    assert item.date is None
 
 
 def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
@@ -679,3 +719,60 @@ def test_published_fails_when_no_row(tmp_path: Path):
             resources={"notion": notion, "store": store},
         )
     notion.update_status.assert_not_called()
+
+
+# -------- source_summary --------
+
+
+def test_source_summary_records_summary_and_passes_content_shape(tmp_path: Path):
+    from domains.wiki.source_summary import (
+        SourceClaim,
+        SourceSummary,
+        render_source_summary,
+    )
+    from orchestrators.defs.fetch_extract_queue.assets import source_summary as source_summary_asset
+    from workflows.llm import LLMCall
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(
+        db_path, "p-1", "YouTube", "body about Claude Code", content_shape="podcast_episode"
+    )
+    store = QueueStoreResource(db_path=str(db_path))
+
+    summary = SourceSummary(
+        item_id="https://example.com/x",
+        content_date=None,
+        claims=[
+            SourceClaim(text="A forecast.", source_id="https://example.com/x", speculative=True),
+        ],
+    )
+    captured = {}
+
+    def fake_summarize(item, *, content_shape=None):
+        captured["content_shape"] = content_shape
+        captured["item_id"] = item.item_id
+        return summary, LLMCall(content="x", model="gpt-4.1-mini", input_tokens=10, output_tokens=5)
+
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.summarize_source",
+        side_effect=fake_summarize,
+    ):
+        result = _materialize(source_summary_asset, partition_key="p-1", resources={"store": store})
+
+    assert result.success
+    assert captured["content_shape"] == "podcast_episode"
+    assert captured["item_id"] == "https://example.com/x"
+    assert store.get_source_summary("p-1") == render_source_summary(summary)
+
+
+def test_source_summary_skips_when_no_body(tmp_path: Path):
+    from orchestrators.defs.fetch_extract_queue.assets import source_summary as source_summary_asset
+
+    db_path = tmp_path / "q.db"
+    _seed_triaged(db_path, "p-1", "Article")  # triaged but never fetched → no raw_content
+    store = QueueStoreResource(db_path=str(db_path))
+    with patch("orchestrators.defs.fetch_extract_queue.assets.summarize_source") as mock_summarize:
+        result = _materialize(source_summary_asset, partition_key="p-1", resources={"store": store})
+    assert result.success
+    mock_summarize.assert_not_called()
+    assert store.get_source_summary("p-1") is None

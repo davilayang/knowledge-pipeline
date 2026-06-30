@@ -522,6 +522,59 @@ def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[s
     return latest
 
 
+def record_source_summary(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    output: str,
+    prompt_label: str,
+    prompt_sha256: str,
+    model: str,
+    tokens_in: int,
+    tokens_out: int,
+) -> None:
+    """Persist a per-source claim summary as a `source_summary`-kind
+    `extraction_calls` row. The wiki summary is an LLM extraction over the body,
+    so it is kept like every other extraction output: the rendered `output` plus
+    prompt provenance, INSERT-not-UPSERT (re-runs accumulate; `get_source_summary`
+    returns the latest), and FK-cascade-cleared with the cohort on re-triage."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO extraction_calls (
+                notion_page_id, call_kind, prompt_label, prompt_sha256,
+                schema_name, model, output, tokens_in, tokens_out, extracted_at
+            ) VALUES (?, 'source_summary', ?, ?, NULL, ?, ?, ?, ?, ?)
+            """,
+            (
+                notion_page_id,
+                prompt_label,
+                prompt_sha256,
+                model,
+                output,
+                tokens_in,
+                tokens_out,
+                _now_iso(),
+            ),
+        )
+
+
+def get_source_summary(*, db_path: Path, notion_page_id: str) -> str | None:
+    """The most-recent `source_summary` output for a page, or None if none is
+    recorded. Latest-wins, mirroring `get_latest_extraction_calls`."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT output FROM extraction_calls
+             WHERE notion_page_id = ? AND call_kind = 'source_summary'
+             ORDER BY extracted_at DESC, id DESC
+             LIMIT 1
+            """,
+            (notion_page_id,),
+        ).fetchone()
+    return row["output"] if row else None
+
+
 def mark_failed(
     *, db_path: Path, notion_page_id: str, error_text: str, url: str | None = None
 ) -> None:
