@@ -1,9 +1,14 @@
 import hashlib
 import json
 import textwrap
+from datetime import date
 from typing import Any
 
 import dagster as dg
+from domains.types import IngestItem
+from domains.wiki.source_summary import render_source_summary
+from workflows.wiki_synthesis.prompts import SOURCE_SUMMARY_SYSTEM
+from workflows.wiki_synthesis.source_writer import summarize_source
 
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
@@ -15,6 +20,9 @@ from .def_config import (
 from .resources import ExtractorRegistry, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
+
+# Per-prompt staleness handle for the source-summary extraction_calls rows.
+_SOURCE_SUMMARY_PROMPT_SHA = hashlib.sha256(SOURCE_SUMMARY_SYSTEM.encode()).hexdigest()
 
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500
@@ -38,6 +46,25 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
         return content
     omitted = len(content) - head - tail
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
+
+
+def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
+    """Build the IngestItem the source writer summarises from a fetched queue row.
+
+    `item_id` is the canonical URL (the content's stable identity), falling back
+    to the captured URL; title/author/content_date come from the persisted
+    fetcher metadata, and the body is `raw_content`. `content_shape` is read
+    separately by the asset (it is not an IngestItem field)."""
+    content_date = row.get("content_date")
+    return IngestItem(
+        item_id=row.get("canonical_url") or row["url"],
+        title=row.get("title") or "",
+        date=date.fromisoformat(content_date) if content_date else None,
+        text=row.get("raw_content") or "",
+        source_type="queue",
+        source_ref=row["notion_page_id"],
+        author=row.get("author"),
+    )
 
 
 def _coerce_author(authors: Any) -> str | None:
@@ -408,4 +435,55 @@ def published(
     )
 
 
-all_assets = [fetched, extracted, published]
+@dg.asset(
+    key=["fetch_extract_queue", "source_summary"],
+    group_name=GROUP_NAME,
+    kinds={"sqlite"},
+    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
+    partitions_def=queue_items_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    deps=[fetched],
+    description=_oneline(
+        """
+        Summarises the fetched body into per-source [fact]/[speculation] claims
+        (content-shape-aware) and records it as a source_summary extraction_calls
+        row — the attributed-lane wiki substrate. Skips when no body is fetched.
+        """
+    ),
+)
+def source_summary(
+    context: dg.AssetExecutionContext,
+    store: QueueStoreResource,
+) -> dg.MaterializeResult:
+    page_id = context.partition_key
+    row = store.get_row(page_id)
+    if not row or not row.get("raw_content"):
+        return dg.MaterializeResult(metadata={"summary_skipped": dg.MetadataValue.bool(True)})
+
+    item = _ingest_item_from_row(row)
+    content_shape = row.get("content_shape") or "unknown"
+    summary, call = summarize_source(item, content_shape=content_shape)
+    store.record_source_summary(
+        notion_page_id=page_id,
+        output=render_source_summary(summary),
+        prompt_label="source_summary_v1",
+        prompt_sha256=_SOURCE_SUMMARY_PROMPT_SHA,
+        model=call.model,
+        tokens_in=call.input_tokens,
+        tokens_out=call.output_tokens,
+    )
+    speculative = sum(c.speculative for c in summary.claims)
+    return dg.MaterializeResult(
+        metadata={
+            "item_id": dg.MetadataValue.text(item.item_id),
+            "content_shape": dg.MetadataValue.text(content_shape),
+            "claims": dg.MetadataValue.int(len(summary.claims)),
+            "speculation": dg.MetadataValue.int(speculative),
+            "summary": dg.MetadataValue.md(
+                f"**{len(summary.claims)} claims** ({speculative} speculation) — {content_shape}"
+            ),
+        }
+    )
+
+
+all_assets = [fetched, extracted, published, source_summary]

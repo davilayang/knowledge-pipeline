@@ -20,8 +20,10 @@ from domains.queue_store.sources import (
     get_latest_extraction_calls,
     get_queue_extraction,
     get_row,
+    get_source_summary,
     list_with_stale_extraction,
     record_extraction_calls,
+    record_source_summary,
     upsert_enriched,
     upsert_fetched,
     upsert_triaged,
@@ -861,3 +863,66 @@ def test_retriage_without_comments_wipes_user_comments_json(db_path: Path):
     )
     row = get_row(db_path=db_path, notion_page_id="p1")
     assert row["user_comments_json"] is None
+
+
+# --- source_summary (extraction_calls, call_kind="source_summary") ---
+
+
+def _seed_row(db_path: Path, page_id: str = "p-1") -> None:
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/a",
+        canonical_url="https://example.com/a",
+        content_type="Article",
+    )
+
+
+def test_get_source_summary_is_none_when_absent(db_path: Path):
+    _seed_row(db_path)
+    assert get_source_summary(db_path=db_path, notion_page_id="p-1") is None
+
+
+def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
+    _seed_row(db_path)
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [fact] First pass.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=100,
+        tokens_out=50,
+    )
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [fact] Newer pass.\n- [speculation] A forecast.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=120,
+        tokens_out=60,
+    )
+    # Latest-wins, mirroring get_latest_extraction_calls.
+    assert (
+        get_source_summary(db_path=db_path, notion_page_id="p-1")
+        == "- [fact] Newer pass.\n- [speculation] A forecast."
+    )
+
+
+def test_source_summary_cleared_on_re_triage(db_path: Path):
+    _seed_row(db_path)
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [fact] X.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    _seed_row(db_path)  # re-triage same page → cohort reset
+    assert get_source_summary(db_path=db_path, notion_page_id="p-1") is None
