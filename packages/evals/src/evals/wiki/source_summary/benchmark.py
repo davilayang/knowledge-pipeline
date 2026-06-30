@@ -101,17 +101,25 @@ def main() -> None:
     faith = FaithfulnessJudge(chat_fn=make_faithfulness_chat_fn())
     tag = TaggingJudge(chat_fn=make_tagging_chat_fn())
 
-    results = []
+    results: list[SourceResult] = []
+    errored: list[str] = []
     for fx in fixtures:
-        r = run_source(
-            fx, summarize_fn=summarize_source, faithfulness_judge=faith, tagging_judge=tag
-        )
+        try:
+            r = run_source(
+                fx, summarize_fn=summarize_source, faithfulness_judge=faith, tagging_judge=tag
+            )
+        except Exception as e:  # a flaky judge call shouldn't sink the whole run
+            errored.append(fx.id)
+            print(f"  {fx.content_shape:18} {fx.id:18} ERROR: {e}")
+            continue
         results.append(r)
         print(
             f"  {fx.content_shape:18} {fx.id:18} claims={r.n_claims:>3} "
             f"grounded={r.grounded_fraction:.0%} tagging={r.tagging_accuracy:.0%}"
         )
     print("\n" + format_report(aggregate(results)))
+    if errored:
+        print(f"\n{len(errored)} errored: {errored}")
 
 
 if __name__ == "__main__":
