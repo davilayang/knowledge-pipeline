@@ -113,3 +113,22 @@ Refresh when:
 - A new `content_type` ships in production extraction (e.g., podcast, book) → add 5 of the new type before promoting the prompts for it.
 - Score variance between v5 and v6 candidate runs is dominated by 1–2 fixtures → add diversity in that content_type to dilute the outlier.
 - Quarterly (whichever sooner), revisit topic diversity — the user's interests drift over time.
+
+## `source_summary_eval.jsonl`
+
+Pinned cohort for the source-summary producer eval (`evals.wiki.source_summary`).
+Header `schema_version=1`, `fixture_kind="source_summary"`; rows are
+`{id, content_shape, title, content_date, body}`. Loaded by
+`evals.wiki.source_summary.dataset.load_source_fixtures`.
+
+### v0 (2026-06-30) — bootstrap
+
+**12 sources, 2 per content shape** (tutorial / opinion_essay / conference_talk /
+podcast_episode / research_summary / unknown). Bodies are real fetched content:
+4 Medium articles, 2 conference-talk transcripts (YouTube auto-subs), 2 podcast
+transcripts, 2 arXiv abstracts. The set is deliberately small and shape-balanced
+so per-shape faithfulness / tagging / stability are comparable run-over-run;
+spoken shapes (talk/podcast) are where tag behaviour varies most.
+
+Assembled by gitignored `data/shadow_audit/build_eval_cohort.py` (provenance);
+the JSONL is the checked-in artifact.
