@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Fetched queue rows now record the article's title, author, and publication
+  date.** The `fetched` asset persists the fetcher's `title` / `author` /
+  `content_date` onto `queue_items` (three new columns) instead of only logging
+  them as run metadata — making a queue row self-sufficient for downstream source
+  summarisation (no raw_store join). Cleared on re-triage with the rest of the
+  cohort's fetch state.
+
 ---
 
 ## [0.26.5] — 2026-06-29

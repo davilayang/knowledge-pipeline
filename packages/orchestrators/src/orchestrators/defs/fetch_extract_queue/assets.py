@@ -1,6 +1,7 @@
 import hashlib
 import json
 import textwrap
+from typing import Any
 
 import dagster as dg
 
@@ -37,6 +38,16 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
         return content
     omitted = len(content) - head - tail
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
+
+
+def _coerce_author(authors: Any) -> str | None:
+    """Normalise the fetcher's `extras["authors"]` to a clean string or None for
+    the queue `author` column. A list joins on ", "; anything falsy (None, empty
+    list, empty string) becomes None so "no author" is consistently NULL, never
+    an empty string or `"[]"`."""
+    if isinstance(authors, list):
+        return ", ".join(str(a) for a in authors) or None
+    return str(authors) if authors else None
 
 
 def comments_json_to_user_notes(raw: str | None) -> str | None:
@@ -160,6 +171,9 @@ def fetched(
             },
         )
     content_hash = hashlib.sha256(result.content.encode()).hexdigest()
+    extras = result.extras or {}
+    author = _coerce_author(extras.get("authors"))
+    published = extras.get("published")
     store.upsert_fetched(
         notion_page_id=page_id,
         url=url,
@@ -168,9 +182,11 @@ def fetched(
         fetch_tier_log=result.tier_log,
         fetched_content_char_count=char_count,
         content_hash=content_hash,
+        title=result.title or None,
+        author=author,
+        content_date=str(published) if published else None,
     )
 
-    extras = result.extras or {}
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),
         "url": dg.MetadataValue.url(url),

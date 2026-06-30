@@ -392,6 +392,9 @@ class QueueStoreResource(dg.ConfigurableResource):
         fetch_tier_log: list[dict[str, Any]],
         fetched_content_char_count: int,
         content_hash: str,
+        title: str | None = None,
+        author: str | None = None,
+        content_date: str | None = None,
     ) -> None:
         queue_db.upsert_fetched(
             db_path=self._path(),
@@ -402,6 +405,9 @@ class QueueStoreResource(dg.ConfigurableResource):
             fetch_tier_log=fetch_tier_log,
             fetched_content_char_count=fetched_content_char_count,
             content_hash=content_hash,
+            title=title,
+            author=author,
+            content_date=content_date,
         )
 
     def record_extraction_calls(
