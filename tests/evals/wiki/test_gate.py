@@ -4,10 +4,10 @@ Built bottom-up: the deterministic credibility signal first, then the pure lane
 routing, then claim matching over an injected embedder, then the composed gate.
 """
 
+from domains.wiki.source_summary import SourceClaim
 from evals.wiki.gate import (
     Credibility,
     Lane,
-    SourceClaim,
     cluster_claims,
     domain_credibility,
     gate_claims,

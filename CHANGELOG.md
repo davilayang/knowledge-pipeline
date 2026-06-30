@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.26.5] — 2026-06-29
+
+### Added
+
+- **Per-source claim summaries (Layer 1.5) for the attributed-lane wiki.**
+  `summarize_source` (`workflows.wiki_synthesis.source_writer`) distils one
+  source into `[fact]`/`[speculation]`-tagged claims attributed to it — the
+  substrate the entity writer and confidence-lane gate read instead of raw
+  articles. Tagging is content-shape-aware (spoken sources bias the speaker's
+  forecasts/opinions to `[speculation]`) and runs at `temperature=0` to keep
+  summaries low-variance run-to-run. Types + parse/render/slug live in
+  `domains.wiki.source_summary`.
+
+---
+
 ## [0.26.4] — 2026-06-29
 
 ### Added

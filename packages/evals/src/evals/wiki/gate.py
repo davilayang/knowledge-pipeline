@@ -12,6 +12,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from enum import Enum
 
+from domains.wiki.source_summary import SourceClaim
+
 EmbedBatch = Callable[[list[str]], list[list[float]]]
 
 
@@ -75,17 +77,6 @@ def route_lane(
     if max_credibility == Credibility.HIGH:
         return Lane.SINGLE_CREDIBLE
     return Lane.SINGLE_SOURCE_ATTRIBUTED
-
-
-@dataclass(frozen=True)
-class SourceClaim:
-    """One atomic claim as asserted by ONE source summary. `source_id` is the
-    item_id of the source the claim came from; `speculative` carries the source
-    writer's `[speculation]` tag (prediction / opinion / unverified)."""
-
-    text: str
-    source_id: str
-    speculative: bool = False
 
 
 @dataclass(frozen=True)
