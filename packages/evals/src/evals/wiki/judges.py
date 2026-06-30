@@ -11,6 +11,8 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
+from domains.wiki.source_summary import SourceClaim
+
 from evals.wiki.prompts import load_prompt
 
 # High-signal numeric specifics only — money, percentages, 4-digit years. Bare
@@ -233,3 +235,63 @@ class SpecificityJudge:
             abstraction_penalty=len(raw.get("abstractions", [])),
             metadata={"raw": raw},
         )
+
+
+TAGGING_PROMPT = load_prompt("tagging_v1")
+
+
+@dataclass(frozen=True)
+class ClaimTagVerdict:
+    """One claim's tag-correctness: the producer's tag vs the judge's call."""
+
+    text: str
+    producer_tag: str  # "fact" | "speculation"
+    correct_tag: str  # the judge's verdict
+    agree: bool
+
+
+@dataclass(frozen=True)
+class TaggingScore:
+    verdicts: list[ClaimTagVerdict]
+    accuracy: float  # fraction of claims whose producer tag the judge upholds
+    metadata: dict = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class TaggingJudge:
+    """Judges whether each claim's [fact]/[speculation] tag is correct against the
+    source — the source_summary prompt's own rule (reported predictions and
+    embedded editorializing are speculation, not fact). `chat_fn` returns
+    `{"verdicts": [{"correct_tag": "fact"|"speculation"}, ...]}` in claim order."""
+
+    chat_fn: Callable[[str], dict]
+    prompt_template: str = TAGGING_PROMPT
+
+    def score(self, *, claims: Sequence[SourceClaim], source: str) -> TaggingScore:
+        if not claims:
+            return TaggingScore(verdicts=[], accuracy=1.0)
+        rendered = "\n".join(
+            f"{i + 1}. [{'speculation' if c.speculative else 'fact'}] {c.text}"
+            for i, c in enumerate(claims)
+        )
+        raw = self.chat_fn(self.prompt_template.format(claims=rendered, source=source))
+        verdicts_raw = raw.get("verdicts")
+        if not isinstance(verdicts_raw, list) or len(verdicts_raw) != len(claims):
+            raise ValueError(
+                f"tagging judge returned {len(verdicts_raw or [])} verdicts for "
+                f"{len(claims)} claims"
+            )
+        verdicts = []
+        for claim, v in zip(claims, verdicts_raw, strict=True):
+            producer_tag = "speculation" if claim.speculative else "fact"
+            correct = v["correct_tag"]
+            verdicts.append(
+                ClaimTagVerdict(
+                    text=claim.text,
+                    producer_tag=producer_tag,
+                    correct_tag=correct,
+                    agree=producer_tag == correct,
+                )
+            )
+        accuracy = sum(v.agree for v in verdicts) / len(verdicts)
+        return TaggingScore(verdicts=verdicts, accuracy=accuracy, metadata={"raw": raw})
