@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.27.0] — 2026-06-30
+
 ### Added
 
 - **Fetched queue rows now record the article's title, author, and publication
@@ -14,6 +18,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   them as run metadata — making a queue row self-sufficient for downstream source
   summarisation (no raw_store join). Cleared on re-triage with the rest of the
   cohort's fetch state.
+- **Per-source claim summaries produced at fetch time.** A new
+  `fetch_extract_queue/source_summary` asset distils each fetched body into
+  content-shape-aware `[fact]`/`[speculation]` claims (`summarize_source`) and
+  records them as a `source_summary` `extraction_calls` row — the attributed-lane
+  wiki substrate. Read via `domains.queue_store.get_source_summary`.
 
 ---
 
