@@ -1,0 +1,18 @@
+{"schema_version": 1, "fixture_kind": "tagging_gold", "comment": "v0 \u2014 art_22 opinion claims, hand-labelled. gold_tag is the careful label; producer mis-tagged claims 6/10/15 (editorializing as fact). NEEDS HUMAN REVIEW: fact/opinion is genuinely fuzzy on interpretive claims."}
+{"source_id": "art_22", "claim_text": "Docker was the dominant container tool for many years and was widely used for building and running containers.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "By 2025, Docker was found to have heavy runtime overhead that slowed down CI/CD pipelines.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Docker presented security challenges including issues with Docker socket, root access, and image vulnerabilities.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Docker Swarm failed to gain traction, and Kubernetes did not require Docker as a runtime.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Docker Desktop introduced pricing changes in 2021 that caused concern among many teams.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "The container ecosystem outgrew Docker, leading to its decline in usage by 2025.", "producer_tag": "fact", "gold_tag": "speculation"}
+{"source_id": "art_22", "claim_text": "Kubernetes moved away from Docker as the default container runtime years before 2025.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "containerd is a lightweight, purpose-built container runtime that most Kubernetes clusters use in 2025.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "For local development, many teams switched from Docker to Podman, which is Docker-compatible but runs rootless and without a daemon.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Podman offers safer builds, fewer permission issues, and less overhead compared to Docker.", "producer_tag": "fact", "gold_tag": "speculation"}
+{"source_id": "art_22", "claim_text": "CI/CD pipelines replaced `docker build` with Buildah for local builds and Kaniko for builds inside Kubernetes.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Buildah and Kaniko do not require Docker-in-Docker hacks and integrate well with cloud-native workflows.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Audits showed Docker builds and pushes consumed hours weekly, and switching to Podman plus Kaniko drastically reduced build times.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "The author and their team stopped using Docker in 2025 in favor of containerd, Podman, Buildah, and Kaniko.", "producer_tag": "fact", "gold_tag": "fact"}
+{"source_id": "art_22", "claim_text": "Docker was a great teaching tool and changed how developers ship software but by 2025 was considered \"training wheels\".", "producer_tag": "fact", "gold_tag": "speculation"}
+{"source_id": "art_22", "claim_text": "The future of containers is with containerd, Podman, and purpose-built tools that are faster, safer, and cloud-native from the ground up.", "producer_tag": "speculation", "gold_tag": "speculation"}
+{"source_id": "art_22", "claim_text": "Teams still using Docker should question if they need it in production, if their pipelines are slower than they should be, and if they are paying overhead and licensing costs unnecessarily.", "producer_tag": "speculation", "gold_tag": "speculation"}
