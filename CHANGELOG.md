@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.27.1] — 2026-07-01
+
 ### Changed
 
 - **Source-summary claim tags renamed `fact`/`speculation` → `reported`/`opinion`**
@@ -16,7 +20,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Human-labelled tagging gold + judge calibration** (`datasets/source_summary_tagging_gold.jsonl`).
+- **Source-summary eval harness** (`evals.wiki.source_summary` + `eval-source-summary` CLI):
+  pinned 12-source cohort, faithfulness scorer, `TaggingJudge`, benchmark, and
+  calibration against a human gold.
+- **Human-labelled tagging gold** (`datasets/source_summary_tagging_gold.jsonl`).
   60 claims, 6 content shapes, user-labelled. Producer 85% vs gold (exact; weak only
   on `unknown`-shape news, over-tagging unverified claims as `reported`); judge
   ~90% (88–98% across runs — noisy, anchored). Taxonomy in `packages/evals/datasets/README.md`.
