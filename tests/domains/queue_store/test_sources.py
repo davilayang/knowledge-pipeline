@@ -888,7 +888,7 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
     record_source_summary(
         db_path=db_path,
         notion_page_id="p-1",
-        output="- [fact] First pass.",
+        output="- [reported] First pass.",
         prompt_label="source_summary_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
@@ -898,7 +898,7 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
     record_source_summary(
         db_path=db_path,
         notion_page_id="p-1",
-        output="- [fact] Newer pass.\n- [speculation] A forecast.",
+        output="- [reported] Newer pass.\n- [opinion] A forecast.",
         prompt_label="source_summary_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
@@ -908,7 +908,7 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
     # Latest-wins, mirroring get_latest_extraction_calls.
     assert (
         get_source_summary(db_path=db_path, notion_page_id="p-1")
-        == "- [fact] Newer pass.\n- [speculation] A forecast."
+        == "- [reported] Newer pass.\n- [opinion] A forecast."
     )
 
 
@@ -920,7 +920,7 @@ def test_source_summary_coexists_with_topic_card_extraction(db_path: Path):
     record_source_summary(
         db_path=db_path,
         notion_page_id="p-1",
-        output="- [fact] A claim.",
+        output="- [reported] A claim.",
         prompt_label="source_summary_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
@@ -928,11 +928,11 @@ def test_source_summary_coexists_with_topic_card_extraction(db_path: Path):
         tokens_out=1,
     )
 
-    assert get_source_summary(db_path=db_path, notion_page_id="p-1") == "- [fact] A claim."
+    assert get_source_summary(db_path=db_path, notion_page_id="p-1") == "- [reported] A claim."
     latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
     assert "topic_card" in latest  # voice extraction untouched
-    assert latest["source_summary"]["output"] == "- [fact] A claim."
-    assert latest["topic_card"]["output"] != "- [fact] A claim."
+    assert latest["source_summary"]["output"] == "- [reported] A claim."
+    assert latest["topic_card"]["output"] != "- [reported] A claim."
 
 
 def test_source_summary_cleared_on_re_triage(db_path: Path):
@@ -940,7 +940,7 @@ def test_source_summary_cleared_on_re_triage(db_path: Path):
     record_source_summary(
         db_path=db_path,
         notion_page_id="p-1",
-        output="- [fact] X.",
+        output="- [reported] X.",
         prompt_label="source_summary_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",

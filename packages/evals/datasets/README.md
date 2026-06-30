@@ -113,3 +113,71 @@ Refresh when:
 - A new `content_type` ships in production extraction (e.g., podcast, book) → add 5 of the new type before promoting the prompts for it.
 - Score variance between v5 and v6 candidate runs is dominated by 1–2 fixtures → add diversity in that content_type to dilute the outlier.
 - Quarterly (whichever sooner), revisit topic diversity — the user's interests drift over time.
+
+## `source_summary_eval.jsonl`
+
+Pinned cohort for the source-summary producer eval (`evals.wiki.source_summary`).
+Header `schema_version=1`, `fixture_kind="source_summary"`; rows are
+`{id, content_shape, title, content_date, body}`. Loaded by
+`evals.wiki.source_summary.dataset.load_source_fixtures`.
+
+### v0 (2026-06-30) — bootstrap
+
+**12 sources, 2 per content shape** (tutorial / opinion_essay / conference_talk /
+podcast_episode / research_summary / unknown). Bodies are real fetched content:
+4 Medium articles, 2 conference-talk transcripts (YouTube auto-subs), 2 podcast
+transcripts, 2 arXiv abstracts. The set is deliberately small and shape-balanced
+so per-shape faithfulness / tagging / stability are comparable run-over-run;
+spoken shapes (talk/podcast) are where tag behaviour varies most.
+
+Assembled by gitignored `data/shadow_audit/build_eval_cohort.py` (provenance);
+the JSONL is the checked-in artifact.
+
+## `source_summary_tagging_gold.jsonl`
+
+Human-labelled gold for calibrating the **tagging** axis — does a claim's tag
+match the source? Each row is `{source_id, claim_text, producer_tag, gold_tag}`;
+`source_id` joins to a `source_summary_eval.jsonl` body. Loaded by
+`evals.wiki.source_summary.calibration.load_gold`.
+
+### The taxonomy — `reported` / `opinion`
+
+Each claim carries one of two tags. **These are about the source's *stance*, not
+truth:**
+
+- **`reported`** — the source presents it as an established, reported, or
+  measured happening: an event, a release, a number, an attributed quote, a
+  stated property. A `reported` claim is **not** asserted to be *true* — only
+  that the source states it as fact-shaped. (Truth-checking is a separate,
+  deferred verifier's job.)
+- **`opinion`** — the source's stance: a value-judgment, recommendation,
+  interpretation, forecast, or marketing claim. Reported predictions and
+  editorialising fused with judgment are `opinion`, even when phrased as fact.
+
+The producer emits these as `[reported]` / `[opinion]` markers on each claim
+line; the parser, judge, and gold all use the same two strings. **Naming note:**
+these tags were renamed from `fact` / `speculation` — "fact" wrongly implied
+*true* when it only ever meant *reported-as-established*. `reported`/`opinion`
+names the source's stance, which is what the attributed lane actually routes on.
+
+### v1 (2026-06-30) — human gold
+
+**60 claims, 10 per content shape** (the 6 shapes above), labelled claim-by-claim
+by the user against the source. Replaces a v0 17-claim Claude-labelled candidate
+(model-vs-model agreement, not ground truth — n=17, Wilson CI ~53–90%).
+
+Calibration against this gold (`data/shadow_audit/run_calibration_v1.py`, gitignored):
+
+| | vs human gold | per-shape weak spot |
+|---|---|---|
+| **Producer** (gpt-4.1-mini) | 85% (51/60), exact | `unknown` 50% — over-tags unverified news as `reported` |
+| **Judge** (gpt-4.1) | ~90% (88–98% across runs) | `unknown` 60–70% — over-calls `opinion` on reported news |
+
+The **producer number is the load-bearing one and is exact** — producer tags are
+frozen in the gold, so 51/60 is deterministic. Its only systematic error is
+one-directional: tagging unverified news / editorialising as `reported` on
+`unknown`-shape content. The **judge number is soft**: it swings ~88–98%
+run-to-run (LLM variance — a single run isn't precise to ±5pt and needs N-run
+averaging), and the judge sees the producer's tag while grading, so it's an
+anchored signal, not fully independent. Provenance: gitignored
+`data/shadow_audit/build_gold_review.py` (candidate) → user review.

@@ -1,7 +1,7 @@
 """Per-source summary writer (Layer 1.5).
 
 Reads one raw article and produces a SourceSummary — the article's specific
-claims, each tagged [fact]/[speculation] and attributed to the source. The
+claims, each tagged [reported]/[opinion] and attributed to the source. The
 entity writer reads these summaries (never the raw article) so the wiki can
 attribute a claim to a source rather than asserting it. The LLM call is a
 faithful-capture step; its claim-extraction quality is validated empirically,
@@ -22,7 +22,7 @@ SOURCE_SUMMARY_MODEL = "gpt-4.1-mini"
 
 # Spoken content shapes (triage taxonomy). A long transcript's claims are mostly
 # the speaker's opinions / forecasts; without this prior the model defaults most
-# of them to [fact] at extraction scale, so the prompt's tag rule under-fires.
+# of them to [reported] at extraction scale, so the prompt's tag rule under-fires.
 SPOKEN_SHAPES = frozenset({"conference_talk", "podcast_episode"})
 
 _SHAPE_DESC = {
@@ -32,14 +32,14 @@ _SHAPE_DESC = {
 
 
 def _shape_prime(content_shape: str | None) -> str:
-    """Leading prompt block that sets the [fact]/[speculation] prior for spoken
+    """Leading prompt block that sets the [reported]/[opinion] prior for spoken
     sources; empty for text shapes (article / paper), which need no prior."""
     if content_shape not in SPOKEN_SHAPES:
         return ""
     return (
         f"This source is {_SHAPE_DESC[content_shape]}, and may be auto-transcribed. "
         "Most of what the speaker says is opinion, prediction, vision, or "
-        "recommendation — tag those [speculation]. Reserve [fact] for concrete past "
+        "recommendation — tag those [opinion]. Reserve [reported] for concrete past "
         "events, releases, and measured numbers.\n\n"
     )
 
@@ -49,7 +49,7 @@ def summarize_source(
 ) -> tuple[SourceSummary, LLMCall]:
     """Summarise one source into a SourceSummary of tagged claims.
 
-    `content_shape` (triage taxonomy) primes the [fact]/[speculation] tagging for
+    `content_shape` (triage taxonomy) primes the [reported]/[opinion] tagging for
     spoken sources; None or a text shape leaves the prompt unprimed. A `NONE`
     response (no recordable claim) parses to zero claims — a valid outcome, not
     an error."""

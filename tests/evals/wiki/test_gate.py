@@ -138,7 +138,7 @@ def test_gate_claims_routes_corroborated_cluster_to_voice_safe():
 
 
 def test_gate_claims_speculative_tag_on_any_source_opens_the_cluster():
-    # One source states a prediction as fact, another tags it [speculation]; the
+    # One source states a prediction as reported, another tags it [opinion]; the
     # gate fails closed → the corroborated cluster lands in the open lane.
     claims = [
         SourceClaim(text="AGI arrives by 2027", source_id="s1", speculative=False),

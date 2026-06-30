@@ -1,7 +1,7 @@
 """Per-source summary layer (Layer 1.5) — structured claims from one source.
 
 The source_writer reads a raw article and emits a per-source summary: one
-markdown list item per claim, each prefixed with a `[fact]` or `[speculation]`
+markdown list item per claim, each prefixed with a `[reported]` or `[opinion]`
 tag. This module parses that body into `SourceClaim` records — the atomic unit
 the confidence-lane gate clusters and routes downstream. Pure + dependency-free
 (regex over the summary text): no LLM, no I/O.
@@ -14,16 +14,16 @@ from dataclasses import dataclass
 import yaml
 
 # A claim line is a markdown list bullet, a tag in square brackets, then the
-# claim text: `- [fact] Claude Code shipped subagents.`. Untagged lines
+# claim text: `- [reported] Claude Code shipped subagents.`. Untagged lines
 # (headings, prose, blanks) carry no claim and are skipped.
-_CLAIM_LINE = re.compile(r"^\s*[-*]\s*\[(?P<tag>fact|speculation)\]\s*(?P<text>.+?)\s*$")
+_CLAIM_LINE = re.compile(r"^\s*[-*]\s*\[(?P<tag>reported|opinion)\]\s*(?P<text>.+?)\s*$")
 
 
 @dataclass(frozen=True)
 class SourceClaim:
     """One atomic claim as asserted by ONE source summary. `source_id` is the
     item_id of the source the claim came from; `speculative` carries the source
-    writer's `[speculation]` tag (prediction / opinion / unverified)."""
+    writer's `[opinion]` tag (prediction / opinion / unverified)."""
 
     text: str
     source_id: str
@@ -45,7 +45,7 @@ class SourceSummary:
 def parse_source_summary(body: str, *, source_id: str) -> list[SourceClaim]:
     """Parse a source_writer summary body into SourceClaim records.
 
-    Each `[fact]`/`[speculation]`-tagged markdown list item becomes one claim:
+    Each `[reported]`/`[opinion]`-tagged markdown list item becomes one claim:
     the tag sets `speculative`, the trailing text is the claim, and `source_id`
     is stamped on every claim. Lines without a recognised tag are ignored."""
     claims: list[SourceClaim] = []
@@ -57,7 +57,7 @@ def parse_source_summary(body: str, *, source_id: str) -> list[SourceClaim]:
             SourceClaim(
                 text=match["text"],
                 source_id=source_id,
-                speculative=match["tag"] == "speculation",
+                speculative=match["tag"] == "opinion",
             )
         )
     return claims
@@ -74,7 +74,7 @@ def source_file_slug(item_id: str) -> str:
 
 def render_source_summary(summary: SourceSummary) -> str:
     """Render a SourceSummary to the on-disk `wiki/sources/<slug>.md` format —
-    YAML frontmatter (`item_id`, `content_date`) above a `[fact]`/`[speculation]`
+    YAML frontmatter (`item_id`, `content_date`) above a `[reported]`/`[opinion]`
     tagged bullet per claim. Inverse of `parse_source_summary_doc`.
 
     Every claim must belong to this source: render drops per-claim `source_id`
@@ -92,7 +92,7 @@ def render_source_summary(summary: SourceSummary) -> str:
         sort_keys=False,
     ).rstrip()
     bullets = "\n".join(
-        f"- [{'speculation' if c.speculative else 'fact'}] {c.text}" for c in summary.claims
+        f"- [{'opinion' if c.speculative else 'reported'}] {c.text}" for c in summary.claims
     )
     return f"---\n{frontmatter}\n---\n\n{bullets}\n"
 

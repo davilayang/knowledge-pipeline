@@ -7,6 +7,7 @@ An optional `calls_sink` collects each `LLMCall` so the benchmark can persist co
 """
 
 from collections.abc import Callable
+from typing import Literal
 
 from pydantic import BaseModel
 from workflows.llm import LLMCall, generate_structured_with_usage
@@ -55,6 +56,15 @@ class RelevancePassagesModel(BaseModel):
     passages: list[_PassageModel]
 
 
+class _TagVerdictModel(BaseModel):
+    claim_number: int
+    correct_tag: Literal["reported", "opinion"]
+
+
+class TaggingVerdictsModel(BaseModel):
+    verdicts: list[_TagVerdictModel]
+
+
 def _make_chat_fn(
     schema: type[BaseModel], model: str, calls_sink: list[LLMCall] | None
 ) -> Callable[[str], dict]:
@@ -86,3 +96,10 @@ def make_relevance_chat_fn(
 ) -> Callable[[str], dict]:
     """Build the relevance judge's `chat_fn` over structured LLM output."""
     return _make_chat_fn(RelevancePassagesModel, model, calls_sink)
+
+
+def make_tagging_chat_fn(
+    *, model: str = JUDGE_MODEL, calls_sink: list[LLMCall] | None = None
+) -> Callable[[str], dict]:
+    """Build the tagging judge's `chat_fn` over structured LLM output."""
+    return _make_chat_fn(TaggingVerdictsModel, model, calls_sink)

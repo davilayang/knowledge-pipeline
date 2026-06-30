@@ -32,7 +32,6 @@ packages/evals/
 │   ├── retrieval/                # ✅ active retrieval eval harness
 │   │   ├── types.py              # EvalPair, EvalConfig, SourceMetrics, EvalRunResult
 │   │   ├── dataset.py            # load_eval_set, group_by_source (strict JSONL parse)
-│   │   ├── embedder.py           # Embedder Protocol + OpenAIEmbedder + Fake
 │   │   ├── cache.py              # disk-backed embedding cache
 │   │   ├── metrics.py            # hit_at_k / mrr_at_k / ndcg_at_k
 │   │   ├── runner.py             # index → query → metrics orchestration
@@ -43,12 +42,17 @@ packages/evals/
 │   │   ├── workbench.py          # notebook-friendly run helpers
 │   │   ├── benchmark.py          # eval-extraction CLI entry point
 │   │   └── scorers.py            # per-field scoring logic
-│   └── wiki/                     # ✅ active wiki page-quality judges
-│       ├── judges.py             # FaithfulnessJudge, SpecificityJudge (injected chat_fn)
+│   └── wiki/                     # ✅ active wiki page-quality judges + source-summary harness
+│       ├── judges.py             # FaithfulnessJudge, SpecificityJudge, TaggingJudge (injected chat_fn)
 │       ├── chat.py               # production chat_fn builders (workflows.llm)
 │       ├── prompts.py            # prompt loader (KP_PROMPTS_ROOT / eval/)
 │       ├── calibrate.py          # calibration helpers
-│       └── gate.py               # offline confidence-lane admission gate (claim matching + lanes)
+│       ├── gate.py               # offline confidence-lane admission gate (claim matching + lanes)
+│       └── source_summary/       # source-summary producer eval (faithfulness + tagging + calibration)
+│           ├── dataset.py        # load_source_fixtures (source_summary_eval.jsonl)
+│           ├── faithfulness.py   # grounded_fraction scorer (per-claim faithfulness)
+│           ├── calibration.py    # TaggingJudge calibration against human gold
+│           └── benchmark.py      # eval-source-summary CLI entry point
 └── pyproject.toml
 ```
 
@@ -75,8 +79,22 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
 | `evals.extraction` | ✅ active | Topic Card field scoring with variant comparison + per-content-type stratification. Composes `workflows.extraction.ThreeCallOpenAIExtractor` via injected callables. | `uv run eval-extraction` |
-| `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding) and `SpecificityJudge` (numeric/date/name/quote recall). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`): clusters claims by embedding agreement, routes each cluster into a `Lane` via `Credibility` tier + specificity floor; injected `embed_batch` + specificity predicate, no LLM/HTTP dep. | (imported by harnesses; no standalone CLI) |
+| `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding), `SpecificityJudge` (numeric/date/name/quote recall), `TaggingJudge` (reported/opinion tag correctness). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`). | (imported by harnesses; no standalone CLI) |
+| `evals.wiki.source_summary` | ✅ active | Source-summary producer eval — faithfulness (grounded_fraction per claim), tagging accuracy, and claim volume aggregated per content shape. TaggingJudge calibration against 60-claim human gold (`calibration.py`). | `uv run eval-source-summary` |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |
+
+## Claim taxonomy — `reported` vs `opinion`
+
+The `source_summary` producer tags every extracted claim as one of two types, and the tagging judge grades that tag. The tag is a label on the **kind of assertion**, not on its truth — the corpus is low-credibility, so world-truth is never asserted; the claim stays attributed to its source either way.
+
+- **`reported`** — the source states a checkable happening or state of affairs: a named event, a release, a number, a measured result, an attributed quote, a technical property. *Reported ≠ verified true* — a report can be wrong; the tag only records that the source presents it as fact-shaped and checkable. Stays `reported` even if only one source says it.
+- **`opinion`** — the source's own stance: a value-judgment, recommendation, interpretation, forecast/prediction, marketing pitch, or superlative. Look *through* reported speech — "X believes Y", "X predicts Y", "X frames Z as…" → grade the embedded stance, which is `opinion`.
+
+**The single test:** *could this, in principle, be checked against the world independent of anyone's taste?* — yes → `reported`, no → `opinion`.
+
+Three independent axes, easy to conflate: (1) **faithfulness** — is the claim actually in the source; (2) **this tag** — `reported` vs `opinion` *type*; (3) **world-truth** — not assessed in this pipeline. A claim can be faithful + `reported` + false all at once.
+
+The harness uses `reported`/`opinion` across the prompts (`prompts/eval/tagging_v1.md`, `prompts/wiki/source_summary_system_v1.md`), the tagging judge, and the gold dataset. The only retained legacy name is the internal `SourceClaim.speculative` bool (`speculative=True` ⟺ `opinion`), kept to bound rename churn. Calibration against the 60-claim human gold: producer 85% (51/60, exact — producer tags are frozen in the gold); judge ~90% (88–98% across runs — LLM variance, and the judge sees the producer's tag while grading, so it's anchored). The rename was made for naming clarity, not a measured judge gain. See `packages/evals/datasets/README.md` for the per-shape breakdown. Canonical decision + worked examples: [Knowledge OS — Decisions: claim tag taxonomy](https://app.notion.com/p/38fd130d61318176bc97f7949db84843).
 
 ## Substrate primitives + composition patterns
 

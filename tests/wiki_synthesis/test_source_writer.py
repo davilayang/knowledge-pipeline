@@ -36,8 +36,8 @@ def _call(content: str) -> LLMCall:
 
 def test_stamps_item_id_and_content_date_and_parses_tagged_claims():
     llm_output = (
-        "- [fact] Claude Code shipped subagents in March 2026.\n"
-        "- [speculation] Agentic orchestration will replace most RAG by 2027.\n"
+        "- [reported] Claude Code shipped subagents in March 2026.\n"
+        "- [opinion] Agentic orchestration will replace most RAG by 2027.\n"
     )
 
     with patch(
@@ -80,7 +80,7 @@ def test_spoken_content_shape_primes_the_prompt():
 
     def fake(prompt, *, system, model, temperature):
         captured["prompt"] = prompt
-        return _call("- [speculation] The speaker predicts X.")
+        return _call("- [opinion] The speaker predicts X.")
 
     with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
         summarize_source(_item(), content_shape="podcast_episode")
@@ -94,7 +94,7 @@ def test_text_content_shape_does_not_prime():
 
     def fake(prompt, *, system, model, temperature):
         captured["prompt"] = prompt
-        return _call("- [fact] X shipped.")
+        return _call("- [reported] X shipped.")
 
     with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
         summarize_source(_item(), content_shape="opinion_essay")

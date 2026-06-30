@@ -221,5 +221,6 @@ shouldn't look like an infrastructure failure to Dagster.
 | File | Role |
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
+| `source_writer.py` | `summarize_source` — runs the source-summary LLM call (gpt-4.1-mini, temperature=0) and returns a `SourceSummary` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |

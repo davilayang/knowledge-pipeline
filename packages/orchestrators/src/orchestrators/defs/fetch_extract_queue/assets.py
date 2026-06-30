@@ -451,7 +451,7 @@ def published(
     deps=[fetched],
     description=_oneline(
         """
-        Summarises the fetched body into per-source [fact]/[speculation] claims
+        Summarises the fetched body into per-source [reported]/[opinion] claims
         (content-shape-aware) and records it as a source_summary extraction_calls
         row — the attributed-lane wiki substrate. Skips when no body is fetched.
         """
@@ -478,15 +478,15 @@ def source_summary(
         tokens_in=call.input_tokens,
         tokens_out=call.output_tokens,
     )
-    speculative = sum(c.speculative for c in summary.claims)
+    opinion = sum(c.speculative for c in summary.claims)
     return dg.MaterializeResult(
         metadata={
             "item_id": dg.MetadataValue.text(item.item_id),
             "content_shape": dg.MetadataValue.text(content_shape),
             "claims": dg.MetadataValue.int(len(summary.claims)),
-            "speculation": dg.MetadataValue.int(speculative),
+            "opinion": dg.MetadataValue.int(opinion),
             "summary": dg.MetadataValue.md(
-                f"**{len(summary.claims)} claims** ({speculative} speculation) — {content_shape}"
+                f"**{len(summary.claims)} claims** ({opinion} opinion) — {content_shape}"
             ),
         }
     )
