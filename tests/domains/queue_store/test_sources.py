@@ -912,6 +912,29 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
     )
 
 
+def test_source_summary_coexists_with_topic_card_extraction(db_path: Path):
+    # source_summary shares the extraction_calls table with the 3-call extraction
+    # but a distinct call_kind — neither read clobbers the other.
+    _seed_row(db_path)
+    _record_three_call(db_path, page_id="p-1")  # narrative / topic_card / followups
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [fact] A claim.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+
+    assert get_source_summary(db_path=db_path, notion_page_id="p-1") == "- [fact] A claim."
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
+    assert "topic_card" in latest  # voice extraction untouched
+    assert latest["source_summary"]["output"] == "- [fact] A claim."
+    assert latest["topic_card"]["output"] != "- [fact] A claim."
+
+
 def test_source_summary_cleared_on_re_triage(db_path: Path):
     _seed_row(db_path)
     record_source_summary(

@@ -54,7 +54,13 @@ def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
     `item_id` is the canonical URL (the content's stable identity), falling back
     to the captured URL; title/author/content_date come from the persisted
     fetcher metadata, and the body is `raw_content`. `content_shape` is read
-    separately by the asset (it is not an IngestItem field)."""
+    separately by the asset (it is not an IngestItem field).
+
+    Note the key choice: source summaries are keyed by `canonical_url`, not the
+    raw_store `<source>::<url>` content_id used by the older wiki ingest path.
+    The attributed-lane entity writer reads source summaries (this pipeline's
+    output), so it aligns on `canonical_url` — the two paths are not reconciled
+    by item_id."""
     content_date = row.get("content_date")
     return IngestItem(
         item_id=row.get("canonical_url") or row["url"],
