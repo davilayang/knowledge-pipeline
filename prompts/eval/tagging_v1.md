@@ -31,8 +31,9 @@ Grade what the SOURCE supports, not whether the claim is true in the world.
 
 {claims}
 
-Return ONLY a JSON object with a `verdicts` array — one entry per claim, in the
-SAME ORDER and SAME COUNT as the numbered claims above, each giving the correct
-tag:
+Return ONLY a JSON object with a `verdicts` array — exactly one entry per
+numbered claim above, each giving that claim's `claim_number` and the correct
+tag. Include every claim number from 1 to the last, and do not invent extra
+numbers:
 
-{{"verdicts": [{{"correct_tag": "fact"}}, {{"correct_tag": "speculation"}}]}}
+{{"verdicts": [{{"claim_number": 1, "correct_tag": "fact"}}, {{"claim_number": 2, "correct_tag": "speculation"}}]}}

@@ -262,7 +262,10 @@ class TaggingJudge:
     """Judges whether each claim's [fact]/[speculation] tag is correct against the
     source — the source_summary prompt's own rule (reported predictions and
     embedded editorializing are speculation, not fact). `chat_fn` returns
-    `{"verdicts": [{"correct_tag": "fact"|"speculation"}, ...]}` in claim order."""
+    `{"verdicts": [{"claim_number": 1, "correct_tag": "fact"|"speculation"}, ...]}`.
+    Verdicts are keyed by 1-based claim number, so the LLM returning extra or
+    duplicate verdicts (a frequent off-by-one on long claim lists) is tolerated;
+    a claim with no verdict still raises."""
 
     chat_fn: Callable[[str], dict]
     prompt_template: str = TAGGING_PROMPT
@@ -276,15 +279,17 @@ class TaggingJudge:
         )
         raw = self.chat_fn(self.prompt_template.format(claims=rendered, source=source))
         verdicts_raw = raw.get("verdicts")
-        if not isinstance(verdicts_raw, list) or len(verdicts_raw) != len(claims):
-            raise ValueError(
-                f"tagging judge returned {len(verdicts_raw or [])} verdicts for "
-                f"{len(claims)} claims"
-            )
+        if not isinstance(verdicts_raw, list):
+            raise ValueError(f"tagging judge returned no 'verdicts' array (keys: {sorted(raw)})")
+        # Key by claim number; out-of-range verdicts are ignored, duplicates last-wins.
+        by_number = {v["claim_number"]: v["correct_tag"] for v in verdicts_raw}
+        missing = [i for i in range(1, len(claims) + 1) if i not in by_number]
+        if missing:
+            raise ValueError(f"tagging judge missing verdicts for claim numbers {missing}")
         verdicts = []
-        for claim, v in zip(claims, verdicts_raw, strict=True):
+        for i, claim in enumerate(claims, start=1):
             producer_tag = "speculation" if claim.speculative else "fact"
-            correct = v["correct_tag"]
+            correct = by_number[i]
             verdicts.append(
                 ClaimTagVerdict(
                     text=claim.text,
