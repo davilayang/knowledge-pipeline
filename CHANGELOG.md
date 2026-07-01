@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.27.3] — 2026-07-01
+
+### Changed
+
+- **Source summariser tags the author's analytical framing as `[opinion]`.** A
+  third "hides as reported" trap (`prompts/wiki/source_summary_system_v1.md`)
+  covers strategic interpretation, risk/threat assessment, and stated intents
+  ("aims/expects to …") — so news/commentary analysis is attributed, not recorded
+  as fact.
+
+---
+
 ## [0.27.2] — 2026-07-01
 
 ### Changed
