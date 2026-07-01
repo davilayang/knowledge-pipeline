@@ -40,7 +40,7 @@ def test_coerce_author_normalizes_to_clean_string_or_none():
     assert _coerce_author("Jane Doe") == "Jane Doe"
 
 
-def test_ingest_item_from_row_maps_queue_row_for_source_summary():
+def test_ingest_item_from_row_maps_queue_row_for_extract_claims():
     row = {
         "notion_page_id": "p-1",
         "url": "https://example.com/a?utm=1",
@@ -304,7 +304,7 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     assert metadata["title"].text == "Attention Is All You Need"
 
     # The fetcher metadata is persisted on the queue row (self-sufficient for
-    # source summarisation — no raw_store join).
+    # claim extraction — no raw_store join).
     row = store.get_row("p-1")
     assert row["title"] == "Attention Is All You Need"
     assert row["author"] == "Vaswani"
@@ -721,16 +721,16 @@ def test_published_fails_when_no_row(tmp_path: Path):
     notion.update_status.assert_not_called()
 
 
-# -------- source_summary --------
+# -------- extract_claims --------
 
 
-def test_source_summary_records_summary_and_passes_content_shape(tmp_path: Path):
-    from domains.wiki.source_summary import (
+def test_extract_claims_records_summary_and_passes_content_shape(tmp_path: Path):
+    from domains.wiki.claims import (
+        ClaimSet,
         SourceClaim,
-        SourceSummary,
-        render_source_summary,
+        render_claims,
     )
-    from orchestrators.defs.fetch_extract_queue.assets import source_summary as source_summary_asset
+    from orchestrators.defs.fetch_extract_queue.assets import extract_claims as extract_claims_asset
     from workflows.llm import LLMCall
 
     db_path = tmp_path / "q.db"
@@ -739,7 +739,7 @@ def test_source_summary_records_summary_and_passes_content_shape(tmp_path: Path)
     )
     store = QueueStoreResource(db_path=str(db_path))
 
-    summary = SourceSummary(
+    summary = ClaimSet(
         item_id="https://example.com/x",
         content_date=None,
         claims=[
@@ -754,25 +754,27 @@ def test_source_summary_records_summary_and_passes_content_shape(tmp_path: Path)
         return summary, LLMCall(content="x", model="gpt-4.1-mini", input_tokens=10, output_tokens=5)
 
     with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.summarize_source",
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_claims",
         side_effect=fake_summarize,
     ):
-        result = _materialize(source_summary_asset, partition_key="p-1", resources={"store": store})
+        result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
 
     assert result.success
     assert captured["content_shape"] == "podcast_episode"
     assert captured["item_id"] == "https://example.com/x"
-    assert store.get_source_summary("p-1") == render_source_summary(summary)
+    assert store.get_claims("p-1") == render_claims(summary)
 
 
-def test_source_summary_skips_when_no_body(tmp_path: Path):
-    from orchestrators.defs.fetch_extract_queue.assets import source_summary as source_summary_asset
+def test_extract_claims_skips_when_no_body(tmp_path: Path):
+    from orchestrators.defs.fetch_extract_queue.assets import extract_claims as extract_claims_asset
 
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "Article")  # triaged but never fetched → no raw_content
     store = QueueStoreResource(db_path=str(db_path))
-    with patch("orchestrators.defs.fetch_extract_queue.assets.summarize_source") as mock_summarize:
-        result = _materialize(source_summary_asset, partition_key="p-1", resources={"store": store})
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_claims"
+    ) as mock_summarize:
+        result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
     assert result.success
     mock_summarize.assert_not_called()
-    assert store.get_source_summary("p-1") is None
+    assert store.get_claims("p-1") is None

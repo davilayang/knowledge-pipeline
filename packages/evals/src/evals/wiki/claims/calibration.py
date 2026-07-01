@@ -11,11 +11,11 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from domains.wiki.source_summary import SourceClaim
+from domains.wiki.claims import SourceClaim
 
 from evals.core.fixtures import load_fixtures
 
-GOLD_PATH = Path(__file__).resolve().parents[4] / "datasets" / "source_summary_tagging_gold.jsonl"
+GOLD_PATH = Path(__file__).resolve().parents[4] / "datasets" / "extract_claims_tagging_gold.jsonl"
 SCHEMA_VERSION = 1
 
 

@@ -10,8 +10,8 @@ surface with fakes.
 
 from datetime import UTC, datetime
 
+from domains.wiki.claims import ClaimSet, SourceClaim
 from domains.wiki.identity import Candidate, EntityRecord, normalize_name, slugify
-from domains.wiki.source_summary import SourceClaim, SourceSummary
 from domains.wiki.state import connection, insert_entity
 from workflows.wiki_synthesis.entity_assignment import assign_summary, group_by_entity, match_claim
 
@@ -39,7 +39,7 @@ def _seed_entity(db_path, name: str, *, page_type: str = "concept") -> str:
 
 
 def _extract_returning(*candidate_names: str):
-    """A fake extract_fn: whatever entities the summariser 'found' in the claims,
+    """A fake extract_fn: whatever entities the extractor 'found' in the claims,
     as plain Candidates (no matched_id — resolution decides reuse vs mint)."""
 
     def _extract(item):
@@ -51,8 +51,8 @@ def _extract_returning(*candidate_names: str):
     return _extract
 
 
-def _summary(item_id: str, *claims: SourceClaim) -> SourceSummary:
-    return SourceSummary(item_id=item_id, content_date="2026-03-01", claims=list(claims))
+def _summary(item_id: str, *claims: SourceClaim) -> ClaimSet:
+    return ClaimSet(item_id=item_id, content_date="2026-03-01", claims=list(claims))
 
 
 def test_match_claim_hits_entity_by_surface_form():

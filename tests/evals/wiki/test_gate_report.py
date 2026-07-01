@@ -1,12 +1,12 @@
 """Gate diagnostic — read source summaries, gate them, report lane distribution.
 Pure adapters + aggregation TDD'd; the real corpus run is empirical."""
 
-from evals.wiki.gate import Credibility, Lane
-from evals.wiki.source_summary.gate_report import (
+from evals.wiki.claims.gate_report import (
     build_gate_report,
     credibility_of,
     is_specific,
 )
+from evals.wiki.gate import Credibility, Lane
 
 
 def test_credibility_of_maps_url_to_domain_tier():

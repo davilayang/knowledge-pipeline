@@ -16,15 +16,15 @@ from domains.queue_store.sources import (
     checkpoint_wal,
     create_schema,
     find_canonical_url_duplicate,
-    get_all_source_summaries,
+    get_all_claims,
+    get_claims,
     get_content_shape,
     get_latest_extraction_calls,
     get_queue_extraction,
     get_row,
-    get_source_summary,
     list_with_stale_extraction,
+    record_claims,
     record_extraction_calls,
-    record_source_summary,
     upsert_enriched,
     upsert_fetched,
     upsert_triaged,
@@ -271,7 +271,7 @@ def test_upsert_fetched_inserts_new_row(db_path: Path):
 
 def test_upsert_fetched_persists_title_author_content_date(db_path: Path):
     # The fetcher returns title/author/content_date; persisting them on the queue
-    # row makes it self-sufficient for source summarisation (no raw_store join).
+    # row makes it self-sufficient for claim extraction (no raw_store join).
     upsert_fetched(
         db_path=db_path,
         notion_page_id="p-meta",
@@ -866,7 +866,7 @@ def test_retriage_without_comments_wipes_user_comments_json(db_path: Path):
     assert row["user_comments_json"] is None
 
 
-# --- source_summary (extraction_calls, call_kind="source_summary") ---
+# --- extract_claims (extraction_calls, call_kind="extract_claims") ---
 
 
 def _seed_row(db_path: Path, page_id: str = "p-1") -> None:
@@ -879,28 +879,28 @@ def _seed_row(db_path: Path, page_id: str = "p-1") -> None:
     )
 
 
-def test_get_source_summary_is_none_when_absent(db_path: Path):
+def test_get_claims_is_none_when_absent(db_path: Path):
     _seed_row(db_path)
-    assert get_source_summary(db_path=db_path, notion_page_id="p-1") is None
+    assert get_claims(db_path=db_path, notion_page_id="p-1") is None
 
 
-def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
+def test_record_and_get_claims_returns_latest_output(db_path: Path):
     _seed_row(db_path)
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] First pass.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=100,
         tokens_out=50,
     )
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] Newer pass.\n- [opinion] A forecast.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=120,
@@ -908,40 +908,40 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
     )
     # Latest-wins, mirroring get_latest_extraction_calls.
     assert (
-        get_source_summary(db_path=db_path, notion_page_id="p-1")
+        get_claims(db_path=db_path, notion_page_id="p-1")
         == "- [reported] Newer pass.\n- [opinion] A forecast."
     )
 
 
-def test_get_all_source_summaries_returns_latest_per_page(db_path: Path):
+def test_get_all_claims_returns_latest_per_page(db_path: Path):
     # The attributed-lane consumer reads every source's latest summary in one pass.
     _seed_row(db_path, page_id="p-1")
     _seed_row(db_path, page_id="p-2")
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] Old p1.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=1,
         tokens_out=1,
     )
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] New p1.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=1,
         tokens_out=1,
     )
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-2",
         output="- [opinion] Only p2.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=1,
@@ -949,46 +949,46 @@ def test_get_all_source_summaries_returns_latest_per_page(db_path: Path):
     )
 
     # Latest-wins per page; deterministic order by notion_page_id.
-    assert get_all_source_summaries(db_path=db_path) == [
+    assert get_all_claims(db_path=db_path) == [
         ("p-1", "- [reported] New p1."),
         ("p-2", "- [opinion] Only p2."),
     ]
 
 
-def test_source_summary_coexists_with_topic_card_extraction(db_path: Path):
-    # source_summary shares the extraction_calls table with the 3-call extraction
+def test_extract_claims_coexists_with_topic_card_extraction(db_path: Path):
+    # extract_claims shares the extraction_calls table with the 3-call extraction
     # but a distinct call_kind — neither read clobbers the other.
     _seed_row(db_path)
     _record_three_call(db_path, page_id="p-1")  # narrative / topic_card / followups
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] A claim.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=1,
         tokens_out=1,
     )
 
-    assert get_source_summary(db_path=db_path, notion_page_id="p-1") == "- [reported] A claim."
+    assert get_claims(db_path=db_path, notion_page_id="p-1") == "- [reported] A claim."
     latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
     assert "topic_card" in latest  # voice extraction untouched
-    assert latest["source_summary"]["output"] == "- [reported] A claim."
+    assert latest["extract_claims"]["output"] == "- [reported] A claim."
     assert latest["topic_card"]["output"] != "- [reported] A claim."
 
 
-def test_source_summary_cleared_on_re_triage(db_path: Path):
+def test_extract_claims_cleared_on_re_triage(db_path: Path):
     _seed_row(db_path)
-    record_source_summary(
+    record_claims(
         db_path=db_path,
         notion_page_id="p-1",
         output="- [reported] X.",
-        prompt_label="source_summary_system_v1",
+        prompt_label="extract_claims_system_v1",
         prompt_sha256="a" * 64,
         model="gpt-4.1-mini",
         tokens_in=1,
         tokens_out=1,
     )
     _seed_row(db_path)  # re-triage same page → cohort reset
-    assert get_source_summary(db_path=db_path, notion_page_id="p-1") is None
+    assert get_claims(db_path=db_path, notion_page_id="p-1") is None

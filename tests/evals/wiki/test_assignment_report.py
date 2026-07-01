@@ -1,13 +1,13 @@
 """Assignment diagnostic — aggregate entity-assignment coverage over the
-source-summary corpus, so Slice 2's behaviour on the real corpus is visible
+extract-claims corpus, so Slice 2's behaviour on the real corpus is visible
 (how many claims get an entity, how many entities are salient vs co-mentions,
 which claims orphan) before attributed pages are built in Slice 3."""
 
 from datetime import UTC, datetime
 
+from domains.wiki.claims import ClaimSet, SourceClaim, render_claims
 from domains.wiki.identity import EntityRecord
-from domains.wiki.source_summary import SourceClaim, SourceSummary, render_source_summary
-from evals.wiki.source_summary.assignment_report import (
+from evals.wiki.claims.assignment_report import (
     build_assignment_report,
     render_assignment_report,
 )
@@ -33,7 +33,7 @@ def test_report_counts_coverage_and_salience():
         SourceClaim(text="Anthropic released Claude.", source_id=sid),
         SourceClaim(text="It was widely discussed.", source_id=sid),
     ]
-    summary = SourceSummary(item_id=sid, content_date="2026-03-01", claims=claims)
+    summary = ClaimSet(item_id=sid, content_date="2026-03-01", claims=claims)
     ent = _entity("e_1", "Anthropic")
     assignment = SummaryAssignment(
         item_id=sid,
@@ -46,7 +46,7 @@ def test_report_counts_coverage_and_salience():
         salient_entity_ids=frozenset({"e_1"}),
     )
 
-    doc = render_source_summary(summary)
+    doc = render_claims(summary)
     report = build_assignment_report([(sid, doc)], assign=lambda _s: assignment)
 
     assert report.n_summaries == 1

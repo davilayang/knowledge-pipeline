@@ -1,6 +1,6 @@
-"""Per-source summary writer (Layer 1.5).
+"""Per-source claim extractor (Layer 1.5).
 
-Reads one raw article and produces a SourceSummary — the article's specific
+Reads one raw article and produces a ClaimSet — the article's specific
 claims, each tagged [reported]/[opinion] and attributed to the source. The
 entity writer reads these summaries (never the raw article) so the wiki can
 attribute a claim to a source rather than asserting it. The LLM call is a
@@ -11,14 +11,14 @@ while the wiring below (item_id / date stamping, claim parsing) is unit-tested.
 import logging
 
 from domains.types import IngestItem
-from domains.wiki.source_summary import SourceSummary, parse_source_summary
+from domains.wiki.claims import ClaimSet, parse_claims
 
 from workflows.llm import LLMCall, generate_with_usage
-from workflows.wiki_synthesis.prompts import SOURCE_SUMMARY_SYSTEM, SOURCE_SUMMARY_USER
+from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_SYSTEM, EXTRACT_CLAIMS_USER
 
 logger = logging.getLogger(__name__)
 
-SOURCE_SUMMARY_MODEL = "gpt-4.1-mini"
+EXTRACT_CLAIMS_MODEL = "gpt-4.1-mini"
 
 # Spoken content shapes (triage taxonomy). A long transcript's claims are mostly
 # the speaker's opinions / forecasts; without this prior the model defaults most
@@ -44,17 +44,17 @@ def _shape_prime(content_shape: str | None) -> str:
     )
 
 
-def summarize_source(
+def extract_claims(
     item: IngestItem, *, content_shape: str | None = None
-) -> tuple[SourceSummary, LLMCall]:
-    """Summarise one source into a SourceSummary of tagged claims.
+) -> tuple[ClaimSet, LLMCall]:
+    """Extract claims from one source into a ClaimSet of tagged claims.
 
     `content_shape` (triage taxonomy) primes the [reported]/[opinion] tagging for
     spoken sources; None or a text shape leaves the prompt unprimed. A `NONE`
     response (no recordable claim) parses to zero claims — a valid outcome, not
     an error."""
     author_line = f"Author: {item.author}\n" if item.author else ""
-    user_prompt = SOURCE_SUMMARY_USER.format(
+    user_prompt = EXTRACT_CLAIMS_USER.format(
         shape_prime=_shape_prime(content_shape),
         title=item.title,
         author_line=author_line,
@@ -76,21 +76,21 @@ def summarize_source(
     # API is not bit-deterministic even at 0 — claim counts still drift a little.)
     call = generate_with_usage(
         user_prompt,
-        system=SOURCE_SUMMARY_SYSTEM,
-        model=SOURCE_SUMMARY_MODEL,
+        system=EXTRACT_CLAIMS_SYSTEM,
+        model=EXTRACT_CLAIMS_MODEL,
         temperature=0,
     )
-    claims = parse_source_summary(call.content, source_id=item.item_id)
+    claims = parse_claims(call.content, source_id=item.item_id)
     if not claims and "NONE" not in call.content:
         # Zero claims with no honest NONE — the model ignored the tagged-bullet
         # format. A silent empty summary would look identical to "no claims";
         # surface it so the failure is auditable rather than invisible.
         logger.warning(
-            "source_writer parsed no claims for %s (no NONE marker); output starts: %r",
+            "claim_extractor parsed no claims for %s (no NONE marker); output starts: %r",
             item.item_id,
             call.content[:200],
         )
-    summary = SourceSummary(
+    summary = ClaimSet(
         item_id=item.item_id,
         content_date=item.date.isoformat() if item.date else None,
         claims=claims,

@@ -1,7 +1,7 @@
 """Attributed-lane entity assignment (Layer 1.5 → wiki, Slice 2).
 
-Assigns each `SourceClaim` in a per-source summary to the entity/entities it is
-about. Runs downstream of and isolated from the source summariser (which stays a
+Assigns each `SourceClaim` in a per-source claim set to the entity/entities it is
+about. Runs downstream of and isolated from the claim extractor (which stays a
 pure [reported]/[opinion] tagger): the summary's claims are the input, and the
 output is a per-claim → entity-id mapping resolved against the LIVE wiki, so a
 claim the attributed lane surfaces unifies with the entity the raw-article
@@ -37,9 +37,9 @@ from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
 from domains.types import IngestItem
+from domains.wiki.claims import ClaimSet, SourceClaim, render_claims
 from domains.wiki.identity import EntityRecord, normalize_name, resolve_or_mint_batch
 from domains.wiki.salience import count_mentions, is_salient, salience_features
-from domains.wiki.source_summary import SourceClaim, SourceSummary, render_source_summary
 from domains.wiki.state import (
     build_entity_index,
     connection,
@@ -121,7 +121,7 @@ def _now_iso() -> str:
 
 
 def assign_summary(
-    summary: SourceSummary,
+    summary: ClaimSet,
     *,
     db_path,
     extract_fn: ExtractFn | None = None,
@@ -148,7 +148,7 @@ def assign_summary(
     if attribute_subjects is None:
         attribute_subjects = attribute_subjects_llm
 
-    body = render_source_summary(summary)
+    body = render_claims(summary)
     item = IngestItem(
         item_id=summary.item_id,
         title="",

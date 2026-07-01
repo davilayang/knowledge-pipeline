@@ -1,4 +1,4 @@
-"""source_writer.summarize_source — turn one article into a SourceSummary.
+"""claim_extractor.extract_claims — turn one article into a ClaimSet.
 
 The LLM call is mocked at the module boundary (claim-extraction quality is
 validated empirically, not here); these tests pin the wiring contract: the
@@ -11,9 +11,9 @@ from datetime import date
 from unittest.mock import patch
 
 from domains.types import IngestItem
-from domains.wiki.source_summary import SourceClaim
+from domains.wiki.claims import SourceClaim
 from workflows.llm import LLMCall
-from workflows.wiki_synthesis.source_writer import summarize_source
+from workflows.wiki_synthesis.claim_extractor import extract_claims
 
 
 def _item(**overrides) -> IngestItem:
@@ -41,10 +41,10 @@ def test_stamps_item_id_and_content_date_and_parses_tagged_claims():
     )
 
     with patch(
-        "workflows.wiki_synthesis.source_writer.generate_with_usage",
+        "workflows.wiki_synthesis.claim_extractor.generate_with_usage",
         return_value=_call(llm_output),
     ):
-        summary, _call_meta = summarize_source(_item())
+        summary, _call_meta = extract_claims(_item())
 
     assert summary.item_id == "medium::https://x.com/a"
     assert summary.content_date == "2026-03-15"
@@ -64,10 +64,10 @@ def test_stamps_item_id_and_content_date_and_parses_tagged_claims():
 
 def test_none_response_yields_an_empty_summary_not_an_error(caplog):
     with patch(
-        "workflows.wiki_synthesis.source_writer.generate_with_usage",
+        "workflows.wiki_synthesis.claim_extractor.generate_with_usage",
         return_value=_call("NONE"),
     ):
-        summary, _call_meta = summarize_source(_item())
+        summary, _call_meta = extract_claims(_item())
 
     assert summary.item_id == "medium::https://x.com/a"
     assert summary.claims == []
@@ -82,8 +82,8 @@ def test_spoken_content_shape_primes_the_prompt():
         captured["prompt"] = prompt
         return _call("- [opinion] The speaker predicts X.")
 
-    with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
-        summarize_source(_item(), content_shape="podcast_episode")
+    with patch("workflows.wiki_synthesis.claim_extractor.generate_with_usage", side_effect=fake):
+        extract_claims(_item(), content_shape="podcast_episode")
 
     # The spoken prime tells the model the source is mostly opinion/prediction.
     assert "prediction" in captured["prompt"].lower()
@@ -96,8 +96,8 @@ def test_text_content_shape_does_not_prime():
         captured["prompt"] = prompt
         return _call("- [reported] X shipped.")
 
-    with patch("workflows.wiki_synthesis.source_writer.generate_with_usage", side_effect=fake):
-        summarize_source(_item(), content_shape="opinion_essay")
+    with patch("workflows.wiki_synthesis.claim_extractor.generate_with_usage", side_effect=fake):
+        extract_claims(_item(), content_shape="opinion_essay")
 
     assert "prediction" not in captured["prompt"].lower()
 
@@ -106,10 +106,10 @@ def test_malformed_response_with_no_tags_logs_a_warning(caplog):
     # The model ignored the format and answered in prose: zero claims parsed, but
     # this is a silent extraction failure (not an honest NONE) — surface it.
     with patch(
-        "workflows.wiki_synthesis.source_writer.generate_with_usage",
+        "workflows.wiki_synthesis.claim_extractor.generate_with_usage",
         return_value=_call("Here are the key claims: Claude Code shipped subagents."),
     ):
-        summary, _call_meta = summarize_source(_item())
+        summary, _call_meta = extract_claims(_item())
 
     assert summary.claims == []
     assert any(

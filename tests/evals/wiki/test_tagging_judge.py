@@ -4,7 +4,7 @@ Verdicts are keyed by claim number, so the LLM returning extra/duplicate verdict
 Score logic TDD'd with a fake chat_fn; the real judge run is empirical."""
 
 import pytest
-from domains.wiki.source_summary import SourceClaim
+from domains.wiki.claims import SourceClaim
 from evals.wiki.judges import TaggingJudge
 
 

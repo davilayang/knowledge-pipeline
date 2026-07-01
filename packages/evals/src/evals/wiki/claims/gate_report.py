@@ -1,4 +1,4 @@
-"""Gate diagnostic — run the confidence-lane gate over the whole source-summary
+"""Gate diagnostic — run the confidence-lane gate over the whole extract-claims
 corpus and report the lane distribution, so the gate's behaviour on the real
 (~100%-Medium) corpus is visible before any attributed pages are built.
 
@@ -14,7 +14,7 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
-from domains.wiki.source_summary import SourceClaim, parse_source_summary_doc
+from domains.wiki.claims import SourceClaim, parse_claims_doc
 
 from evals.wiki.gate import Credibility, Lane, RoutedClaim, domain_credibility, gate_claims
 from evals.wiki.judges import extract_date_anchors, extract_numeric_anchors
@@ -73,7 +73,7 @@ def build_gate_report(
     parse_failures: list[tuple[str, str]] = []
     for page_id, output in summaries:
         try:
-            summary = parse_source_summary_doc(output)
+            summary = parse_claims_doc(output)
         except Exception as e:  # malformed/stale doc — surface it, don't swallow
             parse_failures.append((page_id, str(e)))
             continue
