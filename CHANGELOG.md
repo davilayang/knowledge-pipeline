@@ -6,6 +6,24 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Article-grounded entity extraction for the attributed lane** —
+  `extract_entities(article, claims)` (`workflows.wiki_synthesis.extract_entities`)
+  reads the raw article plus its claims, recovering the article's implicit subject
+  and long-tail entities that claims-only extraction dropped; no entity cap
+  (salience classifies the tail). A hardened prompt excludes publication/social
+  chrome, worked-example data, and code identifiers.
+
+### Changed
+
+- **The extract-time claims and entities calls now share a prompt-cache prefix.**
+  `extract_claims` is restructured to a shared `[system, article, task]` layout
+  (`workflows.wiki_synthesis.extract_shared.shared_prefix_messages`) so the article
+  is served from OpenAI's cache on the second call. `LLMCall` gains a
+  `cached_tokens` field and `generate_messages_with_usage` is the cache-aware entry
+  point. Claim-tagging behaviour is unchanged (eval-gated against the pinned cohort).
+
 ---
 
 ## [0.27.5] — 2026-07-01

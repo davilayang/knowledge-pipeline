@@ -8,7 +8,7 @@ import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import render_claims
 from workflows.wiki_synthesis.claim_extractor import extract_claims as run_extract_claims
-from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_SYSTEM
+from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_TASK, EXTRACT_SHARED_SYSTEM
 
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
@@ -21,8 +21,12 @@ from .resources import ExtractorRegistry, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
 
-# Per-prompt staleness handle for the extract-claims extraction_calls rows.
-_EXTRACT_CLAIMS_PROMPT_SHA = hashlib.sha256(EXTRACT_CLAIMS_SYSTEM.encode()).hexdigest()
+# Per-prompt staleness handle for the extract-claims extraction_calls rows —
+# hashes the shared system + the claims task tail (the two prompt parts that shape
+# a claims call), so an edit to either bumps the recorded prompt_sha256.
+_EXTRACT_CLAIMS_PROMPT_SHA = hashlib.sha256(
+    (EXTRACT_SHARED_SYSTEM + EXTRACT_CLAIMS_TASK).encode()
+).hexdigest()
 
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500

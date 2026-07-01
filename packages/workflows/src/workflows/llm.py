@@ -11,12 +11,18 @@ _DEFAULT_MODEL = "gpt-4.1-mini"
 
 @dataclass(frozen=True, slots=True)
 class LLMCall:
-    """Single LLM invocation result with usage metadata."""
+    """Single LLM invocation result with usage metadata.
+
+    `cached_tokens` is the server-side prompt-cache hit (how many of the input
+    tokens were served from OpenAI's prefix cache), so callers that share a
+    cacheable prefix across calls can observe cache effectiveness. 0 when the
+    provider reports no cache detail."""
 
     content: str
     model: str
     input_tokens: int
     output_tokens: int
+    cached_tokens: int = 0
 
 
 def _get_client() -> Any:
@@ -45,11 +51,18 @@ def _messages(prompt: str, system: str) -> list[dict[str, str]]:
     return messages
 
 
-def _usage(response: Any) -> tuple[int, int]:
+def _usage(response: Any) -> tuple[int, int, int]:
+    """(prompt_tokens, completion_tokens, cached_prompt_tokens).
+
+    `cached_prompt_tokens` reads `usage.prompt_tokens_details.cached_tokens` — the
+    portion of the prompt served from OpenAI's server-side prefix cache — and is 0
+    when the provider omits that detail."""
     usage = getattr(response, "usage", None)
     if usage is None:
-        return 0, 0
-    return usage.prompt_tokens or 0, usage.completion_tokens or 0
+        return 0, 0, 0
+    details = getattr(usage, "prompt_tokens_details", None)
+    cached = (getattr(details, "cached_tokens", 0) or 0) if details is not None else 0
+    return usage.prompt_tokens or 0, usage.completion_tokens or 0, cached
 
 
 def _create_kwargs(temperature: float | None) -> dict[str, Any]:
@@ -72,6 +85,31 @@ def generate(
     return response.choices[0].message.content or ""
 
 
+def generate_messages_with_usage(
+    messages: list[dict[str, str]],
+    *,
+    model: str = _DEFAULT_MODEL,
+    temperature: float | None = None,
+) -> LLMCall:
+    """Chat completion over a PRE-BUILT message list, returning content + usage.
+
+    The entry point for prompt-cached calls: the caller controls the exact message
+    order so the cacheable prefix (a shared system message + the source document)
+    is byte-identical across sibling calls, with only the final task message
+    differing. `cached_tokens` on the result reports the prefix-cache hit."""
+    response = _get_client().chat.completions.create(
+        model=model, messages=messages, **_create_kwargs(temperature)
+    )
+    in_tokens, out_tokens, cached = _usage(response)
+    return LLMCall(
+        content=response.choices[0].message.content or "",
+        model=response.model or model,
+        input_tokens=in_tokens,
+        output_tokens=out_tokens,
+        cached_tokens=cached,
+    )
+
+
 def generate_with_usage(
     prompt: str,
     *,
@@ -80,15 +118,8 @@ def generate_with_usage(
     temperature: float | None = None,
 ) -> LLMCall:
     """Like generate(), but also returns token usage metadata."""
-    response = _get_client().chat.completions.create(
-        model=model, messages=_messages(prompt, system), **_create_kwargs(temperature)
-    )
-    in_tokens, out_tokens = _usage(response)
-    return LLMCall(
-        content=response.choices[0].message.content or "",
-        model=response.model or model,
-        input_tokens=in_tokens,
-        output_tokens=out_tokens,
+    return generate_messages_with_usage(
+        _messages(prompt, system), model=model, temperature=temperature
     )
 
 
@@ -132,10 +163,11 @@ def generate_structured_with_usage[
     parsed = message.parsed
     if parsed is None:
         raise ValueError("Structured output parse returned no result")
-    in_tokens, out_tokens = _usage(response)
+    in_tokens, out_tokens, cached = _usage(response)
     return parsed, LLMCall(
         content=message.content or "",
         model=response.model or model,
         input_tokens=in_tokens,
         output_tokens=out_tokens,
+        cached_tokens=cached,
     )

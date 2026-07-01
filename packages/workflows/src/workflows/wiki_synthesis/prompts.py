@@ -20,8 +20,13 @@ def _load(label: str) -> str:
 
 ENTITY_EXTRACTION_SYSTEM = _load("entity_extraction_system_v1")
 ENTITY_EXTRACTION_USER = _load("entity_extraction_user_v1")
-EXTRACT_CLAIMS_SYSTEM = _load("extract_claims_system_v1")
-EXTRACT_CLAIMS_USER = _load("extract_claims_user_v1")
+# Extract-time shared-prefix trio: both the claims call and the entities call send
+# EXTRACT_SHARED_SYSTEM + the EXTRACT_ARTICLE_ENVELOPE (byte-identical, so the
+# article prompt-caches across the two calls); only the task tail differs.
+EXTRACT_SHARED_SYSTEM = _load("extract_shared_system_v1")
+EXTRACT_ARTICLE_ENVELOPE = _load("extract_article_envelope_v1")
+EXTRACT_CLAIMS_TASK = _load("extract_claims_task_v1")
+EXTRACT_ENTITIES_TASK = _load("extract_entities_task_v1")
 PAGE_SYNTHESIS_SYSTEM = _load("page_synthesis_system_v1")
 PAGE_SYNTHESIS_USER_CREATE = _load("page_synthesis_user_create_v1")
 PAGE_SYNTHESIS_USER_UPDATE = _load("page_synthesis_user_update_v1")
