@@ -261,10 +261,13 @@ SourceSummary (tagged claims)
 candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_forms
     │            reuse an existing surrogate, else mint    (cross-path unification)
     ▼
-per claim:  match_claim  (deterministic surface-form)
+per claim:  match_claim (deterministic surface-form) → mentioned entities = HINT
     │
-    ├─ matched ──────────────────────────────────────► entity_ids
-    └─ residual (no match) ──map_residual_llm (LLM)───► entity_ids
+    ├─ exactly 1 mention → unambiguous ──────────────► entity_ids  (no LLM)
+    └─ 0 or ≥2 mentions → ambiguous
+         attribute_subjects_llm (ONE closed call over the whole claim list,
+         each claim + its mention hint) → true subject(s) from the candidates
+         (demote a passing co-mention; resolve a pronoun) ─────► entity_ids
     ▼
 ClaimAssignment[]  +  salience over the body (shared salience gate)
     │  group_by_entity
@@ -272,12 +275,18 @@ ClaimAssignment[]  +  salience over the body (shared salience gate)
 EntityClaims[]  — per-entity attributed claim sets (salient vs co-mention)
 ```
 
+The mention hint is deliberately not the assignment: attributing by mention
+over-attributes a claim to every entity it names (e.g. "Microsoft will ditch
+OpenAI" is about Microsoft, not OpenAI). Subject-attribution is CLOSED to the
+candidate set — the model returns only extracted entities, never an invented
+name or a descriptive phrase.
+
 ## Files
 
 | File | Role |
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
 | `source_writer.py` | `summarize_source` — runs the source-summary LLM call (gpt-4.1-mini, temperature=0) and returns a `SourceSummary` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
-| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` → bounded `map_residual_llm` for pronoun/implicit subjects; `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
-| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `RESIDUAL_ENTITY_MAP_SYSTEM`, `RESIDUAL_ENTITY_MAP_USER` |
+| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
+| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
