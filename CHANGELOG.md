@@ -22,7 +22,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   (`workflows.wiki_synthesis.extract_shared.shared_prefix_messages`) so the article
   is served from OpenAI's cache on the second call. `LLMCall` gains a
   `cached_tokens` field and `generate_messages_with_usage` is the cache-aware entry
-  point. Claim-tagging behaviour is unchanged (eval-gated against the pinned cohort).
+  point. Moving the claim rules into the task tail also **improved claim-tag
+  accuracy on Medium-shaped content** (opinion-essay, tutorial, unknown), fixing a
+  systematic opinion-under-tagging bug; faithfulness held at 100% (eval-gated
+  against the pinned cohort).
 
 ---
 
