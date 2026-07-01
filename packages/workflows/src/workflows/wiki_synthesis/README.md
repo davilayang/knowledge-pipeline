@@ -106,38 +106,60 @@ The DAG splits extraction and synthesis into two separate entry points:
 - **`synthesize_item`** — convenience wrapper (extract + synthesize in one
   call) for callers that don't split the two stages. Behaviour-preserving.
 
-`_synthesize_resolved` (the shared synthesis core) via three plain functions:
+`_synthesize_resolved` (the shared synthesis core) resolves identity, **gates on
+salience**, then persists in one transaction:
 
 ```
 _synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
   │
-  ├─ resolve_or_mint_batch(index, candidates)
-  │    assign surrogate entity_id to each candidate (reuse or mint)
-  │    → drop denylisted (by normalised name) → build (cand, rec, resolved) triples
-  │    (reads a LIVE entity index so within-run dedup is correct even though
-  │    extraction ran in the prior asset)
+  ├─ resolve_or_mint_batch(LIVE index, candidates) → (cand, rec, resolved) triples
+  │    assign a surrogate entity_id to each candidate (reuse existing, else mint)
+  │    → drop denylisted (rejected_entities, by normalised name)
+  │    → within-item dedup: two candidates resolving to the same entity collapse
+  │      to one (synthesised once; their aliases still aggregate)
   │
-  ├─ for entity in entities:   (sequential loop)
-  │    synthesize_entity(item, entity, sibling_ids, wiki_dir)
-  │      read/merge page via synthesis LLM → parse → H2-preservation check
-  │      → build WikiPage in memory; failure caught per entity, siblings continue
+  ├─ _partition_by_salience(item, records)           ← the de-pollution gate
+  │    salient    = entity in the title OR ≥ MENTION_FLOOR body mentions
+  │    peripheral = everything else (a one-off passing mention)
+  │    │
+  │    ├─ SALIENT → for each (sequential loop):
+  │    │     synthesize_entity(item, entity, sibling_ids, wiki_dir)
+  │    │       span-ground to the entity's windows → read/merge page via synthesis
+  │    │       LLM → parse → H2-preservation check → WikiPage in memory
+  │    │       (failure caught per entity; siblings continue)
+  │    │
+  │    └─ PERIPHERAL → minted as an entity ROW ONLY: no page, no page_sources
+  │          edge, no aliases (a one-mention extraction is too low-confidence to
+  │          seed an alias key without risking a destructive false-merge). Kept so
+  │          a later article naming it the same way reuses this id, not a duplicate.
   │
-  ├─ _persist_graph(item, db_path, new_entities, successes, new_aliases)
-  │    ONE SQLite transaction: entities + pages + page_sources + aliases
-  │    + page_versions (appended only when {summary, content} changed)
-  │    all-or-nothing (FK order: entities first, then pages/aliases/page_sources)
+  ├─ _persist_graph(item, db_path, new_entities, successes, new_aliases)  ONE txn
+  │    new_entities = minted entities that synthesised OK OR are peripheral
+  │      (a salient entity whose synthesis FAILED is excluded → a retry re-mints
+  │       under the same surrogate, so no orphan)
+  │    writes all-or-nothing, FK order (entities first): entities + pages
+  │      + page_sources + page_versions (appended only when {summary,content}
+  │      changed) + entity_relations (co-occurrence pair edges among the item's
+  │      successful entities) + aliases (from surviving salient successes only)
   │
   ├─ _write_pages(successes, wiki_dir, db_path)
-  │    write .md files after graph commits; num_sources read from committed ledger
+  │    write .md files AFTER the graph commits; num_sources + sources read from
+  │    the committed page_sources ledger (consistent by construction)
   │
-  └─ _mark_processed(item, db_path, status, error_text)
-       write processed_items row LAST (crash-safe: a missing processed row
-       leaves the item re-queued; entities already committed reuse their
-       surrogates on retry, no orphan files)
+  └─ _mark_processed(item, db_path, status, error_text)          ← LAST
+       status: no salient entity → 'skipped'; ≥1 success → 'ok'; else 'error'.
+       Crash-safe: a missing processed row re-queues the item; committed entities
+       reuse their surrogates on retry, no orphan files.
 ```
 
+The salience gate is the measured de-pollution lever: attaching every mentioned
+entity to a page conflated "mentions E" with "is about E" (53% of prod
+`page_sources` edges were one-mention pollution). Only salient entities drive a
+page; peripheral ones stay resolvable (a row) without polluting a page. See
+`domains.wiki.salience` (`salience_features` / `is_salient`, `MENTION_FLOOR`).
+
 Entity counts per document are capped at 15 (enforced by `ExtractionResult`
-`max_length=15`); entities are processed one at a time in the sequential loop.
+`max_length=15`); salient entities are processed one at a time in the loop.
 A writer/evaluator agentic loop (where the synthesis LLM iterates with a
 separate evaluator LLM) is a deferred future option for improving page quality
 — not part of the current implementation.
