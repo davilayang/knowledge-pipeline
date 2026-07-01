@@ -6,12 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.27.2] — 2026-07-01
+
 ### Changed
 
 - **Confidence-lane gate no longer corroborates two low-credibility sources.**
   `route_lane` granted `CORPUS_CORROBORATED` on ≥2 sources without checking
   credibility; two Medium-tier echoes now stay `SINGLE_SOURCE_ATTRIBUTED`
   (corroboration requires a non-LOW source in the cluster).
+- **Gate collapses echoed sources and normalises domains before counting
+  corroboration.** `count_independent_sources` folds near-duplicate / republished
+  sources (embedding-close) into one; `domain_credibility` lowercases, strips
+  `www.`, and matches by registrable suffix so subdomains inherit the tier, over
+  expanded HIGH/LOW allowlists.
 
 ### Added
 
