@@ -522,9 +522,10 @@ def extract_claims(
         """
         Extracts article-grounded entity candidates from the fetched body + its
         extracted claims (shared prompt-cache prefix with extract_claims, so the
-        article is served from cache), and records them as an extract_entities
-        extraction_calls row — the attributed-lane candidate set assign_summary
-        resolves against the live wiki. Skips when no body or no claims recorded.
+        article can be served from cache — best-effort), and records them as an
+        extract_entities extraction_calls row — the attributed-lane candidate set
+        assign_summary resolves against the live wiki. Skips when no body or no
+        recorded claims row.
         """
     ),
 )
@@ -537,8 +538,10 @@ def extract_entities(
     if not row or not row.get("raw_content"):
         return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})
     # Claims are this asset's article-companion input — extract_claims (a dep)
-    # records them and primes the shared article cache. No claims → nothing to
-    # ground against; skip rather than run a claims-less entities pass.
+    # records them and primes the shared article cache. We skip only when NO claims
+    # row exists (extract_claims hasn't run for this page); a recorded-but-empty
+    # claims doc still runs — the article is the primary input, claims are only a
+    # salience signal, so `(no claims extracted)` is a valid, article-grounded pass.
     claims_doc = store.get_claims(page_id)
     if not claims_doc:
         return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})

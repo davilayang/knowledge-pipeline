@@ -113,6 +113,18 @@ def test_render_round_trips_through_parse():
     assert [(c.name, c.page_type) for c in reparsed] == [(c.name, c.page_type) for c in cands]
 
 
+def test_render_flattens_separator_inside_a_name():
+    # A name containing the ` — ` separator must not corrupt the stored line — it
+    # is flattened to a hyphen so the type delimiter stays unambiguous on read.
+    from domains.wiki.identity import Candidate
+
+    (reparsed,) = parse_entity_candidates(
+        render_candidates([Candidate(name="ACME — Research", page_type="organization")])
+    )
+    assert reparsed.name == "ACME-Research"
+    assert reparsed.page_type == "organization"
+
+
 def test_strips_leading_list_numbering():
     # The model sometimes numbers despite "no numbering" — the digit must not
     # become part of the name.
