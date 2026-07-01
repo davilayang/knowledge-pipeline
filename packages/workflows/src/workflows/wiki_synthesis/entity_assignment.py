@@ -12,12 +12,14 @@ a HINT, not the answer:
 
   1. a claim naming exactly ONE entity is unambiguous — assigned it directly, no
      LLM cost.
-  2. ambiguous claims — zero mentions (pronoun / implicit subject) or ≥2 mentions
-     (a possible passing co-mention) — go to ONE closed subject-attribution call
-     over the whole claim list, which returns each claim's true subject(s) from
-     the candidate set: demoting a mentioned non-subject ("Microsoft ditches
-     OpenAI" is about Microsoft, not OpenAI) or resolving a pronoun the match
-     missed. Injected, so the wiring is testable without an LLM.
+  2. ambiguous claims — zero mentions (pronoun / implicit subject), ≥2 mentions
+     (a possible passing co-mention), or one mention inside contrast/dependency
+     phrasing (where the lone mention is often the object, e.g. "shift away from
+     OpenAI") — go to ONE closed subject-attribution call over the whole claim
+     list, which returns each claim's true subject(s) from the candidate set:
+     demoting a mentioned non-subject ("Microsoft ditches OpenAI" is about
+     Microsoft, not OpenAI) or resolving a pronoun the match missed. Injected, so
+     the wiring is testable without an LLM.
 
 Flow: render the summary → extract() over its claims → resolve_or_mint against
 the LIVE wiki → per-claim match_claim (hint) → closed attribute_subjects over the
@@ -29,6 +31,7 @@ Persists nothing: like the Slice 1 gate diagnostic, this computes the mapping;
 the storage schema is deferred until page synthesis (Slice 3) fixes its shape.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -53,6 +56,17 @@ from workflows.wiki_synthesis.prompts import (
 from workflows.wiki_synthesis.synthesize import extract
 
 SUBJECT_MODEL = "gpt-4.1-mini"
+
+# Contrast / dependency phrasing where the single named entity is usually the
+# OBJECT (moved away from, compared against, depended on), not the subject — e.g.
+# "shift workloads away from OpenAI". A one-mention claim carrying one of these is
+# treated as ambiguous and routed to subject-attribution instead of trusting the
+# lone mention.
+_CONTRAST_CUE = re.compile(
+    r"\b(?:unlike|instead of|rather than|away from|compared with|compared to|"
+    r"depends on|dependence on|dependent on|reliant on|reliance on|versus|vs\.?)\b",
+    re.IGNORECASE,
+)
 
 # extract_fn: run entity extraction over the summary body → {"candidates", "llm_calls"}.
 # Injected so the assignment wiring is testable without the extraction LLM.
@@ -180,7 +194,14 @@ def assign_summary(
     mention_ids = [match_claim(claim.text, surface_forms) for claim in summary.claims]
     per_claim_ids = [list(ids) for ids in mention_ids]
 
-    ambiguous_idx = [i for i, ids in enumerate(mention_ids) if len(ids) != 1]
+    # Ambiguous = zero mentions (pronoun/implicit), ≥2 mentions (possible passing
+    # co-mention), OR exactly one mention inside contrast/dependency phrasing where
+    # that lone mention is often the object, not the subject.
+    ambiguous_idx = [
+        i
+        for i, ids in enumerate(mention_ids)
+        if len(ids) != 1 or _CONTRAST_CUE.search(summary.claims[i].text)
+    ]
     if ambiguous_idx:
         name_to_id = {
             normalize_name(form): eid for eid, forms in surface_forms.items() for form in forms

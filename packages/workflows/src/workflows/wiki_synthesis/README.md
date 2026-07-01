@@ -263,8 +263,8 @@ candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_f
     ▼
 per claim:  match_claim (deterministic surface-form) → mentioned entities = HINT
     │
-    ├─ exactly 1 mention → unambiguous ──────────────► entity_ids  (no LLM)
-    └─ 0 or ≥2 mentions → ambiguous
+    ├─ exactly 1 mention, no contrast cue → unambiguous ─► entity_ids  (no LLM)
+    └─ 0 or ≥2 mentions, or 1 mention + a contrast/dependency cue → ambiguous
          attribute_subjects_llm (ONE closed call over the whole claim list,
          each claim + its mention hint) → true subject(s) from the candidates
          (demote a passing co-mention; resolve a pronoun) ─────► entity_ids

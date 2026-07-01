@@ -280,3 +280,29 @@ def test_subject_attribution_overrides_multi_mention(wiki_db_path):
     )
 
     assert result.assignments[0].entity_ids == (ms,)
+
+
+def test_single_mention_with_contrast_cue_is_ambiguous(wiki_db_path):
+    # "away from OpenAI" names OpenAI once, but OpenAI is what's being moved away
+    # FROM — not the subject. A contrast cue routes this single-mention claim to
+    # the subject mapper (which demotes OpenAI → Microsoft), instead of trusting
+    # the lone mention. Claim 1 (one mention, no cue) stays deterministic.
+    ms = _seed_entity(wiki_db_path, "Microsoft")
+    sid = "https://medium.com/p/shift"
+    summary = _summary(
+        sid,
+        SourceClaim(text="Microsoft is a tech giant.", source_id=sid),
+        SourceClaim(text="It will shift workloads away from OpenAI.", source_id=sid),
+    )
+
+    def subjects(texts, hints, candidates):
+        return [[], ["Microsoft"]]
+
+    result = assign_summary(
+        summary,
+        db_path=wiki_db_path,
+        extract_fn=_extract_returning("Microsoft", "OpenAI"),
+        attribute_subjects=subjects,
+    )
+
+    assert result.assignments[1].entity_ids == (ms,)
