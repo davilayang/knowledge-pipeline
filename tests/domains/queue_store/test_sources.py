@@ -16,6 +16,7 @@ from domains.queue_store.sources import (
     checkpoint_wal,
     create_schema,
     find_canonical_url_duplicate,
+    get_all_source_summaries,
     get_content_shape,
     get_latest_extraction_calls,
     get_queue_extraction,
@@ -910,6 +911,48 @@ def test_record_and_get_source_summary_returns_latest_output(db_path: Path):
         get_source_summary(db_path=db_path, notion_page_id="p-1")
         == "- [reported] Newer pass.\n- [opinion] A forecast."
     )
+
+
+def test_get_all_source_summaries_returns_latest_per_page(db_path: Path):
+    # The attributed-lane consumer reads every source's latest summary in one pass.
+    _seed_row(db_path, page_id="p-1")
+    _seed_row(db_path, page_id="p-2")
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [reported] Old p1.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="- [reported] New p1.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    record_source_summary(
+        db_path=db_path,
+        notion_page_id="p-2",
+        output="- [opinion] Only p2.",
+        prompt_label="source_summary_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+
+    # Latest-wins per page; deterministic order by notion_page_id.
+    assert get_all_source_summaries(db_path=db_path) == [
+        ("p-1", "- [reported] New p1."),
+        ("p-2", "- [opinion] Only p2."),
+    ]
 
 
 def test_source_summary_coexists_with_topic_card_extraction(db_path: Path):

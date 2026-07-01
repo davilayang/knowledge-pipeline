@@ -559,6 +559,28 @@ def record_source_summary(
         )
 
 
+def get_all_source_summaries(*, db_path: Path) -> list[tuple[str, str]]:
+    """Every page's latest `source_summary` output as `(notion_page_id, output)`,
+    ordered by `notion_page_id`. The attributed-lane consumer reads the whole
+    corpus in one pass; latest-wins per page mirrors `get_source_summary`."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT notion_page_id, output FROM extraction_calls e
+             WHERE call_kind = 'source_summary'
+               AND id = (
+                   SELECT id FROM extraction_calls e2
+                    WHERE e2.notion_page_id = e.notion_page_id
+                      AND e2.call_kind = 'source_summary'
+                    ORDER BY extracted_at DESC, id DESC
+                    LIMIT 1
+               )
+             ORDER BY notion_page_id
+            """
+        ).fetchall()
+    return [(row["notion_page_id"], row["output"]) for row in rows]
+
+
 def get_source_summary(*, db_path: Path, notion_page_id: str) -> str | None:
     """The most-recent `source_summary` output for a page, or None if none is
     recorded. Latest-wins, mirroring `get_latest_extraction_calls`."""
