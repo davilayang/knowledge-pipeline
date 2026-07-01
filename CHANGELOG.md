@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Attributed-lane entity assignment (Slice 2)** maps each source-summary claim
+  to the entity it is about (`workflows.wiki_synthesis.entity_assignment`).
+  Extraction runs over the claims, entities resolve against the LIVE wiki via the
+  same `resolve_or_mint_batch` the raw-article path uses (so a claim unifies onto
+  an existing entity instead of minting a duplicate), then a deterministic
+  surface-form match assigns claims, with a bounded LLM residual mapper
+  (`prompts/wiki/residual_entity_map_*_v1.md`) for pronoun / implicit-subject
+  claims. `group_by_entity` inverts to per-entity attributed claim sets, flagging
+  passing co-mentions via the shared salience gate. Persists nothing yet.
+- **Entity-assignment diagnostic over the source-summary corpus**
+  (`evals.wiki.source_summary.assignment_report`) reports claim coverage, the
+  salient-vs-co-mention split, and orphaned claims — the substrate for judging
+  assignment precision before attributed pages are built.
+
 ---
 
 ## [0.27.3] — 2026-07-01
