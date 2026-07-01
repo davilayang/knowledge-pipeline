@@ -1,11 +1,11 @@
 """Attributed-lane entity assignment.
 
-Assigns each SourceClaim to the entity/entities it is about, resolving mentions
-against the LIVE wiki so an attributed-lane claim unifies with the entity the
-raw-article synthesis path already minted (cross-path unification). The LLM
-boundaries (entity extraction over the claims, closed subject-attribution over
-ambiguous claims) are injected so the wiring is driven through the public
-surface with fakes.
+Assigns each SourceClaim to the entity/entities it is about, resolving the
+article-grounded candidates (produced upstream by extract_entities) against the
+LIVE wiki so an attributed-lane claim unifies with the entity the raw-article
+synthesis path already minted (cross-path unification). Candidates are passed in
+directly and the subject-attribution mapper is injected, so the wiring is driven
+through the public surface with fakes.
 """
 
 from datetime import UTC, datetime
@@ -322,3 +322,18 @@ def test_assign_from_stored_parses_docs_and_assigns(wiki_db_path):
     assert result.item_id == sid
     assert result.assignments[0].entity_ids == (existing_id,)
     assert result.new_entities == ()
+
+
+def test_assign_from_stored_empty_candidates_yields_no_assignment(wiki_db_path):
+    # A stored candidate doc with no candidates (source had no entities, or NONE)
+    # parses to []; assignment proceeds with nothing to resolve — a valid empty
+    # outcome, not an error. The bridge fails soft on empty candidates by design.
+    from domains.wiki.claims import render_claims
+
+    sid = "https://medium.com/p/empty"
+    summary = _summary(sid, SourceClaim(text="A claim about nothing nameable.", source_id=sid))
+
+    result = assign_from_stored(render_claims(summary), "NONE", db_path=wiki_db_path)
+
+    assert result.new_entities == ()
+    assert result.assignments[0].entity_ids == ()

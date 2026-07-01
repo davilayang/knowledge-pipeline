@@ -33,7 +33,7 @@ the storage schema is deferred until page synthesis (Slice 3) fixes its shape.
 
 import re
 from collections.abc import Callable
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime
 
 from domains.wiki.claims import ClaimSet, SourceClaim, parse_claims_doc
@@ -52,7 +52,7 @@ from domains.wiki.state import (
 )
 from pydantic import BaseModel, Field
 
-from workflows.llm import LLMCall, generate_structured_with_usage
+from workflows.llm import generate_structured_with_usage
 from workflows.wiki_synthesis.extract_entities import parse_entity_candidates
 from workflows.wiki_synthesis.prompts import (
     SUBJECT_ATTRIBUTION_SYSTEM,
@@ -94,15 +94,19 @@ class SummaryAssignment:
     entities involved (resolved against the live wiki, keyed by surrogate id),
     and the entities minted this run (staged for a later persist, not written
     here). `salient_entity_ids` are the entities central to this source (by the
-    shared deterministic salience gate over the summary body) — the rest are
-    passing co-mentions. `llm_calls` carries the extraction call for cost."""
+    shared deterministic salience gate over the claim texts) — the rest are
+    passing co-mentions.
+
+    Carries no LLM-cost field: candidate extraction happens upstream (the
+    extract_entities asset), so its cost is accounted there; the subject-
+    attribution call's cost is captured by the synthesis asset (3c) that owns the
+    per-source cost roll-up, not by this pure-computation step."""
 
     item_id: str
     assignments: tuple[ClaimAssignment, ...]
     entities: dict[str, EntityRecord]
     new_entities: tuple[EntityRecord, ...]
     salient_entity_ids: frozenset[str] = frozenset()
-    llm_calls: list[LLMCall] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -147,10 +151,6 @@ def assign_summary(
     """
     if attribute_subjects is None:
         attribute_subjects = attribute_subjects_llm
-
-    # Candidate extraction happens upstream (the extract_entities asset), so the
-    # only LLM cost accounted here is the optional subject-attribution call.
-    llm_calls: list[LLMCall] = []
 
     with connection(db_path) as conn:
         index = build_entity_index(conn)
@@ -220,8 +220,9 @@ def assign_summary(
 
     # Salience over the pooled claim texts, via the SAME deterministic gate the
     # raw-article path uses — an entity central to this source clears the mention
-    # floor; a one-off co-mention doesn't. (The claim texts carry the entity
-    # mentions; frontmatter/tags don't, so this matches the prior rendered-body.)
+    # floor; a one-off co-mention doesn't. Uses the claim texts (not the rendered
+    # doc): cleaner than the prior body, whose frontmatter `item_id` (a source URL)
+    # could have inflated a mention count when the URL itself contained a name.
     body = "\n".join(c.text for c in summary.claims)
     salient_entity_ids = frozenset(
         eid
@@ -241,7 +242,6 @@ def assign_summary(
         entities=entities,
         new_entities=tuple(resolution.new_entities),
         salient_entity_ids=salient_entity_ids,
-        llm_calls=llm_calls,
     )
 
 
@@ -256,7 +256,13 @@ def assign_from_stored(
     claims doc (`get_claims`) and the rendered candidate list (`get_candidates`),
     both from the queue store. Parses each and runs `assign_summary`. The bridge the
     synthesis-side consumer uses to turn per-source extract_entities output into an
-    assignment (then `group_by_entity` into `EntityClaims`)."""
+    assignment (then `group_by_entity` into `EntityClaims`).
+
+    Source coherence is the caller's invariant: read both docs by the SAME page_id
+    (`get_claims(pid)` + `get_candidates(pid)`) so the claims and candidates belong
+    to one source — the candidate format carries no id to cross-check here. A
+    malformed candidate doc parses to no candidates (fail-soft: an empty assignment,
+    not an error), mirroring how the producer treats an unparseable extraction."""
     return assign_summary(
         parse_claims_doc(claims_doc),
         parse_entity_candidates(candidates_doc),
