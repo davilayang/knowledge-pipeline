@@ -71,7 +71,7 @@ def extract_claims(
         # format. A silent empty summary would look identical to "no claims";
         # surface it so the failure is auditable rather than invisible.
         logger.warning(
-            "claim_extractor parsed no claims for %s (no NONE marker); output starts: %r",
+            "extract_claims parsed no claims for %s (no NONE marker); output starts: %r",
             item.item_id,
             call.content[:200],
         )

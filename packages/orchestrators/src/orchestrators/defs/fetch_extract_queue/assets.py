@@ -7,7 +7,7 @@ from typing import Any
 import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import render_claims
-from workflows.wiki_synthesis.claim_extractor import extract_claims as run_extract_claims
+from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.prompts import (
     EXTRACT_ARTICLE_ENVELOPE,
     EXTRACT_CLAIMS_TASK,

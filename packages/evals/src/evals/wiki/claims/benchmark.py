@@ -86,7 +86,7 @@ def format_report(aggs: list[ShapeAgg]) -> str:
 
 def main() -> None:
     """`eval-extract-claims [--limit N]` — run the real judges over the cohort."""
-    from workflows.wiki_synthesis.claim_extractor import extract_claims
+    from workflows.wiki_synthesis.extract_claims import extract_claims
 
     from evals.wiki.chat import make_faithfulness_chat_fn, make_tagging_chat_fn
     from evals.wiki.judges import FaithfulnessJudge, TaggingJudge

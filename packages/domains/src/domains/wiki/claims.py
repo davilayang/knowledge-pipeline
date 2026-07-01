@@ -1,6 +1,6 @@
 """Per-source claim-extraction layer (Layer 1.5) — structured claims from one source.
 
-The claim_extractor reads a raw article and emits a per-source claim set: one
+The extract_claims reads a raw article and emits a per-source claim set: one
 markdown list item per claim, each prefixed with a `[reported]` or `[opinion]`
 tag. This module parses that body into `SourceClaim` records — the atomic unit
 the confidence-lane gate clusters and routes downstream. Pure + dependency-free
@@ -43,7 +43,7 @@ class ClaimSet:
 
 
 def parse_claims(body: str, *, source_id: str) -> list[SourceClaim]:
-    """Parse a claim_extractor claim body into SourceClaim records.
+    """Parse a extract_claims claim body into SourceClaim records.
 
     Each `[reported]`/`[opinion]`-tagged markdown list item becomes one claim:
     the tag sets `speculative`, the trailing text is the claim, and `source_id`
