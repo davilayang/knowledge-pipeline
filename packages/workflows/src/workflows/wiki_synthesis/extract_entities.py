@@ -95,6 +95,13 @@ def _split_name_type(line: str) -> tuple[str, str]:
     return line.strip(), ""
 
 
+def render_candidates(candidates: list[Candidate]) -> str:
+    """Render candidates to the canonical `Name — type` lines persisted per source
+    (`store.record_candidates`). Inverse of `parse_entity_candidates`, so a
+    round-trip through storage preserves each candidate's name + page_type."""
+    return "\n".join(f"{c.name} — {c.page_type}" for c in candidates)
+
+
 def parse_entity_candidates(text: str) -> list[Candidate]:
     """Parse the entity task's `Name — type` output into Candidates.
 

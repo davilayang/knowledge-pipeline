@@ -13,7 +13,11 @@ from unittest.mock import patch
 from domains.types import IngestItem
 from domains.wiki.claims import ClaimSet, SourceClaim
 from workflows.llm import LLMCall
-from workflows.wiki_synthesis.extract_entities import extract_entities, parse_entity_candidates
+from workflows.wiki_synthesis.extract_entities import (
+    extract_entities,
+    parse_entity_candidates,
+    render_candidates,
+)
 
 
 def _item(**overrides) -> IngestItem:
@@ -93,6 +97,20 @@ def test_skips_bullets_blanks_none_and_prose_lines():
 def test_no_hard_cap():
     text = "\n".join(f"Entity{i} — concept" for i in range(30))
     assert len(parse_entity_candidates(text)) == 30
+
+
+def test_render_round_trips_through_parse():
+    # render_candidates → parse_entity_candidates preserves name + page_type, so a
+    # candidate set survives being stored and read back per source.
+    from domains.wiki.identity import Candidate
+
+    cands = [
+        Candidate(name="Docker", page_type="tool"),
+        Candidate(name="Michael Lanham", page_type="person"),
+        Candidate(name="agentic RAG", page_type="concept"),
+    ]
+    reparsed = parse_entity_candidates(render_candidates(cands))
+    assert [(c.name, c.page_type) for c in reparsed] == [(c.name, c.page_type) for c in cands]
 
 
 def test_strips_leading_list_numbering():

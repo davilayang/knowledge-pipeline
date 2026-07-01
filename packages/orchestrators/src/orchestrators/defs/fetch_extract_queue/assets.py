@@ -6,11 +6,14 @@ from typing import Any
 
 import dagster as dg
 from domains.types import IngestItem
-from domains.wiki.claims import render_claims
+from domains.wiki.claims import parse_claims_doc, render_claims
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
+from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
+from workflows.wiki_synthesis.extract_entities import render_candidates
 from workflows.wiki_synthesis.prompts import (
     EXTRACT_ARTICLE_ENVELOPE,
     EXTRACT_CLAIMS_TASK,
+    EXTRACT_ENTITIES_TASK,
     EXTRACT_SHARED_SYSTEM,
 )
 
@@ -31,6 +34,12 @@ GROUP_NAME = "fetch_extract_queue"
 # recorded prompt_sha256.
 _EXTRACT_CLAIMS_PROMPT_SHA = hashlib.sha256(
     (EXTRACT_SHARED_SYSTEM + EXTRACT_ARTICLE_ENVELOPE + EXTRACT_CLAIMS_TASK).encode()
+).hexdigest()
+
+# Same handle for the extract-entities rows — shared system + article envelope +
+# the entities task tail (all static prompt parts that shape an entities call).
+_EXTRACT_ENTITIES_PROMPT_SHA = hashlib.sha256(
+    (EXTRACT_SHARED_SYSTEM + EXTRACT_ARTICLE_ENVELOPE + EXTRACT_ENTITIES_TASK).encode()
 ).hexdigest()
 
 _PREVIEW_HEAD = 500
@@ -501,4 +510,67 @@ def extract_claims(
     )
 
 
-all_assets = [fetched, extracted, published, extract_claims]
+@dg.asset(
+    key=["fetch_extract_queue", "extract_entities"],
+    group_name=GROUP_NAME,
+    kinds={"openai", "sqlite"},
+    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
+    partitions_def=queue_items_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    deps=[extract_claims],
+    description=_oneline(
+        """
+        Extracts article-grounded entity candidates from the fetched body + its
+        extracted claims (shared prompt-cache prefix with extract_claims, so the
+        article is served from cache), and records them as an extract_entities
+        extraction_calls row — the attributed-lane candidate set assign_summary
+        resolves against the live wiki. Skips when no body or no claims recorded.
+        """
+    ),
+)
+def extract_entities(
+    context: dg.AssetExecutionContext,
+    store: QueueStoreResource,
+) -> dg.MaterializeResult:
+    page_id = context.partition_key
+    row = store.get_row(page_id)
+    if not row or not row.get("raw_content"):
+        return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})
+    # Claims are this asset's article-companion input — extract_claims (a dep)
+    # records them and primes the shared article cache. No claims → nothing to
+    # ground against; skip rather than run a claims-less entities pass.
+    claims_doc = store.get_claims(page_id)
+    if not claims_doc:
+        return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})
+
+    item = _ingest_item_from_row(row)
+    candidates, call = run_extract_entities(item, parse_claims_doc(claims_doc))
+    store.record_candidates(
+        notion_page_id=page_id,
+        output=render_candidates(candidates),
+        prompt_label="extract_entities_v1",
+        prompt_sha256=_EXTRACT_ENTITIES_PROMPT_SHA,
+        model=call.model,
+        tokens_in=call.input_tokens,
+        tokens_out=call.output_tokens,
+        cached_tokens=call.cached_tokens,
+    )
+    by_type: dict[str, int] = {}
+    for c in candidates:
+        by_type[c.page_type] = by_type.get(c.page_type, 0) + 1
+    return dg.MaterializeResult(
+        metadata={
+            "item_id": dg.MetadataValue.text(item.item_id),
+            "candidates": dg.MetadataValue.int(len(candidates)),
+            "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
+            "input_tokens": dg.MetadataValue.int(call.input_tokens),
+            "by_type": dg.MetadataValue.json(by_type),
+            "summary": dg.MetadataValue.md(
+                f"**{len(candidates)} candidates** — "
+                f"article cache {call.cached_tokens}/{call.input_tokens} tokens"
+            ),
+        }
+    )
+
+
+all_assets = [fetched, extracted, published, extract_claims, extract_entities]

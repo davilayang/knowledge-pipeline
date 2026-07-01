@@ -13,6 +13,7 @@ def test_pipeline_defs_loads():
         "fetch_extract_queue/extracted",
         "fetch_extract_queue/published",
         "fetch_extract_queue/extract_claims",
+        "fetch_extract_queue/extract_entities",
     }
 
 

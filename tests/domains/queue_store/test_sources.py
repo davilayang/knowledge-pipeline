@@ -16,13 +16,16 @@ from domains.queue_store.sources import (
     checkpoint_wal,
     create_schema,
     find_canonical_url_duplicate,
+    get_all_candidates,
     get_all_claims,
+    get_candidates,
     get_claims,
     get_content_shape,
     get_latest_extraction_calls,
     get_queue_extraction,
     get_row,
     list_with_stale_extraction,
+    record_candidates,
     record_claims,
     record_extraction_calls,
     upsert_enriched,
@@ -911,6 +914,70 @@ def test_record_and_get_claims_returns_latest_output(db_path: Path):
         get_claims(db_path=db_path, notion_page_id="p-1")
         == "- [reported] Newer pass.\n- [opinion] A forecast."
     )
+
+
+def test_get_candidates_is_none_when_absent(db_path: Path):
+    _seed_row(db_path)
+    assert get_candidates(db_path=db_path, notion_page_id="p-1") is None
+
+
+def test_record_and_get_candidates_latest_wins_and_records_cached_tokens(db_path: Path):
+    _seed_row(db_path)
+    record_candidates(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="Docker — tool",
+        prompt_label="extract_entities_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=100,
+        tokens_out=10,
+        cached_tokens=0,
+    )
+    record_candidates(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="Docker — tool\nPodman — tool",
+        prompt_label="extract_entities_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=200,
+        tokens_out=12,
+        cached_tokens=160,
+    )
+    assert get_candidates(db_path=db_path, notion_page_id="p-1") == "Docker — tool\nPodman — tool"
+    # The entities call's prefix-cache hit is recorded (distinct call_kind from claims).
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
+    assert latest["extract_entities"]["cached_tokens"] == 160
+
+
+def test_get_all_candidates_returns_latest_per_page(db_path: Path):
+    _seed_row(db_path, page_id="p-1")
+    _seed_row(db_path, page_id="p-2")
+    record_candidates(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="Docker — tool",
+        prompt_label="extract_entities_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    record_candidates(
+        db_path=db_path,
+        notion_page_id="p-2",
+        output="Podman — tool",
+        prompt_label="extract_entities_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    assert get_all_candidates(db_path=db_path) == [
+        ("p-1", "Docker — tool"),
+        ("p-2", "Podman — tool"),
+    ]
 
 
 def test_get_all_claims_returns_latest_per_page(db_path: Path):
