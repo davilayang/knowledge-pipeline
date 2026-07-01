@@ -15,6 +15,24 @@ Two levels, mirroring the design's cost/precision split:
      implicit-subject / multi-entity claims) — injected, so the deterministic
      wiring is testable without an LLM.
 
+Flow (per source summary):
+
+    SourceSummary (tagged claims)
+        │  render_source_summary → extract() over the claims (LLM)
+        ▼
+    candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_forms
+        │            reuse an existing surrogate, else mint    (cross-path unification)
+        ▼
+    per claim:  match_claim  (deterministic surface-form)
+        │
+        ├─ matched ──────────────────────────────────────► entity_ids
+        └─ residual (no match) ──map_residual (LLM)────────► entity_ids
+        ▼
+    ClaimAssignment[]  +  salience over the body (shared gate)
+        │  group_by_entity
+        ▼
+    EntityClaims[]  — per-entity attributed claim sets (salient vs co-mention)
+
 Persists nothing: like the Slice 1 gate diagnostic, this computes the mapping;
 the storage schema is deferred until page synthesis (Slice 3) fixes its shape.
 """
