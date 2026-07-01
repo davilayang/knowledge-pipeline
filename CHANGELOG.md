@@ -8,6 +8,30 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.27.4] — 2026-07-01
+
+### Added
+
+- **Attributed-lane entity assignment (Slice 2)** maps each source-summary claim
+  to the entity it is about (`workflows.wiki_synthesis.entity_assignment`).
+  Extraction runs over the claims, entities resolve against the LIVE wiki via the
+  same `resolve_or_mint_batch` the raw-article path uses (so a claim unifies onto
+  an existing entity instead of minting a duplicate). The deterministic
+  surface-form match is a hint: a claim naming exactly one entity is assigned it;
+  ambiguous claims (a pronoun, or a possible passing co-mention) go to one closed
+  subject-attribution LLM call over the whole claim list
+  (`prompts/wiki/subject_attribution_*_v1.md`) that returns each claim's true
+  subject(s) from the candidate set — so "Microsoft ditches OpenAI" is attributed
+  to Microsoft, not both. `group_by_entity` inverts to per-entity attributed claim
+  sets, flagging passing co-mentions via the shared salience gate. Persists
+  nothing yet.
+- **Entity-assignment diagnostic over the source-summary corpus**
+  (`evals.wiki.source_summary.assignment_report`) reports claim coverage, the
+  salient-vs-co-mention split, and orphaned claims — the substrate for judging
+  assignment precision before attributed pages are built.
+
+---
+
 ## [0.27.3] — 2026-07-01
 
 ### Changed

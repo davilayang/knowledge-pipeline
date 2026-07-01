@@ -106,38 +106,60 @@ The DAG splits extraction and synthesis into two separate entry points:
 - **`synthesize_item`** — convenience wrapper (extract + synthesize in one
   call) for callers that don't split the two stages. Behaviour-preserving.
 
-`_synthesize_resolved` (the shared synthesis core) via three plain functions:
+`_synthesize_resolved` (the shared synthesis core) resolves identity, **gates on
+salience**, then persists in one transaction:
 
 ```
 _synthesize_resolved(item, candidates, db_path, wiki_dir, rejected_entities)
   │
-  ├─ resolve_or_mint_batch(index, candidates)
-  │    assign surrogate entity_id to each candidate (reuse or mint)
-  │    → drop denylisted (by normalised name) → build (cand, rec, resolved) triples
-  │    (reads a LIVE entity index so within-run dedup is correct even though
-  │    extraction ran in the prior asset)
+  ├─ resolve_or_mint_batch(LIVE index, candidates) → (cand, rec, resolved) triples
+  │    assign a surrogate entity_id to each candidate (reuse existing, else mint)
+  │    → drop denylisted (rejected_entities, by normalised name)
+  │    → within-item dedup: two candidates resolving to the same entity collapse
+  │      to one (synthesised once; their aliases still aggregate)
   │
-  ├─ for entity in entities:   (sequential loop)
-  │    synthesize_entity(item, entity, sibling_ids, wiki_dir)
-  │      read/merge page via synthesis LLM → parse → H2-preservation check
-  │      → build WikiPage in memory; failure caught per entity, siblings continue
+  ├─ _partition_by_salience(item, records)           ← the de-pollution gate
+  │    salient    = entity in the title OR ≥ MENTION_FLOOR body mentions
+  │    peripheral = everything else (a one-off passing mention)
+  │    │
+  │    ├─ SALIENT → for each (sequential loop):
+  │    │     synthesize_entity(item, entity, sibling_ids, wiki_dir)
+  │    │       span-ground to the entity's windows → read/merge page via synthesis
+  │    │       LLM → parse → H2-preservation check → WikiPage in memory
+  │    │       (failure caught per entity; siblings continue)
+  │    │
+  │    └─ PERIPHERAL → minted as an entity ROW ONLY: no page, no page_sources
+  │          edge, no aliases (a one-mention extraction is too low-confidence to
+  │          seed an alias key without risking a destructive false-merge). Kept so
+  │          a later article naming it the same way reuses this id, not a duplicate.
   │
-  ├─ _persist_graph(item, db_path, new_entities, successes, new_aliases)
-  │    ONE SQLite transaction: entities + pages + page_sources + aliases
-  │    + page_versions (appended only when {summary, content} changed)
-  │    all-or-nothing (FK order: entities first, then pages/aliases/page_sources)
+  ├─ _persist_graph(item, db_path, new_entities, successes, new_aliases)  ONE txn
+  │    new_entities = minted entities that synthesised OK OR are peripheral
+  │      (a salient entity whose synthesis FAILED is excluded → a retry re-mints
+  │       under the same surrogate, so no orphan)
+  │    writes all-or-nothing, FK order (entities first): entities + pages
+  │      + page_sources + page_versions (appended only when {summary,content}
+  │      changed) + entity_relations (co-occurrence pair edges among the item's
+  │      successful entities) + aliases (from surviving salient successes only)
   │
   ├─ _write_pages(successes, wiki_dir, db_path)
-  │    write .md files after graph commits; num_sources read from committed ledger
+  │    write .md files AFTER the graph commits; num_sources + sources read from
+  │    the committed page_sources ledger (consistent by construction)
   │
-  └─ _mark_processed(item, db_path, status, error_text)
-       write processed_items row LAST (crash-safe: a missing processed row
-       leaves the item re-queued; entities already committed reuse their
-       surrogates on retry, no orphan files)
+  └─ _mark_processed(item, db_path, status, error_text)          ← LAST
+       status: no salient entity → 'skipped'; ≥1 success → 'ok'; else 'error'.
+       Crash-safe: a missing processed row re-queues the item; committed entities
+       reuse their surrogates on retry, no orphan files.
 ```
 
+The salience gate is the measured de-pollution lever: attaching every mentioned
+entity to a page conflated "mentions E" with "is about E" (53% of prod
+`page_sources` edges were one-mention pollution). Only salient entities drive a
+page; peripheral ones stay resolvable (a row) without polluting a page. See
+`domains.wiki.salience` (`salience_features` / `is_salient`, `MENTION_FLOOR`).
+
 Entity counts per document are capped at 15 (enforced by `ExtractionResult`
-`max_length=15`); entities are processed one at a time in the sequential loop.
+`max_length=15`); salient entities are processed one at a time in the loop.
 A writer/evaluator agentic loop (where the synthesis LLM iterates with a
 separate evaluator LLM) is a deferred future option for improving page quality
 — not part of the current implementation.
@@ -216,11 +238,55 @@ The workflow doesn't propagate failures up to Dagster — it records them.
 The "swallow into state" pattern is deliberate: a partial wiki-quality issue
 shouldn't look like an infrastructure failure to Dagster.
 
+## Attributed lane (Layer 1.5 → entity assignment)
+
+A second, emerging path runs *beside* the raw-article merge engine above. Rather
+than synthesising a page from the raw article, it works from per-source
+SUMMARIES: `source_writer.summarize_source` distils one source into
+`[reported]`/`[opinion]`-tagged claims (Layer 1.5), and
+`entity_assignment.assign_summary` maps each claim to the entity it is about, so
+the wiki can *attribute* a claim ("a Medium piece claimed X") instead of
+asserting it. It resolves against the same LIVE wiki as the raw path, so a claim
+unifies onto an existing entity instead of minting a duplicate.
+
+This lane is a **measurement slice** today — it persists nothing and is not yet
+wired to a Dagster asset (that is Slice 3, which also owns the storage schema).
+The scoring harness lives in `evals.wiki.source_summary` (gate diagnostic +
+assignment diagnostic).
+
+```
+SourceSummary (tagged claims)
+    │  render_source_summary → extract() over the claims (LLM)
+    ▼
+candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_forms
+    │            reuse an existing surrogate, else mint    (cross-path unification)
+    ▼
+per claim:  match_claim (deterministic surface-form) → mentioned entities = HINT
+    │
+    ├─ exactly 1 mention, no contrast cue → unambiguous ─► entity_ids  (no LLM)
+    └─ 0 or ≥2 mentions, or 1 mention + a contrast/dependency cue → ambiguous
+         attribute_subjects_llm (ONE closed call over the whole claim list,
+         each claim + its mention hint) → true subject(s) from the candidates
+         (demote a passing co-mention; resolve a pronoun) ─────► entity_ids
+    ▼
+ClaimAssignment[]  +  salience over the body (shared salience gate)
+    │  group_by_entity
+    ▼
+EntityClaims[]  — per-entity attributed claim sets (salient vs co-mention)
+```
+
+The mention hint is deliberately not the assignment: attributing by mention
+over-attributes a claim to every entity it names (e.g. "Microsoft will ditch
+OpenAI" is about Microsoft, not OpenAI). Subject-attribution is CLOSED to the
+candidate set — the model returns only extracted entities, never an invented
+name or a descriptive phrase.
+
 ## Files
 
 | File | Role |
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
 | `source_writer.py` | `summarize_source` — runs the source-summary LLM call (gpt-4.1-mini, temperature=0) and returns a `SourceSummary` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
-| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE` |
+| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
+| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |

@@ -60,6 +60,17 @@ def summarize_source(
         author_line=author_line,
         article_text=item.text,
     )
+    # Scope boundary: this call extracts + tags claims only — it deliberately does
+    # NOT also assign an entity to each claim. Entity assignment is a separate
+    # downstream step, kept isolated so the [reported]/[opinion] tagging (hard-won,
+    # and noisy on unknown-shape news) can be tuned and measured without an entity
+    # task confounding it. FOR LATER: a co-located variant (one call emitting tags
+    # + per-claim entities) was tested and did NOT degrade tagging — N=3 on an
+    # unknown-shape source gave opinion counts 5/0/0 (tags only) vs 3/4/2 (with
+    # entities), i.e. within the model's own run-to-run noise — so folding entity
+    # tagging in here is a viable consolidation if the extra downstream call ever
+    # becomes a cost/latency concern.
+    #
     # temperature=0: claim extraction is faithful capture, so pin the model to
     # its lowest-variance output for more reproducible summaries + evals. (The
     # API is not bit-deterministic even at 0 — claim counts still drift a little.)
