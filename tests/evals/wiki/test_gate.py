@@ -9,6 +9,7 @@ from evals.wiki.gate import (
     Credibility,
     Lane,
     cluster_claims,
+    count_independent_sources,
     domain_credibility,
     gate_claims,
     route_lane,
@@ -202,3 +203,47 @@ def test_gate_claims_specificity_floor_is_order_independent_for_mixed_cluster():
             is_specific=is_specific,
         )
         assert routed[0].lane == Lane.SINGLE_SOURCE_ATTRIBUTED
+
+
+def test_domain_credibility_normalizes_subdomain_www_and_case():
+    # Real domains arrive as subdomains / with www / mixed case — they must map to
+    # the registrable domain's tier, not silently fall through to MEDIUM.
+    assert domain_credibility("export.arxiv.org") == Credibility.HIGH
+    assert domain_credibility("www.medium.com") == Credibility.LOW
+    assert domain_credibility("Medium.com") == Credibility.LOW
+
+
+def test_count_independent_sources_collapses_near_duplicate_echoes():
+    # Two sources whose embeddings are near-identical (a republished/echoed
+    # article) count as ONE independent source; an orthogonal source counts too.
+    embeddings = {
+        "s1": [1.0, 0.0],
+        "s2": [0.99, 0.01],  # echo of s1
+        "s3": [0.0, 1.0],  # genuinely independent
+    }
+
+    assert count_independent_sources(["s1", "s2", "s3"], embeddings) == 2
+
+
+def test_gate_claims_echo_sources_do_not_corroborate():
+    # Two sources assert the same specific claim, but they're echoes of each other
+    # (independent_count collapses them to 1) → the cluster is NOT voice-safe; it
+    # drops to attributed-only despite two source_ids.
+    claims = [
+        SourceClaim(text="Anthropic builds Claude", source_id="s1"),
+        SourceClaim(text="Claude is built by Anthropic", source_id="s2"),
+    ]
+    vectors = {
+        "Anthropic builds Claude": [1.0, 0.0],
+        "Claude is built by Anthropic": [0.99, 0.01],
+    }
+
+    routed = gate_claims(
+        claims,
+        embed_batch=_fake_embed(vectors),
+        credibility_of=lambda _sid: Credibility.MEDIUM,
+        is_specific=lambda _text: True,
+        independent_count=lambda _sids: 1,  # the two sources are echoes
+    )
+
+    assert routed[0].lane == Lane.SINGLE_SOURCE_ATTRIBUTED
