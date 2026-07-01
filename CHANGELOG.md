@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.27.5] — 2026-07-01
+
 ### Changed
 
 - **The per-source claim step is renamed from "summarize" to "extract"** — it does
