@@ -13,7 +13,12 @@ from datetime import UTC, datetime
 from domains.wiki.claims import ClaimSet, SourceClaim
 from domains.wiki.identity import Candidate, EntityRecord, normalize_name, slugify
 from domains.wiki.state import connection, insert_entity
-from workflows.wiki_synthesis.entity_assignment import assign_summary, group_by_entity, match_claim
+from workflows.wiki_synthesis.entity_assignment import (
+    assign_from_stored,
+    assign_summary,
+    group_by_entity,
+    match_claim,
+)
 
 from tests.wiki_synthesis._helpers import make_llm_call
 
@@ -38,17 +43,10 @@ def _seed_entity(db_path, name: str, *, page_type: str = "concept") -> str:
     return entity_id
 
 
-def _extract_returning(*candidate_names: str):
-    """A fake extract_fn: whatever entities the extractor 'found' in the claims,
-    as plain Candidates (no matched_id — resolution decides reuse vs mint)."""
-
-    def _extract(item):
-        return {
-            "candidates": [Candidate(name=n, page_type="concept") for n in candidate_names],
-            "llm_calls": [],
-        }
-
-    return _extract
+def _candidates(*names: str) -> list[Candidate]:
+    """The article-grounded candidates assign_summary now consumes (produced
+    upstream by extract_entities); plain Candidates, resolution decides reuse vs mint."""
+    return [Candidate(name=n, page_type="concept") for n in names]
 
 
 def _summary(item_id: str, *claims: SourceClaim) -> ClaimSet:
@@ -80,7 +78,7 @@ def test_claim_unifies_onto_existing_wiki_entity(wiki_db_path):
         SourceClaim(text="OpenAI released GPT-5.", source_id="https://medium.com/p/abc"),
     )
 
-    result = assign_summary(summary, db_path=wiki_db_path, extract_fn=_extract_returning("OpenAI"))
+    result = assign_summary(summary, _candidates("OpenAI"), db_path=wiki_db_path)
 
     assert len(result.assignments) == 1
     assert result.assignments[0].entity_ids == (existing_id,)
@@ -96,9 +94,7 @@ def test_new_entity_is_minted_and_surfaced(wiki_db_path):
         SourceClaim(text="Anthropic shipped Claude Opus.", source_id="https://medium.com/p/xyz"),
     )
 
-    result = assign_summary(
-        summary, db_path=wiki_db_path, extract_fn=_extract_returning("Anthropic")
-    )
+    result = assign_summary(summary, _candidates("Anthropic"), db_path=wiki_db_path)
 
     assert len(result.new_entities) == 1
     minted = result.new_entities[0]
@@ -127,8 +123,8 @@ def test_pronoun_claim_resolved_by_subject_mapper(wiki_db_path):
 
     result = assign_summary(
         summary,
+        _candidates("Anthropic"),
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Anthropic"),
         attribute_subjects=subjects,
     )
 
@@ -155,8 +151,8 @@ def test_subject_name_not_in_candidates_is_dropped(wiki_db_path):
 
     result = assign_summary(
         summary,
+        _candidates("Anthropic"),
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Anthropic"),
         attribute_subjects=hallucinating,
     )
 
@@ -181,8 +177,8 @@ def test_group_by_entity_uses_subject_not_comention(wiki_db_path):
 
     result = assign_summary(
         summary,
+        _candidates("Anthropic", "OpenAI"),
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Anthropic", "OpenAI"),
         attribute_subjects=subjects,
     )
     groups = {g.entity.canonical_name: g for g in group_by_entity(result)}
@@ -238,7 +234,7 @@ def test_assign_persists_nothing(wiki_db_path):
         "https://medium.com/p/np",
         SourceClaim(text="Cohere shipped a new model.", source_id="https://medium.com/p/np"),
     )
-    result = assign_summary(summary, db_path=wiki_db_path, extract_fn=_extract_returning("Cohere"))
+    result = assign_summary(summary, _candidates("Cohere"), db_path=wiki_db_path)
 
     assert len(result.new_entities) == 1  # minted in memory
     with connection(wiki_db_path) as conn:
@@ -253,9 +249,7 @@ def test_duplicate_candidates_to_same_surrogate_keep_all_surface_forms(wiki_db_p
     sid = "https://medium.com/p/dup"
     summary = _summary(sid, SourceClaim(text="openai shipped Sora.", source_id=sid))
 
-    result = assign_summary(
-        summary, db_path=wiki_db_path, extract_fn=_extract_returning("OpenAI", "openai")
-    )
+    result = assign_summary(summary, _candidates("OpenAI", "openai"), db_path=wiki_db_path)
 
     assert result.assignments[0].entity_ids == (existing_id,)
     assert result.new_entities == ()
@@ -274,8 +268,8 @@ def test_subject_attribution_overrides_multi_mention(wiki_db_path):
 
     result = assign_summary(
         summary,
+        _candidates("Microsoft", "OpenAI"),
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Microsoft", "OpenAI"),
         attribute_subjects=subjects,
     )
 
@@ -300,9 +294,31 @@ def test_single_mention_with_contrast_cue_is_ambiguous(wiki_db_path):
 
     result = assign_summary(
         summary,
+        _candidates("Microsoft", "OpenAI"),
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Microsoft", "OpenAI"),
         attribute_subjects=subjects,
     )
 
     assert result.assignments[1].entity_ids == (ms,)
+
+
+def test_assign_from_stored_parses_docs_and_assigns(wiki_db_path):
+    # The storage bridge: the rendered claims doc + rendered candidate list (as the
+    # queue store holds them) parse back and run assign_summary — the entry point
+    # the synthesis-side consumer calls per source.
+    from domains.wiki.claims import render_claims
+    from workflows.wiki_synthesis.extract_entities import render_candidates
+
+    existing_id = _seed_entity(wiki_db_path, "OpenAI")
+    sid = "https://medium.com/p/stored"
+    summary = _summary(sid, SourceClaim(text="OpenAI released GPT-5.", source_id=sid))
+
+    result = assign_from_stored(
+        render_claims(summary),
+        render_candidates(_candidates("OpenAI")),
+        db_path=wiki_db_path,
+    )
+
+    assert result.item_id == sid
+    assert result.assignments[0].entity_ids == (existing_id,)
+    assert result.new_entities == ()

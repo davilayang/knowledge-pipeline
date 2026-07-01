@@ -21,11 +21,11 @@ a HINT, not the answer:
      Microsoft, not OpenAI) or resolving a pronoun the match missed. Injected, so
      the wiring is testable without an LLM.
 
-Flow: render the summary → extract() over its claims → resolve_or_mint against
-the LIVE wiki → per-claim match_claim (hint) → closed attribute_subjects over the
-ambiguous claims → group_by_entity into per-entity attributed claim sets (salient
-vs co-mention). See this package's README.md ("Attributed lane") for the flow
-diagram and where this sits beside the raw-article path.
+Flow: article-grounded candidates (from `extract_entities`) → resolve_or_mint
+against the LIVE wiki → per-claim match_claim (hint) → closed attribute_subjects
+over the ambiguous claims → group_by_entity into per-entity attributed claim sets
+(salient vs co-mention). See this package's README.md ("Attributed lane") for the
+flow diagram and where this sits beside the raw-article path.
 
 Persists nothing: like the Slice 1 gate diagnostic, this computes the mapping;
 the storage schema is deferred until page synthesis (Slice 3) fixes its shape.
@@ -36,9 +36,13 @@ from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from domains.types import IngestItem
-from domains.wiki.claims import ClaimSet, SourceClaim, render_claims
-from domains.wiki.identity import EntityRecord, normalize_name, resolve_or_mint_batch
+from domains.wiki.claims import ClaimSet, SourceClaim, parse_claims_doc
+from domains.wiki.identity import (
+    Candidate,
+    EntityRecord,
+    normalize_name,
+    resolve_or_mint_batch,
+)
 from domains.wiki.salience import count_mentions, is_salient, salience_features
 from domains.wiki.state import (
     build_entity_index,
@@ -49,11 +53,11 @@ from domains.wiki.state import (
 from pydantic import BaseModel, Field
 
 from workflows.llm import LLMCall, generate_structured_with_usage
+from workflows.wiki_synthesis.extract_entities import parse_entity_candidates
 from workflows.wiki_synthesis.prompts import (
     SUBJECT_ATTRIBUTION_SYSTEM,
     SUBJECT_ATTRIBUTION_USER,
 )
-from workflows.wiki_synthesis.synthesize import extract
 
 SUBJECT_MODEL = "gpt-4.1-mini"
 
@@ -67,10 +71,6 @@ _CONTRAST_CUE = re.compile(
     r"depends on|dependence on|dependent on|reliant on|reliance on|versus|vs\.?)\b",
     re.IGNORECASE,
 )
-
-# extract_fn: run entity extraction over the summary body → {"candidates", "llm_calls"}.
-# Injected so the assignment wiring is testable without the extraction LLM.
-ExtractFn = Callable[[IngestItem], dict]
 
 # attribute_subjects: (claim_texts, per-claim mention hints, candidate_names) →
 # per-claim SUBJECT names. One closed LLM call over the whole claim list decides
@@ -122,18 +122,20 @@ def _now_iso() -> str:
 
 def assign_summary(
     summary: ClaimSet,
+    candidates: list[Candidate],
     *,
     db_path,
-    extract_fn: ExtractFn | None = None,
     attribute_subjects: SubjectMapper | None = None,
 ) -> SummaryAssignment:
     """Assign each claim in `summary` to the entity/entities it is about.
 
-    Extraction runs over the rendered summary body (the claims, not the raw
-    article); the extracted entities are resolved against the LIVE wiki via the
-    same `resolve_or_mint_batch` the raw-article path uses, so a claim naming an
-    existing entity unifies onto its surrogate id instead of minting a parallel
-    one.
+    `candidates` are the article-grounded entities produced upstream by
+    `extract_entities(article, claims)` (the `extract_entities` asset) — reading
+    the raw article, not the claims, so the article's implicit subject and
+    long-tail are present. This step is pure resolution + attribution: the
+    candidates are resolved against the LIVE wiki via the same
+    `resolve_or_mint_batch` the raw-article path uses, so a candidate naming an
+    existing entity unifies onto its surrogate id instead of minting a parallel one.
 
     Each claim's mentioned entities (deterministic surface-form match) are a HINT,
     not the answer. A claim naming exactly one entity is unambiguous — assigned it
@@ -143,23 +145,12 @@ def assign_summary(
     subject(s) from the candidate set — demoting a mentioned non-subject, or
     resolving a pronoun the match missed.
     """
-    if extract_fn is None:
-        extract_fn = lambda item: extract(item, db_path=db_path)  # noqa: E731
     if attribute_subjects is None:
         attribute_subjects = attribute_subjects_llm
 
-    body = render_claims(summary)
-    item = IngestItem(
-        item_id=summary.item_id,
-        title="",
-        date=None,
-        text=body,
-        source_type="queue",
-        source_ref=summary.item_id,
-    )
-    ext = extract_fn(item)
-    candidates = ext["candidates"]
-    llm_calls = list(ext.get("llm_calls", []))
+    # Candidate extraction happens upstream (the extract_entities asset), so the
+    # only LLM cost accounted here is the optional subject-attribution call.
+    llm_calls: list[LLMCall] = []
 
     with connection(db_path) as conn:
         index = build_entity_index(conn)
@@ -227,9 +218,11 @@ def assign_summary(
         for claim, ids in zip(summary.claims, per_claim_ids, strict=True)
     )
 
-    # Salience over the summary body (the pooled claims), via the SAME
-    # deterministic gate the raw-article path uses — an entity central to this
-    # source clears the mention floor; a one-off co-mention doesn't.
+    # Salience over the pooled claim texts, via the SAME deterministic gate the
+    # raw-article path uses — an entity central to this source clears the mention
+    # floor; a one-off co-mention doesn't. (The claim texts carry the entity
+    # mentions; frontmatter/tags don't, so this matches the prior rendered-body.)
+    body = "\n".join(c.text for c in summary.claims)
     salient_entity_ids = frozenset(
         eid
         for eid, rec in entities.items()
@@ -249,6 +242,26 @@ def assign_summary(
         new_entities=tuple(resolution.new_entities),
         salient_entity_ids=salient_entity_ids,
         llm_calls=llm_calls,
+    )
+
+
+def assign_from_stored(
+    claims_doc: str,
+    candidates_doc: str,
+    *,
+    db_path,
+    attribute_subjects: SubjectMapper | None = None,
+) -> SummaryAssignment:
+    """Assign a source's claims from its STORED extract-time outputs — the rendered
+    claims doc (`get_claims`) and the rendered candidate list (`get_candidates`),
+    both from the queue store. Parses each and runs `assign_summary`. The bridge the
+    synthesis-side consumer uses to turn per-source extract_entities output into an
+    assignment (then `group_by_entity` into `EntityClaims`)."""
+    return assign_summary(
+        parse_claims_doc(claims_doc),
+        parse_entity_candidates(candidates_doc),
+        db_path=db_path,
+        attribute_subjects=attribute_subjects,
     )
 
 
