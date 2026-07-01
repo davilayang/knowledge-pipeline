@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.27.4] — 2026-07-01
+
 ### Added
 
 - **Attributed-lane entity assignment (Slice 2)** maps each source-summary claim
