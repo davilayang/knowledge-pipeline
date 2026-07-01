@@ -6,6 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Entity extraction for the attributed lane** — `extract_entities(article, claims)`
+  (`workflows.wiki_synthesis.extract_entities`) reads the raw article alongside its
+  claims, recovering the article's implicit subject and long-tail entities that
+  claims-only extraction missed; no entity cap (salience classifies the tail downstream).
+
+### Changed
+
+- **Claim-tag accuracy improved on Medium-shaped content** (opinion-essay, tutorial,
+  unknown) — restructuring `extract_claims` to a shared prompt-cache prefix
+  (`extract_shared.shared_prefix_messages`) fixed a systematic opinion-under-tagging
+  bug; faithfulness held at 100% across the eval cohort.
+
 ---
 
 ## [0.27.5] — 2026-07-01

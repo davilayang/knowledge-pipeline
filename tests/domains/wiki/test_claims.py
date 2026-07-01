@@ -1,7 +1,7 @@
-"""Claim-extraction parser (Layer 1.5) — turn a claim_extractor claim body into
+"""Claim-extraction parser (Layer 1.5) — turn a extract_claims claim body into
 structured SourceClaim records.
 
-The claim_extractor emits one markdown list item per claim, each prefixed with a
+The extract_claims emits one markdown list item per claim, each prefixed with a
 `[reported]` or `[opinion]` tag. The parser stamps the source's item_id onto
 every claim and carries the tag as the `speculative` flag, producing the exact
 SourceClaim shape the confidence-lane gate consumes downstream.

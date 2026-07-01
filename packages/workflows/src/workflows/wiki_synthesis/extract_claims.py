@@ -13,8 +13,9 @@ import logging
 from domains.types import IngestItem
 from domains.wiki.claims import ClaimSet, parse_claims
 
-from workflows.llm import LLMCall, generate_with_usage
-from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_SYSTEM, EXTRACT_CLAIMS_USER
+from workflows.llm import LLMCall, generate_messages_with_usage
+from workflows.wiki_synthesis.extract_shared import shared_prefix_messages
+from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_TASK
 
 logger = logging.getLogger(__name__)
 
@@ -53,40 +54,24 @@ def extract_claims(
     spoken sources; None or a text shape leaves the prompt unprimed. A `NONE`
     response (no recordable claim) parses to zero claims — a valid outcome, not
     an error."""
-    author_line = f"Author: {item.author}\n" if item.author else ""
-    user_prompt = EXTRACT_CLAIMS_USER.format(
-        shape_prime=_shape_prime(content_shape),
-        title=item.title,
-        author_line=author_line,
-        article_text=item.text,
-    )
-    # Scope boundary: this call extracts + tags claims only — it deliberately does
-    # NOT also assign an entity to each claim. Entity assignment is a separate
-    # downstream step, kept isolated so the [reported]/[opinion] tagging (hard-won,
-    # and noisy on unknown-shape news) can be tuned and measured without an entity
-    # task confounding it. FOR LATER: a co-located variant (one call emitting tags
-    # + per-claim entities) was tested and did NOT degrade tagging — N=3 on an
-    # unknown-shape source gave opinion counts 5/0/0 (tags only) vs 3/4/2 (with
-    # entities), i.e. within the model's own run-to-run noise — so folding entity
-    # tagging in here is a viable consolidation if the extra downstream call ever
-    # becomes a cost/latency concern.
-    #
+    # Shared-prefix layout: the system + article envelope are byte-identical to the
+    # downstream extract_entities call (built by the same shared_prefix_messages),
+    # so the article prompt-caches across the two extract-time reads. Only this
+    # claims task tail differs. The spoken-source [reported]/[opinion] prime rides
+    # in the task tail (not the shared prefix) so it cannot vary the cached bytes.
+    task = EXTRACT_CLAIMS_TASK.format(shape_prime=_shape_prime(content_shape))
+    messages = shared_prefix_messages(item, task)
     # temperature=0: claim extraction is faithful capture, so pin the model to
     # its lowest-variance output for more reproducible summaries + evals. (The
     # API is not bit-deterministic even at 0 — claim counts still drift a little.)
-    call = generate_with_usage(
-        user_prompt,
-        system=EXTRACT_CLAIMS_SYSTEM,
-        model=EXTRACT_CLAIMS_MODEL,
-        temperature=0,
-    )
+    call = generate_messages_with_usage(messages, model=EXTRACT_CLAIMS_MODEL, temperature=0)
     claims = parse_claims(call.content, source_id=item.item_id)
     if not claims and "NONE" not in call.content:
         # Zero claims with no honest NONE — the model ignored the tagged-bullet
         # format. A silent empty summary would look identical to "no claims";
         # surface it so the failure is auditable rather than invisible.
         logger.warning(
-            "claim_extractor parsed no claims for %s (no NONE marker); output starts: %r",
+            "extract_claims parsed no claims for %s (no NONE marker); output starts: %r",
             item.item_id,
             call.content[:200],
         )

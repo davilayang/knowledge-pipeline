@@ -13,6 +13,7 @@ from pydantic import BaseModel
 from workflows.llm import (
     LLMCall,
     generate,
+    generate_messages_with_usage,
     generate_structured,
     generate_structured_with_usage,
     generate_with_usage,
@@ -105,6 +106,68 @@ def test_generate_with_usage_handles_missing_usage(mock_get_client):
 
     assert call.input_tokens == 0
     assert call.output_tokens == 0
+    assert call.cached_tokens == 0
+
+
+@patch("workflows.llm._get_client")
+def test_generate_with_usage_captures_cached_tokens(mock_get_client):
+    # The prefix-cache hit is read from usage.prompt_tokens_details.cached_tokens.
+    client = _mock_client()
+    client.chat.completions.create.return_value = _chat_response(
+        "hi",
+        usage=SimpleNamespace(
+            prompt_tokens=100,
+            completion_tokens=8,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=64),
+        ),
+    )
+    mock_get_client.return_value = client
+
+    call = generate_with_usage("hello")
+
+    assert call.input_tokens == 100
+    assert call.cached_tokens == 64
+
+
+@patch("workflows.llm._get_client")
+def test_cached_tokens_defaults_zero_without_details(mock_get_client):
+    # Usage present but no prompt_tokens_details → cached_tokens is 0, not an error.
+    client = _mock_client()
+    client.chat.completions.create.return_value = _chat_response(
+        "hi", usage=SimpleNamespace(prompt_tokens=12, completion_tokens=3)
+    )
+    mock_get_client.return_value = client
+
+    call = generate_with_usage("hello")
+
+    assert call.cached_tokens == 0
+
+
+@patch("workflows.llm._get_client")
+def test_generate_messages_with_usage_passes_messages_verbatim(mock_get_client):
+    # The prompt-cache entry point sends the caller's message list unchanged, so the
+    # shared prefix (system + source) stays byte-identical across sibling calls.
+    client = _mock_client()
+    client.chat.completions.create.return_value = _chat_response(
+        "out",
+        usage=SimpleNamespace(
+            prompt_tokens=50,
+            completion_tokens=4,
+            prompt_tokens_details=SimpleNamespace(cached_tokens=40),
+        ),
+    )
+    mock_get_client.return_value = client
+
+    messages = [
+        {"role": "system", "content": "shared"},
+        {"role": "user", "content": "source document"},
+        {"role": "user", "content": "task-specific tail"},
+    ]
+    call = generate_messages_with_usage(messages, model="gpt-4.1-mini")
+
+    assert client.chat.completions.create.call_args.kwargs["messages"] == messages
+    assert call.content == "out"
+    assert call.cached_tokens == 40
 
 
 @patch("workflows.llm._get_client")
