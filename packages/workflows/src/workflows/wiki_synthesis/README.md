@@ -242,7 +242,7 @@ shouldn't look like an infrastructure failure to Dagster.
 
 A second, emerging path runs *beside* the raw-article merge engine above. Rather
 than synthesising a page from the raw article, it works from per-source
-SUMMARIES: `claim_extractor.extract_claims` distils one source into
+SUMMARIES: `extract_claims` distils one source into
 `[reported]`/`[opinion]`-tagged claims (Layer 1.5), and
 `entity_assignment.assign_summary` maps each claim to the entity it is about, so
 the wiki can *attribute* a claim ("a Medium piece claimed X") instead of
@@ -286,7 +286,9 @@ name or a descriptive phrase.
 | File | Role |
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
-| `claim_extractor.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
+| `extract_claims.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources. Uses the shared-prefix layout (`extract_shared`) so its article read prompt-caches with `extract_entities` |
+| `extract_entities.py` | `extract_entities` — article-grounded entity candidate extractor: reads the raw article + its claims, returns `Candidate`s (no cap; salience classifies the tail), behind a prompt that drops chrome / example-data / code identifiers. The attributed lane's intended candidate source — Slice 3 wires it as its own extract-time Dagster asset (`deps=extract_claims`) whose stored candidates `assign_summary` consumes; not yet consumed today |
+| `extract_shared.py` | `shared_prefix_messages` — the `[system, article envelope, task]` message layout shared byte-identically by `extract_claims` + `extract_entities`, so the article is served from OpenAI's prefix cache on the second extract-time call |
 | `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
-| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `EXTRACT_CLAIMS_SYSTEM`, `EXTRACT_CLAIMS_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
+| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
