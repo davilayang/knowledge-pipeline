@@ -13,10 +13,10 @@ without the extraction / residual LLM calls.
 from collections.abc import Callable
 from dataclasses import dataclass, field
 
-from domains.wiki.source_summary import SourceSummary, parse_source_summary_doc
+from domains.wiki.claims import ClaimSet, parse_claims_doc
 from workflows.wiki_synthesis.entity_assignment import SummaryAssignment, group_by_entity
 
-Assign = Callable[[SourceSummary], SummaryAssignment]
+Assign = Callable[[ClaimSet], SummaryAssignment]
 
 
 @dataclass(frozen=True)
@@ -49,7 +49,7 @@ def build_assignment_report(
     n_summaries = 0
     for page_id, doc in summaries:
         try:
-            summary = parse_source_summary_doc(doc)
+            summary = parse_claims_doc(doc)
         except Exception as e:  # malformed/stale doc — surface it, don't swallow
             parse_failures.append((page_id, str(e)))
             continue

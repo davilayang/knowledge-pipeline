@@ -1,8 +1,8 @@
-"""Source-summary eval cohort loader + pinned-cohort integrity."""
+"""Extract-claims eval cohort loader + pinned-cohort integrity."""
 
 from collections import Counter
 
-from evals.wiki.source_summary.dataset import (
+from evals.wiki.claims.dataset import (
     DATASET_PATH,
     SourceFixture,
     load_source_fixtures,

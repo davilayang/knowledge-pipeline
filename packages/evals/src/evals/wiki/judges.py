@@ -11,7 +11,7 @@ import re
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 
-from domains.wiki.source_summary import SourceClaim
+from domains.wiki.claims import SourceClaim
 
 from evals.wiki.prompts import load_prompt
 
@@ -260,7 +260,7 @@ class TaggingScore:
 @dataclass(frozen=True)
 class TaggingJudge:
     """Judges whether each claim's [reported]/[opinion] tag is correct against the
-    source — the source_summary prompt's own rule (reported predictions and
+    source — the extract_claims prompt's own rule (reported predictions and
     embedded editorializing are opinion, not reported). `chat_fn` returns
     `{"verdicts": [{"claim_number": 1, "correct_tag": "reported"|"opinion"}, ...]}`.
     Verdicts are keyed by 1-based claim number, so the LLM returning extra or

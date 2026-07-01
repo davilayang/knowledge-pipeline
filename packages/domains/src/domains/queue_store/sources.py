@@ -522,7 +522,7 @@ def get_latest_extraction_calls(*, db_path: Path, notion_page_id: str) -> dict[s
     return latest
 
 
-def record_source_summary(
+def record_claims(
     *,
     db_path: Path,
     notion_page_id: str,
@@ -533,10 +533,10 @@ def record_source_summary(
     tokens_in: int,
     tokens_out: int,
 ) -> None:
-    """Persist a per-source claim summary as a `source_summary`-kind
+    """Persist a per-source claim summary as a `extract_claims`-kind
     `extraction_calls` row. The wiki summary is an LLM extraction over the body,
     so it is kept like every other extraction output: the rendered `output` plus
-    prompt provenance, INSERT-not-UPSERT (re-runs accumulate; `get_source_summary`
+    prompt provenance, INSERT-not-UPSERT (re-runs accumulate; `get_claims`
     returns the latest), and FK-cascade-cleared with the cohort on re-triage."""
     with _connect(db_path) as conn:
         conn.execute(
@@ -544,7 +544,7 @@ def record_source_summary(
             INSERT INTO extraction_calls (
                 notion_page_id, call_kind, prompt_label, prompt_sha256,
                 schema_name, model, output, tokens_in, tokens_out, extracted_at
-            ) VALUES (?, 'source_summary', ?, ?, NULL, ?, ?, ?, ?, ?)
+            ) VALUES (?, 'extract_claims', ?, ?, NULL, ?, ?, ?, ?, ?)
             """,
             (
                 notion_page_id,
@@ -559,19 +559,19 @@ def record_source_summary(
         )
 
 
-def get_all_source_summaries(*, db_path: Path) -> list[tuple[str, str]]:
-    """Every page's latest `source_summary` output as `(notion_page_id, output)`,
+def get_all_claims(*, db_path: Path) -> list[tuple[str, str]]:
+    """Every page's latest `extract_claims` output as `(notion_page_id, output)`,
     ordered by `notion_page_id`. The attributed-lane consumer reads the whole
-    corpus in one pass; latest-wins per page mirrors `get_source_summary`."""
+    corpus in one pass; latest-wins per page mirrors `get_claims`."""
     with _connect(db_path) as conn:
         rows = conn.execute(
             """
             SELECT notion_page_id, output FROM extraction_calls e
-             WHERE call_kind = 'source_summary'
+             WHERE call_kind = 'extract_claims'
                AND id = (
                    SELECT id FROM extraction_calls e2
                     WHERE e2.notion_page_id = e.notion_page_id
-                      AND e2.call_kind = 'source_summary'
+                      AND e2.call_kind = 'extract_claims'
                     ORDER BY extracted_at DESC, id DESC
                     LIMIT 1
                )
@@ -581,14 +581,14 @@ def get_all_source_summaries(*, db_path: Path) -> list[tuple[str, str]]:
     return [(row["notion_page_id"], row["output"]) for row in rows]
 
 
-def get_source_summary(*, db_path: Path, notion_page_id: str) -> str | None:
-    """The most-recent `source_summary` output for a page, or None if none is
+def get_claims(*, db_path: Path, notion_page_id: str) -> str | None:
+    """The most-recent `extract_claims` output for a page, or None if none is
     recorded. Latest-wins, mirroring `get_latest_extraction_calls`."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
             SELECT output FROM extraction_calls
-             WHERE notion_page_id = ? AND call_kind = 'source_summary'
+             WHERE notion_page_id = ? AND call_kind = 'extract_claims'
              ORDER BY extracted_at DESC, id DESC
              LIMIT 1
             """,

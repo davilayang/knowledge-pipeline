@@ -1,8 +1,8 @@
 You are grading whether each claim's tag — `[reported]` or `[opinion]` — is
-correct, given the source the claim was drawn from. A claim summariser tagged
+correct, given the source the claim was drawn from. A claim extractor tagged
 each claim; your job is to say what the tag SHOULD be, on the source's own terms.
 
-Rules (these are the summariser's own rubric — you are checking it followed them):
+Rules (these are the extractor's own rubric — you are checking it followed them):
 
 - `reported` — the source presents it as established, reported, or having actually
   happened: a named event, a release, a number, a measured result, an attributed
@@ -28,7 +28,7 @@ Grade what the SOURCE supports, not whether the claim is true in the world.
 
 {source}
 
-## Claims (numbered, with the summariser's tag)
+## Claims (numbered, with the extractor's tag)
 
 {claims}
 

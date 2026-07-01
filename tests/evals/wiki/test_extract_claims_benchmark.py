@@ -1,14 +1,14 @@
-"""Source-summary benchmark — per-source run wiring + per-shape aggregation/report.
+"""Extract-claims benchmark — per-source run wiring + per-shape aggregation/report.
 Pure parts TDD'd; the real judges run in the CLI."""
 
-from domains.wiki.source_summary import SourceClaim, SourceSummary
-from evals.wiki.source_summary.benchmark import (
+from domains.wiki.claims import ClaimSet, SourceClaim
+from evals.wiki.claims.benchmark import (
     SourceResult,
     aggregate,
     format_report,
     run_source,
 )
-from evals.wiki.source_summary.dataset import SourceFixture
+from evals.wiki.claims.dataset import SourceFixture
 
 
 def _fx(fid="art_1", shape="tutorial"):
@@ -32,8 +32,8 @@ class _TagJudge:
         return TaggingScore(verdicts=[], accuracy=1.0)
 
 
-def _summarize(item, *, content_shape=None):
-    s = SourceSummary(
+def _extract_claims(item, *, content_shape=None):
+    s = ClaimSet(
         item_id=item.item_id,
         content_date=None,
         claims=[
@@ -46,7 +46,10 @@ def _summarize(item, *, content_shape=None):
 
 def test_run_source_combines_faithfulness_and_tagging():
     r = run_source(
-        _fx(), summarize_fn=_summarize, faithfulness_judge=_FaithJudge(), tagging_judge=_TagJudge()
+        _fx(),
+        extract_claims_fn=_extract_claims,
+        faithfulness_judge=_FaithJudge(),
+        tagging_judge=_TagJudge(),
     )
     assert r.id == "art_1"
     assert r.n_claims == 2

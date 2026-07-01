@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The per-source claim step is renamed from "summarize" to "extract"** — it does
+  faithful claim extraction, not summarization. `summarize_source` →
+  `extract_claims` (module `workflows.wiki_synthesis.claim_extractor`),
+  `SourceSummary` → `ClaimSet` (module `domains.wiki.claims`), the
+  `eval-source-summary` CLI → `eval-extract-claims`, the `source_summary`
+  extraction-calls `call_kind` → `extract_claims`, and the prompt assets →
+  `prompts/wiki/extract_claims_*_v1.md`. `SourceClaim` is unchanged.
+
 ---
 
 ## [0.27.4] — 2026-07-01

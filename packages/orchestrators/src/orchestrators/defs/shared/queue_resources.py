@@ -441,7 +441,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             db_path=self._path(), notion_page_id=notion_page_id
         )
 
-    def record_source_summary(
+    def record_claims(
         self,
         *,
         notion_page_id: str,
@@ -452,7 +452,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         tokens_in: int,
         tokens_out: int,
     ) -> None:
-        queue_db.record_source_summary(
+        queue_db.record_claims(
             db_path=self._path(),
             notion_page_id=notion_page_id,
             output=output,
@@ -463,8 +463,8 @@ class QueueStoreResource(dg.ConfigurableResource):
             tokens_out=tokens_out,
         )
 
-    def get_source_summary(self, notion_page_id: str) -> str | None:
-        return queue_db.get_source_summary(db_path=self._path(), notion_page_id=notion_page_id)
+    def get_claims(self, notion_page_id: str) -> str | None:
+        return queue_db.get_claims(db_path=self._path(), notion_page_id=notion_page_id)
 
     def get_latest_topic_card(self, notion_page_id: str):
         """Convenience for the `published` asset — returns the latest TopicCard

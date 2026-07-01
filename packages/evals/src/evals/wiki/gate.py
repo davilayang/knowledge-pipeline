@@ -12,7 +12,7 @@ from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from enum import Enum
 
-from domains.wiki.source_summary import SourceClaim
+from domains.wiki.claims import SourceClaim
 
 EmbedBatch = Callable[[list[str]], list[list[float]]]
 

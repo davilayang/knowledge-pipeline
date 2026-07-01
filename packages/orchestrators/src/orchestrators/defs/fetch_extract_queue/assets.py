@@ -6,9 +6,9 @@ from typing import Any
 
 import dagster as dg
 from domains.types import IngestItem
-from domains.wiki.source_summary import render_source_summary
-from workflows.wiki_synthesis.prompts import SOURCE_SUMMARY_SYSTEM
-from workflows.wiki_synthesis.source_writer import summarize_source
+from domains.wiki.claims import render_claims
+from workflows.wiki_synthesis.claim_extractor import extract_claims as run_extract_claims
+from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_SYSTEM
 
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
@@ -21,8 +21,8 @@ from .resources import ExtractorRegistry, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
 
-# Per-prompt staleness handle for the source-summary extraction_calls rows.
-_SOURCE_SUMMARY_PROMPT_SHA = hashlib.sha256(SOURCE_SUMMARY_SYSTEM.encode()).hexdigest()
+# Per-prompt staleness handle for the extract-claims extraction_calls rows.
+_EXTRACT_CLAIMS_PROMPT_SHA = hashlib.sha256(EXTRACT_CLAIMS_SYSTEM.encode()).hexdigest()
 
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500
@@ -49,7 +49,7 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
 
 
 def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
-    """Build the IngestItem the source writer summarises from a fetched queue row.
+    """Build the IngestItem the claim extractor reads from a fetched queue row.
 
     `item_id` is the canonical URL (the content's stable identity), falling back
     to the captured URL; title/author/content_date come from the persisted
@@ -442,7 +442,7 @@ def published(
 
 
 @dg.asset(
-    key=["fetch_extract_queue", "source_summary"],
+    key=["fetch_extract_queue", "extract_claims"],
     group_name=GROUP_NAME,
     kinds={"sqlite"},
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
@@ -451,13 +451,13 @@ def published(
     deps=[fetched],
     description=_oneline(
         """
-        Summarises the fetched body into per-source [reported]/[opinion] claims
-        (content-shape-aware) and records it as a source_summary extraction_calls
+        Extracts claims from the fetched body into per-source [reported]/[opinion] claims
+        (content-shape-aware) and records it as a extract_claims extraction_calls
         row — the attributed-lane wiki substrate. Skips when no body is fetched.
         """
     ),
 )
-def source_summary(
+def extract_claims(
     context: dg.AssetExecutionContext,
     store: QueueStoreResource,
 ) -> dg.MaterializeResult:
@@ -468,12 +468,12 @@ def source_summary(
 
     item = _ingest_item_from_row(row)
     content_shape = row.get("content_shape") or "unknown"
-    summary, call = summarize_source(item, content_shape=content_shape)
-    store.record_source_summary(
+    summary, call = run_extract_claims(item, content_shape=content_shape)
+    store.record_claims(
         notion_page_id=page_id,
-        output=render_source_summary(summary),
-        prompt_label="source_summary_v1",
-        prompt_sha256=_SOURCE_SUMMARY_PROMPT_SHA,
+        output=render_claims(summary),
+        prompt_label="extract_claims_v1",
+        prompt_sha256=_EXTRACT_CLAIMS_PROMPT_SHA,
         model=call.model,
         tokens_in=call.input_tokens,
         tokens_out=call.output_tokens,
@@ -492,4 +492,4 @@ def source_summary(
     )
 
 
-all_assets = [fetched, extracted, published, source_summary]
+all_assets = [fetched, extracted, published, extract_claims]

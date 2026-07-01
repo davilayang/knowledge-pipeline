@@ -242,7 +242,7 @@ shouldn't look like an infrastructure failure to Dagster.
 
 A second, emerging path runs *beside* the raw-article merge engine above. Rather
 than synthesising a page from the raw article, it works from per-source
-SUMMARIES: `source_writer.summarize_source` distils one source into
+SUMMARIES: `claim_extractor.extract_claims` distils one source into
 `[reported]`/`[opinion]`-tagged claims (Layer 1.5), and
 `entity_assignment.assign_summary` maps each claim to the entity it is about, so
 the wiki can *attribute* a claim ("a Medium piece claimed X") instead of
@@ -251,12 +251,12 @@ unifies onto an existing entity instead of minting a duplicate.
 
 This lane is a **measurement slice** today — it persists nothing and is not yet
 wired to a Dagster asset (that is Slice 3, which also owns the storage schema).
-The scoring harness lives in `evals.wiki.source_summary` (gate diagnostic +
+The scoring harness lives in `evals.wiki.claims` (gate diagnostic +
 assignment diagnostic).
 
 ```
-SourceSummary (tagged claims)
-    │  render_source_summary → extract() over the claims (LLM)
+ClaimSet (tagged claims)
+    │  render_claims → extract() over the claims (LLM)
     ▼
 candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_forms
     │            reuse an existing surrogate, else mint    (cross-path unification)
@@ -286,7 +286,7 @@ name or a descriptive phrase.
 | File | Role |
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
-| `source_writer.py` | `summarize_source` — runs the source-summary LLM call (gpt-4.1-mini, temperature=0) and returns a `SourceSummary` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
+| `claim_extractor.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources |
 | `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
-| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `SOURCE_SUMMARY_SYSTEM`, `SOURCE_SUMMARY_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
+| `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `EXTRACT_CLAIMS_SYSTEM`, `EXTRACT_CLAIMS_USER`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |

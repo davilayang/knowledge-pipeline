@@ -114,12 +114,12 @@ Refresh when:
 - Score variance between v5 and v6 candidate runs is dominated by 1–2 fixtures → add diversity in that content_type to dilute the outlier.
 - Quarterly (whichever sooner), revisit topic diversity — the user's interests drift over time.
 
-## `source_summary_eval.jsonl`
+## `extract_claims_eval.jsonl`
 
-Pinned cohort for the source-summary producer eval (`evals.wiki.source_summary`).
-Header `schema_version=1`, `fixture_kind="source_summary"`; rows are
+Pinned cohort for the extract-claims producer eval (`evals.wiki.claims`).
+Header `schema_version=1`, `fixture_kind="extract_claims"`; rows are
 `{id, content_shape, title, content_date, body}`. Loaded by
-`evals.wiki.source_summary.dataset.load_source_fixtures`.
+`evals.wiki.claims.dataset.load_source_fixtures`.
 
 ### v0 (2026-06-30) — bootstrap
 
@@ -133,12 +133,12 @@ spoken shapes (talk/podcast) are where tag behaviour varies most.
 Assembled by gitignored `data/shadow_audit/build_eval_cohort.py` (provenance);
 the JSONL is the checked-in artifact.
 
-## `source_summary_tagging_gold.jsonl`
+## `extract_claims_tagging_gold.jsonl`
 
 Human-labelled gold for calibrating the **tagging** axis — does a claim's tag
 match the source? Each row is `{source_id, claim_text, producer_tag, gold_tag}`;
-`source_id` joins to a `source_summary_eval.jsonl` body. Loaded by
-`evals.wiki.source_summary.calibration.load_gold`.
+`source_id` joins to a `extract_claims_eval.jsonl` body. Loaded by
+`evals.wiki.claims.calibration.load_gold`.
 
 ### The taxonomy — `reported` / `opinion`
 

@@ -12,7 +12,7 @@ def test_pipeline_defs_loads():
         "fetch_extract_queue/fetched",
         "fetch_extract_queue/extracted",
         "fetch_extract_queue/published",
-        "fetch_extract_queue/source_summary",
+        "fetch_extract_queue/extract_claims",
     }
 
 

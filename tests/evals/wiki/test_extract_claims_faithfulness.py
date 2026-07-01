@@ -1,11 +1,11 @@
-"""Faithfulness scorer over the source-summary cohort — wiring + aggregation
+"""Faithfulness scorer over the extract-claims cohort — wiring + aggregation
 TDD'd with fakes; the real judge/producer run in the benchmark (S5)."""
 
 from dataclasses import dataclass
 
-from domains.wiki.source_summary import SourceClaim, SourceSummary
-from evals.wiki.source_summary.dataset import SourceFixture
-from evals.wiki.source_summary.faithfulness import (
+from domains.wiki.claims import ClaimSet, SourceClaim
+from evals.wiki.claims.dataset import SourceFixture
+from evals.wiki.claims.faithfulness import (
     SourceFaithfulness,
     aggregate_by_shape,
     score_faithfulness,
@@ -40,8 +40,8 @@ class _FakeJudge:
         return _FakeScore(claims=claims, grounded_fraction=grounded)
 
 
-def _fake_summarize(item, *, content_shape=None):
-    summary = SourceSummary(
+def _fake_extract_claims(item, *, content_shape=None):
+    summary = ClaimSet(
         item_id=item.item_id,
         content_date=None,
         claims=[
@@ -53,7 +53,7 @@ def _fake_summarize(item, *, content_shape=None):
 
 
 def test_score_faithfulness_runs_producer_and_judge():
-    result = score_faithfulness(_fx(), summarize_fn=_fake_summarize, judge=_FakeJudge())
+    result = score_faithfulness(_fx(), extract_claims_fn=_fake_extract_claims, judge=_FakeJudge())
     assert result.id == "art_1"
     assert result.n_claims == 2
     assert result.grounded_fraction == 0.5

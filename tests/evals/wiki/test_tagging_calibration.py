@@ -1,8 +1,8 @@
 """Tagging-judge calibration against a human gold set — does the judge's
 correct_tag match the human label? Aggregation TDD'd with a fake judge."""
 
+from evals.wiki.claims.calibration import GoldClaim, calibrate
 from evals.wiki.judges import ClaimTagVerdict, TaggingScore
-from evals.wiki.source_summary.calibration import GoldClaim, calibrate
 
 
 class _FakeJudge:

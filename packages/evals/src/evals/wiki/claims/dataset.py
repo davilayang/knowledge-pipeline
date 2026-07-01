@@ -1,6 +1,6 @@
-"""Pinned source-summary eval cohort — loader over the checked-in JSONL.
+"""Pinned extract-claims eval cohort — loader over the checked-in JSONL.
 
-The cohort (`packages/evals/datasets/source_summary_eval.jsonl`) is the
+The cohort (`packages/evals/datasets/extract_claims_eval.jsonl`) is the
 load-bearing pinned artifact: a fixed set of real sources (2 per content shape)
 scored run-over-run so faithfulness / tagging / stability trends are comparable.
 The JSONL is the checked-in artifact; this module reads it.
@@ -11,9 +11,9 @@ from pathlib import Path
 
 from evals.core.fixtures import load_fixtures
 
-# packages/evals/datasets/source_summary_eval.jsonl, resolved from this module:
-# dataset.py → source_summary → wiki → evals → src → evals(pkg) → datasets/.
-DATASET_PATH = Path(__file__).resolve().parents[4] / "datasets" / "source_summary_eval.jsonl"
+# packages/evals/datasets/extract_claims_eval.jsonl, resolved from this module:
+# dataset.py → extract_claims → wiki → evals → src → evals(pkg) → datasets/.
+DATASET_PATH = Path(__file__).resolve().parents[4] / "datasets" / "extract_claims_eval.jsonl"
 
 SCHEMA_VERSION = 1
 
@@ -21,7 +21,7 @@ SCHEMA_VERSION = 1
 @dataclass(frozen=True)
 class SourceFixture:
     """One pinned source: the real fetched/transcribed body the source writer
-    summarises, plus the triage `content_shape` it would be primed with."""
+    produces claims from, plus the triage `content_shape` it would be primed with."""
 
     id: str
     content_shape: str

@@ -1,4 +1,4 @@
-"""Source-summary benchmark — score the producer over the pinned cohort on
+"""Extract-claims benchmark — score the producer over the pinned cohort on
 faithfulness (grounded_fraction), tagging accuracy, and claim volume, aggregated
 per content shape. `run_source` wires producer + judges (injected for tests);
 `main` runs the real judges over the cohort and prints the report.
@@ -34,18 +34,18 @@ class ShapeAgg:
 
 
 def run_source(
-    fx, *, summarize_fn: Callable, faithfulness_judge: Any, tagging_judge: Any
+    fx, *, extract_claims_fn: Callable, faithfulness_judge: Any, tagging_judge: Any
 ) -> SourceResult:
-    """Summarise one fixture, then score faithfulness + tagging over its claims."""
-    summary, _ = summarize_fn(fixture_to_item(fx), content_shape=fx.content_shape)
-    page = "\n".join(f"- {c.text}" for c in summary.claims)
+    """Extract claims from one fixture, then score faithfulness + tagging over its claims."""
+    claim_set, _ = extract_claims_fn(fixture_to_item(fx), content_shape=fx.content_shape)
+    page = "\n".join(f"- {c.text}" for c in claim_set.claims)
     fs = faithfulness_judge.score(page=page, sources=[fx.body])
-    ts = tagging_judge.score(claims=summary.claims, source=fx.body)
+    ts = tagging_judge.score(claims=claim_set.claims, source=fx.body)
     return SourceResult(
         id=fx.id,
         content_shape=fx.content_shape,
-        n_claims=len(summary.claims),
-        n_opinion=sum(c.speculative for c in summary.claims),
+        n_claims=len(claim_set.claims),
+        n_opinion=sum(c.speculative for c in claim_set.claims),
         grounded_fraction=fs.grounded_fraction,
         tagging_accuracy=ts.accuracy,
     )
@@ -85,8 +85,8 @@ def format_report(aggs: list[ShapeAgg]) -> str:
 
 
 def main() -> None:
-    """`eval-source-summary [--limit N]` — run the real judges over the cohort."""
-    from workflows.wiki_synthesis.source_writer import summarize_source
+    """`eval-extract-claims [--limit N]` — run the real judges over the cohort."""
+    from workflows.wiki_synthesis.claim_extractor import extract_claims
 
     from evals.wiki.chat import make_faithfulness_chat_fn, make_tagging_chat_fn
     from evals.wiki.judges import FaithfulnessJudge, TaggingJudge
@@ -106,7 +106,7 @@ def main() -> None:
     for fx in fixtures:
         try:
             r = run_source(
-                fx, summarize_fn=summarize_source, faithfulness_judge=faith, tagging_judge=tag
+                fx, extract_claims_fn=extract_claims, faithfulness_judge=faith, tagging_judge=tag
             )
         except Exception as e:  # a flaky judge call shouldn't sink the whole run
             errored.append(fx.id)
