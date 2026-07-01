@@ -17,6 +17,7 @@ identity. Claim-extraction quality is validated empirically; the wiring below
 """
 
 import logging
+import re
 from typing import get_args
 
 from domains.types import IngestItem
@@ -56,29 +57,40 @@ _TYPE_ALIASES = {
     "law": "other",
 }
 
-# `Name — type` — accept em dash, en dash, or a spaced hyphen as the separator.
-_SEPARATORS = (" — ", " – ", " - ")
+# `Name — type` — accept em/en dash or a spaced hyphen, spaced or unspaced (the
+# model drifts on spacing). Spaced forms are tried first so a name's internal
+# unspaced hyphen (e.g. "cross-encoder") is never mistaken for the separator.
+_SEPARATORS = (" — ", " – ", " - ", "—", "–")
+
+# Leading list numbering the model sometimes adds despite "no numbering": "1. ",
+# "2) ". Stripped so the number doesn't become part of the name.
+_NUMBERING = re.compile(r"^\d+[.)]\s+")
+
+# Names / types the model uses to say "no entity here" — not real candidates.
+_NULL_NAMES = frozenset({"none", "no entities", "no entity", "n/a"})
+_NULL_TYPES = frozenset({"none", "n/a", "unknown"})
 
 
 def _normalize_type(raw: str) -> str:
-    """Map the model's type token to a valid PageType. Takes the first word (so
-    'tool/model' → 'tool'), lowercases, then the alias map; unknown → 'concept'."""
-    token = raw.strip().strip("`").lower().replace("/", " ").split()
-    if not token:
+    """Map the model's type token to a valid PageType. Strips trailing punctuation
+    ('tool.' → 'tool') and takes the first word ('tool/model' → 'tool'), then the
+    alias map; unknown → 'concept'."""
+    words = raw.strip().strip("`").lower().replace("/", " ").split()
+    if not words:
         return "concept"
-    head = token[0]
+    head = words[0].strip(".,;:!")
     if head in _VALID_PAGE_TYPES:
         return head
     return _TYPE_ALIASES.get(head, "concept")
 
 
 def _split_name_type(line: str) -> tuple[str, str]:
-    """Split a `Name — type` line into (name, raw_type). Splits on the LAST
-    separator (names may contain a hyphen, e.g. 'cross-encoder'); a line with no
-    separator is all name with an empty type."""
+    """Split a `Name — type` line into (name, raw_type) on the FIRST separator, so
+    a trailing description ('Docker — tool — in passing') keeps the type token and
+    an internal unspaced hyphen in the name is preserved. No separator → all name."""
     for sep in _SEPARATORS:
         if sep in line:
-            name, _, type_part = line.rpartition(sep)
+            name, _, type_part = line.partition(sep)
             return name.strip(), type_part.strip()
     return line.strip(), ""
 
@@ -86,13 +98,14 @@ def _split_name_type(line: str) -> tuple[str, str]:
 def parse_entity_candidates(text: str) -> list[Candidate]:
     """Parse the entity task's `Name — type` output into Candidates.
 
-    Skips blanks, a lone NONE, and bullet/number markers; dedups by lowercased
-    name (first spelling wins); normalises the type to a valid PageType. The LLM
-    supplies no id or aliases — resolution against the live wiki owns identity."""
+    Skips blanks, a lone NONE, bullet/number markers, and "no entity" lines; dedups
+    by lowercased name (first spelling wins); normalises the type to a valid
+    PageType. The LLM supplies no id or aliases — resolution against the live wiki
+    owns identity."""
     candidates: list[Candidate] = []
     seen: set[str] = set()
     for raw in text.splitlines():
-        line = raw.strip().lstrip("-*• ").strip()
+        line = _NUMBERING.sub("", raw.strip().lstrip("-*• ").strip())
         if not line or line.upper() == "NONE":
             continue
         # The format is mandatory `Name — type`; a line with no separator is prose
@@ -101,10 +114,15 @@ def parse_entity_candidates(text: str) -> list[Candidate]:
             continue
         name, type_part = _split_name_type(line)
         name = name.strip("`").strip()
-        # A real entity name is short; a long name is almost always a prose
-        # sentence that happens to contain a dash — drop it (recall of REAL
-        # entities, not sentences).
-        if not name or len(name) > 60:
+        # Drop the model's "no entity" phrasings (e.g. "No entities — none") and
+        # prose sentences (a real entity name is short; a long name is a sentence
+        # that happens to contain a dash).
+        if (
+            not name
+            or len(name) > 60
+            or name.lower() in _NULL_NAMES
+            or type_part.strip().strip(".,;:").lower() in _NULL_TYPES
+        ):
             continue
         key = name.lower()
         if key in seen:

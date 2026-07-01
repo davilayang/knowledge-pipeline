@@ -95,6 +95,34 @@ def test_no_hard_cap():
     assert len(parse_entity_candidates(text)) == 30
 
 
+def test_strips_leading_list_numbering():
+    # The model sometimes numbers despite "no numbering" — the digit must not
+    # become part of the name.
+    cands = parse_entity_candidates("1. Docker — tool\n2) Podman — tool")
+    assert [c.name for c in cands] == ["Docker", "Podman"]
+
+
+def test_drops_no_entity_phrasings():
+    # "No entities — none" is the model saying there are none, not an entity.
+    assert parse_entity_candidates("No entities — none") == []
+    assert parse_entity_candidates("Docker — none") == []  # null type token
+
+
+def test_trailing_punctuation_on_type_still_normalises():
+    # "tool." must resolve to the tool PageType, not fall through to concept.
+    (cand,) = parse_entity_candidates("Docker — tool.")
+    assert cand.page_type == "tool"
+
+
+def test_unspaced_separator_and_trailing_description():
+    # Unspaced em dash is accepted; a trailing description after a second
+    # separator keeps the real type (first-separator split).
+    a = parse_entity_candidates("Docker—tool")
+    assert (a[0].name, a[0].page_type) == ("Docker", "tool")
+    b = parse_entity_candidates("Docker — tool — mentioned in passing")
+    assert (b[0].name, b[0].page_type) == ("Docker", "tool")
+
+
 # --- extract_entities (wiring, mocked LLM) --------------------------------------
 
 
