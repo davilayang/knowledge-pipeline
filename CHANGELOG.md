@@ -6,6 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Source summariser tags the author's analytical framing as `[opinion]`.** Added
+  a third "hides as reported" trap to `prompts/wiki/source_summary_system_v1.md`
+  for the author's reading of what facts *mean* — strategic interpretations, risk
+  / threat assessments, and stated intents ("aims / expects to …"). Fixes the
+  producer over-tagging news / commentary analysis as `[reported]`: on the eval's
+  `unknown`-shape news source, opinion-tagged claims rose from ~0 to 11 (analysis
+  now attributed to the author), with no regression on the tutorial / research
+  sources that were already fully correct.
+
 ---
 
 ## [0.27.2] — 2026-07-01

@@ -35,11 +35,21 @@ said it. This holds however neutral the reporting verb looks: "X characterizes /
 describes / frames / compares / sees Y as ..." still carries an opinion or
 forecast — tag it [opinion].
 
-Two traps that hide as [reported] and are [opinion]:
+Three traps that hide as [reported] and are [opinion]:
 - Forward-looking analogies and characterizations — "AI is the new electricity",
   "X is like the early internet", "this will transform software development".
 - Superlative / marketing claims — "X is the number one / best / leading product",
   "the most advanced Y" — a judgment, not a measured ranking.
+- Analytical framing — the author's reading of what facts MEAN: strategic
+  interpretations, risk or threat assessments, and characterisations of a
+  dynamic. "Microsoft faces a margin trap", "the OpenAI API is financially
+  fragile", "X threatens Y's position", "Z represents a threat to their model",
+  "this makes them a legacy plugin". The underlying facts (a $8.7B figure, a
+  launch, a headcount) are [reported]; the author's interpretation of their
+  significance is [opinion]. Common in news / commentary that states analysis in
+  a declarative, reported-sounding voice — tag the analysis [opinion]. Likewise a
+  stated intent or expectation — "X aims / expects / plans to cut costs 60%" — is
+  a forecast, [opinion], even with a number attached.
 
 Reserve [reported] for what actually happened or was measured — events, releases,
 numbers, dated results — whoever reports it.
