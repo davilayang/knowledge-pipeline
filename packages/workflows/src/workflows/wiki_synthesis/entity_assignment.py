@@ -7,24 +7,31 @@ output is a per-claim → entity-id mapping resolved against the LIVE wiki, so a
 claim the attributed lane surfaces unifies with the entity the raw-article
 synthesis path already minted rather than minting a duplicate.
 
-Two levels, mirroring the design's cost/precision split:
+The deterministic surface-form match (which candidate names appear in a claim) is
+a HINT, not the answer:
 
-  1. deterministic surface-form match — a claim that names a resolved entity by
-     canonical name or alias (word-boundary) is assigned it, no LLM cost.
-  2. a bounded LLM residual mapper for the claims the match misses (pronoun /
-     implicit-subject / multi-entity claims) — injected, so the deterministic
-     wiring is testable without an LLM.
+  1. a claim naming exactly ONE entity is unambiguous — assigned it directly, no
+     LLM cost.
+  2. ambiguous claims — zero mentions (pronoun / implicit subject), ≥2 mentions
+     (a possible passing co-mention), or one mention inside contrast/dependency
+     phrasing (where the lone mention is often the object, e.g. "shift away from
+     OpenAI") — go to ONE closed subject-attribution call over the whole claim
+     list, which returns each claim's true subject(s) from the candidate set:
+     demoting a mentioned non-subject ("Microsoft ditches OpenAI" is about
+     Microsoft, not OpenAI) or resolving a pronoun the match missed. Injected, so
+     the wiring is testable without an LLM.
 
 Flow: render the summary → extract() over its claims → resolve_or_mint against
-the LIVE wiki → per-claim match_claim (deterministic) with a bounded
-map_residual_llm fallback → group_by_entity into per-entity attributed claim
-sets (salient vs co-mention). See this package's README.md ("Attributed lane")
-for the flow diagram and where this sits beside the raw-article path.
+the LIVE wiki → per-claim match_claim (hint) → closed attribute_subjects over the
+ambiguous claims → group_by_entity into per-entity attributed claim sets (salient
+vs co-mention). See this package's README.md ("Attributed lane") for the flow
+diagram and where this sits beside the raw-article path.
 
 Persists nothing: like the Slice 1 gate diagnostic, this computes the mapping;
 the storage schema is deferred until page synthesis (Slice 3) fixes its shape.
 """
 
+import re
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
@@ -43,22 +50,34 @@ from pydantic import BaseModel, Field
 
 from workflows.llm import LLMCall, generate_structured_with_usage
 from workflows.wiki_synthesis.prompts import (
-    RESIDUAL_ENTITY_MAP_SYSTEM,
-    RESIDUAL_ENTITY_MAP_USER,
+    SUBJECT_ATTRIBUTION_SYSTEM,
+    SUBJECT_ATTRIBUTION_USER,
 )
 from workflows.wiki_synthesis.synthesize import extract
 
-RESIDUAL_MODEL = "gpt-4.1-mini"
+SUBJECT_MODEL = "gpt-4.1-mini"
+
+# Contrast / dependency phrasing where the single named entity is usually the
+# OBJECT (moved away from, compared against, depended on), not the subject — e.g.
+# "shift workloads away from OpenAI". A one-mention claim carrying one of these is
+# treated as ambiguous and routed to subject-attribution instead of trusting the
+# lone mention.
+_CONTRAST_CUE = re.compile(
+    r"\b(?:unlike|instead of|rather than|away from|compared with|compared to|"
+    r"depends on|dependence on|dependent on|reliant on|reliance on|versus|vs\.?)\b",
+    re.IGNORECASE,
+)
 
 # extract_fn: run entity extraction over the summary body → {"candidates", "llm_calls"}.
 # Injected so the assignment wiring is testable without the extraction LLM.
 ExtractFn = Callable[[IngestItem], dict]
 
-# map_residual: (residual_claim_texts, candidate_entity_names) → per-claim entity
-# names. The bounded LLM step that resolves claims the deterministic match misses
-# (pronoun / implicit-subject). Injected + name-based (never surrogate ids), so
-# the id resolution stays deterministic and the wiring is testable with a fake.
-ResidualMapper = Callable[[list[str], list[str]], list[list[str]]]
+# attribute_subjects: (claim_texts, per-claim mention hints, candidate_names) →
+# per-claim SUBJECT names. One closed LLM call over the whole claim list decides
+# which candidate(s) each ambiguous claim is ABOUT (demoting passing co-mentions,
+# resolving pronouns). Injected + name-based, so id resolution stays deterministic
+# and the wiring is testable with a fake.
+SubjectMapper = Callable[[list[str], list[list[str]], list[str]], list[list[str]]]
 
 
 @dataclass(frozen=True)
@@ -106,7 +125,7 @@ def assign_summary(
     *,
     db_path,
     extract_fn: ExtractFn | None = None,
-    map_residual: ResidualMapper | None = None,
+    attribute_subjects: SubjectMapper | None = None,
 ) -> SummaryAssignment:
     """Assign each claim in `summary` to the entity/entities it is about.
 
@@ -114,12 +133,20 @@ def assign_summary(
     article); the extracted entities are resolved against the LIVE wiki via the
     same `resolve_or_mint_batch` the raw-article path uses, so a claim naming an
     existing entity unifies onto its surrogate id instead of minting a parallel
-    one. Each claim is then matched to those entities by surface form.
+    one.
+
+    Each claim's mentioned entities (deterministic surface-form match) are a HINT,
+    not the answer. A claim naming exactly one entity is unambiguous — assigned it
+    directly, no LLM. Ambiguous claims (zero mentions = pronoun/implicit subject;
+    ≥2 mentions = a possible passing co-mention) go to one closed subject-
+    attribution call over the whole claim list, which returns each claim's true
+    subject(s) from the candidate set — demoting a mentioned non-subject, or
+    resolving a pronoun the match missed.
     """
     if extract_fn is None:
         extract_fn = lambda item: extract(item, db_path=db_path)  # noqa: E731
-    if map_residual is None:
-        map_residual = map_residual_llm
+    if attribute_subjects is None:
+        attribute_subjects = attribute_subjects_llm
 
     body = render_source_summary(summary)
     item = IngestItem(
@@ -162,21 +189,33 @@ def assign_summary(
             eid: sorted(f for f in forms if f.strip()) for eid, forms in form_sets.items()
         }
 
-    per_claim_ids = [match_claim(claim.text, surface_forms) for claim in summary.claims]
+    # Deterministic mentions per claim — the hint. An exactly-one-mention claim is
+    # unambiguous and keeps its match; zero-or-≥2-mention claims are ambiguous.
+    mention_ids = [match_claim(claim.text, surface_forms) for claim in summary.claims]
+    per_claim_ids = [list(ids) for ids in mention_ids]
 
-    # Residual pass: claims the surface-form match left empty (implicit / pronoun
-    # subjects) go to the bounded LLM mapper, which answers in entity NAMES; those
-    # are resolved back to surrogate ids deterministically (unknown names dropped).
-    residual_idx = [i for i, ids in enumerate(per_claim_ids) if not ids]
-    if residual_idx:
+    # Ambiguous = zero mentions (pronoun/implicit), ≥2 mentions (possible passing
+    # co-mention), OR exactly one mention inside contrast/dependency phrasing where
+    # that lone mention is often the object, not the subject.
+    ambiguous_idx = [
+        i
+        for i, ids in enumerate(mention_ids)
+        if len(ids) != 1 or _CONTRAST_CUE.search(summary.claims[i].text)
+    ]
+    if ambiguous_idx:
         name_to_id = {
             normalize_name(form): eid for eid, forms in surface_forms.items() for form in forms
         }
-        residual_texts = [summary.claims[i].text for i in residual_idx]
+        # The whole claim list goes to the mapper (so pronouns have discourse
+        # context) with each claim's mention hint; only ambiguous claims take the
+        # mapper's verdict. Names outside the candidate set are dropped (closed).
+        claim_texts = [c.text for c in summary.claims]
+        hints = [[entities[e].canonical_name for e in ids] for ids in mention_ids]
         candidate_names = [entities[eid].canonical_name for eid in entities]
-        mapped = map_residual(residual_texts, candidate_names)
-        for i, names in zip(residual_idx, mapped, strict=True):
-            ids: list[str] = []
+        subjects = attribute_subjects(claim_texts, hints, candidate_names)
+        for i in ambiguous_idx:
+            names = subjects[i] if i < len(subjects) else []
+            ids = []
             for name in names:
                 eid = name_to_id.get(normalize_name(name))
                 if eid and eid not in ids:
@@ -247,45 +286,45 @@ def match_claim(text: str, surface_forms: dict[str, list[str]]) -> list[str]:
     ]
 
 
-class _ClaimEntities(BaseModel):
+class _ClaimSubject(BaseModel):
     claim_index: int = Field(description="0-based index of the claim in the input list")
-    entity_names: list[str] = Field(
+    subject_names: list[str] = Field(
         default_factory=list,
-        description="Candidate entity names this claim is ABOUT (a subset of the "
-        "provided candidates); empty when none can be confidently resolved.",
+        description="Candidate entity names this claim is ABOUT — its subject(s), a "
+        "subset of the provided candidates; empty when about none of them.",
     )
 
 
-class _ResidualMapping(BaseModel):
-    mappings: list[_ClaimEntities] = Field(default_factory=list)
+class _SubjectMapping(BaseModel):
+    subjects: list[_ClaimSubject] = Field(default_factory=list)
 
 
-def map_residual_llm(residual_texts: list[str], candidate_names: list[str]) -> list[list[str]]:
-    """Production `ResidualMapper`: one structured LLM call mapping each residual
-    claim to the candidate entities it is about.
+def attribute_subjects_llm(
+    claim_texts: list[str],
+    mention_hints: list[list[str]],
+    candidate_names: list[str],
+) -> list[list[str]]:
+    """Production `SubjectMapper`: one closed structured call returning each
+    claim's subject(s) from the candidate set.
 
-    Returns a per-claim list in INPUT order — the model may answer out of order
-    or omit a claim it couldn't resolve, so the response is re-indexed by
-    `claim_index` and any missing index comes back as an empty list. Short-
-    circuits (no LLM call) when there are no residual claims.
-
-    FOR LATER: residual claims are sent as ISOLATED strings, stripped of the
-    surrounding claims — so a pronoun / implicit subject ("It later expanded")
-    has no discourse context to resolve against and the model must guess. The
-    next iteration (subject-attribution over ALL claims in one call, not just
-    residuals) passes the full ordered claim list and fixes this together with
-    the mention-vs-subject over-attribution the deterministic match leaves."""
-    if not residual_texts or not candidate_names:
-        # No claims to map, or no entities to map them to → skip the LLM call.
-        return [[] for _ in residual_texts]
-    numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(residual_texts))
-    candidate_block = "\n".join(f"- {n}" for n in candidate_names) or "(none)"
-    user = RESIDUAL_ENTITY_MAP_USER.format(candidates=candidate_block, claims=numbered)
+    The whole claim list is sent together (so pronouns / implicit subjects have
+    the surrounding claims as context), each annotated with its mention hint.
+    Returns a per-claim list in INPUT order — the model may answer out of order or
+    omit a claim, so the response is re-indexed by `claim_index` (missing → empty).
+    Short-circuits (no LLM call) when there are no claims or no candidates."""
+    if not claim_texts or not candidate_names:
+        return [[] for _ in claim_texts]
+    numbered = "\n".join(
+        f"{i}. {t}   [mentions: {', '.join(mention_hints[i]) or 'none'}]"
+        for i, t in enumerate(claim_texts)
+    )
+    candidate_block = "\n".join(f"- {n}" for n in candidate_names)
+    user = SUBJECT_ATTRIBUTION_USER.format(candidates=candidate_block, claims=numbered)
     result, _call = generate_structured_with_usage(
         user,
-        schema=_ResidualMapping,
-        system=RESIDUAL_ENTITY_MAP_SYSTEM,
-        model=RESIDUAL_MODEL,
+        schema=_SubjectMapping,
+        system=SUBJECT_ATTRIBUTION_SYSTEM,
+        model=SUBJECT_MODEL,
     )
-    by_index = {m.claim_index: list(m.entity_names) for m in result.mappings}
-    return [by_index.get(i, []) for i in range(len(residual_texts))]
+    by_index = {s.claim_index: list(s.subject_names) for s in result.subjects}
+    return [by_index.get(i, []) for i in range(len(claim_texts))]

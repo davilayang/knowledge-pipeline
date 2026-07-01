@@ -1,10 +1,11 @@
-"""Slice 2 — attributed-lane entity assignment.
+"""Attributed-lane entity assignment.
 
 Assigns each SourceClaim to the entity/entities it is about, resolving mentions
 against the LIVE wiki so an attributed-lane claim unifies with the entity the
 raw-article synthesis path already minted (cross-path unification). The LLM
-boundaries (entity extraction over the claims, residual claim→entity mapping)
-are injected so the wiring is driven through the public surface with fakes.
+boundaries (entity extraction over the claims, closed subject-attribution over
+ambiguous claims) are injected so the wiring is driven through the public
+surface with fakes.
 """
 
 from datetime import UTC, datetime
@@ -105,41 +106,67 @@ def test_new_entity_is_minted_and_surfaced(wiki_db_path):
     assert result.assignments[0].entity_ids == (minted.entity_id,)
 
 
-def test_residual_claim_is_mapped_by_injected_llm(wiki_db_path):
-    # Claim 2 has an implicit subject ("It ...") — no surface form to match, so it
-    # is a residual. The injected mapper receives ONLY the residual text (+ the
-    # candidate names) and maps it to "Anthropic"; assign_summary resolves that
-    # name back to the entity id and merges it into the claim's assignment.
+def test_pronoun_claim_resolved_by_subject_mapper(wiki_db_path):
+    # Claim 2 has an implicit subject ("It ...") — zero mentions, so it is
+    # ambiguous and goes to the subject mapper, which resolves it to Anthropic
+    # using the surrounding claims. Claim 1 (exactly one mention) is unambiguous
+    # and kept deterministically. The mapper receives the FULL claim list + hints.
+    sid = "https://medium.com/p/imp"
     summary = _summary(
-        "https://medium.com/p/imp",
-        SourceClaim(text="Anthropic is an AI lab.", source_id="https://medium.com/p/imp"),
-        SourceClaim(text="It raised $2B in fresh funding.", source_id="https://medium.com/p/imp"),
+        sid,
+        SourceClaim(text="Anthropic is an AI lab.", source_id=sid),
+        SourceClaim(text="It raised $2B in fresh funding.", source_id=sid),
     )
     seen = {}
 
-    def fake_residual(texts, names):
-        seen["texts"], seen["names"] = list(texts), list(names)
-        return [["Anthropic"]]
+    def subjects(texts, hints, candidates):
+        seen["texts"] = list(texts)
+        seen["hints"] = [list(h) for h in hints]
+        seen["candidates"] = list(candidates)
+        return [["Anthropic"], ["Anthropic"]]
 
     result = assign_summary(
         summary,
         db_path=wiki_db_path,
         extract_fn=_extract_returning("Anthropic"),
-        map_residual=fake_residual,
+        attribute_subjects=subjects,
     )
 
     ent = result.new_entities[0].entity_id
-    assert result.assignments[0].entity_ids == (ent,)  # deterministic
-    assert result.assignments[1].entity_ids == (ent,)  # residual, LLM-mapped
-    assert seen["texts"] == ["It raised $2B in fresh funding."]
-    assert "Anthropic" in seen["names"]
+    assert result.assignments[0].entity_ids == (ent,)  # 1 mention → deterministic
+    assert result.assignments[1].entity_ids == (ent,)  # pronoun → subject-mapped
+    assert seen["texts"] == ["Anthropic is an AI lab.", "It raised $2B in fresh funding."]
+    assert seen["hints"] == [["Anthropic"], []]  # claim 2 carries no mention hint
+    assert "Anthropic" in seen["candidates"]
 
 
-def test_group_by_entity_flags_peripheral_comention(wiki_db_path):
-    # "Anthropic" is the subject of 3 claims (central); "OpenAI" appears once, as
-    # a passing co-mention in claim 3 (peripheral). group_by_entity inverts the
-    # claim→entity mapping and flags salience via the shared deterministic gate
-    # over the summary body, so Slice 3 can skip attributed pages for co-mentions.
+def test_subject_name_not_in_candidates_is_dropped(wiki_db_path):
+    # A subject mapper that returns a name outside the candidate set contributes
+    # nothing — the ambiguous claim stays unassigned rather than inventing a link.
+    sid = "https://medium.com/p/hallucinate"
+    summary = _summary(
+        sid,
+        SourceClaim(text="Anthropic is an AI lab.", source_id=sid),
+        SourceClaim(text="It later expanded overseas.", source_id=sid),
+    )
+
+    def hallucinating(texts, hints, candidates):
+        return [["Anthropic"], ["Nonexistent Corp"]]
+
+    result = assign_summary(
+        summary,
+        db_path=wiki_db_path,
+        extract_fn=_extract_returning("Anthropic"),
+        attribute_subjects=hallucinating,
+    )
+
+    assert result.assignments[1].entity_ids == ()
+
+
+def test_group_by_entity_uses_subject_not_comention(wiki_db_path):
+    # "Anthropic" is the subject of all 3 claims; claim 3 names OpenAI only as a
+    # passing comparison. Subject-attribution demotes OpenAI (not the subject), so
+    # it is assigned NO claim — group_by_entity yields only Anthropic.
     sid = "https://medium.com/p/grp"
     summary = _summary(
         sid,
@@ -148,50 +175,57 @@ def test_group_by_entity_flags_peripheral_comention(wiki_db_path):
         SourceClaim(text="Anthropic, unlike OpenAI, focuses on safety.", source_id=sid),
     )
 
+    def subjects(texts, hints, candidates):
+        # Only claim 3 (2 mentions) is ambiguous; its subject is Anthropic.
+        return [[], [], ["Anthropic"]]
+
     result = assign_summary(
-        summary, db_path=wiki_db_path, extract_fn=_extract_returning("Anthropic", "OpenAI")
+        summary,
+        db_path=wiki_db_path,
+        extract_fn=_extract_returning("Anthropic", "OpenAI"),
+        attribute_subjects=subjects,
     )
     groups = {g.entity.canonical_name: g for g in group_by_entity(result)}
 
+    assert set(groups) == {"Anthropic"}
     assert len(groups["Anthropic"].claims) == 3
     assert groups["Anthropic"].salient is True
-    assert len(groups["OpenAI"].claims) == 1
-    assert groups["OpenAI"].salient is False
 
 
-def test_residual_mapper_reassembles_by_index(monkeypatch):
-    # The production residual mapper turns the structured LLM response back into a
+def test_subject_mapper_reassembles_by_index(monkeypatch):
+    # The production subject mapper turns the structured LLM response back into a
     # per-claim list in INPUT order. The model may return indices out of order and
-    # omit a claim it couldn't resolve — that claim must come back as an empty list.
+    # omit a claim — that claim must come back as an empty list.
     from workflows.wiki_synthesis import entity_assignment as ea
 
     def fake_structured(prompt, *, schema, system="", model=""):
         result = schema(
-            mappings=[
-                {"claim_index": 2, "entity_names": ["OpenAI"]},
-                {"claim_index": 0, "entity_names": ["Anthropic", "Claude"]},
+            subjects=[
+                {"claim_index": 2, "subject_names": ["OpenAI"]},
+                {"claim_index": 0, "subject_names": ["Anthropic", "Claude"]},
             ]
         )
         return result, make_llm_call()
 
     monkeypatch.setattr(ea, "generate_structured_with_usage", fake_structured)
 
-    mapped = ea.map_residual_llm(
-        ["claim zero", "claim one", "claim two"], ["Anthropic", "Claude", "OpenAI"]
+    mapped = ea.attribute_subjects_llm(
+        ["claim zero", "claim one", "claim two"], [[], [], []], ["Anthropic", "Claude", "OpenAI"]
     )
 
     assert mapped == [["Anthropic", "Claude"], [], ["OpenAI"]]
 
 
-def test_residual_mapper_short_circuits_on_no_claims(monkeypatch):
-    # No residual claims → no LLM call at all (cost guard).
+def test_subject_mapper_short_circuits(monkeypatch):
+    # No claims, or no candidates to map to → no LLM call at all (cost guard).
     from workflows.wiki_synthesis import entity_assignment as ea
 
     def boom(*a, **k):
-        raise AssertionError("LLM must not be called for empty residual set")
+        raise AssertionError("LLM must not be called for empty inputs")
 
     monkeypatch.setattr(ea, "generate_structured_with_usage", boom)
-    assert ea.map_residual_llm([], ["Anthropic"]) == []
+    assert ea.attribute_subjects_llm([], [], ["Anthropic"]) == []
+    assert ea.attribute_subjects_llm(["a claim"], [[]], []) == [[]]
 
 
 def test_assign_persists_nothing(wiki_db_path):
@@ -227,25 +261,48 @@ def test_duplicate_candidates_to_same_surrogate_keep_all_surface_forms(wiki_db_p
     assert result.new_entities == ()
 
 
-def test_residual_name_not_in_candidates_is_dropped(wiki_db_path):
-    # A residual mapper that hallucinates a name outside the resolved candidate
-    # set contributes nothing — the claim stays unassigned rather than inventing
-    # an entity link.
-    sid = "https://medium.com/p/hallucinate"
-    summary = _summary(
-        sid,
-        SourceClaim(text="Anthropic is an AI lab.", source_id=sid),
-        SourceClaim(text="It later expanded.", source_id=sid),
-    )
+def test_subject_attribution_overrides_multi_mention(wiki_db_path):
+    # A claim naming TWO entities is ambiguous; the injected subject mapper picks
+    # Microsoft, so OpenAI (a passing co-mention) is NOT assigned. This is the
+    # precision fix — mention-match would have attributed the claim to BOTH.
+    ms = _seed_entity(wiki_db_path, "Microsoft")
+    sid = "https://medium.com/p/ms"
+    summary = _summary(sid, SourceClaim(text="Microsoft will ditch OpenAI models.", source_id=sid))
 
-    def hallucinating_residual(texts, names):
-        return [["Nonexistent Corp"]]
+    def subjects(texts, hints, candidates):
+        return [["Microsoft"]]
 
     result = assign_summary(
         summary,
         db_path=wiki_db_path,
-        extract_fn=_extract_returning("Anthropic"),
-        map_residual=hallucinating_residual,
+        extract_fn=_extract_returning("Microsoft", "OpenAI"),
+        attribute_subjects=subjects,
     )
 
-    assert result.assignments[1].entity_ids == ()
+    assert result.assignments[0].entity_ids == (ms,)
+
+
+def test_single_mention_with_contrast_cue_is_ambiguous(wiki_db_path):
+    # "away from OpenAI" names OpenAI once, but OpenAI is what's being moved away
+    # FROM — not the subject. A contrast cue routes this single-mention claim to
+    # the subject mapper (which demotes OpenAI → Microsoft), instead of trusting
+    # the lone mention. Claim 1 (one mention, no cue) stays deterministic.
+    ms = _seed_entity(wiki_db_path, "Microsoft")
+    sid = "https://medium.com/p/shift"
+    summary = _summary(
+        sid,
+        SourceClaim(text="Microsoft is a tech giant.", source_id=sid),
+        SourceClaim(text="It will shift workloads away from OpenAI.", source_id=sid),
+    )
+
+    def subjects(texts, hints, candidates):
+        return [[], ["Microsoft"]]
+
+    result = assign_summary(
+        summary,
+        db_path=wiki_db_path,
+        extract_fn=_extract_returning("Microsoft", "OpenAI"),
+        attribute_subjects=subjects,
+    )
+
+    assert result.assignments[1].entity_ids == (ms,)
