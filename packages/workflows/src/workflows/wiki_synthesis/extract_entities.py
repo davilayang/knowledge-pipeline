@@ -95,6 +95,26 @@ def _split_name_type(line: str) -> tuple[str, str]:
     return line.strip(), ""
 
 
+def render_candidates(candidates: list[Candidate]) -> str:
+    """Render candidates to the canonical `Name — type` lines persisted per source
+    (`store.record_candidates`). Inverse of `parse_entity_candidates`, so a
+    round-trip through storage preserves each candidate's name + page_type.
+
+    A name from `parse_entity_candidates` never contains the ` — ` separator (it
+    was split off at parse time), but a name constructed elsewhere could — so any
+    separator inside a name is flattened to a hyphen here, guaranteeing the stored
+    line parses back to the same name rather than a truncated one."""
+    return "\n".join(f"{_flatten_separators(c.name)} — {c.page_type}" for c in candidates)
+
+
+def _flatten_separators(name: str) -> str:
+    """Replace any `Name — type` separator occurring inside a name with a plain
+    hyphen, so it cannot be mistaken for the type delimiter on read."""
+    for sep in _SEPARATORS:
+        name = name.replace(sep, "-")
+    return name
+
+
 def parse_entity_candidates(text: str) -> list[Candidate]:
     """Parse the entity task's `Name — type` output into Candidates.
 

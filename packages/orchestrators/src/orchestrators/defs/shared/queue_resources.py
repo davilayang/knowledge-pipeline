@@ -466,6 +466,33 @@ class QueueStoreResource(dg.ConfigurableResource):
     def get_claims(self, notion_page_id: str) -> str | None:
         return queue_db.get_claims(db_path=self._path(), notion_page_id=notion_page_id)
 
+    def record_candidates(
+        self,
+        *,
+        notion_page_id: str,
+        output: str,
+        prompt_label: str,
+        prompt_sha256: str,
+        model: str,
+        tokens_in: int,
+        tokens_out: int,
+        cached_tokens: int | None = None,
+    ) -> None:
+        queue_db.record_candidates(
+            db_path=self._path(),
+            notion_page_id=notion_page_id,
+            output=output,
+            prompt_label=prompt_label,
+            prompt_sha256=prompt_sha256,
+            model=model,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cached_tokens=cached_tokens,
+        )
+
+    def get_candidates(self, notion_page_id: str) -> str | None:
+        return queue_db.get_candidates(db_path=self._path(), notion_page_id=notion_page_id)
+
     def get_latest_topic_card(self, notion_page_id: str):
         """Convenience for the `published` asset — returns the latest TopicCard
         pydantic model parsed from extraction_calls, or None when absent."""

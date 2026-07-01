@@ -597,6 +597,87 @@ def get_claims(*, db_path: Path, notion_page_id: str) -> str | None:
     return row["output"] if row else None
 
 
+def record_candidates(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    output: str,
+    prompt_label: str,
+    prompt_sha256: str,
+    model: str,
+    tokens_in: int,
+    tokens_out: int,
+    cached_tokens: int | None = None,
+) -> None:
+    """Persist a per-source entity-candidate set as an `extract_entities`-kind
+    `extraction_calls` row — the article-grounded candidates the attributed lane
+    resolves against the live wiki. Same shape as `record_claims`: the rendered
+    `output` plus prompt provenance, INSERT-not-UPSERT (re-runs accumulate;
+    `get_candidates` returns the latest), FK-cascade-cleared on re-triage.
+
+    `cached_tokens` is recorded (the entities call reuses the article prompt-cache
+    primed by the claims call, so its cache-hit is the number worth tracking)."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT INTO extraction_calls (
+                notion_page_id, call_kind, prompt_label, prompt_sha256,
+                schema_name, model, output, tokens_in, tokens_out,
+                cached_tokens, extracted_at
+            ) VALUES (?, 'extract_entities', ?, ?, NULL, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                notion_page_id,
+                prompt_label,
+                prompt_sha256,
+                model,
+                output,
+                tokens_in,
+                tokens_out,
+                cached_tokens,
+                _now_iso(),
+            ),
+        )
+
+
+def get_candidates(*, db_path: Path, notion_page_id: str) -> str | None:
+    """The most-recent `extract_entities` output for a page, or None if none is
+    recorded. Latest-wins, mirroring `get_claims`."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT output FROM extraction_calls
+             WHERE notion_page_id = ? AND call_kind = 'extract_entities'
+             ORDER BY extracted_at DESC, id DESC
+             LIMIT 1
+            """,
+            (notion_page_id,),
+        ).fetchone()
+    return row["output"] if row else None
+
+
+def get_all_candidates(*, db_path: Path) -> list[tuple[str, str]]:
+    """Every page's latest `extract_entities` output as `(notion_page_id, output)`,
+    ordered by `notion_page_id` — the corpus-wide read for the attributed-lane
+    consumer. Latest-wins per page, mirroring `get_all_claims`."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT notion_page_id, output FROM extraction_calls e
+             WHERE call_kind = 'extract_entities'
+               AND id = (
+                   SELECT id FROM extraction_calls e2
+                    WHERE e2.notion_page_id = e.notion_page_id
+                      AND e2.call_kind = 'extract_entities'
+                    ORDER BY extracted_at DESC, id DESC
+                    LIMIT 1
+               )
+             ORDER BY notion_page_id
+            """
+        ).fetchall()
+    return [(row["notion_page_id"], row["output"]) for row in rows]
+
+
 def mark_failed(
     *, db_path: Path, notion_page_id: str, error_text: str, url: str | None = None
 ) -> None:

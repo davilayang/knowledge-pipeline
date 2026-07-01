@@ -778,3 +778,113 @@ def test_extract_claims_skips_when_no_body(tmp_path: Path):
     assert result.success
     mock_summarize.assert_not_called()
     assert store.get_claims("p-1") is None
+
+
+# -------- extract_entities --------
+
+
+def _seed_body_and_claims(db_path: Path, page_id: str) -> None:
+    """Seed a fetched body AND a recorded extract_claims doc — the two inputs the
+    extract_entities asset consumes (raw_content + the stored claims)."""
+    from domains.wiki.claims import ClaimSet, SourceClaim, render_claims
+
+    _seed_with_raw_content(db_path, page_id, "Article", "body naming Docker and Podman")
+    store = QueueStoreResource(db_path=str(db_path))
+    claim_set = ClaimSet(
+        item_id="https://example.com/x",
+        content_date=None,
+        claims=[
+            SourceClaim(text="Docker was dropped for Podman.", source_id="https://example.com/x")
+        ],
+    )
+    store.record_claims(
+        notion_page_id=page_id,
+        output=render_claims(claim_set),
+        prompt_label="extract_claims_v1",
+        prompt_sha256="sha",
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+
+
+def test_extract_entities_records_candidates_with_cached_tokens(tmp_path: Path):
+    from domains.wiki.identity import Candidate
+    from orchestrators.defs.fetch_extract_queue.assets import (
+        extract_entities as extract_entities_asset,
+    )
+    from workflows.llm import LLMCall
+    from workflows.wiki_synthesis.extract_entities import render_candidates
+
+    db_path = tmp_path / "q.db"
+    _seed_body_and_claims(db_path, "p-1")
+    store = QueueStoreResource(db_path=str(db_path))
+
+    candidates = [
+        Candidate(name="Docker", page_type="tool"),
+        Candidate(name="Podman", page_type="tool"),
+    ]
+    captured = {}
+
+    def fake_entities(item, claims):
+        captured["item_id"] = item.item_id
+        captured["n_claims"] = len(claims.claims)
+        return candidates, LLMCall(
+            content="x", model="gpt-4.1-mini", input_tokens=200, output_tokens=8, cached_tokens=160
+        )
+
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_entities",
+        side_effect=fake_entities,
+    ):
+        result = _materialize(
+            extract_entities_asset, partition_key="p-1", resources={"store": store}
+        )
+
+    assert result.success
+    # The stored claims were parsed and handed to the extractor with the article item.
+    assert captured["item_id"] == "https://example.com/x"
+    assert captured["n_claims"] == 1
+    # Candidates persisted in canonical form; cache-hit recorded.
+    assert store.get_candidates("p-1") == render_candidates(candidates)
+    assert store.get_latest_extraction_calls("p-1")["extract_entities"]["cached_tokens"] == 160
+
+
+def test_extract_entities_skips_when_no_body(tmp_path: Path):
+    from orchestrators.defs.fetch_extract_queue.assets import (
+        extract_entities as extract_entities_asset,
+    )
+
+    db_path = tmp_path / "q.db"
+    _seed_triaged(db_path, "p-1", "Article")  # no raw_content
+    store = QueueStoreResource(db_path=str(db_path))
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_entities"
+    ) as mock_entities:
+        result = _materialize(
+            extract_entities_asset, partition_key="p-1", resources={"store": store}
+        )
+    assert result.success
+    mock_entities.assert_not_called()
+    assert store.get_candidates("p-1") is None
+
+
+def test_extract_entities_skips_when_no_claims(tmp_path: Path):
+    # Body fetched but extract_claims recorded nothing (its dep produced no claims)
+    # → no article-companion to ground against; skip rather than run claims-less.
+    from orchestrators.defs.fetch_extract_queue.assets import (
+        extract_entities as extract_entities_asset,
+    )
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "Article", "body with no recorded claims")
+    store = QueueStoreResource(db_path=str(db_path))
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_entities"
+    ) as mock_entities:
+        result = _materialize(
+            extract_entities_asset, partition_key="p-1", resources={"store": store}
+        )
+    assert result.success
+    mock_entities.assert_not_called()
+    assert store.get_candidates("p-1") is None

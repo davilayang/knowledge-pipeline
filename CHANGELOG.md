@@ -12,6 +12,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   (`workflows.wiki_synthesis.extract_entities`) reads the raw article alongside its
   claims, recovering the article's implicit subject and long-tail entities that
   claims-only extraction missed; no entity cap (salience classifies the tail downstream).
+- **Entity candidates are now extracted and stored at fetch/extract time** — new
+  `fetch_extract_queue/extract_entities` Dagster asset records per-source candidates
+  (`extraction_calls` `call_kind='extract_entities'`), sharing the article
+  prompt-cache with `extract_claims`. The attributed lane's candidate set; not yet
+  consumed downstream.
 
 ### Changed
 
