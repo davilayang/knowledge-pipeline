@@ -8,24 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Article-grounded entity extraction for the attributed lane** —
-  `extract_entities(article, claims)` (`workflows.wiki_synthesis.extract_entities`)
-  reads the raw article plus its claims, recovering the article's implicit subject
-  and long-tail entities that claims-only extraction dropped; no entity cap
-  (salience classifies the tail). A hardened prompt excludes publication/social
-  chrome, worked-example data, and code identifiers.
+- **Entity extraction for the attributed lane** — `extract_entities(article, claims)`
+  (`workflows.wiki_synthesis.extract_entities`) reads the raw article alongside its
+  claims, recovering the article's implicit subject and long-tail entities that
+  claims-only extraction missed; no entity cap (salience classifies the tail downstream).
 
 ### Changed
 
-- **The extract-time claims and entities calls now share a prompt-cache prefix.**
-  `extract_claims` is restructured to a shared `[system, article, task]` layout
-  (`workflows.wiki_synthesis.extract_shared.shared_prefix_messages`) so the article
-  is served from OpenAI's cache on the second call. `LLMCall` gains a
-  `cached_tokens` field and `generate_messages_with_usage` is the cache-aware entry
-  point. Moving the claim rules into the task tail also **improved claim-tag
-  accuracy on Medium-shaped content** (opinion-essay, tutorial, unknown), fixing a
-  systematic opinion-under-tagging bug; faithfulness held at 100% (eval-gated
-  against the pinned cohort).
+- **Claim-tag accuracy improved on Medium-shaped content** (opinion-essay, tutorial,
+  unknown) — restructuring `extract_claims` to a shared prompt-cache prefix
+  (`extract_shared.shared_prefix_messages`) fixed a systematic opinion-under-tagging
+  bug; faithfulness held at 100% across the eval cohort.
 
 ---
 
