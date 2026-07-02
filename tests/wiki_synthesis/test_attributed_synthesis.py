@@ -24,6 +24,16 @@ _CLAIMS_DOC = (
     "\n"
     "- [reported] GraphRAG uses a knowledge graph.\n"
 )
+# Two claims from one source — clears the page-worthiness floor (≥2 claims).
+_CLAIMS_DOC_TWO = (
+    "---\n"
+    "item_id: https://medium.com/x\n"
+    "content_date: '2026-03-01'\n"
+    "---\n"
+    "\n"
+    "- [reported] GraphRAG uses a knowledge graph.\n"
+    "- [opinion] GraphRAG will replace naive RAG.\n"
+)
 _CANDIDATES_DOC = "GraphRAG — concept\n"
 
 
@@ -93,9 +103,24 @@ def test_synthesize_source_persists_attributed_claims(wiki_db_path):
         assert [c.text for c in claims] == ["GraphRAG uses a knowledge graph."]
 
 
-def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
+def test_render_entity_pages_skips_below_worthiness_floor(tmp_path, wiki_db_path):
+    # One claim from one source is a passing co-mention — below the floor
+    # (≥2 claims OR ≥2 sources), so no page is written.
     synthesize_source(
         claims_doc=_CLAIMS_DOC,
+        candidates_doc=_CANDIDATES_DOC,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    wiki_dir = tmp_path / "wiki"
+    rendered = render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+    assert rendered == []
+    assert not (wiki_dir.exists() and list(wiki_dir.glob("*.md")))
+
+
+def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
+    synthesize_source(
+        claims_doc=_CLAIMS_DOC_TWO,
         candidates_doc=_CANDIDATES_DOC,
         source=_source(),
         wiki_db_path=wiki_db_path,

@@ -32,6 +32,11 @@ def test_pipeline_exposes_poll_and_failure_sensors():
     assert sensor_names == {"poll_notion_for_extract", "mark_notion_failed_on_extract"}
 
 
+def test_pipeline_exposes_render_sweep_schedule():
+    schedule_names = {s.name for s in defs.schedules}
+    assert "render_attributed_pages_schedule" in schedule_names
+
+
 def test_pipeline_registers_notion_lifecycle_check():
     spec_names = []
     for c in defs.asset_checks:

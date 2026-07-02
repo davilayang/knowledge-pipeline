@@ -122,7 +122,11 @@ def render_entity_pages(
             if entity is None:
                 continue
             claims = attributed_claims_for_entity(conn, entity_id)
-            if not claims:
+            # Page-worthiness floor (replaces the raw path's salience gate): a page
+            # is earned by ≥2 claims OR claims from ≥2 sources. A single claim from
+            # a single source is a passing co-mention, not a page. Threshold is
+            # empirically tunable.
+            if len(claims) < 2 and count_sources_for_entity(conn, entity_id) < 2:
                 continue
             markdown = render_attributed_markdown(
                 entity=entity,
