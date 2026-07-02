@@ -5,20 +5,23 @@ asset-graph regressions (broken imports, asset-key drift, dep-graph
 mistakes, dropped schedule) fail in CI rather than at 06:00 UTC.
 """
 
-from orchestrators.defs.synthesize_wiki import defs
+import dagster as dg
+from orchestrators.defs import shared, synthesize_wiki
+
+defs = synthesize_wiki.defs
 
 
 def test_definitions_load_with_expected_shape():
-    asset_keys = {"/".join(k.path) for k in defs.resolve_asset_graph().get_all_asset_keys()}
-    assert asset_keys == {
-        # snapshots/raw_store is an external upstream owned by
-        # backup_readings; surfaces as an implicit node here via AssetDep.
-        "snapshots/raw_store",
+    # "wiki" is owned by shared now, so merge it before resolving the asset graph
+    # (merging also brings shared's raw_store_copy, hence a subset check).
+    merged = dg.Definitions.merge(shared.defs, synthesize_wiki.defs)
+    asset_keys = {"/".join(k.path) for k in merged.resolve_asset_graph().get_all_asset_keys()}
+    assert {
         "wiki/pending",
         "wiki/extracted",
         "wiki/synthesized",
         "wiki/index",
         "wiki/aliases_index",
-    }
+    } <= asset_keys
     assert sorted(s.name for s in defs.schedules) == ["run_daily_synthesize_wiki"]
     assert sorted(j.name for j in defs.jobs) == ["synthesize_wiki"]
