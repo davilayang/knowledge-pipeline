@@ -3,9 +3,10 @@
 # Mirrors the extraction (prompts/extraction/) and triage (prompts/triage/)
 # convention: prompt assets live as .md files resolved via KP_PROMPTS_ROOT
 # (default: repo-root prompts/). Edit the .md to iterate; add a _v2 file for a
-# revision. The USER templates carry {placeholder} tokens that synthesize.py
-# fills with .format(); the page-synthesis USER templates lead with the shared
-# article block for prompt caching (see the files).
+# revision. The extract-time USER templates carry {placeholder} tokens filled
+# by extract_claims.py / extract_entities.py / entity_assignment.py with
+# .format(); EXTRACT_ARTICLE_ENVELOPE leads with the article block so the
+# article prompt-caches across the two extract-time calls (see the files).
 
 import os
 from pathlib import Path
