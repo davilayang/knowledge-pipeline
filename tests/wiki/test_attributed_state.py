@@ -264,9 +264,9 @@ def test_count_sources_for_entity_unknown_is_zero(wiki_db):
 
 
 def test_render_attributed_markdown_shape():
-    # The page renders from claims + derived frontmatter. Each claim keeps its
-    # [reported]/[opinion] tag and is attributed by author · domain (date); the
-    # tag and attribution are the memory hooks (specifics over abstractions).
+    # The page renders claims split into ## Reported / ## Opinion sections (the
+    # header conveys the kind, so the inline tag is dropped), each attributed by
+    # author · domain (date) — the memory hooks (specifics over abstractions).
     entity = _entity_record("e_x", "GraphRAG")
     claims = [
         AttributedClaim(
@@ -305,7 +305,33 @@ def test_render_attributed_markdown_shape():
         "\n"
         "# GraphRAG\n"
         "\n"
-        "- [reported] GraphRAG combines vector search with a knowledge graph. "
+        "## Reported\n"
+        "\n"
+        "- GraphRAG combines vector search with a knowledge graph. "
         "— Jane Doe · medium.com (2026-03-01)\n"
-        "- [opinion] GraphRAG will replace naive RAG. — voidmag.com\n"
+        "\n"
+        "## Opinion\n"
+        "\n"
+        "- GraphRAG will replace naive RAG. — voidmag.com\n"
     )
+
+
+def test_render_attributed_markdown_omits_empty_section():
+    # An entity with only reported claims renders just the ## Reported section —
+    # no empty ## Opinion header.
+    entity = _entity_record("e_y", "RAG")
+    claims = [
+        AttributedClaim(
+            text="RAG retrieves before generating.",
+            claim_kind="reported",
+            author="A",
+            publication=None,
+            published_at="2026-01-01",
+            url="https://medium.com/z",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-02"
+    )
+    assert "## Reported" in md
+    assert "## Opinion" not in md

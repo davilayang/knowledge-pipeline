@@ -139,6 +139,5 @@ def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
     assert page.file_path == filename
     text = (wiki_dir / filename).read_text(encoding="utf-8")
     assert "# GraphRAG" in text
-    assert (
-        "- [reported] GraphRAG uses a knowledge graph. — Jane Doe · medium.com (2026-03-01)" in text
-    )
+    assert "## Reported" in text
+    assert "- GraphRAG uses a knowledge graph. — Jane Doe · medium.com (2026-03-01)" in text
