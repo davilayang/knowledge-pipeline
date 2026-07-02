@@ -139,3 +139,72 @@ CREATE TABLE IF NOT EXISTS rejected_entities (
     reason          TEXT,
     rejected_at     TEXT NOT NULL                  -- ISO-8601 UTC
 ) STRICT;
+
+-- ===========================================================================
+-- ATTRIBUTED LANE (claim-centric) — sources / claims / claim_entities.
+--
+-- The wiki stores claims ATTRIBUTED to their sources ("a Medium piece in
+-- Codrift (2026-03) claimed X") and renders an entity page from them, instead
+-- of synthesising prose from raw-article spans. The three tables below are the
+-- claim-centric core; identity stays in `entities`/`aliases` (above), which
+-- they FK into. Counts (num_sources) and page-worthiness are DERIVED on read
+-- from these rows, never stored. Helpers live in domains/wiki/attributed.py.
+-- ===========================================================================
+
+-- ---------------------------------------------------------------------------
+-- sources — the source registry + attribution metadata (who said it, where,
+-- when). content_key is the normalized dedup key (canonical URL /
+-- <source>::<url>), UNIQUE so a re-fetch of the same article UPSERTs onto one
+-- row rather than forking it; source_id is the stable surrogate claims FK to.
+-- publication/author/published_at are what a rendered page attributes a claim
+-- with; content_hash/fetched_at record the fetched body so an article change is
+-- detectable across synthesis runs.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS sources (
+    source_id     TEXT NOT NULL PRIMARY KEY,        -- src_<16hex>
+    content_key   TEXT NOT NULL UNIQUE,             -- normalized canonical URL / <source>::<url>
+    origin_type   TEXT NOT NULL,                    -- queue / raw_store / session / research
+    title         TEXT,
+    author        TEXT,
+    publication   TEXT,                             -- e.g. the Medium publication (for attribution)
+    url           TEXT,
+    published_at  TEXT,                             -- publication date (ISO-8601) or NULL
+    content_hash  TEXT,                             -- fetched-body hash — detect article change
+    fetched_at    TEXT,                             -- ISO-8601 UTC (when the body was fetched)
+    added_at      TEXT NOT NULL                     -- ISO-8601 UTC (first sighting)
+) STRICT;
+
+-- ---------------------------------------------------------------------------
+-- claims — one atomic statement as asserted by ONE source, tagged `reported`
+-- (the source presents it as fact) or `opinion` (prediction / opinion /
+-- unverified). text_hash is sha256 of the normalized claim text; the
+-- UNIQUE(source_id, text_hash) key makes a re-run idempotent — re-extracting a
+-- source's claims re-inserts the same rows without duplicating. ON DELETE
+-- CASCADE so dropping a source removes its claims.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS claims (
+    claim_id    TEXT NOT NULL PRIMARY KEY,          -- clm_<16hex>
+    source_id   TEXT NOT NULL REFERENCES sources (source_id) ON DELETE CASCADE,
+    text        TEXT NOT NULL,
+    text_hash   TEXT NOT NULL,                      -- sha256(normalized text) — idempotency
+    claim_kind  TEXT NOT NULL CHECK (claim_kind IN ('reported', 'opinion')),
+    created_at  TEXT NOT NULL,                      -- ISO-8601 UTC
+    UNIQUE (source_id, text_hash)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_claims_source ON claims (source_id);
+
+-- ---------------------------------------------------------------------------
+-- claim_entities — the many-to-many bridge from a claim to the entity(ies) it
+-- is ABOUT (its subject(s), 0..N, from subject-attribution). A page for entity
+-- E renders the claims joined through here (see attributed_claims_for_entity).
+-- Composite PK makes a re-run idempotent; both FKs ON DELETE CASCADE so
+-- dropping a claim or an entity prunes its bridge rows.
+-- ---------------------------------------------------------------------------
+CREATE TABLE IF NOT EXISTS claim_entities (
+    claim_id   TEXT NOT NULL REFERENCES claims (claim_id) ON DELETE CASCADE,
+    entity_id  TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
+    PRIMARY KEY (claim_id, entity_id)
+) STRICT;
+
+CREATE INDEX IF NOT EXISTS idx_claim_entities_entity ON claim_entities (entity_id, claim_id);
