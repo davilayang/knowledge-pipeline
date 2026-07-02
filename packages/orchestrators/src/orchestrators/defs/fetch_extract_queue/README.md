@@ -11,7 +11,7 @@ so Article and Other reach a real fetcher path. Triage also registers the
 dynamic partition; this pipeline only runs the job. Triage is therefore the
 sole writer to `queue_items` partition state — a Notion row reaching
 Status=Fetching without going through triage (manual edit, env misroute,
-restored queue.db) fails fast in `fetched` with a clickable Notion URL.
+restored queue.db) fails fast in `fetch_content` with a clickable Notion URL.
 
 ## DAG (per partition)
 
@@ -23,7 +23,7 @@ poll_notion_for_extract (sensor, every 15min)
 fetch_extract_queue_job  (partition_key = notion_page_id)
         │
         ▼
-fetched ──► extracted ──► published
+fetch_content ──► extract_reading_card ──► publish_item
    │           │              │
    │           │              └──► Notion: Status=Ready + Name (extracted_title)
    │           │                   + Description (core_mechanism)
@@ -31,7 +31,7 @@ fetched ──► extracted ──► published
    │           └─ on failure (LLM error / required-fields check):
    │              run_failure_sensor → Notion: Status=Failed + Error
    │
-   ├──► extract_claims  (parallel with extracted; [reported]/[opinion] claims
+   ├──► extract_claims  (parallel with extract_reading_card; [reported]/[opinion] claims
    │        │            → extraction_calls extract_claims row — attributed-lane wiki substrate)
    │        ▼
    │    extract_entities  (article-grounded candidates; shared prompt-cache prefix so the
@@ -54,15 +54,15 @@ render_attributed_pages  (sweep: re-renders every entity's attributed page from 
                           claims in wiki.db; floor ≥2 claims OR ≥2 sources; writes
                           {slug}-{shortid}.md; serialized on wiki-write pool)
 
-`fetched` calls the standalone `fetcher` service over dagster_network —
+`fetch_content` calls the standalone `fetcher` service over dagster_network —
 POST `/v1/fetch` for normal URLs, or POST `/v1/structure` when the
 queue_items row has `raw_content_override` set (user ticked
 `Use page body` in Notion; see `FetcherResource.structure`
-in `resources.py` and the override branch in `assets.fetched`). For
+in `resources.py` and the override branch in `assets.fetch_content`). For
 `/v1/fetch`, the service is authoritative for source matching
-(article / arxiv / youtube) and quality-floor enforcement. `extracted`
-runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetched +
-extracted include `content_preview` / `narrative_preview` / `topic_card_preview`
+(article / arxiv / youtube) and quality-floor enforcement. `extract_reading_card`
+runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetch_content +
+extract_reading_card include `content_preview` / `narrative_preview` / `topic_card_preview`
 metadata (head + tail of the content) for at-a-glance verification.
 ```
 
@@ -124,6 +124,6 @@ dg launch --job fetch_extract_queue --partition <notion_page_id>
 - **Notion AI training opt-out** — `Notion Workspace Settings → Notion AI
   → Manage data → "Don't use my workspace data to train models"` must be
   ON. The only LLM-derived content written back to Notion is the
-  `published` asset's Name (`topic_card.extracted_title`) and
+  `publish_item` asset's Name (`topic_card.extracted_title`) and
   Description (`topic_card.core_mechanism`) — the full narrative, the
   Topic Card JSON, and raw_content stay in kp's local store.

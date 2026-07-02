@@ -124,9 +124,9 @@ def comments_json_to_user_notes(raw: str | None) -> str | None:
 
 
 @dg.asset(
-    key=["fetch_extract_queue", "fetched"],
+    key=["fetch_extract_queue", "fetch_content"],
     group_name=GROUP_NAME,
-    kinds={"http", "sqlite"},
+    kinds={"http", "sqlite"},  # from http to sqlite
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
@@ -139,7 +139,7 @@ def comments_json_to_user_notes(raw: str | None) -> str | None:
         """
     ),
 )
-def fetched(
+def fetch_content(
     context: dg.AssetExecutionContext,
     fetcher: FetcherResource,
     store: QueueStoreResource,
@@ -271,17 +271,17 @@ def fetched(
 
 
 @dg.asset(
-    key=["fetch_extract_queue", "extracted"],
+    key=["fetch_extract_queue", "extract_reading_card"],
     group_name=GROUP_NAME,
     kinds={"openai", "sqlite"},
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["fetch_extract_queue", "fetched"])],
+    deps=[dg.AssetDep(["fetch_extract_queue", "fetch_content"])],
     check_specs=[
         dg.AssetCheckSpec(
             name="topic_card_has_required_fields",
-            asset=dg.AssetKey(["fetch_extract_queue", "extracted"]),
+            asset=dg.AssetKey(["fetch_extract_queue", "extract_reading_card"]),
             blocking=True,
             description=(
                 "Topic Card has extracted_title + core_mechanism, AND Followups "
@@ -300,7 +300,7 @@ def fetched(
         """
     ),
 )
-def extracted(
+def extract_reading_card(
     context: dg.AssetExecutionContext,
     extractor: ExtractorRegistry,
     store: QueueStoreResource,
@@ -309,7 +309,7 @@ def extracted(
     row = store.get_row(page_id)
     if not row or not row.get("raw_content"):
         raise dg.Failure(
-            description=f"No raw_content for page_id={page_id}; fetched must produce one.",
+            description=f"No raw_content for page_id={page_id}; fetch_content must produce one.",
         )
     content_type = row["content_type"]
 
@@ -414,13 +414,13 @@ def extracted(
 
 
 @dg.asset(
-    key=["fetch_extract_queue", "published"],
+    key=["fetch_extract_queue", "publish_item"],
     group_name=GROUP_NAME,
     kinds={"notion", "sqlite"},
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["fetch_extract_queue", "extracted"])],
+    deps=[dg.AssetDep(["fetch_extract_queue", "extract_reading_card"])],
     description=_oneline(
         """
         Flips Notion Status=Ready and overwrites Name with the extracted
@@ -432,7 +432,7 @@ def extracted(
         """
     ),
 )
-def published(
+def publish_item(
     context: dg.AssetExecutionContext,
     notion: NotionQueueResource,
     store: QueueStoreResource,
@@ -442,7 +442,8 @@ def published(
     if not row or not row.get("extracted_at"):
         raise dg.Failure(
             description=(
-                f"No extraction completed for page_id={page_id} — extracted " "must run first."
+                f"No extraction completed for page_id={page_id} — extract_reading_card "
+                "must run first."
             ),
             metadata={
                 "content_type": dg.MetadataValue.text((row or {}).get("content_type") or "(none)"),
@@ -476,7 +477,7 @@ def published(
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[fetched],
+    deps=[fetch_content],
     description=_oneline(
         """
         Extracts claims from the fetched body into per-source [reported]/[opinion] claims
@@ -670,9 +671,9 @@ def render_attributed_pages(
 # render_attributed_pages is unpartitioned, so it is registered + scheduled
 # separately (a partitioned asset job cannot include an unpartitioned asset).
 all_assets = [
-    fetched,
-    extracted,
-    published,
+    fetch_content,
+    extract_reading_card,
+    publish_item,
     extract_claims,
     extract_entities,
     persist_attributed_claims,
