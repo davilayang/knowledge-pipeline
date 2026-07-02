@@ -20,7 +20,7 @@ from domains.wiki.state import (
 )
 
 from orchestrators.config import SYNC_WIKI_CURATION_DAG_VERSION
-from orchestrators.defs.synthesize_wiki.resources import WikiResource
+from orchestrators.defs.shared.resources import WikiResource
 
 from .def_config import WIKI_DB_CONCURRENCY_KEY
 from .resources import WikiPagesNotionResource
