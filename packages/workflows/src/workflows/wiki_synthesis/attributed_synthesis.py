@@ -28,9 +28,11 @@ from domains.wiki.attributed import (
 from domains.wiki.identity import shortid
 from domains.wiki.state import (
     connection,
+    delete_page,
     get_aliases_for_entity,
     get_all_entities,
     get_entity,
+    get_page,
     upsert_page,
 )
 
@@ -73,17 +75,20 @@ def synthesize_source(
     source: SourceRecord,
     wiki_db_path: Path | str,
     attribute_subjects: SubjectMapper | None = None,
+    synthesized_at: str | None = None,
 ) -> str:
     """Synthesize one source into wiki.db: assign its stored claims to entities
     (against the LIVE wiki), then persist the source + claims + links.
 
     `claims_doc` / `candidates_doc` are the source's stored extract-time outputs
     (queue_store `get_claims` / `get_candidates`); `source` is its attribution
-    metadata (`build_source_record`). Returns the surviving source_id.
+    metadata (`build_source_record`). `synthesized_at` is the incremental-sweep
+    watermark (the max `extracted_at` consumed for this source) recorded so the
+    next sweep can skip it while unchanged. Returns the surviving source_id.
 
     NOT concurrency-safe on its own: `assign_from_stored` snapshots the entity
     index, then persist writes — two sources resolving the same new entity from
-    stale snapshots can both mint it. The caller (the partitioned persist asset)
+    stale snapshots can both mint it. The caller (the wiki-synthesis sweep)
     serializes runs on the shared wiki-write pool to close that window."""
     assignment = assign_from_stored(
         claims_doc,
@@ -92,7 +97,9 @@ def synthesize_source(
         attribute_subjects=attribute_subjects,
     )
     with connection(wiki_db_path) as conn, conn:
-        return persist_source_assignment(conn, assignment=assignment, source=source)
+        return persist_source_assignment(
+            conn, assignment=assignment, source=source, synthesized_at=synthesized_at
+        )
 
 
 def render_entity_pages(
@@ -127,6 +134,14 @@ def render_entity_pages(
             # a single source is a passing co-mention, not a page. Threshold is
             # empirically tunable.
             if len(claims) < 2 and count_sources_for_entity(conn, entity_id) < 2:
+                # A re-extraction (claim replacement) can shrink an entity below the
+                # floor after it earned a page. Delete the now-stale page (row + .md)
+                # so it doesn't linger; the source count / claims no longer back it.
+                existing = get_page(conn, entity_id)
+                if existing is not None:
+                    with conn:
+                        delete_page(conn, entity_id)
+                    (wiki_dir / existing.file_path).unlink(missing_ok=True)
                 continue
             markdown = render_attributed_markdown(
                 entity=entity,

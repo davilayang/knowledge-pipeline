@@ -267,6 +267,13 @@ _PAGE_SELECT = """
 """
 
 
+def delete_page(conn: sqlite3.Connection, entity_id: str) -> None:
+    """Delete an entity's pages row. Caller manages the transaction and unlinks the
+    `.md` file separately. Used when a re-extraction shrinks an entity below the
+    page-worthiness floor — the stale page must not linger. No-op if absent."""
+    conn.execute("DELETE FROM pages WHERE entity_id = ?", (entity_id,))
+
+
 def get_page(conn: sqlite3.Connection, entity_id: str) -> PageRecord | None:
     """Return one page (joined with its identity) by entity_id, or None."""
     row = conn.execute(

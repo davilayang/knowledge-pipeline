@@ -83,7 +83,9 @@ class SourceRecord:
     added_at: str
 
 
-def upsert_source(conn: sqlite3.Connection, source: SourceRecord) -> str:
+def upsert_source(
+    conn: sqlite3.Connection, source: SourceRecord, *, synthesized_at: str | None = None
+) -> str:
     """Insert or update one source, keyed on `content_key`. Caller manages the
     transaction.
 
@@ -96,9 +98,15 @@ def upsert_source(conn: sqlite3.Connection, source: SourceRecord) -> str:
     Returns the SURVIVING source_id (the original one on conflict), so the caller
     FKs claims to the row that actually exists, not the freshly-minted id it may
     have passed in.
+
+    `synthesized_at` is the incremental-sweep watermark — the max(extracted_at)
+    the sweep consumed for this source. COALESCE'd like the attribution columns so
+    a re-upsert that omits it (the one-off backfill) keeps a watermark a prior
+    sweep set rather than wiping it to NULL.
     """
     conn.execute(
-        f"INSERT INTO sources ({_SOURCE_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
+        f"INSERT INTO sources ({_SOURCE_COLS}, synthesized_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (content_key) DO UPDATE SET "
         "origin_type = excluded.origin_type, "
         "title = COALESCE(excluded.title, sources.title), "
@@ -107,7 +115,8 @@ def upsert_source(conn: sqlite3.Connection, source: SourceRecord) -> str:
         "url = COALESCE(excluded.url, sources.url), "
         "published_at = COALESCE(excluded.published_at, sources.published_at), "
         "content_hash = COALESCE(excluded.content_hash, sources.content_hash), "
-        "fetched_at = COALESCE(excluded.fetched_at, sources.fetched_at)",
+        "fetched_at = COALESCE(excluded.fetched_at, sources.fetched_at), "
+        "synthesized_at = COALESCE(excluded.synthesized_at, sources.synthesized_at)",
         (
             source.source_id,
             source.content_key,
@@ -120,6 +129,7 @@ def upsert_source(conn: sqlite3.Connection, source: SourceRecord) -> str:
             source.content_hash,
             source.fetched_at,
             source.added_at,
+            synthesized_at,
         ),
     )
     row = conn.execute(
@@ -127,6 +137,29 @@ def upsert_source(conn: sqlite3.Connection, source: SourceRecord) -> str:
         (source.content_key,),
     ).fetchone()
     return row[0]
+
+
+def get_synthesized_watermarks(conn: sqlite3.Connection) -> dict[str, str]:
+    """`{content_key: synthesized_at}` for every source that carries a watermark.
+
+    The incremental sweep reads this once and skips a source iff its content_key
+    is present here AND its extraction docs haven't advanced past the recorded
+    value. Sources with a NULL watermark (never synthesized) are excluded, so the
+    sweep treats them as work to do."""
+    rows = conn.execute(
+        "SELECT content_key, synthesized_at FROM sources WHERE synthesized_at IS NOT NULL"
+    ).fetchall()
+    return {r[0]: r[1] for r in rows}
+
+
+def delete_claims_for_source(conn: sqlite3.Connection, source_id: str) -> None:
+    """Delete every claim for a source (ON DELETE CASCADE prunes claim_entities).
+
+    Claims are append-only (`UNIQUE(source_id, text_hash)`), so re-processing a
+    re-extracted source would ADD its new claims while KEEPING stale ones. The
+    incremental sweep calls this before re-inserting a changed source's claims so
+    the page reflects only the current extraction (replace, not merge)."""
+    conn.execute("DELETE FROM claims WHERE source_id = ?", (source_id,))
 
 
 def get_source(conn: sqlite3.Connection, source_id: str) -> SourceRecord | None:

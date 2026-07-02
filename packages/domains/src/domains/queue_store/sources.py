@@ -640,6 +640,61 @@ def record_candidates(
         )
 
 
+def get_ready_extraction_docs(
+    *, db_path: Path
+) -> tuple[dict[str, tuple[str, str, str]], list[str]]:
+    """One-snapshot read for the wiki sweep. Returns `(ready, partial)`:
+
+    - `ready`: `{notion_page_id: (claims_doc, candidates_doc, max_extracted_at)}`
+      for every page carrying BOTH a latest `extract_claims` and a latest
+      `extract_entities` doc. `max_extracted_at` is derived from THOSE SAME rows,
+      so the sweep's watermark can never advance past docs it didn't consume —
+      all four values come from one connection's consistent snapshot (a concurrent
+      `record_claims`/`record_candidates` mid-sweep can't tear old-doc/new-watermark).
+    - `partial`: page_ids carrying exactly one of the two kinds — observability
+      only (can't be synthesised until the other doc lands).
+
+    Latest-per-(page, kind) via `extracted_at DESC, id DESC`, mirroring
+    `get_claims`/`get_candidates`. The topic_card 3-call extraction shares the
+    table but is excluded (unrelated to wiki freshness)."""
+    with _connect(db_path) as conn:
+        rows = conn.execute(
+            """
+            SELECT notion_page_id, call_kind, output, extracted_at
+              FROM extraction_calls e
+             WHERE call_kind IN ('extract_claims', 'extract_entities')
+               AND id = (
+                   SELECT id FROM extraction_calls e2
+                    WHERE e2.notion_page_id = e.notion_page_id
+                      AND e2.call_kind = e.call_kind
+                    ORDER BY extracted_at DESC, id DESC
+                    LIMIT 1
+               )
+            """
+        ).fetchall()
+    by_page: dict[str, dict[str, tuple[str, str]]] = {}
+    for row in rows:
+        by_page.setdefault(row["notion_page_id"], {})[row["call_kind"]] = (
+            row["output"],
+            row["extracted_at"],
+        )
+    ready: dict[str, tuple[str, str, str]] = {}
+    partial: list[str] = []
+    for page_id in sorted(by_page):
+        kinds = by_page[page_id]
+        claims = kinds.get("extract_claims")
+        candidates = kinds.get("extract_entities")
+        if claims and candidates:
+            ready[page_id] = (
+                claims[0],
+                candidates[0],
+                max(claims[1], candidates[1]),
+            )
+        else:
+            partial.append(page_id)
+    return ready, partial
+
+
 def get_candidates(*, db_path: Path, notion_page_id: str) -> str | None:
     """The most-recent `extract_entities` output for a page, or None if none is
     recorded. Latest-wins, mirroring `get_claims`."""

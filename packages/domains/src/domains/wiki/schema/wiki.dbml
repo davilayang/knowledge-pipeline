@@ -94,6 +94,7 @@ Table sources {
   content_hash text [note: 'fetched-body hash — detect article change']
   fetched_at   text
   added_at     text [not null]
+  synthesized_at text [note: 'max(extracted_at) consumed by the last sweep; null = never synthesized (incremental watermark)']
   Note: 'Source registry + attribution metadata. Write helper UPSERTs on content_key.'
 }
 

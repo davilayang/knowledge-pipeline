@@ -11,6 +11,7 @@ from domains.wiki.attributed import (
     attributed_claims_for_entity,
     claim_text_hash,
     get_source,
+    get_synthesized_watermarks,
     insert_claim,
     mint_source_id,
     upsert_source,
@@ -19,6 +20,18 @@ from domains.wiki.claims import SourceClaim
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from workflows.wiki_synthesis.attributed_persist import persist_source_assignment
 from workflows.wiki_synthesis.entity_assignment import ClaimAssignment, SummaryAssignment
+
+
+def _single_claim_assignment(item_id, text) -> SummaryAssignment:
+    ex = _entity("e_x", "GraphRAG")
+    c = SourceClaim(text=text, source_id=item_id)
+    return SummaryAssignment(
+        item_id=item_id,
+        assignments=(ClaimAssignment(claim=c, entity_ids=("e_x",)),),
+        entities={"e_x": ex},
+        new_entities=(ex,),
+    )
+
 
 NOW = "2026-07-02T00:00:00+00:00"
 
@@ -92,6 +105,39 @@ def test_persist_is_idempotent_across_reruns(wiki_db):
 
     assert len(attributed_claims_for_entity(wiki_db, "e_x")) == 2
     assert len(attributed_claims_for_entity(wiki_db, "e_y")) == 1
+
+
+def test_persist_replaces_claims_on_reprocess(wiki_db):
+    # A re-extracted source's claims REPLACE the prior set — append-only claims
+    # (UNIQUE(source_id, text_hash)) would otherwise accumulate stale ones. Persist
+    # deletes the source's existing claims before re-inserting the new set.
+    persist_source_assignment(
+        wiki_db, assignment=_assignment("medium::u"), source=_source("medium::u")
+    )
+    wiki_db.commit()
+
+    persist_source_assignment(
+        wiki_db,
+        assignment=_single_claim_assignment("medium::u", "A totally new claim about GraphRAG."),
+        source=_source("medium::u"),
+    )
+    wiki_db.commit()
+
+    x_texts = {c.text for c in attributed_claims_for_entity(wiki_db, "e_x")}
+    assert x_texts == {"A totally new claim about GraphRAG."}
+
+
+def test_persist_writes_synthesized_at_watermark(wiki_db):
+    # The sweep passes the max(extracted_at) it consumed; persist records it on the
+    # source so the next sweep can skip an unchanged source.
+    persist_source_assignment(
+        wiki_db,
+        assignment=_assignment("medium::u"),
+        source=_source("medium::u"),
+        synthesized_at="2026-07-02T09:00:00+00:00",
+    )
+    wiki_db.commit()
+    assert get_synthesized_watermarks(wiki_db) == {"medium::u": "2026-07-02T09:00:00+00:00"}
 
 
 def test_persist_links_to_preexisting_claim_row(wiki_db):

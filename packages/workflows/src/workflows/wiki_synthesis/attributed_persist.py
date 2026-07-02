@@ -19,6 +19,7 @@ from domains.wiki.attributed import (
     ClaimRecord,
     SourceRecord,
     claim_text_hash,
+    delete_claims_for_source,
     insert_claim,
     insert_claim_entity,
     mint_claim_id,
@@ -34,7 +35,11 @@ def _now_iso() -> str:
 
 
 def persist_source_assignment(
-    conn: Connection, *, assignment: SummaryAssignment, source: SourceRecord
+    conn: Connection,
+    *,
+    assignment: SummaryAssignment,
+    source: SourceRecord,
+    synthesized_at: str | None = None,
 ) -> str:
     """Persist one source's attributed claims. Caller manages the transaction.
 
@@ -44,8 +49,15 @@ def persist_source_assignment(
     renders on no page. Claim ids are minted deterministically from the SURVIVING
     source_id so a re-run's links reference the row `insert_claim` kept. Returns
     the surviving source_id.
+
+    Claims are REPLACED, not merged: the source's existing claims are deleted
+    before re-inserting, so a re-extraction's page reflects only the current claim
+    set (append-only `UNIQUE(source_id, text_hash)` would otherwise keep stale
+    ones). `synthesized_at` is the incremental-sweep watermark recorded on the
+    source (the max `extracted_at` consumed for it).
     """
-    source_id = upsert_source(conn, source)
+    source_id = upsert_source(conn, source, synthesized_at=synthesized_at)
+    delete_claims_for_source(conn, source_id)
     for entity in assignment.new_entities:
         insert_entity(conn, entity)
 
