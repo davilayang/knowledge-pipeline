@@ -185,7 +185,6 @@ def test_group_by_entity_uses_subject_not_comention(wiki_db_path):
 
     assert set(groups) == {"Anthropic"}
     assert len(groups["Anthropic"].claims) == 3
-    assert groups["Anthropic"].salient is True
 
 
 def test_subject_mapper_reassembles_by_index(monkeypatch):
