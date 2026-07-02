@@ -299,10 +299,11 @@ def render_attributed_markdown(
     num_sources: int,
     updated_at: str,
 ) -> str:
-    """Render an entity's attributed page to markdown — YAML frontmatter over a
-    `[reported]`/`[opinion]`-tagged bullet per claim, each with its attribution
-    tail. `claims` are already ordered (dated-first) by
-    `attributed_claims_for_entity`; `aliases`/`num_sources`/`updated_at` are
+    """Render an entity's attributed page to markdown — YAML frontmatter, then the
+    claims split into `## Reported` / `## Opinion` sections (the header conveys the
+    kind, so no inline tag), each a bullet with its attribution tail. Within a
+    section claims keep their dated order from `attributed_claims_for_entity`; an
+    empty section is omitted. `aliases`/`num_sources`/`updated_at` are
     producer-authoritative (derived from wiki.db at write time)."""
     frontmatter = [
         "---",
@@ -314,6 +315,10 @@ def render_attributed_markdown(
         f"updated_at: {updated_at}",
         "---",
     ]
-    body = [f"# {entity.canonical_name}", ""]
-    body += [f"- [{claim.claim_kind}] {claim.text} — {_attribution(claim)}" for claim in claims]
-    return "\n".join(frontmatter) + "\n\n" + "\n".join(body) + "\n"
+    sections = []
+    for kind, heading in (("reported", "Reported"), ("opinion", "Opinion")):
+        bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.claim_kind == kind]
+        if bullets:
+            sections.append(f"## {heading}\n\n" + "\n".join(bullets))
+    body = f"# {entity.canonical_name}\n\n" + "\n\n".join(sections)
+    return "\n".join(frontmatter) + "\n\n" + body + "\n"

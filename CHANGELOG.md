@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.28.1] — 2026-07-02
+
+### Changed
+
+- **Attributed wiki pages now split claims into `## Reported` / `## Opinion` sections** instead of one flat list — `render_attributed_markdown` groups by `claim_kind` and drops the redundant inline tag, so facts and takes are distinguishable.
+
+---
+
 ## [0.28.0] — 2026-07-02
 
 ### Added
