@@ -252,9 +252,11 @@ existing entity instead of minting a duplicate.
 
 The extract-time producers (`extract_claims`, `extract_entities`) are wired as
 Dagster assets (`fetch_extract_queue`); `assign_summary` consumes their stored
-output via `assign_from_stored` but is not yet in a synthesis asset — that, plus
-the page storage schema, is the remaining Slice 3 work. The scoring harness lives
-in `evals.wiki.claims` (gate + assignment diagnostics).
+output via `assign_from_stored` in `attributed_synthesis.synthesize_source`, which
+persists the result into `wiki.db` (`sources` / `claims` / `claim_entities`).
+`render_entity_pages` (`attributed_synthesis`) re-renders each entity's page from
+ALL its attributed claims as an unpartitioned sweep. The scoring harness lives in
+`evals.wiki.claims` (gate + assignment diagnostics).
 
 ```
 article-grounded candidates (extract_entities asset)  +  ClaimSet (extract_claims asset)
@@ -290,6 +292,8 @@ name or a descriptive phrase.
 | `extract_claims.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources. Uses the shared-prefix layout (`extract_shared`) so its article read prompt-caches with `extract_entities` |
 | `extract_entities.py` | `extract_entities` — article-grounded entity candidate extractor: reads the raw article + its claims, returns `Candidate`s (no cap; salience classifies the tail), behind a prompt that drops chrome / example-data / code identifiers. The attributed lane's candidate source — wired as its own extract-time Dagster asset (`deps=extract_claims`), and its stored candidates are consumed by `assign_summary` (via `assign_from_stored`). `render_candidates` is the canonical `Name — type` inverse of `parse_entity_candidates` for the stored round-trip |
 | `extract_shared.py` | `shared_prefix_messages` — the `[system, article envelope, task]` message layout shared byte-identically by `extract_claims` + `extract_entities`, so the article is served from OpenAI's prefix cache on the second extract-time call |
-| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — resolve the article-grounded candidates against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. `assign_from_stored` is the storage bridge (parses the stored claims + candidate docs, then `assign_summary`). Persists nothing (page storage is the remaining Slice 3 work) |
+| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — resolve the article-grounded candidates against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. `assign_from_stored` is the storage bridge (parses the stored claims + candidate docs, then `assign_summary`) consumed by `attributed_synthesis.synthesize_source`. Persists nothing itself — persistence is in `attributed_persist` and `attributed_synthesis` |
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
+| `attributed_persist.py` | `persist_source_assignment` — writes one source's attributed claims into wiki.db in the caller's transaction: upserts the source row, inserts minted entities, inserts each claim and its claim→entity links. Idempotent (ON CONFLICT DO NOTHING). Returns the surviving source_id |
+| `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor) |

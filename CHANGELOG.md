@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.29.0] — 2026-07-02
+
+### Added
+
+- **Attributed-lane wiki pages** — entity pages now render from source-attributed claims persisted in `wiki.db` (new `sources`, `claims`, `claim_entities` tables; `domains.wiki.attributed`). Page-worthiness floor: ≥2 claims or ≥2 sources required to emit a page; the existing raw-article synthesis path is unchanged.
+- **Two new `fetch_extract_queue` Dagster assets** — `persist_attributed_claims` writes per-source claim sets to `wiki.db` via the new `wiki_write` resource (serialized on a dedicated write pool); `render_attributed_pages` sweeps all entities daily and rebuilds attributed pages, scheduled at 07:00 via its own job.
+
+---
+
 ## [0.28.0] — 2026-07-02
 
 ### Added
