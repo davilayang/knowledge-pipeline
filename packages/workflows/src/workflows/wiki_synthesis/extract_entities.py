@@ -23,7 +23,7 @@ from typing import get_args
 from domains.types import IngestItem
 from domains.wiki.claims import ClaimSet
 from domains.wiki.identity import Candidate
-from domains.wiki.types import PageType
+from domains.wiki.types import EntityType
 
 from workflows.llm import LLMCall, generate_messages_with_usage
 from workflows.wiki_synthesis.extract_shared import shared_prefix_messages
@@ -33,9 +33,9 @@ logger = logging.getLogger(__name__)
 
 EXTRACT_ENTITIES_MODEL = "gpt-4.1-mini"
 
-_VALID_PAGE_TYPES = frozenset(get_args(PageType))
+_VALID_ENTITY_TYPES = frozenset(get_args(EntityType))
 
-# The task asks for exactly the PageType vocabulary, but the model drifts to
+# The task asks for exactly the EntityType vocabulary, but the model drifts to
 # near-synonyms — map the common ones back; anything unrecognised falls to
 # "concept" (the modal type) rather than being dropped, so a mis-typed real
 # entity still becomes a candidate (recall over tidy typing).
@@ -72,14 +72,14 @@ _NULL_TYPES = frozenset({"none", "n/a", "unknown"})
 
 
 def _normalize_type(raw: str) -> str:
-    """Map the model's type token to a valid PageType. Strips trailing punctuation
+    """Map the model's type token to a valid EntityType. Strips trailing punctuation
     ('tool.' → 'tool') and takes the first word ('tool/model' → 'tool'), then the
     alias map; unknown → 'concept'."""
     words = raw.strip().strip("`").lower().replace("/", " ").split()
     if not words:
         return "concept"
     head = words[0].strip(".,;:!")
-    if head in _VALID_PAGE_TYPES:
+    if head in _VALID_ENTITY_TYPES:
         return head
     return _TYPE_ALIASES.get(head, "concept")
 
@@ -98,13 +98,13 @@ def _split_name_type(line: str) -> tuple[str, str]:
 def render_candidates(candidates: list[Candidate]) -> str:
     """Render candidates to the canonical `Name — type` lines persisted per source
     (`store.record_candidates`). Inverse of `parse_entity_candidates`, so a
-    round-trip through storage preserves each candidate's name + page_type.
+    round-trip through storage preserves each candidate's name + entity_type.
 
     A name from `parse_entity_candidates` never contains the ` — ` separator (it
     was split off at parse time), but a name constructed elsewhere could — so any
     separator inside a name is flattened to a hyphen here, guaranteeing the stored
     line parses back to the same name rather than a truncated one."""
-    return "\n".join(f"{_flatten_separators(c.name)} — {c.page_type}" for c in candidates)
+    return "\n".join(f"{_flatten_separators(c.name)} — {c.entity_type}" for c in candidates)
 
 
 def _flatten_separators(name: str) -> str:
@@ -120,7 +120,7 @@ def parse_entity_candidates(text: str) -> list[Candidate]:
 
     Skips blanks, a lone NONE, bullet/number markers, and "no entity" lines; dedups
     by lowercased name (first spelling wins); normalises the type to a valid
-    PageType. The LLM supplies no id or aliases — resolution against the live wiki
+    EntityType. The LLM supplies no id or aliases — resolution against the live wiki
     owns identity."""
     candidates: list[Candidate] = []
     seen: set[str] = set()
@@ -148,7 +148,7 @@ def parse_entity_candidates(text: str) -> list[Candidate]:
         if key in seen:
             continue
         seen.add(key)
-        candidates.append(Candidate(name=name, page_type=_normalize_type(type_part)))
+        candidates.append(Candidate(name=name, entity_type=_normalize_type(type_part)))
     return candidates
 
 

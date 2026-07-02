@@ -18,7 +18,7 @@ def _write_wiki_page(wiki_dir: Path, *, entity_id: str, title: str, summary: str
     page = WikiPage(
         entity_id=entity_id,
         title=title,
-        page_type="concept",
+        entity_type="concept",
         summary=summary,
         related=[],
         sources=[],

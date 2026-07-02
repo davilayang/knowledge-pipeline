@@ -309,7 +309,7 @@ def render_attributed_markdown(
         "---",
         f"entity_id: {_yaml_scalar(entity.entity_id)}",
         f"title: {_yaml_scalar(entity.canonical_name)}",
-        f"page_type: {_yaml_scalar(entity.page_type)}",
+        f"entity_type: {_yaml_scalar(entity.entity_type)}",
         f"aliases: {_yaml_inline_list(aliases)}",
         f"num_sources: {int(num_sources)}",
         f"updated_at: {updated_at}",

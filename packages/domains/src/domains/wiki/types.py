@@ -3,7 +3,7 @@ from typing import Literal
 
 from pydantic import BaseModel, Field
 
-PageType = Literal[
+EntityType = Literal[
     "concept", "tool", "trend", "person", "organization", "method", "dataset", "other"
 ]
 
@@ -13,7 +13,7 @@ class WikiPage(BaseModel):
 
     entity_id: str = Field(description="Opaque surrogate id (e_<16hex>), minted once")
     title: str = Field(description="Human-readable page title")
-    page_type: PageType = Field(description="Page category")
+    entity_type: EntityType = Field(description="Entity category")
     summary: str = Field(
         default="",
         description="One-sentence document-shape summary; names the entity directly.",
@@ -53,7 +53,7 @@ class ExtractedEntity(BaseModel):
     """
 
     title: str = Field(description="Canonical display name of the entity")
-    page_type: PageType = Field(description="Category of this entity")
+    entity_type: EntityType = Field(description="Category of this entity")
     matched_id: str | None = Field(
         default=None,
         description=(

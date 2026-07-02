@@ -31,7 +31,7 @@ def _seed_page(conn, wiki_dir, entity_id, name, file_name):
             canonical_name=name,
             normalized_name=normalize_name(name),
             slug=slugify(name),
-            page_type="concept",
+            entity_type="concept",
             created_at=NOW,
         ),
     )
@@ -41,7 +41,7 @@ def _seed_page(conn, wiki_dir, entity_id, name, file_name):
         WikiPage(
             entity_id=entity_id,
             title=name,
-            page_type="concept",
+            entity_type="concept",
             summary=f"{name} summary.",
             related=[],
             sources=["art1"],

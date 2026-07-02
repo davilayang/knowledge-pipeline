@@ -35,13 +35,13 @@ from domains.wiki.state import (
 NOW = "2026-06-22T00:00:00+00:00"
 
 
-def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRecord:
+def _seed_entity(conn, entity_id, canonical, *, entity_type="concept") -> EntityRecord:
     ent = EntityRecord(
         entity_id=entity_id,
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type=page_type,
+        entity_type=entity_type,
         created_at=NOW,
     )
     insert_entity(conn, ent)
@@ -64,11 +64,11 @@ def test_get_entity_unknown_returns_none(wiki_db):
 def test_insert_entity_idempotent_on_entity_id(wiki_db):
     """Re-inserting the same surrogate is a no-op; the first write is kept."""
     _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_rag", "RAG (changed)", page_type="tool")
+    _seed_entity(wiki_db, "e_rag", "RAG (changed)", entity_type="tool")
     wiki_db.commit()
     got = get_entity(wiki_db, "e_rag")
     assert got.canonical_name == "RAG"
-    assert got.page_type == "concept"
+    assert got.entity_type == "concept"
 
 
 def test_build_entity_index_includes_names_and_aliases(wiki_db):
@@ -133,7 +133,7 @@ def test_upsert_page_inserts_then_updates(wiki_db):
     assert rec is not None
     assert rec.file_path == "rag-aaaa1111.md"
     assert rec.canonical_name == "RAG"  # joined from entities
-    assert rec.page_type == "concept"
+    assert rec.entity_type == "concept"
     assert rec.related_ids == []
 
     upsert_page(wiki_db, entity_id="e_rag", file_path="rag-aaaa1111.md", related_ids=["e_llm"])
@@ -143,14 +143,14 @@ def test_upsert_page_inserts_then_updates(wiki_db):
 
 def test_get_all_pages_orders_by_entity_id_and_joins_identity(wiki_db):
     _seed_entity(wiki_db, "e_aaa", "RAG")
-    _seed_entity(wiki_db, "e_bbb", "Chroma", page_type="tool")
+    _seed_entity(wiki_db, "e_bbb", "Chroma", entity_type="tool")
     upsert_page(wiki_db, entity_id="e_bbb", file_path="chroma-bbbb2222.md", related_ids=[])
     upsert_page(wiki_db, entity_id="e_aaa", file_path="rag-aaaa1111.md", related_ids=[])
     wiki_db.commit()
 
     pages = get_all_pages(wiki_db)
     assert [p.entity_id for p in pages] == ["e_aaa", "e_bbb"]
-    assert [p.page_type for p in pages] == ["concept", "tool"]
+    assert [p.entity_type for p in pages] == ["concept", "tool"]
     assert [p.canonical_name for p in pages] == ["RAG", "Chroma"]
 
 
@@ -198,7 +198,7 @@ def test_insert_aliases_skips_duplicate_normalized_key(wiki_db):
 def test_insert_aliases_collision_first_entity_wins(wiki_db):
     """If two entities claim the same normalized alias, the first writer wins."""
     _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_ra", "Rust Analyzer", page_type="tool")
+    _seed_entity(wiki_db, "e_ra", "Rust Analyzer", entity_type="tool")
     insert_aliases(wiki_db, [("RA", "e_rag")])
     insert_aliases(wiki_db, [("RA", "e_ra")])
     wiki_db.commit()

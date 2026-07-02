@@ -51,7 +51,7 @@ def _call(content: str) -> LLMCall:
 
 def test_parses_name_and_type():
     cands = parse_entity_candidates("Docker — tool\nPodman — tool")
-    assert [(c.name, c.page_type) for c in cands] == [("Docker", "tool"), ("Podman", "tool")]
+    assert [(c.name, c.entity_type) for c in cands] == [("Docker", "tool"), ("Podman", "tool")]
     # The LLM never supplies ids/aliases — resolution owns identity.
     assert all(c.matched_id is None and c.aliases == [] for c in cands)
 
@@ -63,7 +63,7 @@ def test_normalises_type_synonyms_and_unknowns():
         "CrossEncoder — tool/model\n"
         "ReAct paradigm — wibble\n"  # unknown → concept
     )
-    cands = {c.name: c.page_type for c in parse_entity_candidates(text)}
+    cands = {c.name: c.entity_type for c in parse_entity_candidates(text)}
     assert cands["Anthropic"] == "organization"
     assert cands["Cypher"] == "tool"
     assert cands["CrossEncoder"] == "tool"
@@ -74,7 +74,7 @@ def test_name_with_internal_hyphen_splits_on_last_separator():
     # "cross-encoder/ms-marco" has hyphens; only the final ' — type' is the type.
     (cand,) = parse_entity_candidates("cross-encoder/ms-marco-MiniLM-L-6-v2 — tool")
     assert cand.name == "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    assert cand.page_type == "tool"
+    assert cand.entity_type == "tool"
 
 
 def test_dedups_case_insensitively_first_spelling_wins():
@@ -100,17 +100,17 @@ def test_no_hard_cap():
 
 
 def test_render_round_trips_through_parse():
-    # render_candidates → parse_entity_candidates preserves name + page_type, so a
+    # render_candidates → parse_entity_candidates preserves name + entity_type, so a
     # candidate set survives being stored and read back per source.
     from domains.wiki.identity import Candidate
 
     cands = [
-        Candidate(name="Docker", page_type="tool"),
-        Candidate(name="Michael Lanham", page_type="person"),
-        Candidate(name="agentic RAG", page_type="concept"),
+        Candidate(name="Docker", entity_type="tool"),
+        Candidate(name="Michael Lanham", entity_type="person"),
+        Candidate(name="agentic RAG", entity_type="concept"),
     ]
     reparsed = parse_entity_candidates(render_candidates(cands))
-    assert [(c.name, c.page_type) for c in reparsed] == [(c.name, c.page_type) for c in cands]
+    assert [(c.name, c.entity_type) for c in reparsed] == [(c.name, c.entity_type) for c in cands]
 
 
 def test_render_flattens_separator_inside_a_name():
@@ -119,10 +119,10 @@ def test_render_flattens_separator_inside_a_name():
     from domains.wiki.identity import Candidate
 
     (reparsed,) = parse_entity_candidates(
-        render_candidates([Candidate(name="ACME — Research", page_type="organization")])
+        render_candidates([Candidate(name="ACME — Research", entity_type="organization")])
     )
     assert reparsed.name == "ACME-Research"
-    assert reparsed.page_type == "organization"
+    assert reparsed.entity_type == "organization"
 
 
 def test_strips_leading_list_numbering():
@@ -139,18 +139,18 @@ def test_drops_no_entity_phrasings():
 
 
 def test_trailing_punctuation_on_type_still_normalises():
-    # "tool." must resolve to the tool PageType, not fall through to concept.
+    # "tool." must resolve to the tool EntityType, not fall through to concept.
     (cand,) = parse_entity_candidates("Docker — tool.")
-    assert cand.page_type == "tool"
+    assert cand.entity_type == "tool"
 
 
 def test_unspaced_separator_and_trailing_description():
     # Unspaced em dash is accepted; a trailing description after a second
     # separator keeps the real type (first-separator split).
     a = parse_entity_candidates("Docker—tool")
-    assert (a[0].name, a[0].page_type) == ("Docker", "tool")
+    assert (a[0].name, a[0].entity_type) == ("Docker", "tool")
     b = parse_entity_candidates("Docker — tool — mentioned in passing")
-    assert (b[0].name, b[0].page_type) == ("Docker", "tool")
+    assert (b[0].name, b[0].entity_type) == ("Docker", "tool")
 
 
 # --- extract_entities (wiring, mocked LLM) --------------------------------------

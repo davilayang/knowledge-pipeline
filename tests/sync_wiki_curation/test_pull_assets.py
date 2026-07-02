@@ -39,7 +39,7 @@ def _seed_entity(conn, entity_id, canonical, *, file_path=None):
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type="concept",
+        entity_type="concept",
         created_at=NOW,
     )
     insert_entity(conn, ent)

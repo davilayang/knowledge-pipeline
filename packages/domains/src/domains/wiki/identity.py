@@ -55,7 +55,7 @@ class EntityRecord:
     canonical_name: str
     normalized_name: str
     slug: str
-    page_type: str
+    entity_type: str
     created_at: str
 
 
@@ -64,7 +64,7 @@ class Candidate:
     """An extracted entity proposed by the LLM (it never supplies a surrogate)."""
 
     name: str
-    page_type: str
+    entity_type: str
     matched_id: str | None = None
     aliases: list[str] = field(default_factory=list)
 
@@ -181,7 +181,7 @@ def resolve_or_mint_batch(
                     canonical_name=cand.name,
                     normalized_name=norm,
                     slug=slugify(cand.name),
-                    page_type=cand.page_type,
+                    entity_type=cand.entity_type,
                     created_at=now,
                 )
             )

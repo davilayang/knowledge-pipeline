@@ -9,7 +9,7 @@ def _make_page(**overrides) -> WikiPage:
     defaults = {
         "entity_id": "concept__rag",
         "title": "Retrieval-Augmented Generation",
-        "page_type": "concept",
+        "entity_type": "concept",
         "summary": "RAG augments LLM generation with retrieval over a corpus.",
         "related": ["concept__vector_db"],
         "sources": ["content_123"],
@@ -41,7 +41,7 @@ def test_write_then_read_roundtrip(tmp_path: Path):
 
     assert loaded.entity_id == page.entity_id
     assert loaded.title == page.title
-    assert loaded.page_type == page.page_type
+    assert loaded.entity_type == page.entity_type
     assert loaded.summary == page.summary
     assert loaded.related == page.related
     assert loaded.sources == page.sources
@@ -148,7 +148,7 @@ def test_write_page_emits_new_fields_in_stable_order(tmp_path: Path):
     assert keys == [
         "entity_id",
         "title",
-        "page_type",
+        "entity_type",
         "summary",
         "aliases",
         "related",

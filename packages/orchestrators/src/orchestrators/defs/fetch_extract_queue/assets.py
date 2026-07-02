@@ -570,7 +570,7 @@ def extract_entities(
     )
     by_type: dict[str, int] = {}
     for c in candidates:
-        by_type[c.page_type] = by_type.get(c.page_type, 0) + 1
+        by_type[c.entity_type] = by_type.get(c.entity_type, 0) + 1
     return dg.MaterializeResult(
         metadata={
             "item_id": dg.MetadataValue.text(item.item_id),

@@ -20,7 +20,7 @@ def _entity(entity_id: str, name: str) -> EntityRecord:
         canonical_name=name,
         normalized_name=name.lower(),
         slug=name.lower(),
-        page_type="concept",
+        entity_type="concept",
         created_at=datetime.now(UTC).isoformat(timespec="seconds"),
     )
 

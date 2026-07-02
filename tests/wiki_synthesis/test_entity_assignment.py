@@ -23,7 +23,7 @@ from workflows.wiki_synthesis.entity_assignment import (
 from tests.wiki_synthesis._helpers import make_llm_call
 
 
-def _seed_entity(db_path, name: str, *, page_type: str = "concept") -> str:
+def _seed_entity(db_path, name: str, *, entity_type: str = "concept") -> str:
     """Insert an entity as the raw-article synthesis path would have, and return
     its surrogate id — the entity the attributed lane must unify onto."""
     entity_id = "e_seed0000000000"
@@ -36,7 +36,7 @@ def _seed_entity(db_path, name: str, *, page_type: str = "concept") -> str:
                     canonical_name=name,
                     normalized_name=normalize_name(name),
                     slug=slugify(name),
-                    page_type=page_type,
+                    entity_type=entity_type,
                     created_at=datetime.now(UTC).isoformat(timespec="seconds"),
                 ),
             )
@@ -46,7 +46,7 @@ def _seed_entity(db_path, name: str, *, page_type: str = "concept") -> str:
 def _candidates(*names: str) -> list[Candidate]:
     """The article-grounded candidates assign_summary now consumes (produced
     upstream by extract_entities); plain Candidates, resolution decides reuse vs mint."""
-    return [Candidate(name=n, page_type="concept") for n in names]
+    return [Candidate(name=n, entity_type="concept") for n in names]
 
 
 def _summary(item_id: str, *claims: SourceClaim) -> ClaimSet:

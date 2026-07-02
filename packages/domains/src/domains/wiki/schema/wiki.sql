@@ -1,14 +1,14 @@
 -- Wiki state schema for data/wiki.db (SQLite).
 --
 -- Identity is an opaque surrogate (entities.entity_id = e_<16hex>), decoupled
--- from page_type/slug so an entity the LLM types inconsistently no longer
+-- from entity_type/slug so an entity the LLM types inconsistently no longer
 -- splits into two pages. `entities` is the identity record; `pages` is the
 -- synthesised-artifact record (1:1, FK to entities). All DDL is idempotent and
 -- STRICT (column types enforced at write). Rebuild-don't-migrate: drop the file
 -- and re-synthesise.
 
 -- ---------------------------------------------------------------------------
--- entities — the identity record (authoritative for canonical_name/slug/page_type)
+-- entities — the identity record (authoritative for canonical_name/slug/entity_type)
 --
 -- entity_id is an opaque surrogate minted ONCE by the system, never recomputed
 -- (name-independent → survives renames). normalized_name (lower/trim/collapse-ws
@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS entities (
     canonical_name  TEXT NOT NULL,                -- display name (first sighting wins)
     normalized_name TEXT NOT NULL UNIQUE,         -- match key: lower/trim/collapse-ws
     slug            TEXT NOT NULL,                 -- system-generated, minted once
-    page_type       TEXT NOT NULL,                 -- open-domain type label (metadata, NOT identity)
+    entity_type     TEXT NOT NULL,                 -- open-domain type label (metadata, NOT identity)
     created_at      TEXT NOT NULL                  -- ISO-8601 UTC
 ) STRICT;
 
@@ -39,7 +39,7 @@ CREATE TABLE IF NOT EXISTS processed_items (
 
 -- ---------------------------------------------------------------------------
 -- pages — one rendered page file per entity (1:1, FK to entities).
--- page_type/slug live on `entities` (authoritative); not duplicated here.
+-- entity_type/slug live on `entities` (authoritative); not duplicated here.
 -- file_path is UNIQUE so a slug+shortid collision surfaces instead of silently
 -- overwriting. related_ids is a JSON array of related entity_ids (advisory; not
 -- an FK). num_sources is derived on read from the attributed lane

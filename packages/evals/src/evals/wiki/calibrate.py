@@ -47,7 +47,7 @@ def main(path: str) -> None:
         s = sj.score(entity=r["canonical_name"], page=page, sources=sources)
         rel = rj.score(entity=r["canonical_name"], page=page)
 
-        print(f"\n=== {r['canonical_name']} ({r['page_type']}, {r['n_sources']} src) ===")
+        print(f"\n=== {r['canonical_name']} ({r['entity_type']}, {r['n_sources']} src) ===")
         kept = len(f.claims) - f.unsupported_count
         print(
             f"FAITHFULNESS  grounded {f.grounded_fraction:.2f}  "
