@@ -19,8 +19,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Entity candidates are now extracted and stored at fetch/extract time** — new
   `fetch_extract_queue/extract_entities` Dagster asset records per-source candidates
   (`extraction_calls` `call_kind='extract_entities'`), sharing the article
-  prompt-cache with `extract_claims`. The attributed lane's candidate set; not yet
-  consumed downstream.
+  prompt-cache with `extract_claims`. The attributed lane's candidate set.
+- **Attributed-lane wiki pages** — entity pages now render from source-attributed claims persisted in `wiki.db` (new `sources`, `claims`, `claim_entities` tables; `domains.wiki.attributed`). Page-worthiness floor: ≥2 claims or ≥2 sources required to emit a page; the existing raw-article synthesis path is unchanged.
+- **Two new `fetch_extract_queue` Dagster assets** — `persist_attributed_claims` writes per-source claim sets to `wiki.db` via the new `wiki_write` resource (serialized on a dedicated write pool); `render_attributed_pages` sweeps all entities daily and rebuilds attributed pages, scheduled at 07:00 via its own job.
 
 ### Changed
 

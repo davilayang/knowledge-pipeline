@@ -14,8 +14,10 @@ from typing import Any
 
 import dagster as dg
 import httpx
+from domains.wiki.state import create_schema
 from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
+from orchestrators.config import DATA_DIR
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
     QueueStoreResource,
@@ -216,6 +218,29 @@ class ExtractorRegistry(dg.ConfigurableResource):
         )
 
 
+class WikiWriteResource(dg.ConfigurableResource):
+    """Wiki.db path + wiki dir for the attributed-lane synthesis assets.
+
+    A write-only view of the durable wiki store, owned by THIS pipeline and
+    pointing at the same files as synthesize_wiki's `wiki` resource. It is a
+    separate resource key (not `wiki`) on purpose: a Dagster resource key can be
+    bound by only one sub-Definitions, and synthesize_wiki owns `wiki`; this
+    pipeline needs write access but not the backup-snapshot dir that resource
+    carries, so it binds its own minimal one. get_db_path() applies the schema
+    (idempotent) before any asset writes."""
+
+    wiki_dir: str = str(DATA_DIR / "wiki")
+    wiki_db_path: str = str(DATA_DIR / "wiki.db")
+
+    def get_db_path(self) -> Path:
+        path = Path(self.wiki_db_path)
+        create_schema(db_path=path)
+        return path
+
+    def get_wiki_dir(self) -> Path:
+        return Path(self.wiki_dir)
+
+
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "notion": NotionQueueResource(
@@ -233,4 +258,5 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             model=dg.EnvVar("EXTRACT_QUEUE_MODEL"),
         ),
         "store": QueueStoreResource(),
+        "wiki_write": WikiWriteResource(),
     }

@@ -14,17 +14,27 @@ def test_pipeline_defs_loads():
         "fetch_extract_queue/published",
         "fetch_extract_queue/extract_claims",
         "fetch_extract_queue/extract_entities",
+        "fetch_extract_queue/persist_attributed_claims",
+        "fetch_extract_queue/render_attributed_pages",
     }
 
 
-def test_pipeline_has_one_job_named_fetch_extract_queue():
+def test_pipeline_has_fetch_and_render_jobs():
+    # The per-source pipeline job plus the unpartitioned attributed-page render
+    # sweep (a separate job — a partitioned asset job can't include an
+    # unpartitioned asset).
     job_names = {j.name for j in defs.jobs}
-    assert job_names == {"fetch_extract_queue"}
+    assert job_names == {"fetch_extract_queue", "render_attributed_pages"}
 
 
 def test_pipeline_exposes_poll_and_failure_sensors():
     sensor_names = {s.name for s in defs.sensors}
     assert sensor_names == {"poll_notion_for_extract", "mark_notion_failed_on_extract"}
+
+
+def test_pipeline_exposes_render_sweep_schedule():
+    schedule_names = {s.name for s in defs.schedules}
+    assert "render_attributed_pages_schedule" in schedule_names
 
 
 def test_pipeline_registers_notion_lifecycle_check():
