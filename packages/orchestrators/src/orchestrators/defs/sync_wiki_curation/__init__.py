@@ -3,7 +3,7 @@
 # table. See README.md for the DAG diagram and runbook.
 #
 # Declares only the Notion resource ("wiki_pages_notion"); the "wiki" resource
-# is provided by synthesize_wiki and bound at the top-level Definitions.merge
+# is provided by shared.defs and bound at the top-level Definitions.merge
 # (re-declaring it would collide on the resource key).
 
 import dagster as dg

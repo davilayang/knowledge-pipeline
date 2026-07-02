@@ -30,13 +30,20 @@ LOCAL_WIKI_DIR = DATA_DIR / "wiki"
 BACKUP_READINGS_DAG_VERSION = "7"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
-SYNTHESIZE_WIKI_DAG_VERSION = "12"
 SYNC_WIKI_CURATION_DAG_VERSION = "1"
 POPULATE_VECTOR_STORE_DAG_VERSION = "3"
 FETCH_EXTRACT_QUEUE_DAG_VERSION = "3"
 TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION = "2"
 # EXTRACT_QUEUED_ITEMS_DAG_VERSION = "1"  # deprecated 2026-06-01 — kept as
 # breadcrumb until defs/extract_queued_items/ is fully removed in a follow-up.
+
+
+# Concurrency pool serializing all writes to the single wiki.db — shared by the
+# attributed-lane persist (fetch_extract_queue) and the curation sync
+# (sync_wiki_curation). Re-homed here when the raw synthesize_wiki pipeline (its
+# former owner) was retired; the value is kept as "synthesize-wiki" so the
+# running Dagster instance's pool key doesn't change.
+WIKI_WRITE_POOL = "synthesize-wiki"
 
 
 # Backup settings — snapshot filenames expected in each partition dir.

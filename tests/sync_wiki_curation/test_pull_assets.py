@@ -18,8 +18,8 @@ from domains.wiki.state import (
     insert_entity,
     upsert_page,
 )
+from orchestrators.defs.shared.resources import WikiResource
 from orchestrators.defs.sync_wiki_curation.assets import pull_wiki_rejections
-from orchestrators.defs.synthesize_wiki.resources import WikiResource
 
 NOW = "2026-06-23T00:00:00Z"
 

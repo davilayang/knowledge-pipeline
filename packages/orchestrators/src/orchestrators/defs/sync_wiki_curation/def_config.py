@@ -1,12 +1,12 @@
 # Definition-time config for the sync_wiki_curation pipeline.
 
-from orchestrators.defs.synthesize_wiki.def_config import PIPELINE_TAG
+from orchestrators.config import WIKI_WRITE_POOL
 
-# SQLite is single-writer. This DAG and synthesize_wiki MUST share ONE
-# concurrency key so a curation delete can never run concurrently with a
+# SQLite is single-writer. This DAG and the attributed-lane persist MUST share
+# ONE concurrency key so a curation delete can never run concurrently with a
 # synthesis persist against the same wiki.db (a mid-flight persist could
-# FK-error against a concurrent entity delete). We bind synthesize_wiki's own
-# key here — NOT a separate per-DAG key — which is the single most important
+# FK-error against a concurrent entity delete). We bind the shared WIKI_WRITE_POOL
+# here — NOT a separate per-DAG key — which is the single most important
 # correctness control for this pipeline.
 #
 # Load-bearing dependency: the serialisation only holds because
@@ -14,7 +14,7 @@ from orchestrators.defs.synthesize_wiki.def_config import PIPELINE_TAG
 # which caps this shared pool at one concurrent op globally. Raising default_limit
 # (or setting an explicit higher limit on this pool) silently breaks the
 # single-writer guarantee with no test failing — keep that config in lockstep.
-WIKI_DB_CONCURRENCY_KEY = PIPELINE_TAG
+WIKI_DB_CONCURRENCY_KEY = WIKI_WRITE_POOL
 
 # Run-group tag for the curation job (UI filtering only — distinct from the
 # shared concurrency key above).
