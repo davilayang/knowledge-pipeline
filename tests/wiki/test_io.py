@@ -51,8 +51,9 @@ def test_write_then_read_roundtrip(tmp_path: Path):
 
 def test_sources_frontmatter_is_producer_authoritative(tmp_path: Path):
     """`sources` rendered to frontmatter comes from the passed-in producer list
-    (the page_sources ledger), NOT page.sources (the per-item [source_id] the LLM
-    emits). Mirrors how aliases / num_sources are already producer-authoritative."""
+    (the accumulated source ids for the entity), NOT page.sources (the per-item
+    [source_id] the LLM emits). Mirrors how aliases / num_sources are already
+    producer-authoritative."""
     page = _make_page(sources=["content_123"])  # the volatile per-item value
     path = tmp_path / "rag.md"
 

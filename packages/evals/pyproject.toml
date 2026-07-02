@@ -20,7 +20,6 @@ dependencies = [
 eval-retrieval      = "evals.retrieval.cli:main"
 eval-extraction     = "evals.extraction.benchmark:main"
 eval-extract-claims = "evals.wiki.claims.benchmark:main"
-wiki-dedup-candidates = "evals.wiki_dedup:main"
 
 [build-system]
 requires = ["hatchling"]

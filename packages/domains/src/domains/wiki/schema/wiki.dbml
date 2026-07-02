@@ -1,12 +1,11 @@
 // wiki.db schema (SQLite STRICT) — ERD mirror of wiki.sql (same directory).
 //
-// Reflects the CURRENT schema, in which two lanes coexist:
-//   - raw-article synthesis path: entities / pages / page_sources /
-//     page_versions / entity_relations / processed_items
-//   - attributed lane (additive): sources / claims / claim_entities
-// The cutover that retires the raw path (page_type -> entity_type rename, drop
-// page_sources / page_versions, source_id-key entity_relations) is a later
-// slice; update this file alongside wiki.sql when it lands.
+// Reflects the CURRENT schema after the raw-article synthesis path was retired:
+//   - identity + page shell: entities / pages / aliases / entity_relations /
+//     processed_items / rejected_entities
+//   - attributed lane (claim-centric): sources / claims / claim_entities
+// A `page_type -> entity_type` rename is still pending (needs a prod-coordinated
+// live-DB ALTER); update this file alongside wiki.sql when it lands.
 //
 // Enums below are TEXT + CHECK in SQLite (STRICT has no native enum); modelled
 // as Enum here for the diagram. Paste into https://dbdiagram.io to render.
@@ -22,14 +21,14 @@ Enum claim_kind {
   opinion
 }
 
-// ---- identity + raw-article synthesis path ----
+// ---- identity + page shell ----
 
 Table entities {
   entity_id       text [pk, note: 'e_<16hex> opaque surrogate, minted once']
   canonical_name  text [not null]
   normalized_name text [not null, unique, note: 'lower/trim/collapse-ws dedup key']
   slug            text [not null]
-  page_type       text [not null, note: 'open-domain type label; renamed entity_type at cutover']
+  page_type       text [not null, note: 'open-domain type label; entity_type rename pending']
   created_at      text [not null]
 }
 
@@ -38,9 +37,7 @@ Table pages {
   file_path       text [not null, unique, note: 'flat {slug}-{shortid}.md']
   related_ids     text [note: 'JSON array of related entity_ids (advisory)']
   updated_at      text [not null]
-  content_hash    text [note: 'HEAD semantic hash of current edition']
-  current_version integer [note: 'HEAD pointer into page_versions']
-  Note: 'One synthesised-artifact record per entity (1:1).'
+  Note: 'One rendered-page record per entity (1:1).'
 }
 
 Table aliases {
@@ -50,34 +47,6 @@ Table aliases {
   indexes {
     entity_id [name: 'idx_aliases_entity_id']
   }
-}
-
-Table page_sources {
-  entity_id   text [not null, ref: > entities.entity_id]
-  item_id     text [not null]
-  source_type text [not null]
-  added_at    text [not null]
-  indexes {
-    (entity_id, item_id, source_type) [pk]
-    entity_id [name: 'idx_page_sources_entity_id']
-  }
-  Note: 'Raw-path contribution ledger; num_sources derived. Dropped at cutover.'
-}
-
-Table page_versions {
-  entity_id    text [not null, ref: > entities.entity_id]
-  version      integer [not null, note: 'monotonic per entity']
-  created_at   text [not null]
-  content_hash text [not null]
-  summary      text [not null]
-  num_sources  integer [not null, note: 'CHECK >= 0']
-  source_id    text [not null]
-  source_type  text [not null]
-  content      text [not null, note: 'full markdown body at this edition']
-  indexes {
-    (entity_id, version) [pk]
-  }
-  Note: 'Raw-path edition history. Deferred / dropped at cutover.'
 }
 
 Table entity_relations {
@@ -90,7 +59,7 @@ Table entity_relations {
     (entity_id, related_entity_id, item_id, source_type) [pk]
     entity_id [name: 'idx_entity_relations_entity_id']
   }
-  Note: 'Co-occurrence ledger (item-keyed). The attributed lane does not write this yet.'
+  Note: 'Co-occurrence ledger (item-keyed). The attributed lane does not write this yet (#118).'
 }
 
 Table processed_items {
@@ -102,7 +71,7 @@ Table processed_items {
   indexes {
     (item_id, source_type) [pk]
   }
-  Note: 'Raw-path synthesis-attempt ledger.'
+  Note: 'Per (item, source) processing-attempt ledger.'
 }
 
 Table rejected_entities {

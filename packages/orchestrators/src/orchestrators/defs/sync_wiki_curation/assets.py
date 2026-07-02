@@ -8,11 +8,11 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 import dagster as dg
+from domains.wiki.attributed import count_sources_for_entity
 from domains.wiki.io import read_meta
 from domains.wiki.state import (
     PageRecord,
     connection,
-    count_sources_for_entity,
     get_aliases_for_entity,
     get_all_pages,
     reject_entity,
@@ -222,8 +222,7 @@ def push_wiki_pages(
     with connection(db_path) as conn:
         pages = get_all_pages(conn)
         source_counts = {p.entity_id: count_sources_for_entity(conn, p.entity_id) for p in pages}
-        # Display only — the authoritative alias table (homonyms suppressed via
-        # wiki-merge --no-alias are simply absent here). The push never writes
+        # Display only — the authoritative alias table. The push never writes
         # back to aliases, so it can't affect resolution / next synthesis.
         aliases = {p.entity_id: get_aliases_for_entity(conn, p.entity_id) for p in pages}
     # entity_id is wiki.db's surrogate; a page-backed entity is "active".
@@ -240,8 +239,8 @@ def push_wiki_pages(
         # Skip the write if this row is unchanged since last push. CHANGE-DETECTION
         # INVARIANT: the stored `Last updated` is the page.updated_at we wrote last
         # tick, so an equal timestamp means no producer field moved — which holds
-        # ONLY because every producer-field change bumps page.updated_at (synthesis
-        # re-renders; merge_entities bumps it explicitly — see state.py). Status is
+        # ONLY because every producer-field change bumps page.updated_at (the
+        # attributed render bumps it on every re-render — see upsert_page). Status is
         # checked too: an orphaned row whose entity is live again must be re-asserted
         # active even when the timestamp matches. If you add a producer column fed by
         # a table that can change without bumping page.updated_at, this skip serves

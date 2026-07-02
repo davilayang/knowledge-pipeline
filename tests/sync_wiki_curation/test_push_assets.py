@@ -216,9 +216,8 @@ def test_push_reasserts_orphaned_row_whose_entity_is_active_again(tmp_path):
 
 def test_push_writes_alias_family_from_table(tmp_path):
     """Aliases column = the authoritative alias table for the entity (comma-
-    joined). A homonym suppressed at merge time (wiki-merge --no-alias) is simply
-    absent from the table, so it never reaches the column — the push is read-only
-    over aliases and never affects resolution."""
+    joined). Whatever is absent from the table never reaches the column — the
+    push is read-only over aliases and never affects resolution."""
     wiki = _wiki(tmp_path)
     wiki_dir = wiki.get_wiki_dir()
     with connection(wiki.get_db_path()) as conn, conn:

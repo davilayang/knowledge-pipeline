@@ -1,8 +1,10 @@
 """SQLite helpers for wiki state — pure functions taking a sqlite3 connection.
 
-Single source of truth for the wiki.db tables: entities / processed_items /
-pages / aliases / page_sources. Callers manage connection lifecycle and
-transactions (`with conn:` for an atomic block); these helpers issue SQL only.
+Single source of truth for the wiki.db identity/page tables: entities /
+processed_items / pages / aliases / entity_relations / rejected_entities (the
+claim-centric sources / claims / claim_entities live in attributed.py). Callers
+manage connection lifecycle and transactions (`with conn:` for an atomic block);
+these helpers issue SQL only.
 
 Identity lives in `entities` (the opaque surrogate `entity_id`); `pages` is the
 synthesised-artifact record (1:1, FK to entities) and no longer carries
@@ -41,7 +43,7 @@ def connect(db_path: Path | str) -> sqlite3.Connection:
 
     Default isolation_level is kept (not autocommit) so `with conn:` brackets an
     atomic transaction — the commit path writes entities + pages + aliases +
-    page_sources + processed_items all-or-nothing. row_factory is sqlite3.Row
+    processed_items all-or-nothing. row_factory is sqlite3.Row
     (positional unpacking still works, plus name access for ad-hoc reads).
     """
     conn = sqlite3.connect(db_path)
@@ -106,22 +108,6 @@ class PageRecord:
     updated_at: str
 
 
-@dataclass(frozen=True)
-class PageVersionMeta:
-    """One row of a page's edition history (#47) WITHOUT the full body — the
-    index a consumer scans to pick a version. Fetch the body with
-    get_page_version(entity_id, version)."""
-
-    entity_id: str
-    version: int
-    created_at: str
-    content_hash: str
-    summary: str
-    num_sources: int
-    source_id: str
-    source_type: str
-
-
 def _json_list(value: str | None) -> list[str]:
     """Decode a JSON-array TEXT column to a list; tolerate NULL/empty."""
     if not value:
@@ -136,7 +122,7 @@ def _json_list(value: str | None) -> list[str]:
 
 def insert_entity(conn: sqlite3.Connection, entity: EntityRecord) -> None:
     """Insert one identity row. Caller manages the transaction and writes
-    entities BEFORE the pages/aliases/page_sources that FK to them.
+    entities BEFORE the pages/aliases/entity_relations that FK to them.
 
     ON CONFLICT(entity_id) DO NOTHING keeps a replay of the same surrogate
     idempotent; a genuine normalized_name collision still raises (fail fast —
@@ -257,45 +243,20 @@ def upsert_page(
     entity_id: str,
     file_path: str,
     related_ids: list[str],
-    content_hash: str | None = None,
-    current_version: int | None = None,
 ) -> None:
     """Upsert a pages row. Caller manages transaction and has already inserted
-    the entity (pages.entity_id FKs to entities).
-
-    content_hash/current_version are the HEAD pointers into page_versions (#47) —
-    the semantic hash of the current edition and its version number. The version
-    gate (see get_page_head) supplies them; callers that don't version pass None.
-    """
+    the entity (pages.entity_id FKs to entities)."""
     conn.execute(
         """
-        INSERT INTO pages (entity_id, file_path, related_ids, updated_at,
-                           content_hash, current_version)
-        VALUES (?, ?, ?, ?, ?, ?)
+        INSERT INTO pages (entity_id, file_path, related_ids, updated_at)
+        VALUES (?, ?, ?, ?)
         ON CONFLICT (entity_id)
         DO UPDATE SET file_path = excluded.file_path,
                       related_ids = excluded.related_ids,
-                      updated_at = excluded.updated_at,
-                      content_hash = excluded.content_hash,
-                      current_version = excluded.current_version
+                      updated_at = excluded.updated_at
         """,
-        (entity_id, file_path, json.dumps(related_ids), _now_iso(), content_hash, current_version),
+        (entity_id, file_path, json.dumps(related_ids), _now_iso()),
     )
-
-
-def get_page_head(conn: sqlite3.Connection, entity_id: str) -> tuple[str | None, int]:
-    """HEAD pointer for a page's version history (#47): (content_hash, version).
-
-    Returns (None, 0) when the page has no row or no recorded edition yet — so a
-    brand-new page's first synthesis reads version 0 and appends v1. O(1): reads
-    the forward pointers off `pages`, never scans page_versions."""
-    row = conn.execute(
-        "SELECT content_hash, current_version FROM pages WHERE entity_id = ?",
-        (entity_id,),
-    ).fetchone()
-    if row is None or row["current_version"] is None:
-        return (None, 0)
-    return (row["content_hash"], int(row["current_version"]))
 
 
 _PAGE_SELECT = """
@@ -424,122 +385,8 @@ def snapshot_aliases(conn: sqlite3.Connection) -> AliasStore:
 
 
 # --------------------------------------------------------------------------
-# page_sources
+# entity_relations — accumulated co-occurrence edges (#54)
 # --------------------------------------------------------------------------
-
-
-def insert_page_source(
-    conn: sqlite3.Connection,
-    *,
-    entity_id: str,
-    item_id: str,
-    source_type: str,
-) -> None:
-    """Record one (entity_id, item_id, source_type) contribution in the
-    page_sources ledger. Idempotent (ON CONFLICT DO NOTHING) so retries and
-    re-processing don't double-count. Caller manages the transaction."""
-    conn.execute(
-        """
-        INSERT INTO page_sources (entity_id, item_id, source_type, added_at)
-        VALUES (?, ?, ?, ?)
-        ON CONFLICT (entity_id, item_id, source_type) DO NOTHING
-        """,
-        (entity_id, item_id, source_type, _now_iso()),
-    )
-
-
-def insert_page_version(
-    conn: sqlite3.Connection,
-    *,
-    entity_id: str,
-    version: int,
-    content_hash: str,
-    summary: str,
-    num_sources: int,
-    source_id: str,
-    source_type: str,
-    content: str,
-    created_at: str | None = None,
-) -> None:
-    """Append one immutable edition to page_versions (#47). `version` is the
-    monotonic per-entity edition number (caller derives it from HEAD); `content`
-    is the full markdown body at this edition. source_id/source_type tie the
-    edition to the content item that triggered it — both NOT NULL, since an
-    edition without provenance can't answer "what changed it". Caller manages the
-    transaction and has already inserted the entity (FK)."""
-    conn.execute(
-        """
-        INSERT INTO page_versions (
-            entity_id, version, created_at, content_hash, summary,
-            num_sources, source_id, source_type, content
-        )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """,
-        (
-            entity_id,
-            version,
-            created_at or _now_iso(),
-            content_hash,
-            summary,
-            num_sources,
-            source_id,
-            source_type,
-            content,
-        ),
-    )
-
-
-def get_page_history(conn: sqlite3.Connection, entity_id: str) -> list[PageVersionMeta]:
-    """Edition history for a page (#47), newest-first — metadata only, no bodies.
-
-    The index the live agent scans to answer "what changed and when". Fetch a
-    specific body with get_page_version(entity_id, version). Empty list for an
-    entity with no recorded editions."""
-    rows = conn.execute(
-        """
-        SELECT entity_id, version, created_at, content_hash, summary,
-               num_sources, source_id, source_type
-        FROM page_versions
-        WHERE entity_id = ?
-        ORDER BY version DESC
-        """,
-        (entity_id,),
-    ).fetchall()
-    return [
-        PageVersionMeta(
-            entity_id=r["entity_id"],
-            version=int(r["version"]),
-            created_at=r["created_at"],
-            content_hash=r["content_hash"],
-            summary=r["summary"],
-            num_sources=int(r["num_sources"]),
-            source_id=r["source_id"],
-            source_type=r["source_type"],
-        )
-        for r in rows
-    ]
-
-
-def get_page_version(conn: sqlite3.Connection, entity_id: str, version: int) -> str | None:
-    """Full markdown body of one past edition (#47), or None if it doesn't exist.
-    Answers "what did this page say at version N"."""
-    row = conn.execute(
-        "SELECT content FROM page_versions WHERE entity_id = ? AND version = ?",
-        (entity_id, version),
-    ).fetchone()
-    return row["content"] if row is not None else None
-
-
-def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
-    """Return the count of distinct item_ids that have contributed to this
-    entity, from the page_sources ledger — the deterministic record of which
-    content item surfaced which entity, not the LLM-authored frontmatter.
-    """
-    row = conn.execute(
-        "SELECT count(DISTINCT item_id) FROM page_sources WHERE entity_id = ?",
-        (entity_id,),
-    ).fetchone()
-    return int(row[0]) if row and row[0] is not None else 0
 
 
 def insert_entity_relation(
@@ -590,38 +437,6 @@ def get_related_for_entity(
     return [r["related_entity_id"] for r in rows]
 
 
-def get_source_ids_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[str]:
-    """The accumulated, distinct source item_ids for an entity from the
-    page_sources ledger — the deterministic list the page's `sources` frontmatter
-    should render (vs the per-item `[source_id]` the LLM emits). Ordered by first
-    contribution (MIN added_at) then item_id; GROUP BY item_id collapses an item
-    that appears under multiple source_types into one entry."""
-    rows = conn.execute(
-        """
-        SELECT item_id FROM page_sources
-        WHERE entity_id = ?
-        GROUP BY item_id
-        ORDER BY MIN(added_at), item_id
-        """,
-        (entity_id,),
-    ).fetchall()
-    return [r["item_id"] for r in rows]
-
-
-def is_source_for_entity(conn: sqlite3.Connection, entity_id: str, item_id: str) -> bool:
-    """True if item_id is already a recorded contribution for entity_id.
-
-    Lets the producer decide whether the current tick adds a new source (so
-    num_sources reflects the post-commit ledger state) without double-counting
-    a re-processed item.
-    """
-    row = conn.execute(
-        "SELECT 1 FROM page_sources WHERE entity_id = ? AND item_id = ? LIMIT 1",
-        (entity_id, item_id),
-    ).fetchone()
-    return row is not None
-
-
 # --------------------------------------------------------------------------
 # rejected_entities — curator denylist (#15)
 # --------------------------------------------------------------------------
@@ -670,135 +485,6 @@ def get_rejected(conn: sqlite3.Connection) -> list[RejectedRecord]:
         """
     ).fetchall()
     return [RejectedRecord(*r) for r in rows]
-
-
-# --------------------------------------------------------------------------
-# merge_entities — the destructive dedup primitive (#15)
-# --------------------------------------------------------------------------
-
-
-@dataclass(frozen=True)
-class MergeResult:
-    """What the caller needs after a merge to finish the file-system side:
-    delete drop's `.md` (drop_file_path, may be None if it had no page) and
-    re-render keep's frontmatter from the now-unioned ledgers (keep_id)."""
-
-    keep_id: str
-    drop_id: str
-    drop_file_path: str | None
-
-
-def merge_entities(
-    conn: sqlite3.Connection,
-    *,
-    keep_id: str,
-    drop_id: str,
-    alias: bool = True,
-) -> MergeResult:
-    """Fold `drop_id` into `keep_id` in one transaction (caller brackets `with
-    conn:`). Re-points every ledger drop→keep, then deletes drop's identity row
-    (children cascade). Returns drop's file_path so the caller can unlink the
-    `.md` and re-render keep. Pure DB — no file I/O.
-    """
-    if keep_id == drop_id:
-        raise ValueError(f"cannot merge entity {keep_id} into itself")
-
-    drop = get_entity(conn, drop_id)
-    if drop is None:
-        raise ValueError(f"drop entity {drop_id} does not exist")
-    if get_entity(conn, keep_id) is None:
-        raise ValueError(f"keep entity {keep_id} does not exist")
-
-    drop_row = conn.execute(
-        "SELECT file_path FROM pages WHERE entity_id = ?", (drop_id,)
-    ).fetchone()
-    drop_file_path = drop_row[0] if drop_row else None
-
-    # Pre-flight (before any write): decide whether to alias drop's name onto
-    # keep. If a THIRD entity already owns that normalized name, fail loudly —
-    # a silent skip would re-mint the dup next tick (codex CONCERN 1). If keep or
-    # drop already owns it, the insert is redundant (skipped below).
-    insert_alias_name = False
-    if alias:
-        owner_row = conn.execute(
-            "SELECT entity_id FROM aliases WHERE normalized_alias = ?",
-            (drop.normalized_name,),
-        ).fetchone()
-        owner = owner_row[0] if owner_row else None
-        if owner is not None and owner not in (keep_id, drop_id):
-            raise ValueError(
-                f"cannot alias {drop.normalized_name!r} onto {keep_id}: already "
-                f"owned by a different entity {owner} (likely a homonym) — re-run "
-                f"with alias=False to keep the senses separate"
-            )
-        insert_alias_name = owner is None
-
-    # page_sources: re-point; OR IGNORE drops the row that would collide with an
-    # existing keep contribution (same item) — it's then cascade-deleted below.
-    conn.execute(
-        "UPDATE OR IGNORE page_sources SET entity_id = ? WHERE entity_id = ?",
-        (keep_id, drop_id),
-    )
-
-    # entity_relations: re-point BOTH endpoint columns drop→keep (OR IGNORE
-    # collapses an edge that now duplicates an existing keep edge), then drop the
-    # self-edges that a drop↔keep co-occurrence has become.
-    conn.execute(
-        "UPDATE OR IGNORE entity_relations SET entity_id = ? WHERE entity_id = ?",
-        (keep_id, drop_id),
-    )
-    conn.execute(
-        "UPDATE OR IGNORE entity_relations SET related_entity_id = ? WHERE related_entity_id = ?",
-        (keep_id, drop_id),
-    )
-    # Only keep↔keep self-edges can arise here (a drop↔keep co-occurrence after
-    # the re-point); scope the delete to keep so unrelated rows are never touched.
-    conn.execute(
-        "DELETE FROM entity_relations WHERE entity_id = ? AND related_entity_id = ?",
-        (keep_id, keep_id),
-    )
-
-    # Re-point drop's aliases onto keep. normalized_alias is a globally-unique PK
-    # we don't touch, so this UPDATE can't collide (no OR IGNORE). alias=False
-    # excludes drop's own name so a pre-existing self-alias cascade-deletes with
-    # drop instead of routing the name to keep (homonym escape hatch).
-    if alias:
-        conn.execute(
-            "UPDATE aliases SET entity_id = ? WHERE entity_id = ?",
-            (keep_id, drop_id),
-        )
-    else:
-        conn.execute(
-            "UPDATE aliases SET entity_id = ? WHERE entity_id = ? AND normalized_alias != ?",
-            (keep_id, drop_id, drop.normalized_name),
-        )
-
-    # Write drop's name as an alias of keep so the next mention folds in instead
-    # of re-minting. Plain INSERT — pre-flight guaranteed the name is unclaimed
-    # (insert_alias_name) and not owned by a third entity.
-    if insert_alias_name:
-        conn.execute(
-            "INSERT INTO aliases (alias, normalized_alias, entity_id) VALUES (?, ?, ?)",
-            (drop.canonical_name, drop.normalized_name, keep_id),
-        )
-
-    # Bump keep's page updated_at: the merge changed its aliases + source_count,
-    # but (unlike synthesis) re-points ledgers without re-rendering, so nothing
-    # else moves the timestamp. LOAD-BEARING: sync_wiki_curation.push_wiki_pages
-    # skips re-pushing a Notion row whose stored "Last updated" still equals
-    # page.updated_at — i.e. it assumes EVERY producer-field change bumps
-    # updated_at. Merge is the one path that would violate that; this line
-    # upholds it. Don't remove it without switching the push to a payload hash.
-    conn.execute(
-        "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
-        (_now_iso(), keep_id),
-    )
-
-    # Delete drop's identity; pages/page_versions/aliases/page_sources/
-    # entity_relations rows still on drop cascade away (ON DELETE CASCADE).
-    conn.execute("DELETE FROM entities WHERE entity_id = ?", (drop_id,))
-
-    return MergeResult(keep_id=keep_id, drop_id=drop_id, drop_file_path=drop_file_path)
 
 
 @dataclass(frozen=True)
@@ -860,8 +546,8 @@ def reject_entity(
             rejected_at=rejected_at,
         )
 
-    # Delete the entity; pages/page_versions/aliases/page_sources/
-    # entity_relations rows cascade away (ON DELETE CASCADE).
+    # Delete the entity; pages/aliases/entity_relations/claim_entities rows
+    # cascade away (ON DELETE CASCADE).
     conn.execute("DELETE FROM entities WHERE entity_id = ?", (entity_id,))
 
     return RejectResult(entity_id=entity_id, file_path=file_path, rejected_names=rejected_names)
