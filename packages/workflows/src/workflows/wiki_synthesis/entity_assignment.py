@@ -43,7 +43,7 @@ from domains.wiki.identity import (
     normalize_name,
     resolve_or_mint_batch,
 )
-from domains.wiki.salience import count_mentions, is_salient, salience_features
+from domains.wiki.mentions import count_mentions
 from domains.wiki.state import (
     build_entity_index,
     connection,
@@ -93,31 +93,28 @@ class SummaryAssignment:
     """The whole per-source assignment: every claim mapped to entity ids, the
     entities involved (resolved against the live wiki, keyed by surrogate id),
     and the entities minted this run (staged for a later persist, not written
-    here). `salient_entity_ids` are the entities central to this source (by the
-    shared deterministic salience gate over the claim texts) — the rest are
-    passing co-mentions.
+    here).
 
     Carries no LLM-cost field: candidate extraction happens upstream (the
     extract_entities asset), so its cost is accounted there; the subject-
-    attribution call's cost is captured by the synthesis asset (3c) that owns the
+    attribution call's cost is captured by the synthesis asset that owns the
     per-source cost roll-up, not by this pure-computation step."""
 
     item_id: str
     assignments: tuple[ClaimAssignment, ...]
     entities: dict[str, EntityRecord]
     new_entities: tuple[EntityRecord, ...]
-    salient_entity_ids: frozenset[str] = frozenset()
 
 
 @dataclass(frozen=True)
 class EntityClaims:
     """One entity with the claims attributed to it in a source — the per-entity
-    attributed claim set Slice 3 synthesises a page from. `salient` is False for
-    a passing co-mention (kept for the record, skipped by page synthesis)."""
+    attributed claim set the render synthesises a page from. Page-worthiness is
+    decided downstream from claim evidence (the render's ≥2-claims/≥2-sources
+    floor), not a per-source salience flag."""
 
     entity: EntityRecord
     claims: tuple[SourceClaim, ...]
-    salient: bool
 
 
 def _now_iso() -> str:
@@ -218,30 +215,11 @@ def assign_summary(
         for claim, ids in zip(summary.claims, per_claim_ids, strict=True)
     )
 
-    # Salience over the pooled claim texts, via the SAME deterministic gate the
-    # raw-article path uses — an entity central to this source clears the mention
-    # floor; a one-off co-mention doesn't. Uses the claim texts (not the rendered
-    # doc): cleaner than the prior body, whose frontmatter `item_id` (a source URL)
-    # could have inflated a mention count when the URL itself contained a name.
-    body = "\n".join(c.text for c in summary.claims)
-    salient_entity_ids = frozenset(
-        eid
-        for eid, rec in entities.items()
-        if is_salient(
-            salience_features(
-                name=rec.canonical_name,
-                aliases=[f for f in surface_forms.get(eid, []) if f != rec.canonical_name],
-                title="",
-                text=body,
-            )
-        )
-    )
     return SummaryAssignment(
         item_id=summary.item_id,
         assignments=assignments,
         entities=entities,
         new_entities=tuple(resolution.new_entities),
-        salient_entity_ids=salient_entity_ids,
     )
 
 
@@ -275,19 +253,15 @@ def group_by_entity(assignment: SummaryAssignment) -> list[EntityClaims]:
     """Invert claim→entity into per-entity attributed claim sets.
 
     One `EntityClaims` per entity that at least one claim was assigned to, each
-    carrying its claims in document order and the summary's salience verdict.
-    Ordered by entity id for determinism. Entities with no attributed claim
-    (extracted but never matched to a claim) are omitted."""
+    carrying its claims in document order. Ordered by entity id for determinism.
+    Entities with no attributed claim (extracted but never matched to a claim)
+    are omitted."""
     claims_by_entity: dict[str, list[SourceClaim]] = {}
     for ca in assignment.assignments:
         for eid in ca.entity_ids:
             claims_by_entity.setdefault(eid, []).append(ca.claim)
     return [
-        EntityClaims(
-            entity=assignment.entities[eid],
-            claims=tuple(claims),
-            salient=eid in assignment.salient_entity_ids,
-        )
+        EntityClaims(entity=assignment.entities[eid], claims=tuple(claims))
         for eid, claims in sorted(claims_by_entity.items())
     ]
 

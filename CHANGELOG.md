@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Removed
 
 - **The raw `synthesize_wiki` Dagster pipeline is retired** (assets, schedule, its `wiki.db` writes). Entity-wiki pages are now produced solely by the attributed lane in `fetch_extract_queue`; the shared `wiki` resource + `WIKI_WRITE_POOL` concurrency key moved to `orchestrators.config`/`shared`.
+- **The raw-article synthesis code path is deleted** — `wiki_synthesis/synthesize.py`, `domains/wiki/salience.py` + `relevance.py`, and the `page_synthesis_*` / `entity_extraction_*` prompts. `count_mentions` (still used by attributed-lane claim matching) moved to `domains/wiki/mentions.py`; the vestigial per-source `salient` flag on `SummaryAssignment`/`EntityClaims` was dropped (page-worthiness is derived from claim evidence).
 
 ### Changed
 

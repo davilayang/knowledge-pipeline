@@ -3,11 +3,11 @@ summary corpus and report coverage, so its behaviour on the real corpus is
 visible before attributed pages are built (Slice 3).
 
 Reports what a human needs to eyeball precision without a labelled gold set yet:
-claim coverage (share of claims that got an entity), the salient-vs-co-mention
-split, and a sample of orphaned claims (assigned to no entity — the recall gap
-the residual mapper is meant to close). Precision proper needs a gold pass; this
-surfaces the inputs to judge it. `assign` is injected so the report is testable
-without the extraction / residual LLM calls.
+claim coverage (share of claims that got an entity) and a sample of orphaned
+claims (assigned to no entity — the recall gap the residual mapper is meant to
+close). Precision proper needs a gold pass; this surfaces the inputs to judge it.
+`assign` is injected so the report is testable without the extraction / residual
+LLM calls.
 """
 
 from collections.abc import Callable
@@ -26,7 +26,6 @@ class AssignmentReport:
     n_assigned: int  # claims assigned to ≥1 entity
     n_entities: int  # distinct entities with ≥1 attributed claim (across the corpus)
     n_groups: int  # entity-in-source groups (an entity in two sources counts twice)
-    n_salient_groups: int  # of those groups, central to their source (not a co-mention)
     orphans: list[tuple[str, str]] = field(default_factory=list)  # (source_id, claim_text)
     parse_failures: list[tuple[str, str]] = field(default_factory=list)
 
@@ -41,7 +40,7 @@ def build_assignment_report(
     that won't parse is recorded as a failure (page_id + reason), not dropped.
     Distinct entities are counted across the whole corpus by surrogate id, so an
     entity attributed claims in two summaries counts once."""
-    n_claims = n_assigned = n_groups = n_salient_groups = 0
+    n_claims = n_assigned = n_groups = 0
     entity_ids: set[str] = set()
     orphans: list[tuple[str, str]] = []
     parse_failures: list[tuple[str, str]] = []
@@ -61,14 +60,11 @@ def build_assignment_report(
                 n_assigned += 1
             elif len(orphans) < max_orphans:
                 orphans.append((ca.claim.source_id, ca.claim.text))
-        # Salience is per SOURCE: the same entity can be central in one source and
-        # a co-mention in another, so count it at the group (entity-in-source)
-        # level, not collapsed by entity id (which would lose that split).
+        # Count at the group (entity-in-source) level, not collapsed by entity id
+        # — an entity attributed claims in two sources is two groups.
         for group in group_by_entity(result):
             entity_ids.add(group.entity.entity_id)
             n_groups += 1
-            if group.salient:
-                n_salient_groups += 1
 
     return AssignmentReport(
         n_summaries=n_summaries,
@@ -76,7 +72,6 @@ def build_assignment_report(
         n_assigned=n_assigned,
         n_entities=len(entity_ids),
         n_groups=n_groups,
-        n_salient_groups=n_salient_groups,
         orphans=orphans,
         parse_failures=parse_failures,
     )
@@ -93,9 +88,7 @@ def render_assignment_report(report: AssignmentReport) -> str:
         f"- coverage (claims with an entity): "
         f"{report.n_assigned}/{report.n_claims} ({coverage:.0%})",
         f"- distinct entities (with ≥1 claim): {report.n_entities}",
-        f"- entity-in-source groups: {report.n_groups} "
-        f"({report.n_salient_groups} salient, "
-        f"{report.n_groups - report.n_salient_groups} co-mention)",
+        f"- entity-in-source groups: {report.n_groups}",
         f"- parse failures: {len(report.parse_failures)}",
     ]
     if report.orphans:

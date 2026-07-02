@@ -1,6 +1,6 @@
 """Assignment diagnostic — aggregate entity-assignment coverage over the
 extract-claims corpus, so Slice 2's behaviour on the real corpus is visible
-(how many claims get an entity, how many entities are salient vs co-mentions,
+(how many claims get an entity,
 which claims orphan) before attributed pages are built in Slice 3."""
 
 from datetime import UTC, datetime
@@ -25,9 +25,9 @@ def _entity(entity_id: str, name: str) -> EntityRecord:
     )
 
 
-def test_report_counts_coverage_and_salience():
-    # One summary, two claims: claim 1 assigned to a salient entity, claim 2
-    # orphaned (no entity). Coverage is 1/2; one entity, salient.
+def test_report_counts_coverage():
+    # One summary, two claims: claim 1 assigned to an entity, claim 2 orphaned
+    # (no entity). Coverage is 1/2; one entity, one group.
     sid = "https://medium.com/p/a"
     claims = [
         SourceClaim(text="Anthropic released Claude.", source_id=sid),
@@ -43,7 +43,6 @@ def test_report_counts_coverage_and_salience():
         ),
         entities={"e_1": ent},
         new_entities=(ent,),
-        salient_entity_ids=frozenset({"e_1"}),
     )
 
     doc = render_claims(summary)
@@ -54,5 +53,4 @@ def test_report_counts_coverage_and_salience():
     assert report.n_assigned == 1
     assert report.n_entities == 1
     assert report.n_groups == 1
-    assert report.n_salient_groups == 1
     assert "coverage" in render_assignment_report(report).lower()

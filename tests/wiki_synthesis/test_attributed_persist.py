@@ -62,7 +62,6 @@ def _assignment(item_id) -> SummaryAssignment:
         ),
         entities={"e_x": ex, "e_y": ey},
         new_entities=(ex, ey),
-        salient_entity_ids=frozenset({"e_x"}),
     )
 
 

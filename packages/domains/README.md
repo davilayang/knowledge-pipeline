@@ -24,8 +24,7 @@ src/domains/
 │   ├── state.py        # processed / pages / page_sources / aliases / page_versions run state
 │   ├── aliases.py      # alias resolution + AliasStore
 │   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
-│   ├── relevance.py    # keyword-based catalog filter (select_relevant_entities / extract_keywords)
-│   ├── salience.py     # deterministic salience gate (is_salient / salience_features / count_mentions) + entity_windows — passage-windowing for span-grounded synthesis
+│   ├── mentions.py     # surface-form mention counter (count_mentions) — word-boundary, case-insensitive; used by entity_assignment.match_claim
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   ├── merge_cli.py    # wiki-merge — fold duplicate entities (merge_entities)
