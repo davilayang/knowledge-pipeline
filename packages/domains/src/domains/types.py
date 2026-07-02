@@ -1,8 +1,8 @@
 """Shared data types for the domain layer.
 
 `IngestItem` is the normalized shape every source adapter yields. Pipelines
-(synthesize_wiki, populate_vector_store) consume `list[IngestItem]` and don't
-care which source produced them.
+(populate_vector_store, fetch_extract_queue attributed lane) consume
+`list[IngestItem]` and don't care which source produced them.
 
 Optional fields (`author`, `url`, `started_at`) carry source-specific metadata
 that some adapters expose and others don't — consumers read what they need.

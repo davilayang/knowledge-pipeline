@@ -87,15 +87,15 @@ def get_contents(
 def get_content_ids(*, db_path: Path, with_body: bool = False) -> list[str]:
     """Return all content_ids ordered by stored_at — IDs only, no payload.
 
-    Used by the synthesize_wiki schedule to enumerate raw_store cheaply
-    (full content_md is large). For batch reads of full rows use
+    Used by the populate_vector_store pending asset to enumerate raw_store
+    cheaply (full content_md is large). For batch reads of full rows use
     get_contents().
 
     with_body=True drops items whose body was never fetched (content_md
-    NULL or blank) — wiki synthesis must not be fed, and must not
-    permanently mark `processed`, an empty document that the fetcher may
-    fill later. The filter runs in SQL, so it stays cheap (content_md is
-    evaluated, not transferred).
+    NULL or blank) — synthesis must not be fed, and must not permanently
+    mark `processed`, an empty document that the fetcher may fill later.
+    The filter runs in SQL, so it stays cheap (content_md is evaluated,
+    not transferred).
     """
     where = " WHERE content_md IS NOT NULL AND TRIM(content_md) <> ''" if with_body else ""
     with _connect(db_path) as conn:

@@ -1,6 +1,6 @@
 """Smoke tests for the populate_vector_store Dagster pipeline.
 
-Mirrors backup_readings / synthesize_wiki — asset-graph regressions
+Mirrors backup_readings / fetch_extract_queue — asset-graph regressions
 (broken imports, asset-key drift, dropped schedule) fail in CI rather
 than at the first manual launch.
 """

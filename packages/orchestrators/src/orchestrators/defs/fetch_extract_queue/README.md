@@ -37,7 +37,7 @@ fetched ──► extracted ──► published
    │    extract_entities  (article-grounded candidates; shared prompt-cache prefix so the
    │        │              article body is served from cache on this second extract-time call)
    │        ▼
-   │    persist_attributed_claims  (serialized on synthesize_wiki's wiki-write pool —
+   │    persist_attributed_claims  (serialized on the shared wiki-write pool (WIKI_WRITE_POOL) —
    │                                assign-then-persist is not atomic under WAL; writes
    │                                sources / claims / claim_entities into wiki.db)
    │

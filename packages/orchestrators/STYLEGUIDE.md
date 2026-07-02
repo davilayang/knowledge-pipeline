@@ -17,7 +17,7 @@ Pipeline folder names start with a verb describing what the DAG **does**,
 followed by the object being acted on. Examples:
 
 - ✅ `backup_readings` — backs up the readings DBs
-- ✅ `synthesize_wiki` — synthesizes the wiki from raw items
+- ✅ `fetch_extract_queue` — fetches + extracts queued items
 - ✅ `embed_documents` — embeds documents into a vector store
 - ❌ `wiki` — noun only, doesn't say what happens
 - ❌ `readings_backup` — object-first, reads as a static artifact name
@@ -510,7 +510,7 @@ When refactoring an existing DAG, look for and fix:
 
 ## Checklist for a new DAG
 
-- [ ] Folder named `verb_object` (e.g. `backup_readings`, `synthesize_wiki`).
+- [ ] Folder named `verb_object` (e.g. `backup_readings`, `fetch_extract_queue`).
 - [ ] Folder under `packages/orchestrators/src/orchestrators/defs/<name>/`.
 - [ ] `<NAME>_DAG_VERSION = "1"` constant added to `orchestrators/config.py`.
 - [ ] Eight files (drop `checks.py` / `sensors.py` only if genuinely empty).

@@ -48,9 +48,9 @@ src/domains/
 
 ## `IngestItem`
 
-The normalized shape every source yields. Pipelines (`synthesize_wiki`,
-`populate_vector_store`) consume `list[IngestItem]` and don't care which
-source produced them.
+The normalized shape every source yields. Pipelines (`populate_vector_store`,
+`fetch_extract_queue` attributed lane) consume `list[IngestItem]` and don't
+care which source produced them.
 
 ```python
 @dataclass
@@ -87,7 +87,7 @@ def get_item(self, item_id: str) -> IngestItem | None: ...
 ```
 
 `get_item_ids` is the cheap discovery path used by the `populate_vector_store`
-and `synthesize_wiki` `pending` assets to compute the indexable set; `get_item`
+`pending` asset to compute the indexable set; `get_item`
 is the per-item path used by the ingest assets. Sources that filter by
 completion state (e.g. only ended sessions) apply that filter inside
 `get_item_ids` — never index a row that the writer hasn't committed.
