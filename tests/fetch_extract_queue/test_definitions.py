@@ -9,9 +9,9 @@ from orchestrators.defs.fetch_extract_queue import defs
 def test_pipeline_defs_loads():
     asset_keys = {k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
-        "fetch_extract_queue/fetched",
-        "fetch_extract_queue/extracted",
-        "fetch_extract_queue/published",
+        "fetch_extract_queue/fetch_content",
+        "fetch_extract_queue/extract_reading_card",
+        "fetch_extract_queue/publish_item",
         "fetch_extract_queue/extract_claims",
         "fetch_extract_queue/extract_entities",
         "fetch_extract_queue/persist_attributed_claims",

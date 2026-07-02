@@ -6,7 +6,7 @@ from .def_config import LIFECYCLE_DRIFT_AGE_MINUTES
 
 
 @dg.asset_check(
-    asset=dg.AssetKey(["fetch_extract_queue", "published"]),
+    asset=dg.AssetKey(["fetch_extract_queue", "publish_item"]),
     name="notion_lifecycle_in_sync",
     blocking=False,
     description=(

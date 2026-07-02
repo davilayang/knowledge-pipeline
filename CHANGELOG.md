@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.29.1] — 2026-07-02
+
+### Changed
+
+- **`fetch_extract_queue`'s reader-lane assets are renamed to a verb-led convention** — `fetched`→`fetch_content`, `extracted`→`extract_reading_card`, `published`→`publish_item` (the attributed-lane assets were already verb-led). **Deploy note:** renaming a Dagster asset key resets that key's materialization history in the UI; the underlying `queue.db` state is untouched, so pipeline behaviour is unchanged.
+
+---
+
 ## [0.29.0] — 2026-07-02
 
 ### Removed

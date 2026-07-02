@@ -20,9 +20,9 @@ from orchestrators.defs.fetch_extract_queue.assets import (
     _coerce_author,
     _ingest_item_from_row,
     comments_json_to_user_notes,
-    extracted,
-    fetched,
-    published,
+    extract_reading_card,
+    fetch_content,
+    publish_item,
 )
 from orchestrators.defs.fetch_extract_queue.def_config import (
     queue_items_partition_def,
@@ -197,7 +197,7 @@ def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMoc
     return registry
 
 
-# -------- fetched --------
+# -------- fetch_content --------
 
 
 def test_fetched_fails_when_row_missing(tmp_path: Path):
@@ -206,7 +206,7 @@ def test_fetched_fails_when_row_missing(tmp_path: Path):
     fetcher = MagicMock()
     with pytest.raises(Exception, match="No local queue_items row"):
         _materialize(
-            fetched,
+            fetch_content,
             partition_key="p-missing",
             resources={"fetcher": fetcher, "store": store},
         )
@@ -229,7 +229,7 @@ def test_fetched_fails_when_content_type_null(tmp_path: Path):
     fetcher = MagicMock()
     with pytest.raises(Exception, match="no Content Type"):
         _materialize(
-            fetched,
+            fetch_content,
             partition_key="p-1",
             resources={"fetcher": fetcher, "store": store},
         )
@@ -241,7 +241,7 @@ def test_fetched_skips_when_raw_content_cached(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     fetcher = MagicMock()
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-1",
         resources={"fetcher": fetcher, "store": store},
     )
@@ -261,7 +261,7 @@ def test_fetched_dispatches_youtube(tmp_path: Path):
         content=body, tier="youtube", tier_log=[{"tier": "youtube"}]
     )
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-1",
         resources={"fetcher": fetcher, "store": store},
         url="https://youtube.com/watch?v=abc",
@@ -290,7 +290,7 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
         extras={"arxiv_id": "2401.00001", "authors": ["Vaswani"], "published": "2024-01-01"},
     )
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-1",
         resources={"fetcher": fetcher, "store": store},
         url="https://arxiv.org/abs/2401.00001",
@@ -324,7 +324,7 @@ def test_fetched_fails_when_below_extraction_floor(tmp_path: Path):
     )
     with pytest.raises(Exception, match="below extraction floor"):
         _materialize(
-            fetched,
+            fetch_content,
             partition_key="p-1",
             resources={"fetcher": fetcher, "store": store},
             url="https://youtube.com/watch?v=abc",
@@ -363,7 +363,7 @@ def test_fetched_calls_structure_when_override_present(tmp_path: Path):
     )
 
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-ovr",
         resources={"fetcher": fetcher, "store": store},
         url="https://example.com/x",
@@ -391,7 +391,7 @@ def test_fetched_falls_through_to_fetch_when_override_empty(tmp_path: Path):
     )
 
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-1",
         resources={"fetcher": fetcher, "store": store},
         url="https://example.com/x",
@@ -424,7 +424,7 @@ def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
         patch.object(dg.RetryPolicy, "calculate_delay", return_value=0),
     ):
         _materialize(
-            fetched,
+            fetch_content,
             partition_key="p-ovr",
             resources={"fetcher": fetcher, "store": store},
             url="https://example.com/x",
@@ -439,7 +439,7 @@ def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     body = "HEAD" + ("x" * 5000) + "TAIL"
     fetcher.fetch_for_type.return_value = FetchResult(content=body, tier="youtube", tier_log=[])
     result = _materialize(
-        fetched,
+        fetch_content,
         partition_key="p-1",
         resources={"fetcher": fetcher, "store": store},
         url="https://youtube.com/watch?v=abc",
@@ -452,7 +452,7 @@ def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     assert "chars omitted" in preview_md
 
 
-# -------- extracted --------
+# -------- extract_reading_card --------
 
 
 def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
@@ -461,7 +461,7 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="JEPA talk")
     result = _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -494,7 +494,7 @@ def test_extracted_fails_when_no_raw_content(tmp_path: Path):
     extractor = MagicMock()
     with pytest.raises(Exception, match="No raw_content"):
         _materialize(
-            extracted,
+            extract_reading_card,
             partition_key="p-1",
             resources={"extractor": extractor, "store": store},
         )
@@ -508,7 +508,7 @@ def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="Paper")
     _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -527,7 +527,7 @@ def test_extracted_passes_content_shape_from_queue_row(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="A talk")
     _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -547,7 +547,7 @@ def test_extracted_falls_back_to_unknown_when_content_shape_null(tmp_path: Path)
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="Article")
     _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -565,7 +565,7 @@ def test_extracted_builds_extractor_exactly_once_per_run(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="JEPA")
     _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -578,7 +578,7 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     store = QueueStoreResource(db_path=str(db_path))
     extractor = _mock_extractor(title="Visible Title")
     result = _materialize(
-        extracted,
+        extract_reading_card,
         partition_key="p-1",
         resources={"extractor": extractor, "store": store},
     )
@@ -610,7 +610,7 @@ def test_comments_json_to_user_notes_none_when_empty():
     assert comments_json_to_user_notes('[{"text": "   "}]') is None
 
 
-# -------- published --------
+# -------- publish_item --------
 
 
 def _record_three_call_extraction(
@@ -650,7 +650,7 @@ def test_published_flips_notion_and_writes_topic_card_to_name_and_description(tm
     store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()
     result = _materialize(
-        published,
+        publish_item,
         partition_key="p-1",
         resources={"notion": notion, "store": store},
     )
@@ -686,7 +686,7 @@ def test_published_skips_description_when_no_topic_card_row(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
     notion = MagicMock()
     result = _materialize(
-        published,
+        publish_item,
         partition_key="p-1",
         resources={"notion": notion, "store": store},
     )
@@ -701,7 +701,7 @@ def test_published_fails_when_no_extraction(tmp_path: Path):
     notion = MagicMock()
     with pytest.raises(Exception, match="No extraction completed"):
         _materialize(
-            published,
+            publish_item,
             partition_key="p-1",
             resources={"notion": notion, "store": store},
         )
@@ -714,7 +714,7 @@ def test_published_fails_when_no_row(tmp_path: Path):
     notion = MagicMock()
     with pytest.raises(Exception, match="No extraction completed"):
         _materialize(
-            published,
+            publish_item,
             partition_key="p-missing",
             resources={"notion": notion, "store": store},
         )

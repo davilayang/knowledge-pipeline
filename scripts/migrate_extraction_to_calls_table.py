@@ -18,7 +18,7 @@ Idempotent — safe to re-run. The real work happens inside
 
 The legacy columns are NOT preserved. The ~7 already-extracted rows lose
 their old single-shot blob in this step; re-trigger Dagster
-`fetch_extract_queue/extracted` on those partitions after the
+`fetch_extract_queue/extract_reading_card` on those partitions after the
 migration so they get the new three-call shape. ~7 rows × 3 calls ×
 ~5K tokens, approximately $0.20-0.50 in OpenAI spend.
 
@@ -50,7 +50,7 @@ def main(db_path: Path = DEFAULT_QUEUE_DB) -> int:
     print("Migration complete.")
     print(
         "\nNext steps:\n"
-        "  1. Re-trigger Dagster `fetch_extract_queue/extracted` on every\n"
+        "  1. Re-trigger Dagster `fetch_extract_queue/extract_reading_card` on every\n"
         "     queue_items row that previously had an extraction (clear\n"
         "     `extracted_at` via the Dagster UI or re-materialise per\n"
         "     partition). Each row triggers three new LLM calls.\n"
