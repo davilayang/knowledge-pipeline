@@ -1,6 +1,6 @@
 """Pure helpers for turning LLM page output into a WikiPage.
 
-Frontmatter parsing, enforcement of the expected entity_id/page_type, and the
+Frontmatter parsing, enforcement of the expected entity_id/entity_type, and the
 H2 preservation warning. Tolerates two common LLM output defects: a wrapping
 ```yaml/```markdown code fence (stripped before parsing) and malformed
 frontmatter YAML (summary/title recovered by regex rather than lost).
@@ -18,7 +18,7 @@ logger = logging.getLogger(__name__)
 
 
 _LLM_ACCEPTED_FIELDS = frozenset(
-    {"entity_id", "title", "page_type", "related", "sources", "summary"}
+    {"entity_id", "title", "entity_type", "related", "sources", "summary"}
 )
 
 
@@ -34,7 +34,7 @@ def strip_producer_frontmatter(page_text: str) -> str:
     back risks the model echoing volatile or accumulated metadata into the body
     (which, for an accumulated `related`/`sources`, would also churn the #47
     version hash if it leaked into `content`). LLM-authored fields
-    (entity_id/title/page_type/summary) and the body are kept untouched. Only the
+    (entity_id/title/entity_type/summary) and the body are kept untouched. Only the
     leading frontmatter block is touched; a body line like `sources: …` is safe.
     """
     m = re.match(r"^---\r?\n(.*?)\r?\n---\r?\n", page_text, re.DOTALL)
@@ -101,13 +101,13 @@ def parse_llm_page_output(
     raw: str,
     entity_id: str,
     title: str,
-    page_type: str,
+    entity_type: str,
     related: list[str],
     source_id: str,
 ) -> WikiPage:
     """Parse LLM output into a WikiPage, falling back to defaults for bad frontmatter.
 
-    LLMs sometimes hallucinate a different entity_id or page_type — we always
+    LLMs sometimes hallucinate a different entity_id or entity_type — we always
     overwrite those with what the caller asked for to keep the page index stable.
 
     Only fields in `_LLM_ACCEPTED_FIELDS` are consumed from the LLM frontmatter.
@@ -154,7 +154,7 @@ def parse_llm_page_output(
                     return WikiPage(
                         entity_id=entity_id,
                         title=meta.get("title", title),
-                        page_type=page_type,
+                        entity_type=entity_type,
                         summary=summary,
                         related=meta.get("related", related),
                         sources=meta.get("sources", [source_id]),
@@ -172,7 +172,7 @@ def parse_llm_page_output(
                 return WikiPage(
                     entity_id=entity_id,
                     title=_field_from_frontmatter_text(yaml_str, "title") or title,
-                    page_type=page_type,
+                    entity_type=entity_type,
                     summary=summary,
                     related=related,
                     sources=[source_id],
@@ -183,7 +183,7 @@ def parse_llm_page_output(
     return WikiPage(
         entity_id=entity_id,
         title=title,
-        page_type=page_type,
+        entity_type=entity_type,
         summary=_first_sentence(raw),
         related=related,
         sources=[source_id],

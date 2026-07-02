@@ -8,7 +8,7 @@ these helpers issue SQL only.
 
 Identity lives in `entities` (the opaque surrogate `entity_id`); `pages` is the
 synthesised-artifact record (1:1, FK to entities) and no longer carries
-page_type/slug/canonical_name — those are read back by joining `entities`.
+entity_type/slug/canonical_name — those are read back by joining `entities`.
 `build_entity_index` reads the whole identity snapshot into the in-memory
 `EntityIndex` the resolver runs against.
 
@@ -95,14 +95,14 @@ class PageRecord:
     """A page joined with its identity — what consumers (toc, indexing) read.
 
     The `pages` table stores only entity_id/file_path/related_ids/updated_at;
-    canonical_name/slug/page_type come from the `entities` join so they have a
+    canonical_name/slug/entity_type come from the `entities` join so they have a
     single authoritative home.
     """
 
     entity_id: str
     canonical_name: str
     slug: str
-    page_type: str
+    entity_type: str
     file_path: str
     related_ids: list[str]
     updated_at: str
@@ -132,7 +132,7 @@ def insert_entity(conn: sqlite3.Connection, entity: EntityRecord) -> None:
     conn.execute(
         """
         INSERT INTO entities
-            (entity_id, canonical_name, normalized_name, slug, page_type, created_at)
+            (entity_id, canonical_name, normalized_name, slug, entity_type, created_at)
         VALUES (?, ?, ?, ?, ?, ?)
         ON CONFLICT (entity_id) DO NOTHING
         """,
@@ -141,7 +141,7 @@ def insert_entity(conn: sqlite3.Connection, entity: EntityRecord) -> None:
             entity.canonical_name,
             entity.normalized_name,
             entity.slug,
-            entity.page_type,
+            entity.entity_type,
             entity.created_at,
         ),
     )
@@ -151,7 +151,7 @@ def get_entity(conn: sqlite3.Connection, entity_id: str) -> EntityRecord | None:
     """Return one identity row by entity_id, or None if absent."""
     row = conn.execute(
         """
-        SELECT entity_id, canonical_name, normalized_name, slug, page_type, created_at
+        SELECT entity_id, canonical_name, normalized_name, slug, entity_type, created_at
         FROM entities
         WHERE entity_id = ?
         """,
@@ -164,7 +164,7 @@ def get_all_entities(conn: sqlite3.Connection) -> list[EntityRecord]:
     """Return every identity row, ordered by entity_id."""
     rows = conn.execute(
         """
-        SELECT entity_id, canonical_name, normalized_name, slug, page_type, created_at
+        SELECT entity_id, canonical_name, normalized_name, slug, entity_type, created_at
         FROM entities
         ORDER BY entity_id
         """
@@ -260,7 +260,7 @@ def upsert_page(
 
 
 _PAGE_SELECT = """
-    SELECT p.entity_id, e.canonical_name, e.slug, e.page_type,
+    SELECT p.entity_id, e.canonical_name, e.slug, e.entity_type,
            p.file_path, p.related_ids, p.updated_at
     FROM pages p
     JOIN entities e ON e.entity_id = p.entity_id
@@ -283,12 +283,12 @@ def get_all_pages(conn: sqlite3.Connection) -> list[PageRecord]:
 
 
 def _row_to_page(row: sqlite3.Row) -> PageRecord:
-    entity_id, canonical_name, slug, page_type, file_path, related_ids, updated_at = row
+    entity_id, canonical_name, slug, entity_type, file_path, related_ids, updated_at = row
     return PageRecord(
         entity_id=entity_id,
         canonical_name=canonical_name,
         slug=slug,
-        page_type=page_type,
+        entity_type=entity_type,
         file_path=file_path,
         related_ids=_json_list(related_ids),
         updated_at=updated_at,

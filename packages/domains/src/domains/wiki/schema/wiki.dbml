@@ -4,8 +4,6 @@
 //   - identity + page shell: entities / pages / aliases / entity_relations /
 //     processed_items / rejected_entities
 //   - attributed lane (claim-centric): sources / claims / claim_entities
-// A `page_type -> entity_type` rename is still pending (needs a prod-coordinated
-// live-DB ALTER); update this file alongside wiki.sql when it lands.
 //
 // Enums below are TEXT + CHECK in SQLite (STRICT has no native enum); modelled
 // as Enum here for the diagram. Paste into https://dbdiagram.io to render.
@@ -28,7 +26,7 @@ Table entities {
   canonical_name  text [not null]
   normalized_name text [not null, unique, note: 'lower/trim/collapse-ws dedup key']
   slug            text [not null]
-  page_type       text [not null, note: 'open-domain type label; entity_type rename pending']
+  entity_type       text [not null, note: 'open-domain type label (metadata, not identity)']
   created_at      text [not null]
 }
 

@@ -26,7 +26,7 @@ def read_page(path: Path) -> WikiPage:
     return WikiPage(
         entity_id=meta["entity_id"],
         title=meta["title"],
-        page_type=meta["page_type"],
+        entity_type=meta["entity_type"],
         summary=meta.get("summary", ""),
         related=meta.get("related", []),
         sources=meta.get("sources", []),
@@ -58,7 +58,7 @@ def write_page(
     page.related, this article's siblings). The frontmatter key order is stable
     for diff-readability:
 
-        entity_id, title, page_type, summary, aliases, related, sources,
+        entity_id, title, entity_type, summary, aliases, related, sources,
         num_sources, updated_at
 
     Uses atomic write: writes to a .tmp file first, then os.replace.
@@ -69,7 +69,7 @@ def write_page(
     frontmatter_lines = [
         f"entity_id: {_yaml_scalar(page.entity_id)}",
         f"title: {_yaml_scalar(page.title)}",
-        f"page_type: {_yaml_scalar(page.page_type)}",
+        f"entity_type: {_yaml_scalar(page.entity_type)}",
         f"summary: {_yaml_scalar(page.summary)}",
         f"aliases: {_yaml_inline_list(aliases)}",
         f"related: {_yaml_inline_list(related)}",

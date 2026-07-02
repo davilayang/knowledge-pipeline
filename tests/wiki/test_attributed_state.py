@@ -26,19 +26,19 @@ from domains.wiki.state import insert_entity
 NOW = "2026-07-02T00:00:00+00:00"
 
 
-def _entity_record(entity_id, canonical, *, page_type="concept") -> EntityRecord:
+def _entity_record(entity_id, canonical, *, entity_type="concept") -> EntityRecord:
     return EntityRecord(
         entity_id=entity_id,
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type=page_type,
+        entity_type=entity_type,
         created_at=NOW,
     )
 
 
-def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRecord:
-    ent = _entity_record(entity_id, canonical, page_type=page_type)
+def _seed_entity(conn, entity_id, canonical, *, entity_type="concept") -> EntityRecord:
+    ent = _entity_record(entity_id, canonical, entity_type=entity_type)
     insert_entity(conn, ent)
     return ent
 
@@ -297,7 +297,7 @@ def test_render_attributed_markdown_shape():
         "---\n"
         "entity_id: e_x\n"
         "title: GraphRAG\n"
-        "page_type: concept\n"
+        "entity_type: concept\n"
         "aliases: [Graph RAG]\n"
         "num_sources: 2\n"
         "updated_at: 2026-07-02\n"

@@ -15,6 +15,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **The `wiki` Dagster resource moved from `synthesize_wiki` to `orchestrators.defs.shared`** so it survives the upcoming retirement of the raw synthesis pipeline (3e cutover, PR A). Wiring-only; no behaviour change.
+- **`entities.page_type` is renamed to `entity_type`** across the wiki state layer, assets, and the on-disk page frontmatter key — the field labels an entity's kind, not a "page". **Deploy step:** run `ALTER TABLE entities RENAME COLUMN page_type TO entity_type` on the live `wiki.db` (fresh DBs get the new name from `wiki.sql`). The Notion "Page type" property display name is unchanged; the `.md` frontmatter key is rewritten to `entity_type:` by the next render sweep.
 
 ---
 

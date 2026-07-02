@@ -22,7 +22,7 @@ def _write(
     title: str,
     summary: str,
     num_sources: int,
-    page_type: str = "concept",
+    entity_type: str = "concept",
     related: list[str] | None = None,
     sources: list[str] | None = None,
 ) -> None:
@@ -31,7 +31,7 @@ def _write(
     page = WikiPage(
         entity_id=entity_id,
         title=title,
-        page_type=page_type,
+        entity_type=entity_type,
         summary=summary,
         related=related or [],
         sources=sources or [],
@@ -131,7 +131,7 @@ class TestFrontmatterAuthoritative:
         page = WikiPage(
             entity_id="e_aaaaaaaaaaaaaaaa",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             summary="A summary.",
             related=[],
             sources=[],

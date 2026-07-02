@@ -1,4 +1,4 @@
-"""Tests for the parsing helpers — frontmatter parsing, entity_id/page_type
+"""Tests for the parsing helpers — frontmatter parsing, entity_id/entity_type
 enforcement, summary recovery, and the H2-preservation check.
 
 entity_id is now an opaque surrogate; parse echoes whatever id the caller
@@ -17,7 +17,7 @@ _PAGE = (
     "---\n"
     "entity_id: e_x\n"
     "title: RAG\n"
-    "page_type: concept\n"
+    "entity_type: concept\n"
     "summary: RAG grounds an LLM in retrieved\n  documents over a corpus.\n"
     "aliases: [RAG]\n"
     "related: [e_y, e_z]\n"
@@ -32,7 +32,7 @@ _PAGE = (
 def test_strip_producer_frontmatter_removes_producer_keys_only():
     """Producer-owned frontmatter (aliases/related/sources/num_sources/
     updated_at) is removed before the page goes back into the update prompt;
-    LLM-authored fields (entity_id/title/page_type/summary) and the body stay."""
+    LLM-authored fields (entity_id/title/entity_type/summary) and the body stay."""
     out = strip_producer_frontmatter(_PAGE)
 
     for key in ("aliases:", "related:", "sources:", "num_sources:", "updated_at:"):
@@ -54,7 +54,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: concept__rag\n"
             "title: RAG\n"
-            "page_type: concept\n"
+            "entity_type: concept\n"
             "related: [concept__llm]\n"
             "sources: [content_abc]\n"
             "---\n"
@@ -64,7 +64,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="content_abc",
         )
@@ -77,7 +77,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=["concept__llm"],
             source_id="c1",
         )
@@ -89,38 +89,39 @@ class TestParseLlmPageOutput:
     def test_enforces_expected_entity_id(self):
         """LLM may hallucinate a different entity_id; we enforce the expected one."""
         raw = (
-            "---\nentity_id: concept__wrong_id\ntitle: RAG\npage_type: concept\n---\n# RAG\n\nBody."
+            "---\nentity_id: concept__wrong_id\ntitle: RAG\n"
+            "entity_type: concept\n---\n# RAG\n\nBody."
         )
         page = parse_llm_page_output(
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
         assert page.entity_id == "concept__rag"
-        assert page.page_type == "concept"
+        assert page.entity_type == "concept"
 
-    def test_enforces_expected_page_type(self):
-        """LLM may return a wrong page_type; we enforce the expected one."""
-        raw = "---\nentity_id: concept__rag\ntitle: RAG\npage_type: tool\n---\n# RAG\n\nBody."
+    def test_enforces_expected_entity_type(self):
+        """LLM may return a wrong entity_type; we enforce the expected one."""
+        raw = "---\nentity_id: concept__rag\ntitle: RAG\nentity_type: tool\n---\n# RAG\n\nBody."
         page = parse_llm_page_output(
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
-        assert page.page_type == "concept"
+        assert page.entity_type == "concept"
 
     def test_parse_extracts_summary_field(self):
         raw = (
             "---\n"
             "entity_id: concept__rag\n"
             "title: RAG\n"
-            "page_type: concept\n"
+            "entity_type: concept\n"
             "summary: RAG augments LLM generation with retrieval over a corpus.\n"
             "---\n"
             "# RAG\n\nBody."
@@ -129,7 +130,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
@@ -142,7 +143,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: concept__rag\n"
             "title: RAG\n"
-            "page_type: concept\n"
+            "entity_type: concept\n"
             "summary: RAG augments LLM generation.\n"
             "aliases: [HallucinatedAlias]\n"
             "num_sources: 99\n"
@@ -153,7 +154,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
@@ -169,7 +170,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: concept__rag\n"
             "title: RAG\n"
-            "page_type: concept\n"
+            "entity_type: concept\n"
             "---\n"
             "# RAG\n\nRAG is a technique for grounding LLMs in retrieved context. "
             "It has two phases."
@@ -178,7 +179,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
@@ -190,7 +191,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: concept__rag\n"
             "title: RAG\n"
-            "page_type: concept\n"
+            "entity_type: concept\n"
             "summary: ''\n"
             "---\n"
             "RAG augments generation. Other stuff."
@@ -199,7 +200,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="concept__rag",
             title="RAG",
-            page_type="concept",
+            entity_type="concept",
             related=[],
             source_id="c1",
         )
@@ -214,7 +215,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: trend__graph_rag\n"
             "title: Graph RAG\n"
-            "page_type: trend\n"
+            "entity_type: trend\n"
             "summary: Graph RAG fuses knowledge graphs with retrieval.\n"
             "---\n"
             "# Graph RAG\n\nBody.\n"
@@ -224,7 +225,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="trend__graph_rag",
             title="Graph RAG",
-            page_type="trend",
+            entity_type="trend",
             related=[],
             source_id="c1",
         )
@@ -238,7 +239,7 @@ class TestParseLlmPageOutput:
             "---\n"
             "entity_id: trend__cog_rag\n"
             "title: Cog-RAG: Giving RAG a Brain\n"
-            "page_type: trend\n"
+            "entity_type: trend\n"
             "summary: Cog-RAG adds a planning step before retrieval.\n"
             "---\n"
             "Body."
@@ -247,7 +248,7 @@ class TestParseLlmPageOutput:
             raw=raw,
             entity_id="trend__cog_rag",
             title="Cog-RAG",
-            page_type="trend",
+            entity_type="trend",
             related=[],
             source_id="c1",
         )

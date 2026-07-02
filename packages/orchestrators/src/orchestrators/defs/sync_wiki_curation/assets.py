@@ -64,7 +64,7 @@ def _build_page_properties(
     *,
     entity_id: str,
     title: str,
-    page_type: str,
+    entity_type: str,
     summary: str,
     aliases: list[str],
     source_count: int,
@@ -87,7 +87,7 @@ def _build_page_properties(
         "Summary": _rich_text(summary),
         "Aliases": _rich_text(", ".join(aliases)),
         "Source count": {"number": source_count},
-        "Page type": {"select": {"name": page_type}},
+        "Page type": {"select": {"name": entity_type}},
         "Last updated": {"date": {"start": updated_at}},
         "Page status": {"select": {"name": page_status}},
     }
@@ -251,7 +251,7 @@ def push_wiki_pages(
         props = _build_page_properties(
             entity_id=page.entity_id,
             title=page.canonical_name,
-            page_type=page.page_type,
+            entity_type=page.entity_type,
             summary=_page_summary(wiki_dir, page),
             aliases=aliases[page.entity_id],
             source_count=source_counts[page.entity_id],

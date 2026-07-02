@@ -30,13 +30,13 @@ from orchestrators.defs.sync_wiki_curation.resources import NotionPageRef
 CURATOR_COLUMNS = {"Rejected", "Reject category", "Reject reason"}
 
 
-def _entity(entity_id, canonical, page_type="concept") -> EntityRecord:
+def _entity(entity_id, canonical, entity_type="concept") -> EntityRecord:
     return EntityRecord(
         entity_id=entity_id,
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type=page_type,
+        entity_type=entity_type,
         created_at="2026-06-23T00:00:00Z",
     )
 
@@ -49,9 +49,9 @@ def _wiki(tmp_path) -> WikiResource:
     )
 
 
-def _seed_page(conn, wiki_dir, entity_id, canonical, *, page_type="concept", summary="S"):
+def _seed_page(conn, wiki_dir, entity_id, canonical, *, entity_type="concept", summary="S"):
     """Insert a page-backed entity + write its `.md` (frontmatter carries summary)."""
-    insert_entity(conn, _entity(entity_id, canonical, page_type))
+    insert_entity(conn, _entity(entity_id, canonical, entity_type))
     file_path = f"{slugify(canonical)}-{entity_id.removeprefix('e_')[:8]}.md"
     upsert_page(conn, entity_id=entity_id, file_path=file_path, related_ids=[])
     path = wiki_dir / file_path
@@ -76,7 +76,7 @@ def test_build_page_properties_writes_producer_columns_only():
     props = _build_page_properties(
         entity_id="e_cc",
         title="Claude Code",
-        page_type="tool",
+        entity_type="tool",
         summary="A CLI coding agent.",
         aliases=["claude-code", "cc"],
         source_count=3,

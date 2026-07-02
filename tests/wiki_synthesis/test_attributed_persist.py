@@ -29,7 +29,7 @@ def _entity(entity_id, canonical) -> EntityRecord:
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type="concept",
+        entity_type="concept",
         created_at=NOW,
     )
 

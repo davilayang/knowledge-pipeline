@@ -17,13 +17,13 @@ from domains.wiki.identity import (
 NOW = "2026-06-22T00:00:00+00:00"
 
 
-def _entity(entity_id: str, canonical: str, *, page_type: str = "concept") -> EntityRecord:
+def _entity(entity_id: str, canonical: str, *, entity_type: str = "concept") -> EntityRecord:
     return EntityRecord(
         entity_id=entity_id,
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
         slug=slugify(canonical),
-        page_type=page_type,
+        entity_type=entity_type,
         created_at=NOW,
     )
 
@@ -56,7 +56,9 @@ def test_slugify():
 
 def test_exact_normalized_name_reuses_existing_entity():
     index = EntityIndex.build([_entity("e_aaa", "Model Costs")], [])
-    res = resolve_or_mint_batch(index, [Candidate(name="model costs", page_type="trend")], now=NOW)
+    res = resolve_or_mint_batch(
+        index, [Candidate(name="model costs", entity_type="trend")], now=NOW
+    )
 
     assert res.resolved[0].entity_id == "e_aaa"
     assert res.resolved[0].is_new is False
@@ -66,7 +68,7 @@ def test_exact_normalized_name_reuses_existing_entity():
 def test_miss_mints_new_surrogate():
     index = EntityIndex.build([], [])
     res = resolve_or_mint_batch(
-        index, [Candidate(name="Retrieval Augmented Generation", page_type="concept")], now=NOW
+        index, [Candidate(name="Retrieval Augmented Generation", entity_type="concept")], now=NOW
     )
 
     r = res.resolved[0]
@@ -78,7 +80,7 @@ def test_miss_mints_new_surrogate():
     assert e.canonical_name == "Retrieval Augmented Generation"
     assert e.normalized_name == "retrieval augmented generation"
     assert e.slug == "retrieval_augmented_generation"
-    assert e.page_type == "concept"
+    assert e.entity_type == "concept"
 
 
 def test_within_batch_dedup_collapses_same_normalized_name():
@@ -87,8 +89,8 @@ def test_within_batch_dedup_collapses_same_normalized_name():
     res = resolve_or_mint_batch(
         index,
         [
-            Candidate(name="Model Costs", page_type="concept"),
-            Candidate(name="model costs", page_type="trend"),
+            Candidate(name="Model Costs", entity_type="concept"),
+            Candidate(name="model costs", entity_type="trend"),
         ],
         now=NOW,
     )
@@ -97,9 +99,9 @@ def test_within_batch_dedup_collapses_same_normalized_name():
     assert res.resolved[0].is_new is True
     assert res.resolved[1].is_new is False  # second is a reuse of the first mint
     assert len(res.new_entities) == 1
-    # First sighting wins canonical + page_type.
+    # First sighting wins canonical + entity_type.
     assert res.new_entities[0].canonical_name == "Model Costs"
-    assert res.new_entities[0].page_type == "concept"
+    assert res.new_entities[0].entity_type == "concept"
 
 
 def test_exact_alias_match_reuses_entity():
@@ -107,7 +109,7 @@ def test_exact_alias_match_reuses_entity():
         [_entity("e_mcp", "Model Context Protocol")],
         [("MCP", "e_mcp")],
     )
-    res = resolve_or_mint_batch(index, [Candidate(name="mcp", page_type="concept")], now=NOW)
+    res = resolve_or_mint_batch(index, [Candidate(name="mcp", entity_type="concept")], now=NOW)
 
     assert res.resolved[0].entity_id == "e_mcp"
     assert res.resolved[0].is_new is False
@@ -119,7 +121,7 @@ def test_matched_id_reuses_when_it_exists_in_the_snapshot():
     index = EntityIndex.build([_entity("e_mcp", "Model Context Protocol")], [])
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="the MCP standard", page_type="concept", matched_id="e_mcp")],
+        [Candidate(name="the MCP standard", entity_type="concept", matched_id="e_mcp")],
         now=NOW,
     )
 
@@ -133,7 +135,7 @@ def test_matched_id_ignored_when_not_in_snapshot_then_mints():
     index = EntityIndex.build([], [])
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="Brand New Thing", page_type="tool", matched_id="e_ghost")],
+        [Candidate(name="Brand New Thing", entity_type="tool", matched_id="e_ghost")],
         now=NOW,
     )
 
@@ -150,7 +152,7 @@ def test_exact_name_beats_matched_id():
     )
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="PostgreSQL", page_type="tool", matched_id="e_other")],
+        [Candidate(name="PostgreSQL", entity_type="tool", matched_id="e_other")],
         now=NOW,
     )
 
@@ -165,8 +167,8 @@ def test_within_batch_freshly_minted_alias_is_matched():
     res = resolve_or_mint_batch(
         index,
         [
-            Candidate(name="Model Context Protocol", page_type="concept", aliases=["MCP"]),
-            Candidate(name="MCP", page_type="concept"),
+            Candidate(name="Model Context Protocol", entity_type="concept", aliases=["MCP"]),
+            Candidate(name="MCP", entity_type="concept"),
         ],
         now=NOW,
     )
@@ -183,7 +185,7 @@ def test_resolved_entity_carries_alias_display_forms():
     index = EntityIndex.build([], [])
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="ChromaDB", page_type="tool", aliases=["chroma", "chroma-db"])],
+        [Candidate(name="ChromaDB", entity_type="tool", aliases=["chroma", "chroma-db"])],
         now=NOW,
     )
 
@@ -198,7 +200,7 @@ def test_alias_shadowing_existing_canonical_is_dropped():
     index = EntityIndex.build([_entity("e_lra", "Long-running agents")], [])
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="Agentic coding", page_type="trend", aliases=["Long-running agents"])],
+        [Candidate(name="Agentic coding", entity_type="trend", aliases=["Long-running agents"])],
         now=NOW,
     )
 
@@ -214,7 +216,7 @@ def test_fuzzy_is_advisory_only_and_still_mints():
     index = EntityIndex.build([_entity("e_rag", "Retrieval Augmented Generation")], [])
     res = resolve_or_mint_batch(
         index,
-        [Candidate(name="Retrieval-Augmented Generation", page_type="concept")],
+        [Candidate(name="Retrieval-Augmented Generation", entity_type="concept")],
         now=NOW,
     )
 

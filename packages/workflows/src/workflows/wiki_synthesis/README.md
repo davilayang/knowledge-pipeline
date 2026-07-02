@@ -31,7 +31,7 @@ page from ALL attributed claims accumulated across sources.
 
 | Concept | Storage | Cardinality |
 |---|---|---|
-| Entity identity | `entities` row (entity_id PK, canonical_name, normalized_name, slug, page_type) | 1 per real-world thing |
+| Entity identity | `entities` row (entity_id PK, canonical_name, normalized_name, slug, entity_type) | 1 per real-world thing |
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
 | Source contribution | attributed lane's `sources` / `claims` / `claim_entities` tables | `num_sources` derived on read via `attributed.count_sources_for_entity` |
@@ -74,8 +74,8 @@ echoes accumulated metadata back into the body.
 
 | Lives on disk (`data/wiki/`) | Lives in SQLite (`data/wiki.db`) |
 |---|---|
-| `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, page_type) |
-| `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); page_type/slug/canonical_name read via join |
+| `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, entity_type) |
+| `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); entity_type/slug/canonical_name read via join |
 | | `aliases` — entity name → id mapping (normalized_alias PK) |
 | | `processed_items` — per (item_id, source_type) completion markers |
 

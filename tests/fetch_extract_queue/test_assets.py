@@ -821,8 +821,8 @@ def test_extract_entities_records_candidates_with_cached_tokens(tmp_path: Path):
     store = QueueStoreResource(db_path=str(db_path))
 
     candidates = [
-        Candidate(name="Docker", page_type="tool"),
-        Candidate(name="Podman", page_type="tool"),
+        Candidate(name="Docker", entity_type="tool"),
+        Candidate(name="Podman", entity_type="tool"),
     ]
     captured = {}
 
