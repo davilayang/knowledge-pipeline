@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS entities (
     canonical_name  TEXT NOT NULL,                -- display name (first sighting wins)
     normalized_name TEXT NOT NULL UNIQUE,         -- match key: lower/trim/collapse-ws
     slug            TEXT NOT NULL,                 -- system-generated, minted once
-    entity_type       TEXT NOT NULL,                 -- open-domain type label (metadata, NOT identity)
+    entity_type     TEXT NOT NULL,                 -- open-domain type label (metadata, NOT identity)
     created_at      TEXT NOT NULL                  -- ISO-8601 UTC
 ) STRICT;
 

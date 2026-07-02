@@ -26,7 +26,7 @@ Table entities {
   canonical_name  text [not null]
   normalized_name text [not null, unique, note: 'lower/trim/collapse-ws dedup key']
   slug            text [not null]
-  entity_type       text [not null, note: 'open-domain type label (metadata, not identity)']
+  entity_type     text [not null, note: 'open-domain type label (metadata, not identity)']
   created_at      text [not null]
 }
 
