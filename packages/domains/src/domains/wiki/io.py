@@ -51,9 +51,9 @@ def write_page(
     """Write a wiki page to a markdown file with YAML frontmatter.
 
     `aliases`, `num_sources`, `sources`, and `related` are producer-authoritative
-    (sourced from the wiki.db ledgers at write time), not LLM-supplied.
-    `sources` is the accumulated distinct item_ids from the page_sources ledger
-    (NOT page.sources, the single triggering [source_id]); `related` is the
+    (sourced from the wiki.db state at write time), not LLM-supplied.
+    `sources` is the accumulated distinct source ids for the entity (NOT
+    page.sources, the single triggering [source_id]); `related` is the
     accumulated co-occurrence neighbours from the entity_relations ledger (NOT
     page.related, this article's siblings). The frontmatter key order is stable
     for diff-readability:

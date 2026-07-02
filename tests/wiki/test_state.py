@@ -3,7 +3,7 @@
 Uses the `wiki_db` fixture from tests/conftest.py: a fresh sqlite3 connection to
 a temp wiki.db with the schema applied.
 
-Identity now lives in `entities`; pages/aliases/page_sources FK to it, so every
+Identity now lives in `entities`; pages/aliases/entity_relations FK to it, so every
 test that writes one of those seeds its parent entity first (foreign_keys=ON).
 """
 
@@ -12,29 +12,20 @@ import sqlite3
 import pytest
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import (
-    MergeResult,
     RejectedRecord,
     build_entity_index,
-    count_sources_for_entity,
     get_aliases_for_entity,
     get_all_pages,
     get_entity,
     get_failed,
     get_page,
-    get_page_history,
-    get_page_version,
     get_processed_ids,
     get_rejected,
     get_related_for_entity,
-    get_source_ids_for_entity,
     insert_aliases,
     insert_entity,
     insert_entity_relation,
-    insert_page_source,
-    insert_page_version,
     insert_processed,
-    is_source_for_entity,
-    merge_entities,
     reject_entity,
     snapshot_aliases,
     upsert_page,
@@ -88,131 +79,6 @@ def test_build_entity_index_includes_names_and_aliases(wiki_db):
     index = build_entity_index(wiki_db)
     assert index.by_normalized_name["model context protocol"] == "e_mcp"
     assert index.by_normalized_alias["mcp"] == "e_mcp"
-
-
-# --- page_versions ---
-
-
-def test_insert_and_read_page_version_roundtrips(wiki_db):
-    """An appended edition stores its full body + provenance, keyed by
-    (entity_id, version), readable back verbatim."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    insert_page_version(
-        wiki_db,
-        entity_id="e_rag",
-        version=1,
-        content_hash="abc123",
-        summary="RAG grounds an LLM in retrieved docs.",
-        num_sources=2,
-        source_id="content_1",
-        source_type="raw_store",
-        content="# RAG\n\nv1 body",
-        created_at=NOW,
-    )
-    wiki_db.commit()
-    row = wiki_db.execute(
-        "SELECT version, content_hash, summary, num_sources, source_id, "
-        "source_type, content, created_at FROM page_versions WHERE entity_id = ?",
-        ("e_rag",),
-    ).fetchone()
-    assert tuple(row) == (
-        1,
-        "abc123",
-        "RAG grounds an LLM in retrieved docs.",
-        2,
-        "content_1",
-        "raw_store",
-        "# RAG\n\nv1 body",
-        NOW,
-    )
-
-
-def _add_version(conn, entity_id, version, *, content, summary="s", source_id="content_1"):
-    insert_page_version(
-        conn,
-        entity_id=entity_id,
-        version=version,
-        content_hash=f"h{version}",
-        summary=summary,
-        num_sources=version,
-        source_id=source_id,
-        source_type="raw_store",
-        content=content,
-        created_at=f"2026-06-2{version}T00:00:00+00:00",
-    )
-
-
-def test_get_page_history_newest_first_metadata(wiki_db):
-    """History is the edition index — metadata newest-first, no full bodies."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _add_version(wiki_db, "e_rag", 1, content="v1 body", source_id="content_1")
-    _add_version(wiki_db, "e_rag", 2, content="v2 body", source_id="content_2")
-    wiki_db.commit()
-
-    history = get_page_history(wiki_db, "e_rag")
-    assert [h.version for h in history] == [2, 1]
-    assert history[0].source_id == "content_2"
-    assert history[0].num_sources == 2
-
-
-def test_get_page_version_returns_body_or_none(wiki_db):
-    """get_page_version fetches one edition's full body; None for a version that
-    was never recorded."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _add_version(wiki_db, "e_rag", 1, content="# RAG\n\nv1 body")
-    _add_version(wiki_db, "e_rag", 2, content="# RAG\n\nv2 body, revised")
-    wiki_db.commit()
-
-    assert get_page_version(wiki_db, "e_rag", 1) == "# RAG\n\nv1 body"
-    assert get_page_version(wiki_db, "e_rag", 2) == "# RAG\n\nv2 body, revised"
-    assert get_page_version(wiki_db, "e_rag", 3) is None
-
-
-def test_get_page_history_empty_for_unknown_entity(wiki_db):
-    assert get_page_history(wiki_db, "e_missing") == []
-
-
-def test_page_version_reads_are_scoped_to_entity(wiki_db):
-    """History and body reads must filter by entity_id — one entity's editions
-    never leak into another's."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_llm", "LLM")
-    _add_version(wiki_db, "e_rag", 1, content="rag body")
-    _add_version(wiki_db, "e_llm", 1, content="llm body")
-    wiki_db.commit()
-
-    assert [h.entity_id for h in get_page_history(wiki_db, "e_rag")] == ["e_rag"]
-    assert get_page_version(wiki_db, "e_rag", 1) == "rag body"
-    assert get_page_version(wiki_db, "e_llm", 1) == "llm body"
-
-
-def test_get_page_version_distinguishes_empty_body_from_missing(wiki_db):
-    """A stored empty body returns '' (not None); None means no such version."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _add_version(wiki_db, "e_rag", 1, content="")
-    wiki_db.commit()
-
-    assert get_page_version(wiki_db, "e_rag", 1) == ""
-    assert get_page_version(wiki_db, "e_rag", 2) is None
-
-
-def test_page_version_requires_provenance(wiki_db):
-    """An edition with no source_id can't answer "what changed it" — the schema
-    rejects it (NOT NULL provenance is the edition-history contract)."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    with pytest.raises(sqlite3.IntegrityError):
-        insert_page_version(
-            wiki_db,
-            entity_id="e_rag",
-            version=1,
-            content_hash="abc123",
-            summary="s",
-            num_sources=1,
-            source_id=None,  # type: ignore[arg-type]
-            source_type="raw_store",
-            content="b",
-            created_at=NOW,
-        )
 
 
 # --- processed_items ---
@@ -467,63 +333,6 @@ def test_get_related_for_entity_stable_tiebreak(wiki_db):
     assert get_related_for_entity(wiki_db, "e_rag") == ["e_b", "e_a"]
 
 
-# --- page_sources ---
-
-
-def test_count_sources_for_entity_counts_distinct_items(wiki_db):
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_other", "Other")
-    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
-    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_b", source_type="raw_store")
-    # Re-inserting the same edge is idempotent — still one distinct contribution.
-    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
-    # A different entity's edge must not bleed into this count.
-    insert_page_source(wiki_db, entity_id="e_other", item_id="content_z", source_type="raw_store")
-    wiki_db.commit()
-    assert count_sources_for_entity(wiki_db, "e_rag") == 2
-
-
-def test_get_source_ids_for_entity_distinct_ordered(wiki_db):
-    """The accumulated, distinct source item_ids for an entity, ordered by first
-    contribution (MIN added_at) then item_id — the deterministic list the page
-    frontmatter should render (vs the per-item [source_id] the LLM emits)."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_other", "Other")
-    # Direct inserts with controlled added_at to pin ordering deterministically.
-    rows = [
-        ("e_rag", "content_b", "raw_store", "2026-06-02T00:00:00+00:00"),
-        ("e_rag", "content_a", "raw_store", "2026-06-01T00:00:00+00:00"),
-        # Same item under a second source_type — one distinct item, earliest wins.
-        ("e_rag", "content_a", "wiki", "2026-05-30T00:00:00+00:00"),
-        ("e_other", "content_z", "raw_store", "2026-06-01T00:00:00+00:00"),
-    ]
-    wiki_db.executemany(
-        "INSERT INTO page_sources (entity_id, item_id, source_type, added_at) VALUES (?,?,?,?)",
-        rows,
-    )
-    wiki_db.commit()
-    # content_a first (MIN added_at 2026-05-30 via the wiki row), then content_b.
-    assert get_source_ids_for_entity(wiki_db, "e_rag") == ["content_a", "content_b"]
-    assert get_source_ids_for_entity(wiki_db, "e_missing") == []
-
-
-def test_count_sources_for_entity_unknown_returns_zero(wiki_db):
-    assert count_sources_for_entity(wiki_db, "e_missing") == 0
-
-
-def test_is_source_for_entity_reflects_ledger(wiki_db):
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    insert_page_source(wiki_db, entity_id="e_rag", item_id="content_a", source_type="raw_store")
-    wiki_db.commit()
-    assert is_source_for_entity(wiki_db, "e_rag", "content_a") is True
-    assert is_source_for_entity(wiki_db, "e_rag", "content_b") is False
-
-
-def test_page_source_without_entity_raises_fk(wiki_db):
-    with pytest.raises(sqlite3.IntegrityError):
-        insert_page_source(wiki_db, entity_id="e_ghost", item_id="x", source_type="raw_store")
-
-
 # --------------------------------------------------------------------------
 # rejected_entities (curator denylist — durable, name-keyed)
 # --------------------------------------------------------------------------
@@ -577,201 +386,6 @@ def test_upsert_rejected_updates_in_place_on_conflict(wiki_db):
     ]
 
 
-# --------------------------------------------------------------------------
-# merge_entities — the destructive dedup primitive (#15)
-# --------------------------------------------------------------------------
-
-
-def test_merge_entities_repoints_page_sources(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    insert_page_source(wiki_db, entity_id="e_drop", item_id="art1", source_type="raw_store")
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert get_source_ids_for_entity(wiki_db, "e_keep") == ["art1"]
-    assert get_entity(wiki_db, "e_drop") is None
-
-
-def test_merge_entities_bumps_keep_page_updated_at(wiki_db):
-    """The survivor's aliases + source_count change on merge, so its page
-    updated_at must advance. The sync push's change-detection skip relies on
-    EVERY producer-relevant change bumping updated_at; merge is the one path
-    that mutates a surviving page without re-rendering through synthesis."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    upsert_page(wiki_db, entity_id="e_keep", file_path="claude-max.md", related_ids=[])
-    # Force a clearly-stale updated_at so the bump is observable.
-    wiki_db.execute(
-        "UPDATE pages SET updated_at = ? WHERE entity_id = ?",
-        ("2020-01-01T00:00:00+00:00", "e_keep"),
-    )
-    wiki_db.commit()
-    before = get_page(wiki_db, "e_keep").updated_at
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert get_page(wiki_db, "e_keep").updated_at > before
-
-
-def test_merge_entities_dedupes_shared_page_source(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    insert_page_source(wiki_db, entity_id="e_keep", item_id="art1", source_type="raw_store")
-    insert_page_source(wiki_db, entity_id="e_drop", item_id="art1", source_type="raw_store")
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert count_sources_for_entity(wiki_db, "e_keep") == 1
-
-
-def test_merge_entities_repoints_entity_relations_both_columns(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    _seed_entity(wiki_db, "e_x", "Anthropic")
-    insert_entity_relation(
-        wiki_db,
-        entity_id="e_drop",
-        related_entity_id="e_x",
-        item_id="art1",
-        source_type="raw_store",
-    )
-    insert_entity_relation(
-        wiki_db,
-        entity_id="e_x",
-        related_entity_id="e_drop",
-        item_id="art1",
-        source_type="raw_store",
-    )
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert get_related_for_entity(wiki_db, "e_keep") == ["e_x"]
-    assert get_related_for_entity(wiki_db, "e_x") == ["e_keep"]
-
-
-def test_merge_entities_deletes_the_drop_keep_self_edge(wiki_db):
-    """A drop↔keep co-occurrence becomes a keep↔keep self-edge on re-point and
-    must be removed; keep's real edges to other entities survive."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    _seed_entity(wiki_db, "e_x", "Anthropic")
-    for a, b in [("e_drop", "e_keep"), ("e_keep", "e_drop"), ("e_drop", "e_x"), ("e_x", "e_drop")]:
-        insert_entity_relation(
-            wiki_db, entity_id=a, related_entity_id=b, item_id="art1", source_type="raw_store"
-        )
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert get_related_for_entity(wiki_db, "e_keep") == ["e_x"]
-
-
-def test_merge_entities_repoints_existing_aliases(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    insert_aliases(wiki_db, [("mp", "e_drop")])
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert build_entity_index(wiki_db).by_normalized_alias["mp"] == "e_keep"
-
-
-def test_merge_entities_aliases_drop_name_onto_keep(wiki_db):
-    """The load-bearing line: drop's name becomes an alias of keep so the next
-    article saying 'Max plan' folds in instead of re-minting the dup."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=True)
-
-    assert build_entity_index(wiki_db).by_normalized_alias["max plan"] == "e_keep"
-
-
-def test_merge_entities_fails_when_drop_name_claimed_by_third_entity(wiki_db):
-    """Codex CONCERN 1: a silent ON CONFLICT skip would leave the alias unwritten
-    and re-mint the dup. Instead fail loudly when a different sense owns the name."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    _seed_entity(wiki_db, "e_other", "Mobile data plan")
-    insert_aliases(wiki_db, [("Max plan", "e_other")])
-    wiki_db.commit()
-
-    with pytest.raises(ValueError, match="max plan"):
-        with wiki_db:
-            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=True)
-
-    # rolled back — drop survives, nothing folded into keep
-    assert get_entity(wiki_db, "e_drop") is not None
-    assert build_entity_index(wiki_db).by_normalized_alias["max plan"] == "e_other"
-
-
-def test_merge_entities_no_alias_leaves_drop_name_unclaimed(wiki_db):
-    """Homonym escape hatch: --no-alias keeps drop's name out of the alias table
-    so a future different-sense mention mints fresh (safe false-split)."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert "max plan" not in build_entity_index(wiki_db).by_normalized_alias
-
-
-def test_merge_entities_no_alias_drops_a_preexisting_self_alias(wiki_db):
-    """--no-alias must keep drop's NAME from resolving to keep even when drop
-    already had a self-alias row — re-pointing it would silently defeat the
-    homonym guard (the sole prevention)."""
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    insert_aliases(wiki_db, [("Max plan", "e_drop")])  # self-alias: norm == drop's name
-    wiki_db.commit()
-
-    with wiki_db:
-        merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert "max plan" not in build_entity_index(wiki_db).by_normalized_alias
-
-
-def test_merge_entities_removes_drop_page_and_returns_its_path(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    _seed_entity(wiki_db, "e_drop", "Max plan")
-    upsert_page(wiki_db, entity_id="e_drop", file_path="max-plan-34db8db7.md", related_ids=[])
-    wiki_db.commit()
-
-    with wiki_db:
-        result = merge_entities(wiki_db, keep_id="e_keep", drop_id="e_drop", alias=False)
-
-    assert result == MergeResult(
-        keep_id="e_keep", drop_id="e_drop", drop_file_path="max-plan-34db8db7.md"
-    )
-    assert get_page(wiki_db, "e_drop") is None
-
-
-def test_merge_entities_rejects_self_merge(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    wiki_db.commit()
-
-    with pytest.raises(ValueError, match="itself"):
-        with wiki_db:
-            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_keep")
-
-    assert get_entity(wiki_db, "e_keep") is not None
-
-
 def test_reject_entity_denylists_name_and_deletes(wiki_db):
     _seed_entity(wiki_db, "e_junk", "Cookie Policy")
     wiki_db.commit()
@@ -811,18 +425,3 @@ def test_reject_entity_rejects_missing_entity(wiki_db):
     with pytest.raises(ValueError, match="e_ghost"):
         with wiki_db:
             reject_entity(wiki_db, entity_id="e_ghost")
-
-
-def test_merge_entities_rejects_missing_participant(wiki_db):
-    _seed_entity(wiki_db, "e_keep", "Claude Max")
-    wiki_db.commit()
-
-    with pytest.raises(ValueError, match="e_ghost"):
-        with wiki_db:
-            merge_entities(wiki_db, keep_id="e_keep", drop_id="e_ghost")
-
-    with pytest.raises(ValueError, match="e_ghost"):
-        with wiki_db:
-            merge_entities(wiki_db, keep_id="e_ghost", drop_id="e_keep")
-
-    assert get_entity(wiki_db, "e_keep") is not None

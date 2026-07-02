@@ -33,9 +33,8 @@ page from ALL attributed claims accumulated across sources.
 |---|---|---|
 | Entity identity | `entities` row (entity_id PK, canonical_name, normalized_name, slug, page_type) | 1 per real-world thing |
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
-| Page edition history | `page_versions` row (full body + provenance) | 1 per synthesis that **changes** the page's `{summary, content}` |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
-| Source contribution (ground truth) | `page_sources` row | 1 per (entity_id, item_id, source_type) — drives BOTH `num_sources` and the rendered `sources` list |
+| Source contribution | attributed lane's `sources` / `claims` / `claim_entities` tables | `num_sources` derived on read via `attributed.count_sources_for_entity` |
 | Co-occurrence edge | `entity_relations` row | 1 per (directed edge, contributing item) — drives the rendered `related` list (derived `co_count`) |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
 
@@ -47,20 +46,15 @@ gate: exact normalized_name / normalized_alias is authoritative → reuse; a
 validated `matched_id` → reuse; fuzzy is advisory only (never auto-merged).
 Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
 
-**Provenance: two layers with different semantics — be aware:**
+**Provenance:**
 
-- `page_sources` (ledger table) is the **ground truth** for which
-  items have contributed to an entity. One `(entity_id, item_id, source_type)`
-  row per successful entity is written in the same transaction as `pages`.
-- Both the rendered `num_sources` AND the `sources` list are
-  producer-authoritative, derived from this ledger:
-  `count_sources_for_entity` → `num_sources`,
-  `get_source_ids_for_entity` → the `sources` list (accumulated distinct
-  item_ids, ordered by first contribution). They stay consistent by
-  construction.
+- The rendered `num_sources` is **derived on read** via
+  `attributed.count_sources_for_entity` over the attributed lane's
+  `sources` / `claims` / `claim_entities` tables — no stored counter, so it's
+  retry-safe and consistent by construction.
 - `WikiPage.sources` (the LLM-echoed `[source_id]` in the synthesis
   output) is **ignored** for rendering — it's the single triggering item,
-  not the accumulated set. Query `page_sources`, never the LLM output.
+  not the accumulated set.
 
 **Related edges (`entity_relations`):** the rendered `related` list is also
 producer-authoritative. One `(directed edge, item)` row is written for every
@@ -76,17 +70,6 @@ frontmatter (`aliases`/`related`/`sources`/`num_sources`/`updated_at`) is stripp
 from the existing page before it re-enters the synthesis prompt, so the LLM never
 echoes accumulated metadata back into the body.
 
-**Edition history (`page_versions`):** a full-content version row is appended
-**only when the page's prose changed** — gated by a semantic hash
-over `{summary, content}` (`identity.page_content_hash`) compared against the
-HEAD pointer on `pages` (`content_hash` / `current_version`, read by
-`get_page_head` before the upsert overwrites it). The hash deliberately excludes
-`related` / `sources` / `num_sources` / `updated_at`: those are per-item or
-ledger-tracked, so a re-synthesis from a different article that doesn't change
-the prose updates the file + ledger but appends **no** version. The `.md` write
-is unconditional (gate the append, not the file write). Read history with
-`get_page_history` (metadata, newest-first) and `get_page_version` (one body).
-
 ## State boundary: filesystem vs SQLite (wiki.db)
 
 | Lives on disk (`data/wiki/`) | Lives in SQLite (`data/wiki.db`) |
@@ -94,7 +77,6 @@ is unconditional (gate the append, not the file write). Read history with
 | `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, page_type) |
 | `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); page_type/slug/canonical_name read via join |
 | | `aliases` — entity name → id mapping (normalized_alias PK) |
-| | `page_sources` — deterministic (entity, item) contribution ledger; drives `num_sources` |
 | | `processed_items` — per (item_id, source_type) completion markers |
 
 **Disk is the human-readable surface.** The .md files are what humans read,
@@ -108,7 +90,7 @@ not file listings. This separation lets the workflow be retry-idempotent
 without depending on filesystem state being perfectly consistent with the DB.
 
 **Atomicity is per-system.** All SQLite writes (`entities` + `pages` +
-`page_sources` + `aliases`) are one transaction — either all land or none do.
+`aliases`) are one transaction — either all land or none do.
 The `processed_items` row is written separately, after the graph commits and
 the .md files are written. Disk writes are atomic per-file (tmp + os.replace).
 SQLite and disk together are *not* atomic — but the crash-safe ordering (graph

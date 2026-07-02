@@ -67,8 +67,8 @@ wiki_store_source = dg.AssetSpec(
     key=["wiki_store"],
     group_name=UPSTREAM_GROUP,
     description=(
-        "knowledge-pipeline SQLite — `entities` / `pages` / `page_versions` / "
-        "`page_sources` / `sources` / `claims` / `claim_entities` tables. "
+        "knowledge-pipeline SQLite — `entities` / `pages` / `aliases` / "
+        "`entity_relations` / `sources` / `claims` / `claim_entities` tables. "
         "Written by the fetch_extract_queue attributed-lane assets "
         "(persist_attributed_claims, render_attributed_pages); the rendered "
         "`.md` page tree lives alongside it at data/wiki/. Consumed by "

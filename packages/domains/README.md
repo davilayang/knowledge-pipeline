@@ -21,17 +21,16 @@ src/domains/
 │   └── sources.py      # LocalFileSource
 ├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
 │   ├── types.py        # WikiPage / ExtractedEntity / ExtractionResult + PageType literal
-│   ├── state.py        # processed / pages / page_sources / aliases / page_versions run state
+│   ├── state.py        # entities / pages / aliases / entity_relations / processed_items / rejected_entities run state
 │   ├── aliases.py      # alias resolution + AliasStore
 │   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
 │   ├── mentions.py     # surface-form mention counter (count_mentions) — word-boundary, case-insensitive; used by entity_assignment.match_claim
 │   ├── io.py           # markdown page IO (read_page / read_meta / write_page)
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
-│   ├── merge_cli.py    # wiki-merge — fold duplicate entities (merge_entities)
 │   ├── reject_cli.py   # wiki-reject — delete + tombstone noise entities (reject_entity)
 │   ├── dedup.py        # near-dup candidate search (embed name+summary, pairwise cosine)
 │   ├── claims.py # parse/render per-source [reported]/[opinion] claim files (Layer 1.5)
-│   ├── CURATION.md     # operator runbook: cluster → judge → confirm → merge / reject
+│   ├── CURATION.md     # operator runbook: reject noise entities
 │   └── schema/wiki.sql # SQLite schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
 │   └── sources.py      # SessionsSource — also defines TURN_MARKER_PREFIX,

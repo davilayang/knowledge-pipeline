@@ -32,8 +32,8 @@ class WikiPage(BaseModel):
         description=(
             "Defaults to the single triggering item id (`[source_id]`); the LLM may "
             "override via `sources:` frontmatter (unreliable). NOT authoritative or "
-            "accumulated — the page's true source set is the page_sources ledger "
-            "(num_sources = COUNT(DISTINCT item_id))."
+            "accumulated — the page's true source count is derived on read via "
+            "attributed.count_sources_for_entity."
         ),
     )
     updated_at: date = Field(description="Last update date")

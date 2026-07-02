@@ -21,33 +21,11 @@ on freshly-staged aliases — so two extractions that normalise to the same name
 or to a just-minted entity's alias, collapse to one entity before any write.
 """
 
-import hashlib
-import json
 import re
 import uuid
 from dataclasses import dataclass, field
 
 from domains.wiki.aliases import AliasEntry, AliasStore
-from domains.wiki.types import WikiPage
-
-
-def page_content_hash(page: WikiPage) -> str:
-    """Stable hash of a page's *prose* — gates version appends (#47).
-
-    Covers `{summary, content}` only. Everything else on a WikiPage is per-item
-    volatile or tracked authoritatively elsewhere, so it must NOT fork an
-    edition: `updated_at` is a timestamp; `sources` defaults to the single
-    triggering item id (accumulated provenance lives in the page_sources ledger
-    / num_sources); `related` is the triggering article's co-extracted siblings,
-    not the entity's accumulated link state; `title`/`page_type` live on
-    `entities`. An "edition" means the synthesised prose or summary changed.
-    """
-    payload = json.dumps(
-        {"summary": page.summary, "content": page.content},
-        ensure_ascii=False,
-        sort_keys=True,
-    )
-    return hashlib.sha256(payload.encode("utf-8")).hexdigest()
 
 
 def normalize_name(name: str) -> str:

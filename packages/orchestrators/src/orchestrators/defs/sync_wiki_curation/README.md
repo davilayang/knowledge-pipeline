@@ -57,7 +57,7 @@ a producer column is missing). Columns split by writer:
 | `Title` | title | **push** | = `entities.canonical_name` |
 | `Entity ID` | text | **push** | upsert key = wiki.db's surrogate `entity_id` (`e_<hex>`) |
 | `Summary` | text | **push** | from the page's `.md` frontmatter |
-| `Aliases` | text | **push** | comma-joined alias family (read-only over the `aliases` table) — lets the curator reject the whole family knowingly; homonyms suppressed via `wiki-merge --no-alias` are absent |
+| `Aliases` | text | **push** | comma-joined alias family (read-only over the `aliases` table) — lets the curator reject the whole family knowingly; homonym suppression is not currently available (the merge tool was retired) |
 | `Source count` | number | **push** | curation signal (1-source ⇒ likely noise) |
 | `Page type` | select | **push** | `concept`/`tool`/`trend` (+ open-domain types, auto-created on write) |
 | `Last updated` | date | **push** | page `updated_at` |

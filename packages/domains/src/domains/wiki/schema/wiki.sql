@@ -38,19 +38,18 @@ CREATE TABLE IF NOT EXISTS processed_items (
 ) STRICT;
 
 -- ---------------------------------------------------------------------------
--- pages — one synthesised page file per entity (1:1, FK to entities).
+-- pages — one rendered page file per entity (1:1, FK to entities).
 -- page_type/slug live on `entities` (authoritative); not duplicated here.
 -- file_path is UNIQUE so a slug+shortid collision surfaces instead of silently
 -- overwriting. related_ids is a JSON array of related entity_ids (advisory; not
--- an FK). num_sources is derived from page_sources, not stored.
+-- an FK). num_sources is derived on read from the attributed lane
+-- (attributed.count_sources_for_entity), not stored.
 -- ---------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS pages (
     entity_id       TEXT NOT NULL PRIMARY KEY REFERENCES entities (entity_id) ON DELETE CASCADE,
     file_path       TEXT NOT NULL UNIQUE,         -- flat: {slug}-{shortid}.md under data/wiki/
     related_ids     TEXT,                         -- JSON array of related entity_ids
-    updated_at      TEXT NOT NULL,                -- ISO-8601 UTC
-    content_hash    TEXT,                         -- HEAD: semantic hash of the current edition (#47)
-    current_version INTEGER                       -- HEAD: max page_versions.version (forward pointer)
+    updated_at      TEXT NOT NULL                 -- ISO-8601 UTC
 ) STRICT;
 
 -- ---------------------------------------------------------------------------
@@ -67,47 +66,11 @@ CREATE TABLE IF NOT EXISTS aliases (
 CREATE INDEX IF NOT EXISTS idx_aliases_entity_id ON aliases (entity_id);
 
 -- ---------------------------------------------------------------------------
--- page_sources — (entity_id, item_id, source_type) contribution ledger.
--- Ground truth for num_sources = COUNT(DISTINCT item_id) per entity_id.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS page_sources (
-    entity_id      TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
-    item_id        TEXT NOT NULL,
-    source_type    TEXT NOT NULL,
-    added_at       TEXT NOT NULL,                 -- ISO-8601 UTC
-    PRIMARY KEY (entity_id, item_id, source_type)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS idx_page_sources_entity_id ON page_sources (entity_id);
-
--- ---------------------------------------------------------------------------
--- page_versions — immutable edition history per entity (#47).
--- Each row is the full semantic content of a page at one version: the body is
--- stored verbatim (no deltas) so any past edition reconstructs without a
--- rebuild. content_hash is the semantic hash that gated the append (see
--- identity.page_content_hash); source_id/source_type tie the edition to the
--- content item that triggered it ((item_id, source_type) is the repo's stable
--- source identity). version is monotonic per entity; HEAD is the max version.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS page_versions (
-    entity_id    TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
-    version      INTEGER NOT NULL,                -- monotonic per entity
-    created_at   TEXT NOT NULL,                   -- ISO-8601 UTC
-    content_hash TEXT NOT NULL,                   -- semantic hash that gated this append
-    summary      TEXT NOT NULL DEFAULT '',
-    num_sources  INTEGER NOT NULL CHECK (num_sources >= 0),  -- source count at this edition
-    source_id    TEXT NOT NULL,                   -- content item that triggered the change
-    source_type  TEXT NOT NULL,                   -- (source_id, source_type) = stable source identity
-    content      TEXT NOT NULL,                   -- full markdown body at this version
-    PRIMARY KEY (entity_id, version)
-) STRICT;
-
--- ---------------------------------------------------------------------------
 -- entity_relations — accumulated entity↔entity co-occurrence edges (#54).
 -- A pure LEDGER: one row per (directed edge, contributing content item). The
--- link strength `co_count` is DERIVED on read (COUNT(DISTINCT item_id)), exactly
--- as num_sources is derived over page_sources — so it's retry-safe by
--- construction (idempotent ON CONFLICT DO NOTHING, no counter to double-bump).
+-- link strength `co_count` is DERIVED on read (COUNT(DISTINCT item_id)), so it's
+-- retry-safe by construction (idempotent ON CONFLICT DO NOTHING, no counter to
+-- double-bump).
 -- entity_id/related_entity_id are graph NODES (both FK→entities); item_id/
 -- source_type are the PROVENANCE (which article co-mentioned them), the repo's
 -- stable (item_id, source_type) content identity. Edges are inserted in BOTH
@@ -129,7 +92,7 @@ CREATE INDEX IF NOT EXISTS idx_entity_relations_entity_id ON entity_relations (e
 -- a human's decision that a name should never become a page. Name-keyed
 -- (surrogate ids are random per mint and change on a from-empty rebuild;
 -- normalized names are stable), so this table survives "rebuild-don't-migrate"
--- while the 7 regenerable tables above are recreated. The from-empty rebuild
+-- while the regenerable tables around it are recreated. The from-empty rebuild
 -- runbook must `.dump rejected_entities` and reseed it (the option-(b) tax).
 -- Synthesis reads this directly; Notion is a redundant edit UI synced in.
 -- ---------------------------------------------------------------------------
