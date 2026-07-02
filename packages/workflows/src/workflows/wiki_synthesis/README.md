@@ -240,26 +240,27 @@ shouldn't look like an infrastructure failure to Dagster.
 
 ## Attributed lane (Layer 1.5 → entity assignment)
 
-A second, emerging path runs *beside* the raw-article merge engine above. Rather
-than synthesising a page from the raw article, it works from per-source
-SUMMARIES: `extract_claims` distils one source into
-`[reported]`/`[opinion]`-tagged claims (Layer 1.5), and
-`entity_assignment.assign_summary` maps each claim to the entity it is about, so
-the wiki can *attribute* a claim ("a Medium piece claimed X") instead of
-asserting it. It resolves against the same LIVE wiki as the raw path, so a claim
-unifies onto an existing entity instead of minting a duplicate.
+A second path runs *beside* the raw-article merge engine above. Rather than
+synthesising a page from the raw article, it works from per-source, extract-time
+outputs: `extract_claims` distils one source into `[reported]`/`[opinion]`-tagged
+claims, `extract_entities` extracts article-grounded candidates (both stored per
+source), and `entity_assignment.assign_summary` resolves those candidates against
+the LIVE wiki and maps each claim to the entity it is about — so the wiki can
+*attribute* a claim ("a Medium piece claimed X") instead of asserting it.
+Resolving against the same LIVE wiki as the raw path, a candidate unifies onto an
+existing entity instead of minting a duplicate.
 
-This lane is a **measurement slice** today — it persists nothing and is not yet
-wired to a Dagster asset (that is Slice 3, which also owns the storage schema).
-The scoring harness lives in `evals.wiki.claims` (gate diagnostic +
-assignment diagnostic).
+The extract-time producers (`extract_claims`, `extract_entities`) are wired as
+Dagster assets (`fetch_extract_queue`); `assign_summary` consumes their stored
+output via `assign_from_stored` but is not yet in a synthesis asset — that, plus
+the page storage schema, is the remaining Slice 3 work. The scoring harness lives
+in `evals.wiki.claims` (gate + assignment diagnostics).
 
 ```
-ClaimSet (tagged claims)
-    │  render_claims → extract() over the claims (LLM)
+article-grounded candidates (extract_entities asset)  +  ClaimSet (extract_claims asset)
+    │  resolve_or_mint_batch (LIVE wiki)
     ▼
-candidates ──resolve_or_mint_batch (LIVE wiki)──► entities + surface_forms
-    │            reuse an existing surrogate, else mint    (cross-path unification)
+entities + surface_forms    reuse an existing surrogate, else mint  (cross-path unification)
     ▼
 per claim:  match_claim (deterministic surface-form) → mentioned entities = HINT
     │
@@ -269,7 +270,7 @@ per claim:  match_claim (deterministic surface-form) → mentioned entities = HI
          each claim + its mention hint) → true subject(s) from the candidates
          (demote a passing co-mention; resolve a pronoun) ─────► entity_ids
     ▼
-ClaimAssignment[]  +  salience over the body (shared salience gate)
+ClaimAssignment[]  +  salience over the claim texts (shared salience gate)
     │  group_by_entity
     ▼
 EntityClaims[]  — per-entity attributed claim sets (salient vs co-mention)
@@ -287,8 +288,8 @@ name or a descriptive phrase.
 |---|---|
 | `synthesize.py` | Entry points: `extract_item` (extraction LLM, no DB write), `synthesize_extracted_item` (resolve + synthesize + persist), `synthesize_from_candidates` (synthesis-only from pre-extracted candidates), `synthesize_item` (end-to-end convenience wrapper) |
 | `extract_claims.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources. Uses the shared-prefix layout (`extract_shared`) so its article read prompt-caches with `extract_entities` |
-| `extract_entities.py` | `extract_entities` — article-grounded entity candidate extractor: reads the raw article + its claims, returns `Candidate`s (no cap; salience classifies the tail), behind a prompt that drops chrome / example-data / code identifiers. The attributed lane's intended candidate source — Slice 3 wires it as its own extract-time Dagster asset (`deps=extract_claims`) whose stored candidates `assign_summary` consumes; not yet consumed today |
+| `extract_entities.py` | `extract_entities` — article-grounded entity candidate extractor: reads the raw article + its claims, returns `Candidate`s (no cap; salience classifies the tail), behind a prompt that drops chrome / example-data / code identifiers. The attributed lane's candidate source — wired as its own extract-time Dagster asset (`deps=extract_claims`), and its stored candidates are consumed by `assign_summary` (via `assign_from_stored`). `render_candidates` is the canonical `Name — type` inverse of `parse_entity_candidates` for the stored round-trip |
 | `extract_shared.py` | `shared_prefix_messages` — the `[system, article envelope, task]` message layout shared byte-identically by `extract_claims` + `extract_entities`, so the article is served from OpenAI's prefix cache on the second extract-time call |
-| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — extract over the claims → resolve against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. Persists nothing (measurement slice) |
+| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — resolve the article-grounded candidates against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. `assign_from_stored` is the storage bridge (parses the stored claims + candidate docs, then `assign_summary`). Persists nothing (page storage is the remaining Slice 3 work) |
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `ENTITY_EXTRACTION_SYSTEM`, `ENTITY_EXTRACTION_USER`, `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `PAGE_SYNTHESIS_SYSTEM`, `PAGE_SYNTHESIS_USER_CREATE`, `PAGE_SYNTHESIS_USER_UPDATE`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
