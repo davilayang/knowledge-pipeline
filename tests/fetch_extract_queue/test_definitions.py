@@ -14,12 +14,17 @@ def test_pipeline_defs_loads():
         "fetch_extract_queue/published",
         "fetch_extract_queue/extract_claims",
         "fetch_extract_queue/extract_entities",
+        "fetch_extract_queue/persist_attributed_claims",
+        "fetch_extract_queue/render_attributed_pages",
     }
 
 
-def test_pipeline_has_one_job_named_fetch_extract_queue():
+def test_pipeline_has_fetch_and_render_jobs():
+    # The per-source pipeline job plus the unpartitioned attributed-page render
+    # sweep (a separate job — a partitioned asset job can't include an
+    # unpartitioned asset).
     job_names = {j.name for j in defs.jobs}
-    assert job_names == {"fetch_extract_queue"}
+    assert job_names == {"fetch_extract_queue", "render_attributed_pages"}
 
 
 def test_pipeline_exposes_poll_and_failure_sensors():
