@@ -207,7 +207,7 @@ def snapshot_queue(
 def snapshot_wiki(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    # wiki.db is owned by kp (written by synthesize_wiki). Read from kp's own
+    # wiki.db is owned by kp (written by the wiki synthesis pipeline). Read from kp's own
     # data dir, NOT BACKUP_SRC_DIR which points at NA's data dir on prod.
     return _snapshot_one_db(context, backup, LOCAL_WIKI_DB)
 
@@ -228,7 +228,7 @@ def snapshot_wiki(
 def snapshot_wiki_pages(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    # data/wiki/ is owned by kp (written by synthesize_wiki). Read from kp's
+    # data/wiki/ is owned by kp (written by the wiki synthesis pipeline). Read from kp's
     # own data dir, NOT BACKUP_SRC_DIR.
     return _snapshot_one_dir(context, backup, LOCAL_WIKI_DIR, "wiki.tgz")
 

@@ -7,8 +7,8 @@ updates to a structured wiki. The Dagster `wiki/extracted` asset calls
 `synthesize_item` (= extract + synthesize in one call) is a convenience
 wrapper kept for callers that don't split the two stages.
 
-For operations (how to launch, retry, debug), see the asset's runbook:
-`packages/orchestrators/src/orchestrators/defs/synthesize_wiki/README.md`.
+For operations (how to launch, retry, debug), see the attributed-lane runbook:
+`packages/orchestrators/src/orchestrators/defs/fetch_extract_queue/README.md`.
 This document is for engineers modifying the workflow.
 
 ## What the workflow does

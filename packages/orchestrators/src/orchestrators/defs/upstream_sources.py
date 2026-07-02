@@ -1,7 +1,7 @@
 # Declarative-only AssetSpecs that anchor lineage for the underlying
 # SQLite / filesystem stores consumed by this repo's pipelines. They
 # don't materialize — they exist so downstream assets (backup_readings,
-# synthesize_wiki, future per-source discoverers) can declare deps
+# fetch_extract_queue, future per-source discoverers) can declare deps
 # against a stable upstream node and the graph renders connected rather
 # than orphaned. `owner` metadata names the writer.
 
@@ -15,8 +15,8 @@ raw_store_source = dg.AssetSpec(
     description=(
         "newsletter-assistant SQLite — `contents` table holds newsletter "
         "scrapes (article markdown + metadata). Consumed by "
-        "snapshot_raw_store (backup_readings) and wiki/synthesized "
-        "(synthesize_wiki)."
+        "snapshot_raw_store (backup_readings) and the attributed-lane assets "
+        "(fetch_extract_queue)."
     ),
     metadata={
         "owner": dg.MetadataValue.text("newsletter-assistant"),
@@ -29,8 +29,8 @@ session_store_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "newsletter-assistant SQLite — session turns from user/LLM chats. "
-        "Consumed by snapshot_sessions (backup_readings); future consumer: "
-        "synthesize_wiki sessions discovery."
+        "Consumed by snapshot_sessions (backup_readings). No current wiki "
+        "synthesis consumer."
     ),
     metadata={
         "owner": dg.MetadataValue.text("newsletter-assistant"),
@@ -41,10 +41,7 @@ session_store_source = dg.AssetSpec(
 notes_source = dg.AssetSpec(
     key=["notes"],
     group_name=UPSTREAM_GROUP,
-    description=(
-        "newsletter-assistant user notes (markdown files). Future consumer: "
-        "synthesize_wiki notes discovery. No current consumer."
-    ),
+    description=("newsletter-assistant user notes (markdown files). No current consumer."),
     metadata={
         "owner": dg.MetadataValue.text("newsletter-assistant"),
         "path": dg.MetadataValue.path("data/notes/"),
@@ -71,10 +68,11 @@ wiki_store_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "knowledge-pipeline SQLite — `entities` / `pages` / `page_versions` / "
-        "`page_sources` tables (full edition history + frontmatter ledgers). "
-        "Written by synthesize_wiki assets in this repo; the rendered `.md` "
-        "page tree lives alongside it at data/wiki/. Consumed by snapshot_wiki "
-        "and snapshot_wiki_pages (backup_readings)."
+        "`page_sources` / `sources` / `claims` / `claim_entities` tables. "
+        "Written by the fetch_extract_queue attributed-lane assets "
+        "(persist_attributed_claims, render_attributed_pages); the rendered "
+        "`.md` page tree lives alongside it at data/wiki/. Consumed by "
+        "snapshot_wiki and snapshot_wiki_pages (backup_readings)."
     ),
     metadata={
         "owner": dg.MetadataValue.text("knowledge-pipeline"),

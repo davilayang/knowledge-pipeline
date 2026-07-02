@@ -19,13 +19,13 @@ from domains.wiki.state import (
     insert_entity,
     upsert_page,
 )
+from orchestrators.defs.shared.resources import WikiResource
 from orchestrators.defs.sync_wiki_curation.assets import (
     PRODUCER_PROPERTIES,
     _build_page_properties,
     push_wiki_pages,
 )
 from orchestrators.defs.sync_wiki_curation.resources import NotionPageRef
-from orchestrators.defs.synthesize_wiki.resources import WikiResource
 
 CURATOR_COLUMNS = {"Rejected", "Reject category", "Reject reason"}
 

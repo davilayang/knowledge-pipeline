@@ -22,15 +22,13 @@ from workflows.wiki_synthesis.prompts import (
     EXTRACT_SHARED_SYSTEM,
 )
 
-from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
-from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
-
 # The attributed-lane synthesis assets write wiki.db, so they serialize on the
-# SHARED wiki-write concurrency pool (synthesize_wiki's PIPELINE_TAG), NOT this
-# pipeline's fetch tag: assign-then-persist reads a live entity-index snapshot
-# and then writes, a sequence WAL does not make atomic — concurrent source
-# partitions must not interleave or they can both mint the same new entity.
-from orchestrators.defs.synthesize_wiki.def_config import PIPELINE_TAG as WIKI_WRITE_POOL
+# SHARED wiki-write concurrency pool (WIKI_WRITE_POOL), NOT this pipeline's fetch
+# tag: assign-then-persist reads a live entity-index snapshot and then writes, a
+# sequence WAL does not make atomic — concurrent source partitions must not
+# interleave or they can both mint the same new entity.
+from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION, WIKI_WRITE_POOL
+from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 from .def_config import (
     PIPELINE_TAG,

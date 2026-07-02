@@ -222,12 +222,12 @@ class WikiWriteResource(dg.ConfigurableResource):
     """Wiki.db path + wiki dir for the attributed-lane synthesis assets.
 
     A write-only view of the durable wiki store, owned by THIS pipeline and
-    pointing at the same files as synthesize_wiki's `wiki` resource. It is a
-    separate resource key (not `wiki`) on purpose: a Dagster resource key can be
-    bound by only one sub-Definitions, and synthesize_wiki owns `wiki`; this
-    pipeline needs write access but not the backup-snapshot dir that resource
-    carries, so it binds its own minimal one. get_db_path() applies the schema
-    (idempotent) before any asset writes."""
+    pointing at the same files as the shared `wiki` resource (bound in
+    orchestrators.defs.shared). It is a separate resource key (not `wiki`) on
+    purpose: a Dagster resource key can be bound by only one sub-Definitions;
+    this pipeline needs write access but not the backup-snapshot dir that the
+    shared resource carries, so it binds its own minimal one. get_db_path()
+    applies the schema (idempotent) before any asset writes."""
 
     wiki_dir: str = str(DATA_DIR / "wiki")
     wiki_db_path: str = str(DATA_DIR / "wiki.db")

@@ -127,7 +127,6 @@ packages/
         classify.py            # Pure URL → Content Type / canonicalize (no I/O)
         url_meta.py            # Best-effort HTTP fetch → page title + description
       fetch_extract_queue/
-      synthesize_wiki/
       populate_vector_store/
       sync_wiki_curation/
       upstream_sources.py

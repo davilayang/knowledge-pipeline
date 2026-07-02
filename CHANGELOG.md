@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Removed
+
+- **The raw `synthesize_wiki` Dagster pipeline is retired** (assets, schedule, its `wiki.db` writes). Entity-wiki pages are now produced solely by the attributed lane in `fetch_extract_queue`; the shared `wiki` resource + `WIKI_WRITE_POOL` concurrency key moved to `orchestrators.config`/`shared`.
+
 ### Changed
 
 - **The `wiki` Dagster resource moved from `synthesize_wiki` to `orchestrators.defs.shared`** so it survives the upcoming retirement of the raw synthesis pipeline (3e cutover, PR A). Wiring-only; no behaviour change.

@@ -200,7 +200,7 @@ adding it early would buy nothing observable.
 
 Anti-patterns to skip:
 - `ThreadPoolExecutor` inside the asset — non-idiomatic for both this repo
-  (see `synthesize_wiki/assets.py`) and DOP. Plain Python, not Dagster-native.
+  (see `fetch_extract_queue/assets.py`) and DOP. Plain Python, not Dagster-native.
 - `DynamicOutput` / graph-backed asset for fan-out — ~100 LOC plus 1-2s/op
   Dagster orchestration overhead per item; only worth it when per-item work
   is genuinely heavy (minutes, not seconds).

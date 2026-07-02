@@ -122,7 +122,7 @@ PRODUCER_PROPERTIES = frozenset(
         "(reject_entity: alias-family tombstone + cascade + unlink .md); a name "
         "whose entity is already gone just (re)writes the tombstone row. "
         "Idempotent — re-running chases the human's latest edits with no "
-        "double-effect. Shares synthesize_wiki's concurrency key (single-writer "
+        "double-effect. Shares the attributed-lane persist's concurrency key (single-writer "
         "wiki.db)."
     ),
 )

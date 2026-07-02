@@ -39,8 +39,8 @@ wiki/pages_pushed   (key: wiki/pages_pushed — wiki.db → Notion)
      the curator columns.
 ```
 
-Both assets share **synthesize_wiki's** `dagster/concurrency_key`
-(`synthesize-wiki`, via `WIKI_DB_CONCURRENCY_KEY`) — NOT a separate per-DAG key.
+Both assets share the **shared wiki-write pool's** `dagster/concurrency_key`
+(`synthesize-wiki`, via `WIKI_DB_CONCURRENCY_KEY` → `WIKI_WRITE_POOL`) — NOT a separate per-DAG key.
 SQLite is single-writer; the shared key serialises curation writes against a
 synthesis persist so a mid-flight persist can't FK-error against a concurrent
 delete. **This is the single most important correctness control here.**
