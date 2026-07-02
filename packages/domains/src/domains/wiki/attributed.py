@@ -15,6 +15,11 @@ matching `domains.wiki.state`. Open connections with `state.connect` /
 import hashlib
 import sqlite3
 from dataclasses import dataclass
+from urllib.parse import urlparse
+
+import yaml
+
+from domains.wiki.identity import EntityRecord
 
 _SOURCE_COLS = (
     "source_id, content_key, origin_type, title, author, publication, "
@@ -202,12 +207,15 @@ def insert_claim_entity(conn: sqlite3.Connection, *, claim_id: str, entity_id: s
 @dataclass(frozen=True)
 class AttributedClaim:
     """One claim as it renders on an entity's page: the claim text + kind, plus
-    the source attribution (publication / published_at / url) that makes it an
-    ATTRIBUTED statement ("Codrift (2026-03) claimed …") rather than an
-    unsourced assertion."""
+    the source attribution (author / publication / published_at / url) that makes
+    it an ATTRIBUTED statement ("Jane Doe on medium.com (2026-03) claimed …")
+    rather than an unsourced assertion. `author` is the primary attributor for
+    this corpus (queue.db carries no publication); `publication` is nullable and
+    reserved for origins that supply it."""
 
     text: str
     claim_kind: str
+    author: str | None
     publication: str | None
     published_at: str | None
     url: str | None
@@ -221,7 +229,7 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
     else undated rows float to the top), then by claim_id for a stable read."""
     rows = conn.execute(
         """
-        SELECT c.text, c.claim_kind, s.publication, s.published_at, s.url
+        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at, s.url
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
         JOIN sources s ON s.source_id = c.source_id
@@ -248,3 +256,64 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
         (entity_id,),
     ).fetchone()
     return int(row[0]) if row and row[0] is not None else 0
+
+
+def _yaml_scalar(value: str) -> str:
+    """Format a scalar string for inline YAML frontmatter (correct quoting via a
+    round-trip through yaml.dump), mirroring domains.wiki.io."""
+    dumped = yaml.dump({"_": value}, default_flow_style=False, sort_keys=False).rstrip()
+    return dumped[len("_: ") :]
+
+
+def _yaml_inline_list(items: list[str]) -> str:
+    """Format a list of strings in inline `[a, b]` frontmatter form."""
+    return yaml.dump(items, default_flow_style=True, sort_keys=False).rstrip()
+
+
+def _source_domain(url: str | None) -> str | None:
+    """The `www`-stripped netloc of a source URL — the publication proxy this
+    corpus attributes with (queue.db has no publication field). None if no url."""
+    if not url:
+        return None
+    netloc = urlparse(url).netloc
+    return netloc[len("www.") :] if netloc.startswith("www.") else (netloc or None)
+
+
+def _attribution(claim: AttributedClaim) -> str:
+    """The attribution tail for one claim: `<who> · <domain> (<date>)`.
+
+    `who` prefers an explicit publication, else the author; `domain` is the
+    source URL's netloc. Missing parts drop out; a claim with no attributor at
+    all renders `source unknown` so it never reads as an unsourced assertion."""
+    who = claim.publication or claim.author
+    domain = _source_domain(claim.url)
+    left = " · ".join(part for part in (who, domain) if part) or "source unknown"
+    return f"{left} ({claim.published_at})" if claim.published_at else left
+
+
+def render_attributed_markdown(
+    *,
+    entity: EntityRecord,
+    claims: list[AttributedClaim],
+    aliases: list[str],
+    num_sources: int,
+    updated_at: str,
+) -> str:
+    """Render an entity's attributed page to markdown — YAML frontmatter over a
+    `[reported]`/`[opinion]`-tagged bullet per claim, each with its attribution
+    tail. `claims` are already ordered (dated-first) by
+    `attributed_claims_for_entity`; `aliases`/`num_sources`/`updated_at` are
+    producer-authoritative (derived from wiki.db at write time)."""
+    frontmatter = [
+        "---",
+        f"entity_id: {_yaml_scalar(entity.entity_id)}",
+        f"title: {_yaml_scalar(entity.canonical_name)}",
+        f"page_type: {_yaml_scalar(entity.page_type)}",
+        f"aliases: {_yaml_inline_list(aliases)}",
+        f"num_sources: {int(num_sources)}",
+        f"updated_at: {updated_at}",
+        "---",
+    ]
+    body = [f"# {entity.canonical_name}", ""]
+    body += [f"- [{claim.claim_kind}] {claim.text} — {_attribution(claim)}" for claim in claims]
+    return "\n".join(frontmatter) + "\n\n" + "\n".join(body) + "\n"

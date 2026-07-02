@@ -17,6 +17,7 @@ from domains.wiki.attributed import (
     insert_claim_entity,
     mint_claim_id,
     mint_source_id,
+    render_attributed_markdown,
     upsert_source,
 )
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
@@ -25,8 +26,8 @@ from domains.wiki.state import insert_entity
 NOW = "2026-07-02T00:00:00+00:00"
 
 
-def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRecord:
-    ent = EntityRecord(
+def _entity_record(entity_id, canonical, *, page_type="concept") -> EntityRecord:
+    return EntityRecord(
         entity_id=entity_id,
         canonical_name=canonical,
         normalized_name=normalize_name(canonical),
@@ -34,6 +35,10 @@ def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRe
         page_type=page_type,
         created_at=NOW,
     )
+
+
+def _seed_entity(conn, entity_id, canonical, *, page_type="concept") -> EntityRecord:
+    ent = _entity_record(entity_id, canonical, page_type=page_type)
     insert_entity(conn, ent)
     return ent
 
@@ -194,6 +199,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
         AttributedClaim(
             text="Dated claim about GraphRAG.",
             claim_kind="opinion",
+            author="Jane Doe",
             publication="Codrift",
             published_at="2026-03-01",
             url="https://ex.com/d",
@@ -201,6 +207,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
         AttributedClaim(
             text="Undated claim about GraphRAG.",
             claim_kind="reported",
+            author="Jane Doe",
             publication="Voidmag",
             published_at=None,
             url="https://ex.com/u",
@@ -251,3 +258,54 @@ def test_count_sources_for_entity_counts_distinct_sources(wiki_db):
 
 def test_count_sources_for_entity_unknown_is_zero(wiki_db):
     assert count_sources_for_entity(wiki_db, "e_missing") == 0
+
+
+# --- attributed page render (markdown) ---
+
+
+def test_render_attributed_markdown_shape():
+    # The page renders from claims + derived frontmatter. Each claim keeps its
+    # [reported]/[opinion] tag and is attributed by author · domain (date); the
+    # tag and attribution are the memory hooks (specifics over abstractions).
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="GraphRAG combines vector search with a knowledge graph.",
+            claim_kind="reported",
+            author="Jane Doe",
+            publication=None,
+            published_at="2026-03-01",
+            url="https://medium.com/x",
+        ),
+        AttributedClaim(
+            text="GraphRAG will replace naive RAG.",
+            claim_kind="opinion",
+            author=None,
+            publication=None,
+            published_at=None,
+            url="https://voidmag.com/y",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity,
+        claims=claims,
+        aliases=["Graph RAG"],
+        num_sources=2,
+        updated_at="2026-07-02",
+    )
+    assert md == (
+        "---\n"
+        "entity_id: e_x\n"
+        "title: GraphRAG\n"
+        "page_type: concept\n"
+        "aliases: [Graph RAG]\n"
+        "num_sources: 2\n"
+        "updated_at: 2026-07-02\n"
+        "---\n"
+        "\n"
+        "# GraphRAG\n"
+        "\n"
+        "- [reported] GraphRAG combines vector search with a knowledge graph. "
+        "— Jane Doe · medium.com (2026-03-01)\n"
+        "- [opinion] GraphRAG will replace naive RAG. — voidmag.com\n"
+    )

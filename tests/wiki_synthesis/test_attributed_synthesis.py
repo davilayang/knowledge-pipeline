@@ -1,0 +1,119 @@
+"""Tests for the attributed-lane synthesis orchestration — per-source synthesize
+(queue row → SourceRecord → assign → persist) and the entity-page render sweep.
+
+Uses the `wiki_db` / `wiki_db_path` fixtures (fresh SQLite wiki.db, schema
+applied).
+"""
+
+from domains.wiki.attributed import attributed_claims_for_entity, mint_source_id
+from domains.wiki.identity import shortid
+from domains.wiki.state import connection, get_all_entities, get_page
+from workflows.wiki_synthesis.attributed_synthesis import (
+    build_source_record,
+    render_entity_pages,
+    synthesize_source,
+)
+
+NOW = "2026-07-02T00:00:00+00:00"
+
+_CLAIMS_DOC = (
+    "---\n"
+    "item_id: https://medium.com/x\n"
+    "content_date: '2026-03-01'\n"
+    "---\n"
+    "\n"
+    "- [reported] GraphRAG uses a knowledge graph.\n"
+)
+_CANDIDATES_DOC = "GraphRAG — concept\n"
+
+
+def _source():
+    return build_source_record(
+        {
+            "url": "https://medium.com/x",
+            "canonical_url": "https://medium.com/x",
+            "title": "T",
+            "author": "Jane Doe",
+            "content_date": "2026-03-01",
+            "content_hash": "h",
+        },
+        now=NOW,
+    )
+
+
+def test_build_source_record_maps_queue_row():
+    # A queue_items row (SELECT * dict) maps to a wiki SourceRecord: content_key
+    # is the normalized canonical_url, origin_type is 'queue', published_at is
+    # the row's content_date, and the source_id is minted from content_key.
+    row = {
+        "notion_page_id": "pg1",
+        "title": "A Title",
+        "author": "Jane Doe",
+        "content_date": "2026-03-01",
+        "url": "https://medium.com/x?utm=1",
+        "canonical_url": "https://medium.com/x",
+        "content_hash": "h1",
+    }
+    src = build_source_record(row, now=NOW)
+
+    assert src.content_key == "https://medium.com/x"
+    assert src.source_id == mint_source_id("https://medium.com/x")
+    assert src.origin_type == "queue"
+    assert src.title == "A Title"
+    assert src.author == "Jane Doe"
+    assert src.publication is None
+    assert src.url == "https://medium.com/x?utm=1"
+    assert src.published_at == "2026-03-01"
+    assert src.content_hash == "h1"
+    assert src.added_at == NOW
+
+
+def test_build_source_record_falls_back_to_url_when_no_canonical():
+    row = {"notion_page_id": "pg2", "url": "https://medium.com/y", "canonical_url": None}
+    src = build_source_record(row, now=NOW)
+    assert src.content_key == "https://medium.com/y"
+
+
+def test_synthesize_source_persists_attributed_claims(wiki_db_path):
+    # Reads the source's stored claim + candidate docs, resolves/mints the entity
+    # against the (empty) wiki, and persists the attributed claim. The single
+    # unambiguous mention needs no LLM (attribute_subjects unused).
+    source_id = synthesize_source(
+        claims_doc=_CLAIMS_DOC,
+        candidates_doc=_CANDIDATES_DOC,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    assert source_id == mint_source_id("https://medium.com/x")
+
+    with connection(wiki_db_path) as conn:
+        entities = get_all_entities(conn)
+        assert [e.canonical_name for e in entities] == ["GraphRAG"]
+        claims = attributed_claims_for_entity(conn, entities[0].entity_id)
+        assert [c.text for c in claims] == ["GraphRAG uses a knowledge graph."]
+
+
+def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
+    synthesize_source(
+        claims_doc=_CLAIMS_DOC,
+        candidates_doc=_CANDIDATES_DOC,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    wiki_dir = tmp_path / "wiki"
+    rendered = render_entity_pages(
+        wiki_db_path=wiki_db_path, wiki_dir=wiki_dir, updated_at="2026-07-02"
+    )
+
+    with connection(wiki_db_path) as conn:
+        ent = get_all_entities(conn)[0]
+        page = get_page(conn, ent.entity_id)
+    filename = f"{ent.slug}-{shortid(ent.entity_id)}.md"
+
+    assert rendered == [ent.entity_id]
+    assert page.file_path == filename
+    text = (wiki_dir / filename).read_text(encoding="utf-8")
+    assert "# GraphRAG" in text
+    assert (
+        "- [reported] GraphRAG uses a knowledge graph. — Jane Doe · medium.com (2026-03-01)" in text
+    )
