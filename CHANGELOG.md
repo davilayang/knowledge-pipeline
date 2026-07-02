@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The `wiki` Dagster resource moved from `synthesize_wiki` to `orchestrators.defs.shared`** so it survives the upcoming retirement of the raw synthesis pipeline (3e cutover, PR A). Wiring-only; no behaviour change.
+
 ---
 
 ## [0.28.1] — 2026-07-02
