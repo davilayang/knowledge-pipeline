@@ -20,6 +20,7 @@ import textwrap
 
 import dagster as dg
 from workflows.wiki_synthesis.attributed_synthesis import render_entity_pages
+from workflows.wiki_synthesis.wiki_index import build_wiki_index
 from workflows.wiki_synthesis.wiki_sweep import run_attribute_sweep
 
 from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION, WIKI_WRITE_POOL
@@ -134,4 +135,42 @@ def render_pages(
     )
 
 
-all_assets = [attribute_claims, render_pages]
+@dg.asset(
+    key=["synthesize_wiki", "build_index"],
+    group_name=GROUP_NAME,
+    kinds={"sqlite", "file"},
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
+    op_tags=_WIKI_WRITE_TAGS,
+    deps=[render_pages],
+    description=_oneline(
+        """
+        Rebuild the whole-wiki index sidecars from wiki.db: data/wiki/_index/resolve.json
+        (alias→entity_id resolution + per-entity orientation for the newsletter-assistant
+        bridge) and data/wiki/index.md (human TOC). Runs after render_pages and reads
+        wiki.db fresh; writes each file only when its content changed (snapshot_id for
+        resolve.json, byte-equality for index.md) and self-heals a missing file.
+        Serialized on the shared wiki-write pool.
+        """
+    ),
+)
+def build_index(context: dg.AssetExecutionContext, wiki: WikiResource) -> dg.MaterializeResult:
+    try:
+        r = build_wiki_index(wiki_db_path=wiki.get_db_path(), wiki_dir=wiki.get_wiki_dir())
+    except ValueError as e:  # alias collision → one lowercased key, two entity_ids
+        raise dg.Failure(description=str(e)) from e
+    return dg.MaterializeResult(
+        metadata={
+            "aliases_total": dg.MetadataValue.int(r.aliases_total),
+            "pages_total": dg.MetadataValue.int(r.pages_total),
+            "resolve_written": dg.MetadataValue.bool(r.resolve_written),
+            "index_written": dg.MetadataValue.bool(r.index_written),
+            "summary": dg.MetadataValue.md(
+                f"Index: **{r.pages_total}** pages, **{r.aliases_total}** alias keys "
+                f"(resolve.json {'written' if r.resolve_written else 'unchanged'}, "
+                f"index.md {'written' if r.index_written else 'unchanged'})."
+            ),
+        }
+    )
+
+
+all_assets = [attribute_claims, render_pages, build_index]
