@@ -14,6 +14,7 @@ matching `domains.wiki.state`. Open connections with `state.connect` /
 
 import hashlib
 import sqlite3
+from collections.abc import Sequence
 from dataclasses import dataclass
 from urllib.parse import urlparse
 
@@ -331,19 +332,22 @@ def render_attributed_markdown(
     aliases: list[str],
     num_sources: int,
     updated_at: str,
+    related: Sequence[str] = (),
 ) -> str:
     """Render an entity's attributed page to markdown — YAML frontmatter, then the
     claims split into `## Reported` / `## Opinion` sections (the header conveys the
     kind, so no inline tag), each a bullet with its attribution tail. Within a
     section claims keep their dated order from `attributed_claims_for_entity`; an
-    empty section is omitted. `aliases`/`num_sources`/`updated_at` are
-    producer-authoritative (derived from wiki.db at write time)."""
+    empty section is omitted. `aliases`/`related`/`num_sources`/`updated_at` are
+    producer-authoritative (derived from wiki.db at write time); `related` is the
+    co-occurring entity names from `get_related_for_entity`."""
     frontmatter = [
         "---",
         f"entity_id: {_yaml_scalar(entity.entity_id)}",
         f"title: {_yaml_scalar(entity.canonical_name)}",
         f"entity_type: {_yaml_scalar(entity.entity_type)}",
         f"aliases: {_yaml_inline_list(aliases)}",
+        f"related: {_yaml_inline_list(list(related))}",
         f"num_sources: {int(num_sources)}",
         f"updated_at: {updated_at}",
         "---",

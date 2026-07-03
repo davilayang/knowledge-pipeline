@@ -21,7 +21,7 @@ src/domains/
 │   └── sources.py      # LocalFileSource
 ├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
 │   ├── types.py        # WikiPage / ExtractedEntity / ExtractionResult + PageType literal
-│   ├── state.py        # entities / pages / aliases / entity_relations / processed_items / rejected_entities run state
+│   ├── state.py        # entities / pages / aliases / processed_items / rejected_entities run state
 │   ├── aliases.py      # alias resolution + AliasStore
 │   ├── identity.py     # Candidate / EntityRecord / ResolvedEntity + resolve_or_mint_batch
 │   ├── mentions.py     # surface-form mention counter (count_mentions) — word-boundary, case-insensitive; used by entity_assignment.match_claim

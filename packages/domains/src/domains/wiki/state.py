@@ -1,8 +1,8 @@
 """SQLite helpers for wiki state — pure functions taking a sqlite3 connection.
 
 Single source of truth for the wiki.db identity/page tables: entities /
-processed_items / pages / aliases / entity_relations / rejected_entities (the
-claim-centric sources / claims / claim_entities live in attributed.py). Callers
+processed_items / pages / aliases / rejected_entities (the claim-centric
+sources / claims / claim_entities live in attributed.py). Callers
 manage connection lifecycle and transactions (`with conn:` for an atomic block);
 these helpers issue SQL only.
 
@@ -122,7 +122,7 @@ def _json_list(value: str | None) -> list[str]:
 
 def insert_entity(conn: sqlite3.Connection, entity: EntityRecord) -> None:
     """Insert one identity row. Caller manages the transaction and writes
-    entities BEFORE the pages/aliases/entity_relations that FK to them.
+    entities BEFORE the pages/aliases that FK to them.
 
     ON CONFLICT(entity_id) DO NOTHING keeps a replay of the same surrogate
     idempotent; a genuine normalized_name collision still raises (fail fast —
@@ -391,55 +391,43 @@ def snapshot_aliases(conn: sqlite3.Connection) -> AliasStore:
     return AliasStore(entries=entries)
 
 
-# --------------------------------------------------------------------------
-# entity_relations — accumulated co-occurrence edges (#54)
-# --------------------------------------------------------------------------
-
-
-def insert_entity_relation(
-    conn: sqlite3.Connection,
-    *,
-    entity_id: str,
-    related_entity_id: str,
-    item_id: str,
-    source_type: str,
-    added_at: str | None = None,
-) -> None:
-    """Record one directed co-occurrence edge (entity_id → related_entity_id)
-    contributed by content item (item_id, source_type) in the entity_relations
-    ledger (#54). Idempotent (ON CONFLICT DO NOTHING) so retries and
-    re-processing don't duplicate the edge — the derived co_count stays stable.
-    Caller manages the transaction and has already inserted both entities (FK)."""
-    conn.execute(
-        """
-        INSERT INTO entity_relations (entity_id, related_entity_id, item_id, source_type, added_at)
-        VALUES (?, ?, ?, ?, ?)
-        ON CONFLICT (entity_id, related_entity_id, item_id, source_type) DO NOTHING
-        """,
-        (entity_id, related_entity_id, item_id, source_type, added_at or _now_iso()),
-    )
-
-
 def get_related_for_entity(
     conn: sqlite3.Connection, entity_id: str, *, limit: int = 20
 ) -> list[str]:
-    """Accumulated related entity_ids for a page (#54), strongest first.
+    """Related entity_ids for a page, strongest first — DERIVED from claim_entities.
 
-    Derives `co_count = COUNT(DISTINCT item_id)` (how many distinct articles
-    co-mention the pair) over the entity_relations ledger, ranked
-    `co_count DESC, last_seen DESC, related_entity_id ASC` — a stable, bounded
-    (top-`limit`) list for the page's `related` frontmatter. Empty for an entity
-    with no recorded edges."""
+    Two entities co-occur when both are claimed within the same source; the
+    strength is `co_count = COUNT(DISTINCT source_id)` (how many distinct sources
+    co-mention the pair). Ranked `co_count DESC, related_entity_id ASC` — a stable,
+    bounded (top-`limit`) list for the page's `related` frontmatter. Empty for an
+    entity that shares no source with another.
+
+    Derived, not materialised: no co-occurrence is stored, so a re-extraction that
+    changes a source's claims is reflected on the next read with no edge upkeep.
+    Collapses to DISTINCT (source_id, related) pairs BEFORE counting so a source
+    with many claims about the pair still counts once (no claim fan-out)."""
     rows = conn.execute(
         """
+        WITH x_sources AS (
+            SELECT DISTINCT c.source_id
+            FROM claim_entities ce
+            JOIN claims c ON c.claim_id = ce.claim_id
+            WHERE ce.entity_id = ?
+        ),
+        co AS (
+            SELECT DISTINCT ce.entity_id AS related_entity_id, c.source_id
+            FROM x_sources xs
+            JOIN claims c ON c.source_id = xs.source_id
+            JOIN claim_entities ce ON ce.claim_id = c.claim_id
+            WHERE ce.entity_id != ?
+        )
         SELECT related_entity_id
-        FROM entity_relations
-        WHERE entity_id = ?
+        FROM co
         GROUP BY related_entity_id
-        ORDER BY COUNT(DISTINCT item_id) DESC, MAX(added_at) DESC, related_entity_id ASC
+        ORDER BY COUNT(DISTINCT source_id) DESC, related_entity_id ASC
         LIMIT ?
         """,
-        (entity_id, limit),
+        (entity_id, entity_id, limit),
     ).fetchall()
     return [r["related_entity_id"] for r in rows]
 
@@ -553,8 +541,8 @@ def reject_entity(
             rejected_at=rejected_at,
         )
 
-    # Delete the entity; pages/aliases/entity_relations/claim_entities rows
-    # cascade away (ON DELETE CASCADE).
+    # Delete the entity; pages/aliases/claim_entities rows cascade away
+    # (ON DELETE CASCADE).
     conn.execute("DELETE FROM entities WHERE entity_id = ?", (entity_id,))
 
     return RejectResult(entity_id=entity_id, file_path=file_path, rejected_names=rejected_names)

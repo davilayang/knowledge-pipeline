@@ -35,7 +35,7 @@ page from ALL attributed claims accumulated across sources.
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
 | Source contribution | attributed lane's `sources` / `claims` / `claim_entities` tables | `num_sources` derived on read via `attributed.count_sources_for_entity` |
-| Co-occurrence edge | `entity_relations` row | 1 per (directed edge, contributing item) — drives the rendered `related` list (derived `co_count`) |
+| Co-occurrence link | none — derived from `claim_entities` at read time | drives the rendered `related` list (`co_count` = distinct shared sources) |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
 
 **Aliases** prevent duplicates. Before extraction, the workflow snapshots the
@@ -56,14 +56,14 @@ Two documents mentioning "Pandas" and "pandas-dev" update one page, not two.
   output) is **ignored** for rendering — it's the single triggering item,
   not the accumulated set.
 
-**Related edges (`entity_relations`):** the rendered `related` list is also
-producer-authoritative. One `(directed edge, item)` row is written for every
-pair of entities an item co-mentions, in both directions (a pure, idempotent
-ledger). `get_related_for_entity` derives `co_count =
-COUNT(DISTINCT item_id)` per neighbour and renders the top-N strongest links
-(`co_count DESC, last_seen DESC`). So `related` **accumulates across every
-article** that co-mentions an entity, not just the latest one's siblings — and
-like `num_sources`, the count is derived (retry-safe, no stored counter).
+**Related links (derived, not stored):** the rendered `related` list is also
+producer-authoritative and **derived on read** from `claim_entities` — two
+entities co-occur when both are claimed within the same source. There is no edge
+table: `get_related_for_entity` runs a self-join and ranks neighbours by
+`co_count = COUNT(DISTINCT source_id)` (`co_count DESC, related_entity_id ASC`,
+top-N). So `related` **accumulates across every article** that co-mentions an
+entity, and — like `num_sources` — is consistent by construction: a re-extraction
+that changes a source's claims is reflected on the next render with no edge upkeep.
 `WikiPage.related` (this article's siblings) is no longer rendered; `pages.related_ids`
 remains as a legacy this-tick advisory column. On a page *update*, producer-owned
 frontmatter (`aliases`/`related`/`sources`/`num_sources`/`updated_at`) is stripped

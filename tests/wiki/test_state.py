@@ -3,8 +3,8 @@
 Uses the `wiki_db` fixture from tests/conftest.py: a fresh sqlite3 connection to
 a temp wiki.db with the schema applied.
 
-Identity now lives in `entities`; pages/aliases/entity_relations FK to it, so every
-test that writes one of those seeds its parent entity first (foreign_keys=ON).
+Identity now lives in `entities`; pages/aliases FK to it, so every test that
+writes one of those seeds its parent entity first (foreign_keys=ON).
 """
 
 import sqlite3
@@ -21,10 +21,8 @@ from domains.wiki.state import (
     get_page,
     get_processed_ids,
     get_rejected,
-    get_related_for_entity,
     insert_aliases,
     insert_entity,
-    insert_entity_relation,
     insert_processed,
     reject_entity,
     snapshot_aliases,
@@ -253,84 +251,8 @@ def test_snapshot_aliases_empty_returns_empty_store(wiki_db):
     assert snapshot_aliases(wiki_db).entries == {}
 
 
-# --- entity_relations ---
-
-
-def test_insert_entity_relation_roundtrips(wiki_db):
-    """One ledger row = one directed edge (entity→related) tagged by the content
-    item that produced the co-occurrence."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_llm", "LLM")
-    insert_entity_relation(
-        wiki_db,
-        entity_id="e_rag",
-        related_entity_id="e_llm",
-        item_id="content_1",
-        source_type="raw_store",
-        added_at=NOW,
-    )
-    wiki_db.commit()
-    row = wiki_db.execute(
-        "SELECT entity_id, related_entity_id, item_id, source_type, added_at FROM entity_relations"
-    ).fetchone()
-    assert tuple(row) == ("e_rag", "e_llm", "content_1", "raw_store", NOW)
-
-
-def test_insert_entity_relation_idempotent(wiki_db):
-    """Re-inserting the same (edge, item) is a no-op — retry-safe."""
-    _seed_entity(wiki_db, "e_rag", "RAG")
-    _seed_entity(wiki_db, "e_llm", "LLM")
-    for _ in range(2):
-        insert_entity_relation(
-            wiki_db,
-            entity_id="e_rag",
-            related_entity_id="e_llm",
-            item_id="content_1",
-            source_type="raw_store",
-            added_at=NOW,
-        )
-    wiki_db.commit()
-    assert wiki_db.execute("SELECT count(*) FROM entity_relations").fetchone()[0] == 1
-
-
-def _relate(conn, a, b, item, *, added_at):
-    insert_entity_relation(
-        conn,
-        entity_id=a,
-        related_entity_id=b,
-        item_id=item,
-        source_type="raw_store",
-        added_at=added_at,
-    )
-
-
-def test_get_related_for_entity_ranks_by_derived_co_count(wiki_db):
-    """Related ids ranked by co_count = COUNT(DISTINCT item_id) — how many
-    distinct articles co-mention the pair. Re-seeing the same item doesn't
-    inflate the count (derived, retry-safe)."""
-    for eid, name in [("e_rag", "RAG"), ("e_llm", "LLM"), ("e_chroma", "Chroma")]:
-        _seed_entity(wiki_db, eid, name)
-    # e_llm co-occurs with e_rag in TWO articles; e_chroma in ONE.
-    _relate(wiki_db, "e_rag", "e_llm", "content_1", added_at="2026-06-01T00:00:00+00:00")
-    _relate(wiki_db, "e_rag", "e_llm", "content_2", added_at="2026-06-02T00:00:00+00:00")
-    _relate(wiki_db, "e_rag", "e_llm", "content_2", added_at="2026-06-02T00:00:00+00:00")  # dup
-    _relate(wiki_db, "e_rag", "e_chroma", "content_1", added_at="2026-06-01T00:00:00+00:00")
-    wiki_db.commit()
-
-    assert get_related_for_entity(wiki_db, "e_rag") == ["e_llm", "e_chroma"]
-    assert get_related_for_entity(wiki_db, "e_rag", limit=1) == ["e_llm"]
-    assert get_related_for_entity(wiki_db, "e_missing") == []
-
-
-def test_get_related_for_entity_stable_tiebreak(wiki_db):
-    """Equal co_count → newest last_seen first, then entity_id asc (stable)."""
-    for eid, name in [("e_rag", "RAG"), ("e_a", "A"), ("e_b", "B")]:
-        _seed_entity(wiki_db, eid, name)
-    # Both co_count 1, but e_b seen later → e_b first.
-    _relate(wiki_db, "e_rag", "e_a", "content_1", added_at="2026-06-01T00:00:00+00:00")
-    _relate(wiki_db, "e_rag", "e_b", "content_2", added_at="2026-06-05T00:00:00+00:00")
-    wiki_db.commit()
-    assert get_related_for_entity(wiki_db, "e_rag") == ["e_b", "e_a"]
+# Co-occurrence linking has no table: get_related_for_entity derives it from
+# claim_entities; its tests live in test_attributed_state.py where claims are seeded.
 
 
 # --------------------------------------------------------------------------

@@ -147,6 +147,43 @@ def test_render_prunes_page_when_entity_drops_below_floor(tmp_path, wiki_db_path
         assert get_page(conn, ent.entity_id) is None
 
 
+_CLAIMS_DOC_CO = (
+    "---\n"
+    "item_id: https://medium.com/x\n"
+    "content_date: '2026-03-01'\n"
+    "---\n"
+    "\n"
+    "- [reported] GraphRAG uses a knowledge graph.\n"
+    "- [reported] GraphRAG improves retrieval quality.\n"
+    "- [reported] Microsoft released the tool.\n"
+    "- [opinion] Microsoft invests heavily in research.\n"
+)
+_CANDIDATES_DOC_CO = "GraphRAG — concept\nMicrosoft — organization\n"
+
+
+def test_render_writes_related_co_occurrence(tmp_path, wiki_db_path):
+    # Two page-worthy entities co-mentioned in one source → each page's `related`
+    # names the other (co-occurrence derived from claim_entities), and the pages
+    # row records the neighbour ids (no longer hardcoded empty).
+    synthesize_source(
+        claims_doc=_CLAIMS_DOC_CO,
+        candidates_doc=_CANDIDATES_DOC_CO,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    wiki_dir = tmp_path / "wiki"
+    render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    with connection(wiki_db_path) as conn:
+        by_name = {e.canonical_name: e for e in get_all_entities(conn)}
+        gr, ms = by_name["GraphRAG"], by_name["Microsoft"]
+        assert get_page(conn, gr.entity_id).related_ids == [ms.entity_id]
+        assert get_page(conn, ms.entity_id).related_ids == [gr.entity_id]
+
+    gr_md = (wiki_dir / f"{gr.slug}-{shortid(gr.entity_id)}.md").read_text(encoding="utf-8")
+    assert "related: [Microsoft]" in gr_md
+
+
 def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
     synthesize_source(
         claims_doc=_CLAIMS_DOC_TWO,

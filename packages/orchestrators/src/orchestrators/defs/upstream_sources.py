@@ -68,7 +68,7 @@ wiki_store_source = dg.AssetSpec(
     group_name=UPSTREAM_GROUP,
     description=(
         "knowledge-pipeline SQLite — `entities` / `pages` / `aliases` / "
-        "`entity_relations` / `sources` / `claims` / `claim_entities` tables. "
+        "`sources` / `claims` / `claim_entities` tables. "
         "Written by the synthesize_wiki DAG (attribute_claims, render_pages); the "
         "rendered `.md` page tree lives alongside it at data/wiki/. Consumed by "
         "snapshot_wiki and snapshot_wiki_pages (backup_readings)."
