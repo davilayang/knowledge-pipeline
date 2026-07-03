@@ -339,7 +339,7 @@ class QueueStoreResource(dg.ConfigurableResource):
 
     def get_db_path(self) -> Path:
         """Ensure the schema and return the queue.db path — for callers that read
-        the store directly across a whole-corpus pass (the wiki_synthesis sweep)
+        the store directly across a whole-corpus pass (the synthesize_wiki sweep)
         rather than through the per-page_id methods below."""
         self.ensure_schema()
         return self._path()

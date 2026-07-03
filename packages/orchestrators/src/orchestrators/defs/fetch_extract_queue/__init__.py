@@ -7,7 +7,7 @@ from .schedules import fetch_extract_queue_job
 from .sensors import all_sensors
 
 # queue.db + Notion only — the wiki-write lane (persist + render) lives in the
-# wiki_synthesis DAG now (the store seam).
+# synthesize_wiki DAG now (the store seam).
 defs = dg.Definitions(
     assets=all_assets,
     asset_checks=all_checks,

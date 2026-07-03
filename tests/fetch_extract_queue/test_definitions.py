@@ -7,7 +7,7 @@ from orchestrators.defs.fetch_extract_queue import defs
 
 
 def test_pipeline_defs_loads():
-    # The wiki-write lane (persist / render) has moved to the wiki_synthesis DAG;
+    # The wiki-write lane (persist / render) has moved to the synthesize_wiki DAG;
     # this pipeline is now queue.db + Notion only.
     asset_keys = {k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {

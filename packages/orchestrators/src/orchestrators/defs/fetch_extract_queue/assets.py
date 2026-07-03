@@ -578,7 +578,7 @@ def extract_entities(
 
 
 # The partitioned per-source assets feed the per-row fetch_extract_queue_job. The
-# wiki-write lane (persist + render) moved to the wiki_synthesis DAG — the store
+# wiki-write lane (persist + render) moved to the synthesize_wiki DAG — the store
 # seam: this pipeline writes queue.db + Notion only; wiki.db writes live there.
 all_assets = [
     fetch_content,
