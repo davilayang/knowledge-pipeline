@@ -6,13 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.30.1] — 2026-07-03
+
 ### Added
 
-- **Wiki pages regain a `related` list** — each entity page's frontmatter now lists the other entities it co-occurs with, ranked by how many sources co-mention the pair. Co-occurrence is **derived at render time** from `claim_entities` (two entities relate when both are claimed within the same source), so it's always consistent with the current claims: a re-extraction that changes a source updates every affected page's `related` on the next render with no edge upkeep.
+- **Wiki pages regain a `related` list** — each entity page's frontmatter now lists the other entities it co-occurs with, ranked by how many sources co-mention the pair. Co-occurrence is **derived at render time** from `claim_entities` (two entities relate when both are claimed within the same source), so it stays consistent with the current claims: a re-extraction that changes a source updates every affected page's `related` on the next render with no edge upkeep.
 
 ### Removed
 
-- **The orphaned `entity_relations` ledger table** (and `insert_entity_relation`) — a leftover from the retired raw-article path that the attributed lane never wrote. Co-occurrence is now derived from `claim_entities` rather than materialised as edges, so there's no second projection to keep consistent. Fresh `wiki.db`s simply omit the table; the #133 clean-slate deploy rebuilds from `wiki.sql`.
+- **The orphaned `entity_relations` ledger table** (and `insert_entity_relation`) — a leftover from the retired raw-article path that the attributed lane never wrote. Co-occurrence is now derived from `claim_entities` rather than materialised as edges, so there's no second projection to keep consistent. Fresh `wiki.db`s omit the table; the clean-slate deploy rebuilds from `wiki.sql`.
 
 ---
 
