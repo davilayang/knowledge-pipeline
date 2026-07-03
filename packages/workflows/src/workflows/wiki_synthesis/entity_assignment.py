@@ -49,6 +49,7 @@ from domains.wiki.state import (
     connection,
     get_aliases_for_entity,
     get_entity,
+    get_rejected,
 )
 from pydantic import BaseModel, Field
 
@@ -145,12 +146,24 @@ def assign_summary(
     attribution call over the whole claim list, which returns each claim's true
     subject(s) from the candidate set — demoting a mentioned non-subject, or
     resolving a pronoun the match missed.
+
+    Candidates whose name is on the curator denylist (`rejected_entities`) are
+    dropped before resolution, so a rejected entity can't re-mint or re-earn a
+    page; a claim that surfaced a rejected name is treated as ambiguous (its
+    hidden co-mention would otherwise fake a clean single-mention assignment).
     """
     if attribute_subjects is None:
         attribute_subjects = attribute_subjects_llm
 
     with connection(db_path) as conn:
         index = build_entity_index(conn)
+        # Curator denylist: drop any candidate whose name is tombstoned in
+        # rejected_entities BEFORE resolution, so a rejected entity can't re-mint
+        # and re-earn a page. reject_entity deletes the entity, so minting is the
+        # only re-entry vector — gating candidate-intake closes it completely.
+        rejected = {r.normalized_name for r in get_rejected(conn)}
+        rejected_cands = [c for c in candidates if normalize_name(c.name) in rejected]
+        candidates = [c for c in candidates if normalize_name(c.name) not in rejected]
         resolution = resolve_or_mint_batch(index, candidates, now=_now_iso())
         new_by_id = {e.entity_id: e for e in resolution.new_entities}
         entities: dict[str, EntityRecord] = {}
@@ -182,13 +195,21 @@ def assign_summary(
     mention_ids = [match_claim(claim.text, surface_forms) for claim in summary.claims]
     per_claim_ids = [list(ids) for ids in mention_ids]
 
+    # Surface forms of the dropped rejected candidates. A claim that names one is a
+    # contested-subject signal (the rejected entity was a real mention here), so it
+    # must not collapse to a clean one-live-mention claim — see ambiguity below.
+    rejected_forms = [f for c in rejected_cands for f in (c.name, *c.aliases) if f.strip()]
+
     # Ambiguous = zero mentions (pronoun/implicit), ≥2 mentions (possible passing
-    # co-mention), OR exactly one mention inside contrast/dependency phrasing where
-    # that lone mention is often the object, not the subject.
+    # co-mention), exactly one mention inside contrast/dependency phrasing where the
+    # lone mention is often the object, OR a claim that also surfaces a REJECTED name
+    # (dropping it hid a co-mention — route to subject-attribution over the live set).
     ambiguous_idx = [
         i
         for i, ids in enumerate(mention_ids)
-        if len(ids) != 1 or _CONTRAST_CUE.search(summary.claims[i].text)
+        if len(ids) != 1
+        or _CONTRAST_CUE.search(summary.claims[i].text)
+        or _mentions_any(summary.claims[i].text, rejected_forms)
     ]
     if ambiguous_idx:
         name_to_id = {
@@ -264,6 +285,12 @@ def group_by_entity(assignment: SummaryAssignment) -> list[EntityClaims]:
         EntityClaims(entity=assignment.entities[eid], claims=tuple(claims))
         for eid, claims in sorted(claims_by_entity.items())
     ]
+
+
+def _mentions_any(text: str, forms: list[str]) -> bool:
+    """Whether any of `forms` appears in `text` (word-boundary, case-insensitive —
+    the same counter match_claim uses)."""
+    return bool(forms) and count_mentions(forms[0], forms[1:], text) > 0
 
 
 def match_claim(text: str, surface_forms: dict[str, list[str]]) -> list[str]:

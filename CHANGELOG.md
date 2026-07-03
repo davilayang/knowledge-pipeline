@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Curator rejections now hold in the attributed wiki lane** — a rejected entity name (e.g. a junk/generic "agentic ai") no longer re-mints and re-earns a page once new claims mention it. Entity assignment drops any candidate on the `rejected_entities` denylist before resolution, so the reject sticks across sweeps; a claim that also named a rejected entity is routed to subject-attribution rather than silently collapsing onto the one remaining live mention.
+
 ---
 
 ## [0.30.1] — 2026-07-03

@@ -12,7 +12,7 @@ from datetime import UTC, datetime
 
 from domains.wiki.claims import ClaimSet, SourceClaim
 from domains.wiki.identity import Candidate, EntityRecord, normalize_name, slugify
-from domains.wiki.state import connection, insert_entity
+from domains.wiki.state import connection, insert_entity, upsert_rejected
 from workflows.wiki_synthesis.entity_assignment import (
     assign_from_stored,
     assign_summary,
@@ -41,6 +41,13 @@ def _seed_entity(db_path, name: str, *, entity_type: str = "concept") -> str:
                 ),
             )
     return entity_id
+
+
+def _seed_rejected(db_path, name: str) -> None:
+    """Tombstone `name` into rejected_entities as the curator's reject would."""
+    with connection(db_path) as conn:
+        with conn:
+            upsert_rejected(conn, normalized_name=normalize_name(name))
 
 
 def _candidates(*names: str) -> list[Candidate]:
@@ -299,6 +306,46 @@ def test_single_mention_with_contrast_cue_is_ambiguous(wiki_db_path):
     )
 
     assert result.assignments[1].entity_ids == (ms,)
+
+
+def test_rejected_candidate_is_not_minted_or_assigned(wiki_db_path):
+    # A candidate whose name is on the curator denylist is dropped before
+    # resolution — it must not re-mint an entity (or re-earn a page), and a claim
+    # only about it stays unassigned. Guards the re-entry loop reject_entity closes.
+    _seed_rejected(wiki_db_path, "Agentic AI")
+    sid = "https://medium.com/p/rejected"
+    summary = _summary(sid, SourceClaim(text="Agentic AI is the big trend.", source_id=sid))
+
+    result = assign_summary(summary, _candidates("Agentic AI"), db_path=wiki_db_path)
+
+    assert result.new_entities == ()  # nothing minted
+    assert result.entities == {}
+    assert result.assignments[0].entity_ids == ()  # unassigned
+
+
+def test_claim_surfacing_rejected_name_is_ambiguous_not_deterministic(wiki_db_path):
+    # "Agentic AI outpaced OpenAI" mentions a rejected candidate + one LIVE entity.
+    # Dropping the rejected candidate must NOT collapse this into a clean one-mention
+    # claim assigned to OpenAI — the rejected surface mention makes it ambiguous, so
+    # it goes to subject-attribution (which, declining here, leaves it unassigned)
+    # rather than mis-attributing to OpenAI.
+    _seed_rejected(wiki_db_path, "Agentic AI")
+    oa = _seed_entity(wiki_db_path, "OpenAI")
+    sid = "https://medium.com/p/mixed"
+    summary = _summary(sid, SourceClaim(text="Agentic AI outpaced OpenAI.", source_id=sid))
+
+    def subjects(texts, hints, candidates):
+        return [[]]  # mapper declines — the claim is about the rejected entity
+
+    result = assign_summary(
+        summary,
+        _candidates("Agentic AI", "OpenAI"),
+        db_path=wiki_db_path,
+        attribute_subjects=subjects,
+    )
+
+    assert oa not in result.assignments[0].entity_ids
+    assert result.assignments[0].entity_ids == ()
 
 
 def test_assign_from_stored_parses_docs_and_assigns(wiki_db_path):
