@@ -1,4 +1,4 @@
-"""wiki_synthesis assets — the wiki-write lane (queue.db docs → wiki.db → pages).
+"""synthesize_wiki assets — the wiki-write lane (queue.db docs → wiki.db → pages).
 
 Two assets, both serialized on the shared wiki-write pool (WIKI_WRITE_POOL) so
 synthesis never interleaves with the sync_wiki_curation writes to the same
@@ -22,11 +22,11 @@ import dagster as dg
 from workflows.wiki_synthesis.attributed_synthesis import render_entity_pages
 from workflows.wiki_synthesis.wiki_sweep import run_attribute_sweep
 
-from orchestrators.config import WIKI_SYNTHESIS_DAG_VERSION, WIKI_WRITE_POOL
+from orchestrators.config import SYNTHESIZE_WIKI_DAG_VERSION, WIKI_WRITE_POOL
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
 from orchestrators.defs.shared.resources import WikiResource
 
-GROUP_NAME = "wiki_synthesis"
+GROUP_NAME = "synthesize_wiki"
 
 # Wiki.db is single-writer; both assets carry the shared WIKI_WRITE_POOL op tag so
 # a synthesis write can never run concurrently with a curation write (or, on a
@@ -39,10 +39,10 @@ def _oneline(s: str) -> str:
 
 
 @dg.asset(
-    key=["wiki_synthesis", "attribute_claims"],
+    key=["synthesize_wiki", "attribute_claims"],
     group_name=GROUP_NAME,
     kinds={"sqlite"},
-    code_version=WIKI_SYNTHESIS_DAG_VERSION,
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     op_tags=_WIKI_WRITE_TAGS,
     description=_oneline(
         """
@@ -91,10 +91,10 @@ def attribute_claims(
 
 
 @dg.asset(
-    key=["wiki_synthesis", "render_pages"],
+    key=["synthesize_wiki", "render_pages"],
     group_name=GROUP_NAME,
     kinds={"sqlite", "file"},
-    code_version=WIKI_SYNTHESIS_DAG_VERSION,
+    code_version=SYNTHESIZE_WIKI_DAG_VERSION,
     op_tags=_WIKI_WRITE_TAGS,
     description=_oneline(
         """

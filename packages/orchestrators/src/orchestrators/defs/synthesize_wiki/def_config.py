@@ -1,4 +1,4 @@
-# Definition-time config for the wiki_synthesis pipeline.
+# Definition-time config for the synthesize_wiki pipeline.
 
 # Fire at 06:00 UTC — BEFORE the 07:00 sync_wiki_curation tick, so the daily
 # synthesis sweep lands in wiki.db before the curation push reads it. Both DAGs
@@ -9,6 +9,6 @@ SCHEDULE_CRON = "0 6 * * *"
 
 # Run-group tag for the synthesis job (UI filtering only — distinct from the
 # shared WIKI_WRITE_POOL concurrency key carried on the assets).
-JOB_TAG = "wiki-synthesis"
+JOB_TAG = "synthesize-wiki"
 
 JOB_MAX_RETRIES = "1"

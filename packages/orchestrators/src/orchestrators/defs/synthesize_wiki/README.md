@@ -1,4 +1,4 @@
-# wiki_synthesis
+# synthesize_wiki
 
 The wiki-write lane: turns `queue.db`'s stored extraction docs into `wiki.db`
 attributed claims and renders entity pages to `data/wiki/`. The DAG boundary is
@@ -10,9 +10,9 @@ rather than welded to the Notion-queue fetch path.
 ## DAG (daily sweep, unpartitioned)
 
 ```
-run_daily_wiki_synthesis  (cron 0 6 * * * — 06:00 UTC, before the 07:00 sync_wiki_curation tick)
+run_daily_synthesize_wiki  (cron 0 6 * * * — 06:00 UTC, before the 07:00 sync_wiki_curation tick)
         ▼
-wiki_synthesis_job
+synthesize_wiki_job
         │
         ▼
 attribute_claims  (sweep over every queue.db source with both an extract_claims and an
@@ -60,10 +60,10 @@ concurrent op (`concurrency.pools.granularity: op, default_limit: 1`).
 
 ```bash
 # Manually trigger the daily sweep (e.g. after a backfill or a re-extraction).
-dg launch --job wiki_synthesis
+dg launch --job synthesize_wiki
 
 # Force a full re-render regardless of the watermark: clear synthesized_at first,
 # then launch (each source will look new-or-changed).
 sqlite3 data/wiki.db "UPDATE sources SET synthesized_at = NULL;"
-dg launch --job wiki_synthesis
+dg launch --job synthesize_wiki
 ```

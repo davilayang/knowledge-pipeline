@@ -1,4 +1,4 @@
-# wiki_synthesis — the wiki-write lane carved out of fetch_extract_queue. The DAG
+# synthesize_wiki — the wiki-write lane carved out of fetch_extract_queue. The DAG
 # boundary is the store seam: everything that writes wiki.db lives here; the
 # queue.db + Notion path stays in fetch_extract_queue. See README.md.
 #
@@ -12,11 +12,11 @@ import dagster as dg
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
 
 from .assets import all_assets
-from .schedules import run_daily_wiki_synthesis, wiki_synthesis_job
+from .schedules import run_daily_synthesize_wiki, synthesize_wiki_job
 
 defs = dg.Definitions(
     assets=all_assets,
-    jobs=[wiki_synthesis_job],
-    schedules=[run_daily_wiki_synthesis],
+    jobs=[synthesize_wiki_job],
+    schedules=[run_daily_synthesize_wiki],
     resources={"queue_store": QueueStoreResource()},
 )
