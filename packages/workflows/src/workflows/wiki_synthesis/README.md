@@ -76,6 +76,7 @@ echoes accumulated metadata back into the body.
 |---|---|
 | `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, entity_type) |
 | `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); entity_type/slug/canonical_name read via join |
+| `_index/resolve.json` — alias→entity_id resolution + per-entity orientation (`name`, `type`, `file`, `num_sources`, `page_hash`); newsletter-assistant bridge sidecar; written last so it never points past an `.md` file already on disk | |
 | | `aliases` — entity name → id mapping (normalized_alias PK) |
 | | `processed_items` — per (item_id, source_type) completion markers |
 
@@ -134,8 +135,9 @@ entities + surface_forms    reuse an existing surrogate, else mint  (cross-path 
     ▼
 per claim:  match_claim (deterministic surface-form) → mentioned entities = HINT
     │
-    ├─ exactly 1 mention, no contrast cue → unambiguous ─► entity_ids  (no LLM)
-    └─ 0 or ≥2 mentions, or 1 mention + a contrast/dependency cue → ambiguous
+    ├─ exactly 1 mention, no contrast cue, no rejected-entity name in text → unambiguous ─► entity_ids  (no LLM)
+    └─ 0 or ≥2 mentions, or 1 mention + a contrast/dependency cue, or 1 mention + a
+         rejected-entity name surfaces in the text (dropped candidate hid a co-mention) → ambiguous
          attribute_subjects_llm (ONE closed call over the whole claim list,
          each claim + its mention hint) → true subject(s) from the candidates
          (demote a passing co-mention; resolve a pronoun) ─────► entity_ids
@@ -159,7 +161,7 @@ name or a descriptive phrase.
 | `extract_claims.py` | `extract_claims` — runs the extract-claims LLM call (gpt-4.1-mini, temperature=0) and returns a `ClaimSet` of `[reported]`/`[opinion]` tagged claims; content-shape-aware prior for spoken sources. Uses the shared-prefix layout (`extract_shared`) so its article read prompt-caches with `extract_entities` |
 | `extract_entities.py` | `extract_entities` — article-grounded entity candidate extractor: reads the raw article + its claims, returns `Candidate`s (no cap; salience classifies the tail), behind a prompt that drops chrome / example-data / code identifiers. The attributed lane's candidate source — wired as its own extract-time Dagster asset (`deps=extract_claims`), and its stored candidates are consumed by `assign_summary` (via `assign_from_stored`). `render_candidates` is the canonical `Name — type` inverse of `parse_entity_candidates` for the stored round-trip |
 | `extract_shared.py` | `shared_prefix_messages` — the `[system, article envelope, task]` message layout shared byte-identically by `extract_claims` + `extract_entities`, so the article is served from OpenAI's prefix cache on the second extract-time call |
-| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — resolve the article-grounded candidates against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); `group_by_entity` gives per-entity attributed claim sets with a salience flag. `assign_from_stored` is the storage bridge (parses the stored claims + candidate docs, then `assign_summary`) consumed by `attributed_synthesis.synthesize_source`. Persists nothing itself — persistence is in `attributed_persist` and `attributed_synthesis` |
+| `entity_assignment.py` | Attributed lane (see above): `assign_summary` maps a summary's claims to wiki entities — drops any candidate whose normalized name is on the curator denylist (`rejected_entities`) before resolution (so a rejected entity can't re-mint or re-earn a page), then resolves the surviving candidates against the LIVE wiki → deterministic `match_claim` as a hint → closed `attribute_subjects_llm` over ambiguous claims (subject, not mention); a claim that surfaces a rejected-entity name is also routed to the ambiguous path (its hidden co-mention would otherwise fake a clean single-mention assignment); `group_by_entity` gives per-entity attributed claim sets with a salience flag. `assign_from_stored` is the storage bridge (parses the stored claims + candidate docs, then `assign_summary`) consumed by `attributed_synthesis.synthesize_source`. Persists nothing itself — persistence is in `attributed_persist` and `attributed_synthesis` |
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
 | `attributed_persist.py` | `persist_source_assignment` — writes one source's attributed claims into wiki.db in the caller's transaction: upserts the source row, inserts minted entities, inserts each claim and its claim→entity links. Idempotent (ON CONFLICT DO NOTHING). Returns the surviving source_id |
