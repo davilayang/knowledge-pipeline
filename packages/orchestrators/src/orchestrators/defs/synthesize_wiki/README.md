@@ -24,10 +24,22 @@ attribute_claims  (sweep over every queue.db source with both an extract_claims 
         │          persisted count. Serialized on WIKI_WRITE_POOL.)
         ▼  (passes persisted count)
 render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources) from wiki.db to
-               data/wiki/{slug}-{shortid}.md. SKIPS entirely when the sweep changed nothing —
-               a no-op render would rewrite every page's updated_at and churn the downstream
-               curation push. Serialized on WIKI_WRITE_POOL.)
+        │      data/wiki/{slug}-{shortid}.md. SKIPS entirely when the sweep changed nothing —
+        │      a no-op render would rewrite every page's updated_at and churn the downstream
+        │      curation push. Serialized on WIKI_WRITE_POOL.)
+        ▼  (deps ordering only)
+build_index  (rebuild the whole-wiki index sidecars from wiki.db: data/wiki/_index/resolve.json
+              — alias→entity_id resolution + per-entity orientation {name,type,file,num_sources,
+              page_hash} for the newsletter-assistant bridge — and data/wiki/index.md — human TOC
+              grouped by live entity_type. Writes each file only when its content changed
+              (snapshot_id for resolve.json, byte-equality for index.md) and self-heals a missing
+              file, so it always runs (no empty-sweep gate). Serialized on WIKI_WRITE_POOL.)
 ```
+
+`build_index` reads `wiki.db` fresh (no value from `render_pages`; the dep is
+ordering only) and writes `resolve.json` **last** so a consumer never reads an
+alias/entity whose `.md` page isn't on disk yet. An alias collision (one
+lowercased key owned by two entity_ids) fails the asset.
 
 ## Incremental watermark
 
