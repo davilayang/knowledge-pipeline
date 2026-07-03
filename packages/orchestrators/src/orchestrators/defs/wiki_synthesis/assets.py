@@ -93,7 +93,7 @@ def attribute_claims(
 @dg.asset(
     key=["wiki_synthesis", "render_pages"],
     group_name=GROUP_NAME,
-    kinds={"sqlite"},
+    kinds={"sqlite", "file"},
     code_version=WIKI_SYNTHESIS_DAG_VERSION,
     op_tags=_WIKI_WRITE_TAGS,
     description=_oneline(
