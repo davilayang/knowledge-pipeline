@@ -1,8 +1,8 @@
 // wiki.db schema (SQLite STRICT) — ERD mirror of wiki.sql (same directory).
 //
 // Reflects the CURRENT schema after the raw-article synthesis path was retired:
-//   - identity + page shell: entities / pages / aliases / entity_relations /
-//     processed_items / rejected_entities
+//   - identity + page shell: entities / pages / aliases / processed_items /
+//     rejected_entities
 //   - attributed lane (claim-centric): sources / claims / claim_entities
 //
 // Enums below are TEXT + CHECK in SQLite (STRICT has no native enum); modelled
@@ -47,18 +47,8 @@ Table aliases {
   }
 }
 
-Table entity_relations {
-  entity_id         text [not null, ref: > entities.entity_id]
-  related_entity_id text [not null, ref: > entities.entity_id]
-  item_id           text [not null]
-  source_type       text [not null]
-  added_at          text [not null]
-  indexes {
-    (entity_id, related_entity_id, item_id, source_type) [pk]
-    entity_id [name: 'idx_entity_relations_entity_id']
-  }
-  Note: 'Co-occurrence ledger (item-keyed). The attributed lane does not write this yet (#118).'
-}
+// No co-occurrence table: the rendered `related` list is derived at read time
+// from claim_entities (get_related_for_entity), not stored as edges.
 
 Table processed_items {
   item_id      text [not null]

@@ -33,6 +33,7 @@ from domains.wiki.state import (
     get_all_entities,
     get_entity,
     get_page,
+    get_related_for_entity,
     upsert_page,
 )
 
@@ -143,12 +144,20 @@ def render_entity_pages(
                         delete_page(conn, entity_id)
                     (wiki_dir / existing.file_path).unlink(missing_ok=True)
                 continue
+            # Co-occurrence neighbours, derived from claim_entities (not a stored
+            # ledger). Rendered as names; a neighbour that no longer resolves is
+            # skipped. related_ids ride onto the pages row for the consumer bridge.
+            related_ids = get_related_for_entity(conn, entity_id)
+            related_names = [
+                r.canonical_name for rid in related_ids if (r := get_entity(conn, rid))
+            ]
             markdown = render_attributed_markdown(
                 entity=entity,
                 claims=claims,
                 aliases=get_aliases_for_entity(conn, entity_id),
                 num_sources=count_sources_for_entity(conn, entity_id),
                 updated_at=updated_at,
+                related=related_names,
             )
             filename = f"{entity.slug}-{shortid(entity.entity_id)}.md"
             path = wiki_dir / filename
@@ -157,6 +166,6 @@ def render_entity_pages(
             tmp.write_text(markdown, encoding="utf-8")
             os.replace(tmp, path)
             with conn:
-                upsert_page(conn, entity_id=entity_id, file_path=filename, related_ids=[])
+                upsert_page(conn, entity_id=entity_id, file_path=filename, related_ids=related_ids)
             written.append(entity_id)
     return written

@@ -65,27 +65,10 @@ CREATE TABLE IF NOT EXISTS aliases (
 
 CREATE INDEX IF NOT EXISTS idx_aliases_entity_id ON aliases (entity_id);
 
--- ---------------------------------------------------------------------------
--- entity_relations — accumulated entity↔entity co-occurrence edges (#54).
--- A pure LEDGER: one row per (directed edge, contributing content item). The
--- link strength `co_count` is DERIVED on read (COUNT(DISTINCT item_id)), so it's
--- retry-safe by construction (idempotent ON CONFLICT DO NOTHING, no counter to
--- double-bump).
--- entity_id/related_entity_id are graph NODES (both FK→entities); item_id/
--- source_type are the PROVENANCE (which article co-mentioned them), the repo's
--- stable (item_id, source_type) content identity. Edges are inserted in BOTH
--- directions, so get_related_for_entity reads one column.
--- ---------------------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS entity_relations (
-    entity_id         TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
-    related_entity_id TEXT NOT NULL REFERENCES entities (entity_id) ON DELETE CASCADE,
-    item_id           TEXT NOT NULL,
-    source_type       TEXT NOT NULL,
-    added_at          TEXT NOT NULL,                -- ISO-8601 UTC
-    PRIMARY KEY (entity_id, related_entity_id, item_id, source_type)
-) STRICT;
-
-CREATE INDEX IF NOT EXISTS idx_entity_relations_entity_id ON entity_relations (entity_id);
+-- Co-occurrence linking has no table: the rendered `related` list is DERIVED at
+-- read time from claim_entities (two entities co-occur when claimed within the
+-- same source), so there is no edge ledger to keep consistent — see
+-- get_related_for_entity in state.py.
 
 -- ---------------------------------------------------------------------------
 -- rejected_entities — the curator denylist (#15). AUTHORED, not regenerable:

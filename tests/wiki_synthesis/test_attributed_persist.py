@@ -18,6 +18,7 @@ from domains.wiki.attributed import (
 )
 from domains.wiki.claims import SourceClaim
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
+from domains.wiki.state import get_related_for_entity
 from workflows.wiki_synthesis.attributed_persist import persist_source_assignment
 from workflows.wiki_synthesis.entity_assignment import ClaimAssignment, SummaryAssignment
 
@@ -125,6 +126,42 @@ def test_persist_replaces_claims_on_reprocess(wiki_db):
 
     x_texts = {c.text for c in attributed_claims_for_entity(wiki_db, "e_x")}
     assert x_texts == {"A totally new claim about GraphRAG."}
+
+
+def _co_assignment(item_id, other_id, other_name) -> SummaryAssignment:
+    # One claim co-mentioning e_x and `other_id` → both link to this source, so they
+    # co-occur. Reused to re-persist the SAME source with a different second entity.
+    ex = _entity("e_x", "GraphRAG")
+    other = _entity(other_id, other_name)
+    c = SourceClaim(text=f"GraphRAG relates to {other_name}.", source_id=item_id)
+    return SummaryAssignment(
+        item_id=item_id,
+        assignments=(ClaimAssignment(claim=c, entity_ids=("e_x", other_id)),),
+        entities={"e_x": ex, other_id: other},
+        new_entities=(ex, other),
+    )
+
+
+def test_reextraction_updates_related_without_edge_upkeep(wiki_db):
+    # Co-occurrence is DERIVED from claim_entities, not stored: re-persisting a
+    # source with a changed entity set updates `related` on the next read, with no
+    # edge-maintenance code — claim replacement drops the stale link, the derived
+    # query reflects it. This is the whole argument for not materialising edges.
+    persist_source_assignment(
+        wiki_db,
+        assignment=_co_assignment("medium::u", "e_y", "Microsoft"),
+        source=_source("medium::u"),
+    )
+    wiki_db.commit()
+    assert get_related_for_entity(wiki_db, "e_x") == ["e_y"]
+
+    # Re-extract the SAME source, now co-mentioning e_z instead of e_y.
+    persist_source_assignment(
+        wiki_db, assignment=_co_assignment("medium::u", "e_z", "Neo4j"), source=_source("medium::u")
+    )
+    wiki_db.commit()
+    assert get_related_for_entity(wiki_db, "e_x") == ["e_z"]
+    assert get_related_for_entity(wiki_db, "e_y") == []  # stale co-occurrence gone
 
 
 def test_persist_writes_synthesized_at_watermark(wiki_db):

@@ -23,7 +23,7 @@ from domains.wiki.attributed import (
     upsert_source,
 )
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
-from domains.wiki.state import insert_entity
+from domains.wiki.state import get_related_for_entity, insert_entity
 
 NOW = "2026-07-02T00:00:00+00:00"
 
@@ -328,7 +328,81 @@ def test_count_sources_for_entity_unknown_is_zero(wiki_db):
     assert count_sources_for_entity(wiki_db, "e_missing") == 0
 
 
+# --- related (co-occurrence derived from claim_entities, not a stored ledger) ---
+
+
+def _link(conn, *, source_id, content_key, claim_id, entity_id, text):
+    """Seed one (source → claim → entity) link so co-occurrence can be derived."""
+    upsert_source(conn, _source(source_id=source_id, content_key=content_key))
+    insert_claim(conn, _claim(claim_id=claim_id, source_id=source_id, text=text))
+    insert_claim_entity(conn, claim_id=claim_id, entity_id=entity_id)
+
+
+def test_get_related_derives_co_occurrence_from_claim_entities(wiki_db):
+    # Two entities claimed within the SAME source co-occur → each lists the other.
+    # An entity that only appears in a DIFFERENT source shares no source → not related.
+    for eid, name in [("e_rag", "RAG"), ("e_llm", "LLM"), ("e_solo", "Solo")]:
+        _seed_entity(wiki_db, eid, name)
+    _link(
+        wiki_db, source_id="src_a", content_key="ka", claim_id="c1", entity_id="e_rag", text="one"
+    )
+    _link(
+        wiki_db, source_id="src_a", content_key="ka", claim_id="c2", entity_id="e_llm", text="two"
+    )
+    _link(wiki_db, source_id="src_b", content_key="kb", claim_id="c3", entity_id="e_solo", text="x")
+    wiki_db.commit()
+
+    assert get_related_for_entity(wiki_db, "e_rag") == ["e_llm"]
+    assert get_related_for_entity(wiki_db, "e_llm") == ["e_rag"]
+    assert get_related_for_entity(wiki_db, "e_solo") == []
+
+
+def test_get_related_ranks_by_distinct_source_count(wiki_db):
+    # Strength = COUNT(DISTINCT source) co-mentioning the pair. e_llm shares TWO
+    # sources with e_rag, e_chroma ONE → e_llm ranks first. Two claims about the
+    # same pair in one source count once (no claim fan-out). Ties break entity_id ASC.
+    for eid, name in [("e_rag", "RAG"), ("e_llm", "LLM"), ("e_chroma", "Chroma")]:
+        _seed_entity(wiki_db, eid, name)
+    # Source A: rag + llm co-mentioned (llm via two claims → still one source).
+    _link(wiki_db, source_id="sa", content_key="ka", claim_id="a1", entity_id="e_rag", text="1")
+    _link(wiki_db, source_id="sa", content_key="ka", claim_id="a2", entity_id="e_llm", text="2")
+    _link(wiki_db, source_id="sa", content_key="ka", claim_id="a3", entity_id="e_llm", text="3")
+    # Source B: rag + llm again → llm now shares 2 sources.
+    _link(wiki_db, source_id="sb", content_key="kb", claim_id="b1", entity_id="e_rag", text="4")
+    _link(wiki_db, source_id="sb", content_key="kb", claim_id="b2", entity_id="e_llm", text="5")
+    # Source C: rag + chroma → chroma shares 1 source.
+    _link(wiki_db, source_id="sc", content_key="kc", claim_id="c1", entity_id="e_rag", text="6")
+    _link(wiki_db, source_id="sc", content_key="kc", claim_id="c2", entity_id="e_chroma", text="7")
+    wiki_db.commit()
+
+    assert get_related_for_entity(wiki_db, "e_rag") == ["e_llm", "e_chroma"]
+    assert get_related_for_entity(wiki_db, "e_rag", limit=1) == ["e_llm"]
+
+
 # --- attributed page render (markdown) ---
+
+
+def test_render_attributed_markdown_includes_related():
+    # `related` renders as an inline list in the frontmatter (producer-authoritative,
+    # the co-occurring entity names get_related_for_entity derived).
+    md = render_attributed_markdown(
+        entity=_entity_record("e_x", "GraphRAG"),
+        claims=[
+            AttributedClaim(
+                text="c",
+                claim_kind="reported",
+                author=None,
+                publication=None,
+                published_at="2026-03-01",
+                url="https://ex.com/a",
+            )
+        ],
+        aliases=[],
+        num_sources=1,
+        updated_at="2026-07-03",
+        related=["Microsoft", "RAG"],
+    )
+    assert "related: [Microsoft, RAG]" in md
 
 
 def test_render_attributed_markdown_shape():
@@ -367,6 +441,7 @@ def test_render_attributed_markdown_shape():
         "title: GraphRAG\n"
         "entity_type: concept\n"
         "aliases: [Graph RAG]\n"
+        "related: []\n"
         "num_sources: 2\n"
         "updated_at: 2026-07-02\n"
         "---\n"

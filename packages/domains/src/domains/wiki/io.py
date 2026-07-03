@@ -54,7 +54,7 @@ def write_page(
     (sourced from the wiki.db state at write time), not LLM-supplied.
     `sources` is the accumulated distinct source ids for the entity (NOT
     page.sources, the single triggering [source_id]); `related` is the
-    accumulated co-occurrence neighbours from the entity_relations ledger (NOT
+    accumulated co-occurrence neighbours derived from claim_entities (NOT
     page.related, this article's siblings). The frontmatter key order is stable
     for diff-readability:
 
