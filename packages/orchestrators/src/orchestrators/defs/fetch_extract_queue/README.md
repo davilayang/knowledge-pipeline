@@ -35,24 +35,12 @@ fetch_content ──► extract_reading_card ──► publish_item
    │        │            → extraction_calls extract_claims row — attributed-lane wiki substrate)
    │        ▼
    │    extract_entities  (article-grounded candidates; shared prompt-cache prefix so the
-   │        │              article body is served from cache on this second extract-time call)
-   │        ▼
-   │    persist_attributed_claims  (serialized on the shared wiki-write pool (WIKI_WRITE_POOL) —
-   │                                assign-then-persist is not atomic under WAL; writes
-   │                                sources / claims / claim_entities into wiki.db)
+   │                       article body is served from cache on this second extract-time call
+   │                       → extraction_calls extract_entities row. The synthesize_wiki DAG
+   │                       reads these two docs later — this pipeline no longer writes wiki.db.)
    │
    └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
-
-render_attributed_pages_schedule  (cron 0 7 * * * — 07:00 daily, after 06:00 wiki-write window)
-  │
-  ▼
-render_attributed_pages_job  (unpartitioned — cannot join the partitioned job above)
-  │
-  ▼
-render_attributed_pages  (sweep: re-renders every entity's attributed page from ALL its
-                          claims in wiki.db; floor ≥2 claims OR ≥2 sources; writes
-                          {slug}-{shortid}.md; serialized on wiki-write pool)
 
 `fetch_content` calls the standalone `fetcher` service over dagster_network —
 POST `/v1/fetch` for normal URLs, or POST `/v1/structure` when the
@@ -66,12 +54,12 @@ extract_reading_card include `content_preview` / `narrative_preview` / `topic_ca
 metadata (head + tail of the content) for at-a-glance verification.
 ```
 
-Local stores: `data/queue.db` (SQLite) for fetch + extraction state (raw_content,
-extracted Topic Card, provenance, per-source claims + candidates); `data/wiki.db`
-(SQLite) for attributed-lane wiki state (`sources` / `claims` / `claim_entities`),
-written by `persist_attributed_claims` and `render_attributed_pages` via the
-`WikiWriteResource` (`wiki_write` resource key). Lifecycle status (Queued /
-Fetching / Ready / Failed) lives in Notion.
+Local store: `data/queue.db` (SQLite) for fetch + extraction state (raw_content,
+extracted Topic Card, provenance, per-source `extract_claims` + `extract_entities`
+docs). This pipeline no longer writes `data/wiki.db` — the wiki-write lane
+(attribute + render) moved to the `synthesize_wiki` DAG, which reads those two
+extraction docs on a daily sweep. Lifecycle status (Queued / Fetching / Ready /
+Failed) lives in Notion.
 
 URL→markdown is delegated to `services/fetcher/`. The asset enforces a
 500-char extraction floor as the last line of defence before extraction

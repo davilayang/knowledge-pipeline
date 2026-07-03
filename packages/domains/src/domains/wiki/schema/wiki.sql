@@ -134,7 +134,8 @@ CREATE TABLE IF NOT EXISTS sources (
     published_at  TEXT,                             -- publication date (ISO-8601) or NULL
     content_hash  TEXT,                             -- fetched-body hash — detect article change
     fetched_at    TEXT,                             -- ISO-8601 UTC (when the body was fetched)
-    added_at      TEXT NOT NULL                     -- ISO-8601 UTC (first sighting)
+    added_at      TEXT NOT NULL,                    -- ISO-8601 UTC (first sighting)
+    synthesized_at TEXT                             -- max(extracted_at) consumed by the last sweep; NULL = never synthesized (the incremental watermark)
 ) STRICT;
 
 -- ---------------------------------------------------------------------------

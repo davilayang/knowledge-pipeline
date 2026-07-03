@@ -11,8 +11,10 @@ from domains.wiki.attributed import (
     attributed_claims_for_entity,
     claim_text_hash,
     count_sources_for_entity,
+    delete_claims_for_source,
     get_claims_for_source,
     get_source,
+    get_synthesized_watermarks,
     insert_claim,
     insert_claim_entity,
     mint_claim_id,
@@ -101,6 +103,55 @@ def test_upsert_source_null_field_keeps_prior_value(wiki_db):
     assert survivor.author == "Real Author"
 
 
+# --- synthesized_at watermark (incremental sweep) ---
+
+
+def test_synthesized_watermark_roundtrips(wiki_db):
+    # The sweep records the max(extracted_at) it consumed as the source's
+    # synthesized_at watermark; the next sweep reads it back (keyed by content_key)
+    # to skip sources whose extraction docs haven't advanced.
+    upsert_source(wiki_db, _source(), synthesized_at="2026-07-02T10:00:00+00:00")
+    wiki_db.commit()
+    assert get_synthesized_watermarks(wiki_db) == {
+        "medium::https://example.com/a": "2026-07-02T10:00:00+00:00"
+    }
+
+
+def test_synthesized_watermark_advances_on_conflict(wiki_db):
+    # A re-processed source (same content_key, newer extraction docs) advances the
+    # watermark to the newer value.
+    upsert_source(wiki_db, _source(), synthesized_at="2026-07-02T10:00:00+00:00")
+    upsert_source(
+        wiki_db,
+        _source(source_id="src_reprocess"),
+        synthesized_at="2026-07-03T12:00:00+00:00",
+    )
+    wiki_db.commit()
+    assert get_synthesized_watermarks(wiki_db) == {
+        "medium::https://example.com/a": "2026-07-03T12:00:00+00:00"
+    }
+
+
+def test_synthesized_watermark_none_keeps_prior(wiki_db):
+    # A re-upsert that doesn't carry a watermark (e.g. the one-off backfill) must
+    # not wipe a watermark a prior sweep set — COALESCE keeps last-known-good.
+    upsert_source(wiki_db, _source(), synthesized_at="2026-07-02T10:00:00+00:00")
+    upsert_source(wiki_db, _source(source_id="src_backfill"))
+    wiki_db.commit()
+    assert get_synthesized_watermarks(wiki_db) == {
+        "medium::https://example.com/a": "2026-07-02T10:00:00+00:00"
+    }
+
+
+def test_synthesized_watermark_absent_source_excluded(wiki_db):
+    # A source never given a watermark (NULL synthesized_at) is absent from the
+    # map, not present with a None value — the sweep treats "no watermark" as
+    # "never synthesized" and processes it.
+    upsert_source(wiki_db, _source())
+    wiki_db.commit()
+    assert get_synthesized_watermarks(wiki_db) == {}
+
+
 # --- claims ---
 
 
@@ -136,6 +187,23 @@ def test_insert_claim_idempotent_on_source_and_text_hash(wiki_db):
     wiki_db.commit()
     claims = get_claims_for_source(wiki_db, "src_0000000000000001")
     assert [c.claim_id for c in claims] == ["clm_first"]
+
+
+def test_delete_claims_for_source_removes_all_and_cascades(wiki_db):
+    # A re-extracted source's claims are REPLACED, not merged: delete the source's
+    # existing claims (append-only UNIQUE(source_id, text_hash) would otherwise
+    # keep stale ones) before re-inserting. ON DELETE CASCADE prunes claim_entities.
+    _seed_entity(wiki_db, "e_x", "GraphRAG")
+    upsert_source(wiki_db, _source())
+    insert_claim(wiki_db, _claim(claim_id="clm_stale", text="stale claim"))
+    insert_claim_entity(wiki_db, claim_id="clm_stale", entity_id="e_x")
+    wiki_db.commit()
+
+    delete_claims_for_source(wiki_db, "src_0000000000000001")
+    wiki_db.commit()
+
+    assert get_claims_for_source(wiki_db, "src_0000000000000001") == []
+    assert attributed_claims_for_entity(wiki_db, "e_x") == []
 
 
 def test_insert_claim_returns_surviving_claim_id(wiki_db):

@@ -23,6 +23,7 @@ from domains.queue_store.sources import (
     get_content_shape,
     get_latest_extraction_calls,
     get_queue_extraction,
+    get_ready_extraction_docs,
     get_row,
     list_with_stale_extraction,
     record_candidates,
@@ -1020,6 +1021,55 @@ def test_get_all_claims_returns_latest_per_page(db_path: Path):
         ("p-1", "- [reported] New p1."),
         ("p-2", "- [opinion] Only p2."),
     ]
+
+
+def test_get_ready_extraction_docs_one_snapshot_docs_watermark_and_partial(db_path: Path):
+    # The sweep reads each ready source's docs AND their own max(extracted_at) from
+    # ONE connection snapshot, so the watermark can never advance past docs it
+    # didn't consume. A page with only one of the two kinds is "partial" (not
+    # ready). The topic_card 3-call extraction shares the table but must NOT count.
+    _seed_row(db_path, page_id="p-1")
+    _seed_row(db_path, page_id="p-2")
+    _record_three_call(db_path, page_id="p-1")  # topic_card etc. — excluded
+    record_claims(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="c",
+        prompt_label="extract_claims_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    record_candidates(
+        db_path=db_path,
+        notion_page_id="p-1",
+        output="e",
+        prompt_label="extract_entities_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    # p-2 has only claims (no entities) — partial, not ready.
+    record_claims(
+        db_path=db_path,
+        notion_page_id="p-2",
+        output="c2",
+        prompt_label="extract_claims_system_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-4.1-mini",
+        tokens_in=1,
+        tokens_out=1,
+    )
+
+    ready, partial = get_ready_extraction_docs(db_path=db_path)
+    latest = get_latest_extraction_calls(db_path=db_path, notion_page_id="p-1")
+    expected_wm = max(
+        latest["extract_claims"]["extracted_at"], latest["extract_entities"]["extracted_at"]
+    )
+    assert ready == {"p-1": ("c", "e", expected_wm)}
+    assert partial == ["p-2"]
 
 
 def test_extract_claims_coexists_with_topic_card_extraction(db_path: Path):

@@ -7,11 +7,6 @@ from typing import Any
 import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
-from workflows.wiki_synthesis.attributed_synthesis import (
-    build_source_record,
-    render_entity_pages,
-    synthesize_source,
-)
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
 from workflows.wiki_synthesis.extract_entities import render_candidates
@@ -22,19 +17,14 @@ from workflows.wiki_synthesis.prompts import (
     EXTRACT_SHARED_SYSTEM,
 )
 
-# The attributed-lane synthesis assets write wiki.db, so they serialize on the
-# SHARED wiki-write concurrency pool (WIKI_WRITE_POOL), NOT this pipeline's fetch
-# tag: assign-then-persist reads a live entity-index snapshot and then writes, a
-# sequence WAL does not make atomic — concurrent source partitions must not
-# interleave or they can both mint the same new entity.
-from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION, WIKI_WRITE_POOL
+from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 from .def_config import (
     PIPELINE_TAG,
     queue_items_partition_def,
 )
-from .resources import ExtractorRegistry, FetcherResource, WikiWriteResource
+from .resources import ExtractorRegistry, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
 
@@ -587,94 +577,13 @@ def extract_entities(
     )
 
 
-@dg.asset(
-    key=["fetch_extract_queue", "persist_attributed_claims"],
-    group_name=GROUP_NAME,
-    kinds={"sqlite"},
-    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
-    partitions_def=queue_items_partition_def,
-    op_tags={"dagster/concurrency_key": WIKI_WRITE_POOL},
-    deps=[extract_entities],
-    description=_oneline(
-        """
-        Persists one source's attributed claims into wiki.db: assigns its stored
-        claims to entities (resolved against the live wiki) and writes the source
-        + claims + claim→entity links. Reads the per-source claim + candidate docs
-        recorded by extract_claims / extract_entities. Serialized on the shared
-        wiki-write pool — the assign-then-persist cycle is not atomic under WAL.
-        Skips when no body, claims, or candidates row exists.
-        """
-    ),
-)
-def persist_attributed_claims(
-    context: dg.AssetExecutionContext,
-    store: QueueStoreResource,
-    wiki_write: WikiWriteResource,
-) -> dg.MaterializeResult:
-    page_id = context.partition_key
-    row = store.get_row(page_id)
-    claims_doc = store.get_claims(page_id) if row and row.get("raw_content") else None
-    candidates_doc = store.get_candidates(page_id) if claims_doc else None
-    if not row or not claims_doc or not candidates_doc:
-        return dg.MaterializeResult(metadata={"persist_skipped": dg.MetadataValue.bool(True)})
-
-    source = build_source_record(row)
-    source_id = synthesize_source(
-        claims_doc=claims_doc,
-        candidates_doc=candidates_doc,
-        source=source,
-        wiki_db_path=wiki_write.get_db_path(),
-    )
-    return dg.MaterializeResult(
-        metadata={
-            "source_id": dg.MetadataValue.text(source_id),
-            "content_key": dg.MetadataValue.text(source.content_key),
-            "summary": dg.MetadataValue.md(
-                f"Persisted attributed claims for `{source.content_key}`"
-            ),
-        }
-    )
-
-
-@dg.asset(
-    key=["fetch_extract_queue", "render_attributed_pages"],
-    group_name=GROUP_NAME,
-    kinds={"sqlite"},
-    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
-    op_tags={"dagster/concurrency_key": WIKI_WRITE_POOL},
-    description=_oneline(
-        """
-        Unpartitioned sweep: re-renders every entity's attributed page from ALL
-        its claims in wiki.db (a page aggregates across every source, so this runs
-        as a sweep, not per source) and writes `{slug}-{shortid}.md`. Idempotent.
-        Runs after the per-source persist ticks; serialized on the wiki-write pool.
-        """
-    ),
-)
-def render_attributed_pages(
-    context: dg.AssetExecutionContext,
-    wiki_write: WikiWriteResource,
-) -> dg.MaterializeResult:
-    written = render_entity_pages(
-        wiki_db_path=wiki_write.get_db_path(),
-        wiki_dir=wiki_write.get_wiki_dir(),
-    )
-    return dg.MaterializeResult(
-        metadata={
-            "pages_written": dg.MetadataValue.int(len(written)),
-            "summary": dg.MetadataValue.md(f"Rendered {len(written)} attributed pages"),
-        }
-    )
-
-
-# The partitioned per-source assets (feed the per-row fetch_extract_queue_job).
-# render_attributed_pages is unpartitioned, so it is registered + scheduled
-# separately (a partitioned asset job cannot include an unpartitioned asset).
+# The partitioned per-source assets feed the per-row fetch_extract_queue_job. The
+# wiki-write lane (persist + render) moved to the synthesize_wiki DAG — the store
+# seam: this pipeline writes queue.db + Notion only; wiki.db writes live there.
 all_assets = [
     fetch_content,
     extract_reading_card,
     publish_item,
     extract_claims,
     extract_entities,
-    persist_attributed_claims,
 ]

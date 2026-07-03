@@ -118,6 +118,35 @@ def test_render_entity_pages_skips_below_worthiness_floor(tmp_path, wiki_db_path
     assert not (wiki_dir.exists() and list(wiki_dir.glob("*.md")))
 
 
+def test_render_prunes_page_when_entity_drops_below_floor(tmp_path, wiki_db_path):
+    # Claim replacement can shrink an entity below the page-worthiness floor: a page
+    # built from 2 claims, then re-extracted down to 1, is no longer page-worthy.
+    # Render must DELETE the stale page (row + .md), not leave it behind.
+    wiki_dir = tmp_path / "wiki"
+    synthesize_source(
+        claims_doc=_CLAIMS_DOC_TWO,
+        candidates_doc=_CANDIDATES_DOC,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    assert render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+    assert list(wiki_dir.glob("*.md"))  # page written
+
+    # Re-extract with ONE claim (replacement) → 1 claim / 1 source → below floor.
+    synthesize_source(
+        claims_doc=_CLAIMS_DOC,
+        candidates_doc=_CANDIDATES_DOC,
+        source=_source(),
+        wiki_db_path=wiki_db_path,
+    )
+    render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    assert list(wiki_dir.glob("*.md")) == []
+    with connection(wiki_db_path) as conn:
+        ent = get_all_entities(conn)[0]
+        assert get_page(conn, ent.entity_id) is None
+
+
 def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
     synthesize_source(
         claims_doc=_CLAIMS_DOC_TWO,
