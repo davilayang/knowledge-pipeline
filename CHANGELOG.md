@@ -6,13 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.31.0] — 2026-07-03
+
 ### Added
 
-- **Wiki synthesis regains its `index.md` TOC and `_index/resolve.json` sidecar** — a new `build_index` asset in `synthesize_wiki` rebuilds both from `wiki.db` each tick, restoring the producer side of the newsletter-assistant wiki bridge (lost at the raw-path cutover). `resolve.json` maps every alias, canonical name, and entity_id (self-mapped) to its owning entity, plus per-entity orientation (`name`, `type`, `file`, `num_sources`, `page_hash`) and a whole-wiki `snapshot_id`, so the consumer can resolve a hook to a page and detect a torn read. `index.md` is a human TOC grouped by entity type. Both are written last and only when their content changed, and self-heal if deleted.
+- **Wiki synthesis regains its `index.md` TOC and `_index/resolve.json` sidecar** — a new `build_index` asset rebuilds both from `wiki.db` each tick, restoring the newsletter-assistant bridge. `resolve.json` maps aliases / canonical names / entity_ids (self-mapped) to entities with per-entity orientation (`file`, `num_sources`, `page_hash`) and a whole-wiki `snapshot_id`; `index.md` is a human TOC. Written last, only on change, self-healing.
 
-### Fixed
+### Changed
 
-- **Curator rejections now hold in the attributed wiki lane** — a rejected entity name (e.g. a junk/generic "agentic ai") no longer re-mints and re-earns a page once new claims mention it. Entity assignment drops any candidate on the `rejected_entities` denylist before resolution, so the reject sticks across sweeps; a claim that also named a rejected entity is routed to subject-attribution rather than silently collapsing onto the one remaining live mention.
+- **Curator rejections now hold in the attributed wiki lane** — a rejected entity name no longer re-mints and re-earns a page when new claims mention it. Entity assignment drops denylisted (`rejected_entities`) candidates before resolution; a claim also naming a rejected entity routes to subject-attribution instead of collapsing onto the lone live mention.
 
 ---
 

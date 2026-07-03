@@ -53,7 +53,7 @@ reflects only the current extraction (replace, not merge).
 
 ## Concurrency
 
-Both assets carry the shared `WIKI_WRITE_POOL` op tag (`config.WIKI_WRITE_POOL`,
+All three assets carry the shared `WIKI_WRITE_POOL` op tag (`config.WIKI_WRITE_POOL`,
 also bound by `sync_wiki_curation`'s ops) so a synthesis write never interleaves
 with a curation write against the single-writer `wiki.db`. Load-bearing: the
 serialization only holds because `configs/dagster.yaml` caps the pool at one
