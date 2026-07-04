@@ -1,11 +1,10 @@
-"""Tests for the `wiki-dedup-candidates` CLI orchestration (evals.wiki_dedup).
+"""Tests for the merge-candidate search (evals.wiki_dedup).
 
-`run_candidates` reads entities + claims from a wiki.db, embeds (injected fake
-here), and returns near-duplicate pairs. The OpenAI wiring is only reached via
-`main`, so these stay offline.
+`find_merge_candidates` is the pure numpy search; `run_candidates` reads entities +
+claims from a wiki.db and embeds (injected fake here). The OpenAI wiring
+(`openai_candidates`) is a thin wrapper only exercised for real, so these stay
+offline.
 """
-
-import json
 
 from domains.wiki.attributed import (
     ClaimRecord,
@@ -19,7 +18,7 @@ from domains.wiki.attributed import (
 from domains.wiki.dedup import EntityText
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import connection, insert_entity
-from evals.wiki_dedup import find_merge_candidates, pairs_to_json, run_candidates
+from evals.wiki_dedup import find_merge_candidates, run_candidates
 
 NOW = "2026-07-04T00:00:00+00:00"
 
@@ -100,8 +99,5 @@ def test_run_candidates_reads_db_and_surfaces_pairs(tmp_path, wiki_db_path):
 
     assert len(pairs) == 1
     assert {pairs[0].a.entity_id, pairs[0].b.entity_id} == {"e_a", "e_b"}
-
-    # JSON is emit-able for a judging session: both sides + score.
-    payload = json.loads(pairs_to_json(pairs))
-    assert payload[0]["a"]["name"] in {"Claude Max", "Max plan"}
-    assert payload[0]["score"] >= 0.8
+    assert pairs[0].a.canonical_name in {"Claude Max", "Max plan"}
+    assert pairs[0].score >= 0.8
