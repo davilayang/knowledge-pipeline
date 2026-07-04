@@ -1,9 +1,9 @@
-"""Tests for domains.wiki.dedup — the offline merge-candidate generator (#15).
+"""Tests for domains.wiki.dedup — the wiki.db reader for the dedup loop (#15).
 
-`find_merge_candidates` is pure over an injected embedder (a fake here).
 `load_entity_texts` reads each entity's name + top-N claim texts from wiki.db (the
-claim-centric embed source — there is no per-entity summary column). Uses the
-`wiki_db` fixture.
+claim-centric embed source — there is no per-entity summary column). The numeric
+pairwise-cosine search (`find_merge_candidates`) lives in `evals.wiki_dedup` (it
+needs numpy) and is tested there. Uses the `wiki_db` fixture.
 """
 
 from domains.wiki.attributed import (
@@ -15,34 +15,11 @@ from domains.wiki.attributed import (
     mint_claim_id,
     upsert_source,
 )
-from domains.wiki.dedup import EntityText, find_merge_candidates, load_entity_texts
+from domains.wiki.dedup import load_entity_texts
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import insert_entity
 
 NOW = "2026-07-04T00:00:00+00:00"
-
-
-def _fake_embed(texts: list[str]) -> list[list[float]]:
-    """Two families: anything about "Max" embeds to one axis, "Kubernetes" to the
-    other — so the two Max entities are near-duplicates and Kubernetes is far."""
-    return [[0.0, 1.0] if "Kubernetes" in t else [1.0, 0.0] for t in texts]
-
-
-def test_find_merge_candidates_surfaces_high_cosine_pairs_strongest_first():
-    items = [
-        EntityText("e_a", "Claude Max", "the top Anthropic subscription tier"),
-        EntityText("e_b", "Max plan", "Anthropic's highest paid plan"),
-        EntityText("e_c", "Kubernetes", "container orchestration"),
-    ]
-    pairs = find_merge_candidates(items, _fake_embed, threshold=0.8)
-
-    assert len(pairs) == 1  # only the two Max entities pair; Kubernetes is orthogonal
-    assert {pairs[0].a.entity_id, pairs[0].b.entity_id} == {"e_a", "e_b"}
-    assert pairs[0].score >= 0.8
-
-
-def test_find_merge_candidates_needs_two_items():
-    assert find_merge_candidates([EntityText("e_a", "Solo", "x")], _fake_embed) == []
 
 
 def _seed_entity(conn, entity_id, canonical):

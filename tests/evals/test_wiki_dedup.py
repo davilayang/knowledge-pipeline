@@ -16,15 +16,35 @@ from domains.wiki.attributed import (
     mint_claim_id,
     upsert_source,
 )
+from domains.wiki.dedup import EntityText
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import connection, insert_entity
-from evals.wiki_dedup import pairs_to_json, run_candidates
+from evals.wiki_dedup import find_merge_candidates, pairs_to_json, run_candidates
 
 NOW = "2026-07-04T00:00:00+00:00"
 
 
 def _fake_embed(texts: list[str]) -> list[list[float]]:
+    """Two families: "Max" entities embed to one axis, "Kubernetes" to the other
+    — so the two Max entities are near-duplicates and Kubernetes is far."""
     return [[0.0, 1.0] if "Kubernetes" in t else [1.0, 0.0] for t in texts]
+
+
+def test_find_merge_candidates_surfaces_high_cosine_pairs_strongest_first():
+    items = [
+        EntityText("e_a", "Claude Max", "the top Anthropic subscription tier"),
+        EntityText("e_b", "Max plan", "Anthropic's highest paid plan"),
+        EntityText("e_c", "Kubernetes", "container orchestration"),
+    ]
+    pairs = find_merge_candidates(items, _fake_embed, threshold=0.8)
+
+    assert len(pairs) == 1  # only the two Max entities pair; Kubernetes is orthogonal
+    assert {pairs[0].a.entity_id, pairs[0].b.entity_id} == {"e_a", "e_b"}
+    assert pairs[0].score >= 0.8
+
+
+def test_find_merge_candidates_needs_two_items():
+    assert find_merge_candidates([EntityText("e_a", "Solo", "x")], _fake_embed) == []
 
 
 def _seed(conn, entity_id, canonical, claim_text):

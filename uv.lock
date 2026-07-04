@@ -2125,6 +2125,7 @@ dependencies = [
     { name = "knowledge-domains" },
     { name = "knowledge-retrievers" },
     { name = "knowledge-workflows" },
+    { name = "numpy" },
     { name = "ragas" },
 ]
 
@@ -2134,6 +2135,7 @@ requires-dist = [
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "knowledge-workflows", editable = "packages/workflows" },
+    { name = "numpy", specifier = ">=1.26" },
     { name = "ragas", specifier = ">=0.2,<1.0" },
 ]
 

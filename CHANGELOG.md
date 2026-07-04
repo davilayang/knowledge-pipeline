@@ -9,7 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **Curated entity dedup (#15)** — new `wiki-merge` CLI folds a duplicate wiki entity into a survivor: one `merge_entities` transaction re-points `claim_entities` + `aliases` drop→keep, aliases the dropped name onto keep (so it can't re-mint), deletes the duplicate, and bumps keep's page. `--no-alias` keeps homonyms separate; `--backup` snapshots `wiki.db` first; `--dry-run` rolls back. Re-rendering the survivor is a separate post-batch `render_pages` sweep.
-- **Merge-candidate generator (#15)** — new `wiki-dedup-candidates` CLI embeds each entity's `name + top claim texts` and surfaces high-cosine near-duplicate pairs (default `text-embedding-3-small`, cosine ≥ 0.8) as JSON, the input to the human-gated CLUSTER → JUDGE → CONFIRM → MERGE loop. Catches diverge-names/converge-meaning dups (e.g. `Claude Max` ≡ `Max plan`) that the in-synthesis fuzzy matcher misses. Pure search in `domains.wiki.dedup`; OpenAI wiring in `evals.wiki_dedup`.
+- **Merge-candidate generator (#15)** — new `wiki-dedup-candidates` CLI embeds each entity's `name + top claim texts` and surfaces high-cosine near-duplicate pairs (default `text-embedding-3-small`, cosine ≥ 0.8) as JSON, the input to the human-gated CLUSTER → JUDGE → CONFIRM → MERGE loop. Catches diverge-names/converge-meaning dups (e.g. `Claude Max` ≡ `Max plan`) that the in-synthesis fuzzy matcher misses. wiki.db reader in `domains.wiki.dedup`; numpy-vectorised pairwise-cosine + OpenAI wiring in `evals.wiki_dedup` (full-matrix matmul — a pure-Python O(n²)×dims loop times out at prod scale, ~2.9k entities).
+
+### Changed
+
+- **`OpenAIEmbedder` now chunks embedding requests by item count (≤ 2048), not only by token budget.** OpenAI's `/embeddings` caps the input array at 2048 items regardless of tokens; a many-short-texts corpus (the ~2.9k wiki entities) overflowed in one request → HTTP 400. Fixes `wiki-dedup-candidates` on the full corpus.
 
 ---
 

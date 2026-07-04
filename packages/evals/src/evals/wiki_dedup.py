@@ -13,17 +13,53 @@ rehearse before prod.
       --embedding-model text-embedding-3-small --embedding-dims 1536 \\
       --top-n 5 --threshold 0.8 > candidates.json
 
-The pure search + the wiki reader live in `domains.wiki.dedup`; this module only
-adds the OpenAI wiring + the operator I/O (so `domains` stays embedding-free).
+The wiki.db reader lives in `domains.wiki.dedup` (dep-free); the numpy-vectorised
+pairwise-cosine search + the OpenAI wiring live here (so `domains` — the ML-dep-free
+foundation — carries neither numpy nor an embedding client).
 """
 
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
-from domains.wiki.dedup import CandidatePair, EmbedBatch, find_merge_candidates, load_entity_texts
+import numpy as np
+from domains.wiki.dedup import CandidatePair, EntityText, load_entity_texts
 from domains.wiki.state import connection
+
+EmbedBatch = Callable[[list[str]], list[list[float]]]
+
+
+def find_merge_candidates(
+    items: list[EntityText],
+    embed_batch: EmbedBatch,
+    *,
+    threshold: float = 0.8,
+) -> list[CandidatePair]:
+    """Embed `name + "\\n" + text` for each entity, then return every pair with
+    cosine similarity >= `threshold`, ranked `score DESC` (ties by entity_id for
+    determinism). Vectorised with numpy — the full pairwise cosine matrix is a
+    single matmul (a pure-Python O(n²)×dims loop times out at a few thousand
+    entities). High-recall by design; the human gates the proposals downstream."""
+    if len(items) < 2:
+        return []
+
+    texts = [f"{it.canonical_name}\n{it.text}" for it in items]
+    mat = np.asarray(embed_batch(texts), dtype=np.float32)
+    norms = np.linalg.norm(mat, axis=1, keepdims=True)
+    normed = mat / np.where(norms == 0.0, 1.0, norms)  # zero-vectors → score 0
+
+    sims = normed @ normed.T
+    ia, ib = np.triu_indices(len(items), k=1)  # upper triangle, no self-pairs
+    mask = sims[ia, ib] >= threshold
+
+    pairs = [
+        CandidatePair(a=items[i], b=items[j], score=float(sims[i, j]))
+        for i, j in zip(ia[mask].tolist(), ib[mask].tolist(), strict=True)
+    ]
+    pairs.sort(key=lambda p: (-p.score, p.a.entity_id, p.b.entity_id))
+    return pairs
 
 
 def run_candidates(

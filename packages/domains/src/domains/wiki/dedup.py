@@ -1,26 +1,17 @@
-"""Offline merge-candidate generator for the curated dedup loop (#15).
+"""Merge-candidate data + the wiki.db reader for the curated dedup loop (#15).
 
-The in-synthesis fuzzy matcher (difflib) structurally can't catch entities whose
-NAMES diverge but whose MEANING converges — e.g. `Claude Max` vs `Max plan`
-(difflib ratio 0.333). This module embeds `name + top claim texts` and surfaces
-pairs whose cosine similarity is high, as input to the CLUSTER → JUDGE → CONFIRM →
-MERGE session (the human gates every merge; this only proposes).
-
-`find_merge_candidates` is pure over an injected `embed_batch` callable
-(`list[str] -> list[list[float]]`) — so `domains` stays free of any embedding
-dependency and the algorithm is testable with a fake. The OpenAI wiring lives in
-the `wiki-dedup-candidates` CLI (in `evals`, which may depend on `retrievers`).
+`load_entity_texts` builds the `EntityText` list (name + top claim texts) the
+candidate search embeds. The numeric pairwise-cosine search itself lives in
+`evals.wiki_dedup` (it needs numpy, which `domains` — the ML-dep-free foundation —
+must not carry). This module holds only the pure sqlite reader + the two records
+so the search in `evals` can type against them.
 """
 
-import math
 import sqlite3
-from collections.abc import Callable
 from dataclasses import dataclass
 
 from domains.wiki.attributed import attributed_claims_for_entity
 from domains.wiki.state import get_all_entities
-
-EmbedBatch = Callable[[list[str]], list[list[float]]]
 
 
 @dataclass(frozen=True)
@@ -41,39 +32,6 @@ class CandidatePair:
     a: EntityText
     b: EntityText
     score: float
-
-
-def _normalize(vec: list[float]) -> list[float]:
-    norm = math.sqrt(sum(x * x for x in vec))
-    if norm == 0.0:
-        return vec
-    return [x / norm for x in vec]
-
-
-def find_merge_candidates(
-    items: list[EntityText],
-    embed_batch: EmbedBatch,
-    *,
-    threshold: float = 0.8,
-) -> list[CandidatePair]:
-    """Embed `name + "\\n" + text` for each entity, then return every pair with
-    cosine similarity >= `threshold`, ranked `score DESC` (ties by entity_id for
-    determinism). High-recall by design — the human gates the proposals."""
-    if len(items) < 2:
-        return []
-
-    texts = [f"{it.canonical_name}\n{it.text}" for it in items]
-    normed = [_normalize(v) for v in embed_batch(texts)]
-
-    pairs: list[CandidatePair] = []
-    for i in range(len(items)):
-        for j in range(i + 1, len(items)):
-            score = sum(a * b for a, b in zip(normed[i], normed[j], strict=True))
-            if score >= threshold:
-                pairs.append(CandidatePair(a=items[i], b=items[j], score=score))
-
-    pairs.sort(key=lambda p: (-p.score, p.a.entity_id, p.b.entity_id))
-    return pairs
 
 
 def load_entity_texts(conn: sqlite3.Connection, *, top_n: int = 5) -> list[EntityText]:
