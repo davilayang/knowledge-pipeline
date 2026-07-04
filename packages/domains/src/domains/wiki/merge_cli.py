@@ -10,14 +10,24 @@ deletes). Re-rendering the survivor is a SEPARATE post-batch ``render_pages``
 sweep — NOT done here, because a merge touches no source watermark, so the
 scheduled incremental sweep won't redraw keep on its own.
 
-Runs in-cluster (where wiki.db AND the wiki/ files live):
+The real merge EXECUTES server-side (the live wiki.db + .md are in the
+``dagster-code`` container; SQLite is not a network server, so it can't be driven
+against prod over the wire). Drive it from the laptop, run it in-cluster:
 
-    uv run wiki-merge --db data/wiki.db --wiki-dir data/wiki \\
-        --keep e_<survivor> --drop e_<dup> [--no-alias] [--backup]
+    # for real — driven from the laptop, runs in the container against the live files:
+    ssh hcloud
+    docker exec -it dagster-code \\
+        uv run wiki-merge --db /app/data/wiki.db --wiki-dir /app/data/wiki \\
+            --keep e_<survivor> --drop e_<dup> [--no-alias] --backup
+
+    # rehearse first — read-only, on a pulled COPY on the laptop (mutates nothing):
+    uv run wiki-merge --db /tmp/wiki-prod.db --wiki-dir /tmp/wiki \\
+        --keep e_<survivor> --drop e_<dup> --dry-run
 
 ``--dry-run`` reports the plan and rolls back. ``--no-alias`` keeps two homonyms
-separate (drop's name mints fresh next time). NEVER run against prod during the
-synthesis window — SQLite is single-writer.
+separate (drop's name mints fresh next time). NEVER run the live merge during the
+synthesis window — SQLite is single-writer; pause the ``synthesize_wiki`` schedule
+for the batch.
 
 Atomicity is DB-only: the txn commits BEFORE the `.md` unlink. A crash between
 leaves an orphaned `.md` (harmless — the entity is gone from the DB; `rm` it).
