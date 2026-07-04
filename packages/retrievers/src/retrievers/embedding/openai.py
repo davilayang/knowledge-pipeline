@@ -25,6 +25,11 @@ _TRANSIENT_OPENAI_ERRORS = (RateLimitError, APIConnectionError, InternalServerEr
 # estimator and the real BPE count.
 _MAX_TOKENS_PER_REQUEST = 250_000
 
+# `/embeddings` also caps the input ARRAY at 2048 items, independent of the token
+# budget. Many short texts (a wiki entity corpus) stay under the token cap but
+# blow past 2048 items in one request → HTTP 400. Chunk on both limits.
+_MAX_ITEMS_PER_REQUEST = 2048
+
 
 def _estimate_tokens(text: str) -> int:
     # Approximate 4 chars/token — fine as a budget guard, not a billing oracle.
@@ -102,7 +107,9 @@ class OpenAIEmbedder:
         cur_tokens = 0
         for t in texts:
             est = _estimate_tokens(t)
-            if cur and cur_tokens + est > _MAX_TOKENS_PER_REQUEST:
+            over_tokens = cur_tokens + est > _MAX_TOKENS_PER_REQUEST
+            over_items = len(cur) >= _MAX_ITEMS_PER_REQUEST
+            if cur and (over_tokens or over_items):
                 batches.append(cur)
                 cur, cur_tokens = [], 0
             cur.append(t)

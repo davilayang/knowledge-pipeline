@@ -125,3 +125,11 @@ class TestOpenAICompatible:
         embedder, _ = _build_embedder([resp])
         with pytest.raises(ValueError, match="index"):
             embedder.embed_batch(["a", "b"])
+
+    def test_sub_batches_caps_item_count(self):
+        # OpenAI's /embeddings rejects an input array longer than 2048 items,
+        # independent of the token budget. Many short texts (a wiki corpus) stay
+        # well under the token cap but can exceed 2048 items in one request.
+        batches = OpenAIEmbedder._sub_batches(["x"] * 5000)
+        assert all(len(b) <= 2048 for b in batches)
+        assert sum(len(b) for b in batches) == 5000  # nothing dropped
