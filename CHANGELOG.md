@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Curated entity dedup (#15)** — new `wiki-merge` CLI folds a duplicate wiki entity into a survivor: one `merge_entities` transaction re-points `claim_entities` + `aliases` drop→keep, aliases the dropped name onto keep (so it can't re-mint), deletes the duplicate, and bumps keep's page. `--no-alias` keeps homonyms separate; `--backup` snapshots `wiki.db` first; `--dry-run` rolls back. Re-rendering the survivor is a separate post-batch `render_pages` sweep.
+- **Merge-candidate generator (#15)** — new `wiki-dedup-candidates` CLI embeds each entity's `name + top claim texts` and surfaces high-cosine near-duplicate pairs (default `text-embedding-3-small`, cosine ≥ 0.8) as JSON, the input to the human-gated CLUSTER → JUDGE → CONFIRM → MERGE loop. Catches diverge-names/converge-meaning dups (e.g. `Claude Max` ≡ `Max plan`) that the in-synthesis fuzzy matcher misses. Pure search in `domains.wiki.dedup`; OpenAI wiring in `evals.wiki_dedup`.
+
 ---
 
 ## [0.31.1] — 2026-07-04

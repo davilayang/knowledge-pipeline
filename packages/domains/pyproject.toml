@@ -12,6 +12,7 @@ dependencies = [
 
 [project.scripts]
 wiki-reject = "domains.wiki.reject_cli:main"
+wiki-merge = "domains.wiki.merge_cli:main"
 
 [build-system]
 requires = ["hatchling"]
