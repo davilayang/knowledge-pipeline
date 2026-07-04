@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.31.1] — 2026-07-04
+
 ### Added
 
 - **One-shot extraction backfill** (`scripts/backfill_extraction_from_queue.py`) — re-runs the attributed-lane `extract_claims` + `extract_entities` over `queue.db` rows fetched before those assets existed, so they gain the docs the wiki sweep needs. Bypasses Dagster (the sensor only reprocesses Status=Fetching rows and old partitions are unregistered); calls the same extract functions, records identical `extraction_calls` rows. Dry-run by default; `--apply` to write.
