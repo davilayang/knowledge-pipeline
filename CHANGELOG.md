@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`distill.db` storage layer (`domains.distill_store`)** — the durable schema for distilled session memory: `session_digest` (one summary per session), `user_generation` (the user's own paraphrase/judgment/connection/open-question, `verbatim_user_text` stored unsmoothed + string `entity_mention` resolved later by wiki, so no wiki.db dependency), and `project_open_loops` (self/project-anchored unresolved apply-intents). Round-trip helpers `upsert_session_digest` / `insert_user_generation` / `insert_project_open_loop` + session-scoped getters. Schema only — the extractor prompt + DAG wiring land once NA's generation-elicitation change ships and production yields richer data.
+
 ---
 
 ## [0.31.2] — 2026-07-04
