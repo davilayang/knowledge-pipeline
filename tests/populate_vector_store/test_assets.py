@@ -48,9 +48,19 @@ class _StubCollection:
 
     def delete(self, where=None):
         self.delete_calls.append({"where": where})
-        cid = (where or {}).get("content_id")
-        self._ids = [i for i in self._ids if not i.startswith(f"{cid}::chunk-")]
-        self._metas = {i: m for i, m in self._metas.items() if not i.startswith(f"{cid}::chunk-")}
+
+        def _matches(chunk_id: str, meta: dict) -> bool:
+            for clause in (where or {}).get("$or", [where or {}]):
+                if "content_id" in clause and chunk_id.startswith(
+                    f"{clause['content_id']}::chunk-"
+                ):
+                    return True
+                if "source_ref" in clause and meta.get("source_ref") == clause["source_ref"]:
+                    return True
+            return False
+
+        self._ids = [i for i in self._ids if not _matches(i, self._metas.get(i, {}))]
+        self._metas = {i: m for i, m in self._metas.items() if i in set(self._ids)}
 
     def upsert(self, ids, documents, embeddings, metadatas):
         self.upsert_calls.append(
@@ -370,7 +380,9 @@ def test_ingest_body_shrink_deletes_stale_chunks():
             ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
         )
 
-    assert raw_collection.delete_calls == [{"where": {"content_id": "a"}}]
+    assert raw_collection.delete_calls == [
+        {"where": {"$or": [{"content_id": "a"}, {"source_ref": "raw_store:a"}]}}
+    ]
     assert raw_collection.upsert_calls[0]["ids"] == ["a::chunk-0"]
     # Verify the old chunks 1 and 2 are gone post-delete; only the freshly-upserted chunk-0 remains.
     assert raw_collection._ids == ["a::chunk-0"]
@@ -523,6 +535,69 @@ def test_briefings_ingest_upserts_to_briefings_collection():
     # notes-clone: no wiki-style provenance keys.
     assert "num_sources" not in call["metadatas"][0]
     assert "page_hash" not in call["metadatas"][0]
+
+
+def test_briefings_reingest_after_edit_deletes_prior_hash_chunks():
+    """Editing a brief mints a new content-hash item_id but keeps its filename
+    (stable source_ref). Re-ingest must remove the old-hash chunks for the same
+    source_ref, or the edited brief stays retrievable on text it no longer
+    contains."""
+    edited = IngestItem(
+        item_id="new-hash",
+        title="brief",
+        date=date(2026, 7, 6),
+        text="new body",
+        source_type="local_file",
+        source_ref="local:brief.md",
+    )
+    sources = _StubSources(briefs=_StubSource([edited]))
+    briefs_collection = _StubCollection(
+        existing_ids=["old-hash::chunk-0"],
+        existing_metas={
+            "old-hash::chunk-0": {"content_id": "old-hash", "source_ref": "local:brief.md"}
+        },
+    )
+    vector_store = _StubVectorStore({"briefings": briefs_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        briefings.op.compute_fn.decorated_fn(
+            ctx, pending={"briefs": ["new-hash"]}, sources=sources, vector_store=vector_store
+        )
+
+    assert "old-hash::chunk-0" not in briefs_collection._ids
+    assert "new-hash::chunk-0" in briefs_collection._ids
+
+
+def test_briefings_reingest_after_edit_to_empty_deletes_prior_hash_chunks():
+    """A brief edited down to empty text produces no chunks — the no-chunks
+    path must still remove the old-hash chunks for the same source_ref."""
+    emptied = IngestItem(
+        item_id="new-hash",
+        title="brief",
+        date=date(2026, 7, 6),
+        text="",
+        source_type="local_file",
+        source_ref="local:brief.md",
+    )
+    sources = _StubSources(briefs=_StubSource([emptied]))
+    briefs_collection = _StubCollection(
+        existing_ids=["old-hash::chunk-0"],
+        existing_metas={
+            "old-hash::chunk-0": {"content_id": "old-hash", "source_ref": "local:brief.md"}
+        },
+    )
+    vector_store = _StubVectorStore({"briefings": briefs_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        briefings.op.compute_fn.decorated_fn(
+            ctx, pending={"briefs": ["new-hash"]}, sources=sources, vector_store=vector_store
+        )
+
+    assert briefs_collection._ids == []
 
 
 # ------------------------------------------------------------------

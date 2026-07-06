@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.32.1] — 2026-07-06
+
+### Changed
+
+- **Edited notes and briefs no longer return stale text from before the edit.** Local-file lanes hash content into `content_id`, so an edit minted a new id while the pre-upsert delete only matched the new one — old-hash chunks lingered. The delete in `_process_item` now also matches the stable `source_ref` (`local:{filename}`) via `_delete_where`, purging prior-hash chunks on re-ingest.
+
+---
+
 ## [0.32.0] — 2026-07-06
 
 ### Added
