@@ -2,10 +2,13 @@
 ``sessions.db``.
 
 Schema lock — scope: only the tables this reader consumes
-(``sessions`` + ``turns``). The same DB also holds ``tool_calls``,
+(``sessions`` + ``events``). The same DB also holds the legacy ``turns``
+table (kept alive by newsletter-assistant's dual-write) plus ``tool_calls``,
 ``llm_events``, ``facts``, ``facts_history`` and ``lens_log`` (writer-side,
 see ``newsletter-assistant`` ``session_store.py``); their schema is
-irrelevant here and intentionally not pinned.
+irrelevant here and intentionally not pinned. ``turns`` is deliberately not
+read — it is unfiltered (tool_call / tool rows interleaved) and legacy;
+``events`` is the canonical stream and lets us drop the tool machinery.
 
 Schema lock (newsletter-assistant ``packages/knowledge/src/knowledge/session_store.py``):
 
@@ -18,16 +21,21 @@ Schema lock (newsletter-assistant ``packages/knowledge/src/knowledge/session_sto
         model_config_hash         TEXT
     )
 
-    turns(
+    events(
         id            INTEGER PRIMARY KEY AUTOINCREMENT,
         session_id    TEXT NOT NULL REFERENCES sessions(session_id),
-        role          TEXT NOT NULL,              -- 'user' | 'assistant'
-        content       TEXT NOT NULL,
-        timestamp     TIMESTAMP NOT NULL          -- ISO 8601 UTC
+        seq           INTEGER NOT NULL,           -- per-session ordering
+        timestamp     TEXT NOT NULL,              -- ISO 8601 UTC
+        type          TEXT NOT NULL,              -- user_msg|assistant_msg|tool_call|tool_result
+        content       TEXT,
+        tool_call_ref INTEGER,                    -- unused here
+        group_id      TEXT                        -- unused here
     )
 
-Connection runs in WAL mode (asserted on connect). Completion gate is
-``WHERE ended_at IS NOT NULL`` — we never index a live session.
+Only ``user_msg`` / ``assistant_msg`` events are indexed; ``tool_call`` /
+``tool_result`` are excluded. Connection runs in WAL mode (asserted on
+connect). Completion gate is ``WHERE ended_at IS NOT NULL`` — we never index
+a live session.
 """
 
 import sqlite3
@@ -53,9 +61,7 @@ class SessionsSource:
         """Session IDs of all ended sessions, oldest first."""
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT session_id FROM sessions "
-                "WHERE ended_at IS NOT NULL "
-                "ORDER BY started_at"
+                "SELECT session_id FROM sessions WHERE ended_at IS NOT NULL ORDER BY started_at"
             ).fetchall()
         return [r["session_id"] for r in rows]
 
@@ -68,8 +74,17 @@ class SessionsSource:
             ).fetchone()
             if session is None:
                 return None
+            # Read the canonical ``events`` stream, not the legacy ``turns``
+            # table. Filter to the two dialogue event types — tool_call /
+            # tool_result events are agent machinery (raw tool JSON, fetched
+            # payloads that already live in the ``contents`` collection) and
+            # would pollute recall. Map the event ``type`` back to the ``role``
+            # the turn serializer expects.
             turns = conn.execute(
-                "SELECT role, content, timestamp FROM turns " "WHERE session_id = ? ORDER BY id",
+                "SELECT CASE type WHEN 'user_msg' THEN 'user' ELSE 'assistant' END AS role, "
+                "content, timestamp FROM events "
+                "WHERE session_id = ? AND type IN ('user_msg', 'assistant_msg') "
+                "ORDER BY seq",
                 (item_id,),
             ).fetchall()
         return _to_item(session, turns)

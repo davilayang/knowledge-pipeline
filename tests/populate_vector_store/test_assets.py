@@ -17,29 +17,39 @@ from orchestrators.defs.populate_vector_store.assets import (
     contents,
     conversations,
     pending,
+    wiki,
 )
 
 
 class _StubCollection:
     """In-memory Chroma collection — tracks delete + upsert calls."""
 
-    def __init__(self, existing_ids: list[str] | None = None):
+    def __init__(
+        self,
+        existing_ids: list[str] | None = None,
+        existing_metas: dict[str, dict] | None = None,
+    ):
         self._ids: list[str] = list(existing_ids or [])
         self._docs: dict[str, str] = {}
+        self._metas: dict[str, dict] = dict(existing_metas or {})
         self.delete_calls: list[dict] = []
         self.upsert_calls: list[dict] = []
         self.get_calls: list[dict] = []
 
     def get(self, where=None, include=None):
-        self.get_calls.append({"where": where})
+        self.get_calls.append({"where": where, "include": include})
         in_ids = (where or {}).get("content_id", {}).get("$in", [])
         matched = [cid for cid in self._ids if any(cid.startswith(f"{i}::chunk-") for i in in_ids)]
-        return {"ids": matched}
+        result = {"ids": matched}
+        if include and "metadatas" in include:
+            result["metadatas"] = [self._metas.get(cid, {}) for cid in matched]
+        return result
 
     def delete(self, where=None):
         self.delete_calls.append({"where": where})
         cid = (where or {}).get("content_id")
         self._ids = [i for i in self._ids if not i.startswith(f"{cid}::chunk-")]
+        self._metas = {i: m for i, m in self._metas.items() if not i.startswith(f"{cid}::chunk-")}
 
     def upsert(self, ids, documents, embeddings, metadatas):
         self.upsert_calls.append(
@@ -50,9 +60,10 @@ class _StubCollection:
                 "metadatas": list(metadatas),
             }
         )
-        for i, d in zip(ids, documents):
+        for i, d, m in zip(ids, documents, metadatas):
             self._ids.append(i)
             self._docs[i] = d
+            self._metas[i] = m
 
 
 class _StubVectorStore:
@@ -71,10 +82,12 @@ class _StubSources:
         raw_store=None,
         notes=None,
         sessions=None,
+        wiki=None,
     ):
         self._raw_store = raw_store or _StubSource()
         self._notes = notes or _StubSource()
         self._sessions = sessions or _StubSource()
+        self._wiki = wiki or _StubSource()
 
     def raw_store(self):
         return self._raw_store
@@ -85,17 +98,28 @@ class _StubSources:
     def sessions(self):
         return self._sessions
 
+    def wiki(self):
+        return self._wiki
+
 
 class _StubSource:
-    def __init__(self, items: list[IngestItem] | None = None):
+    def __init__(
+        self,
+        items: list[IngestItem] | None = None,
+        resolve_index: dict[str, dict] | None = None,
+    ):
         self._items = items or []
         self._by_id = {i.item_id: i for i in self._items}
+        self._resolve_index = resolve_index or {}
 
     def get_item_ids(self) -> list[str]:
         return [i.item_id for i in self._items]
 
     def get_item(self, iid):
         return self._by_id.get(iid)
+
+    def resolve_index(self) -> dict[str, dict]:
+        return self._resolve_index
 
 
 def _item(iid: str, text: str = "hello world", source_type: str = "raw_store") -> IngestItem:
@@ -187,7 +211,46 @@ def test_pending_zero_items_in_source_short_circuits():
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
 
-    assert result.value == {"raw_store": [], "notes": [], "sessions": []}
+    assert result.value == {"raw_store": [], "notes": [], "sessions": [], "wiki": []}
+
+
+def test_pending_relists_wiki_entity_with_changed_page_hash():
+    """Wiki pages are rewritten daily but keep their entity_id, so a bare
+    existence check would never re-embed a changed page (FM1b). An indexed entity
+    whose live page_hash (resolve.json) differs from the stored one must re-list."""
+    item = _wiki_item("e_a", num_sources=1)
+    wiki_collection = _StubCollection(
+        existing_ids=["e_a::chunk-0"],
+        existing_metas={"e_a::chunk-0": {"page_hash": "old-hash"}},
+    )
+    vector_store = _StubVectorStore({"wiki": wiki_collection})
+    resolve = {"e_a": {"page_hash": "new-hash", "snapshot_id": "snap-2"}}
+    sources = _StubSources(wiki=_StubSource([item], resolve_index=resolve))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    with patch.object(pvs_assets, "MAX_PER_TICK_DEFAULT", 50):
+        result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+
+    assert result.value["wiki"] == ["e_a"]
+
+
+def test_pending_skips_wiki_entity_with_unchanged_page_hash():
+    """An indexed wiki entity whose live page_hash matches the stored one is
+    up-to-date — it must not be re-listed (no needless re-embed cost)."""
+    item = _wiki_item("e_a", num_sources=1)
+    wiki_collection = _StubCollection(
+        existing_ids=["e_a::chunk-0"],
+        existing_metas={"e_a::chunk-0": {"page_hash": "same-hash"}},
+    )
+    vector_store = _StubVectorStore({"wiki": wiki_collection})
+    resolve = {"e_a": {"page_hash": "same-hash", "snapshot_id": "snap-1"}}
+    sources = _StubSources(wiki=_StubSource([item], resolve_index=resolve))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    with patch.object(pvs_assets, "MAX_PER_TICK_DEFAULT", 50):
+        result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+
+    assert result.value["wiki"] == []
 
 
 # ------------------------------------------------------------------
@@ -336,12 +399,98 @@ def test_ingest_raises_on_per_item_failure():
 
 
 # ------------------------------------------------------------------
+# wiki provenance metadata (FM2/FM4)
+# ------------------------------------------------------------------
+
+
+def _wiki_item(iid: str, *, num_sources: int, text: str = "An entity summary.") -> IngestItem:
+    return IngestItem(
+        item_id=iid,
+        title=f"title-{iid}",
+        date=date(2026, 6, 20),
+        text=text,
+        source_type="wiki",
+        source_ref=f"wiki:{iid}",
+        num_sources=num_sources,
+    )
+
+
+def test_wiki_ingest_stamps_provenance_metadata():
+    """A wiki vector carries num_sources (FM4 single-source hedge) plus the
+    page_hash + snapshot_id (FM2 staleness) that NA needs to detect a stale hit.
+    All three come from resolve.json via the resolve_index side-input — the
+    single provenance authority — not the page frontmatter."""
+    item = _wiki_item("e_a", num_sources=3)
+    resolve = {"e_a": {"page_hash": "hash-a", "snapshot_id": "snap-1", "num_sources": 3}}
+    sources = _StubSources(wiki=_StubSource([item], resolve_index=resolve))
+    wiki_collection = _StubCollection()
+    vector_store = _StubVectorStore({"wiki": wiki_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        wiki.op.compute_fn.decorated_fn(
+            ctx, pending={"wiki": ["e_a"]}, sources=sources, vector_store=vector_store
+        )
+
+    md = wiki_collection.upsert_calls[0]["metadatas"][0]
+    assert md["content_id"] == "e_a"
+    assert md["num_sources"] == 3
+    assert md["page_hash"] == "hash-a"
+    assert md["snapshot_id"] == "snap-1"
+
+
+def test_wiki_ingest_fails_fast_when_provenance_missing():
+    """A pending wiki entity absent from resolve.json (or missing a provenance
+    field) means resolve.json is behind the pages on disk — a stale index or a
+    torn mid-write read. Embedding it would ship a vector without the required
+    FM2/FM4 provenance, so the asset fails fast and embeds nothing."""
+    item = _wiki_item("e_a", num_sources=3)
+    sources = _StubSources(wiki=_StubSource([item], resolve_index={}))  # no provenance
+    wiki_collection = _StubCollection()
+    vector_store = _StubVectorStore({"wiki": wiki_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, embed_batch = _fake_embedder_class()
+
+    with (
+        patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder),
+        pytest.raises(dg.Failure),
+    ):
+        wiki.op.compute_fn.decorated_fn(
+            ctx, pending={"wiki": ["e_a"]}, sources=sources, vector_store=vector_store
+        )
+
+    embed_batch.assert_not_called()
+    assert wiki_collection.upsert_calls == []
+
+
+def test_non_wiki_source_omits_provenance_metadata():
+    """num_sources / page_hash / snapshot_id are wiki-only — a raw_store vector
+    must not carry them (num_sources is None on the item; no resolve side-input)."""
+    sources = _StubSources(raw_store=_StubSource([_item("a", text="body")]))
+    raw_collection = _StubCollection()
+    vector_store = _StubVectorStore({"contents": raw_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        contents.op.compute_fn.decorated_fn(
+            ctx, pending={"raw_store": ["a"]}, sources=sources, vector_store=vector_store
+        )
+
+    md = raw_collection.upsert_calls[0]["metadatas"][0]
+    assert "num_sources" not in md
+    assert "page_hash" not in md
+    assert "snapshot_id" not in md
+
+
+# ------------------------------------------------------------------
 # wiring sanity
 # ------------------------------------------------------------------
 
 
 def test_source_to_collection_covers_all_sources():
-    assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions"}
+    assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions", "wiki"}
 
 
 # ------------------------------------------------------------------

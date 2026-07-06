@@ -18,6 +18,7 @@ from .def_config import (
     COLLECTION_CONTENTS,
     COLLECTION_CONVERSATIONS,
     COLLECTION_NOTES,
+    COLLECTION_WIKI,
     EMBEDDING_DIMS_DEFAULT,
     EMBEDDING_MODEL_DEFAULT,
     MAX_PER_TICK_DEFAULT,
@@ -34,6 +35,7 @@ SOURCE_TO_COLLECTION: list[tuple[str, str]] = [
     ("raw_store", COLLECTION_CONTENTS),
     ("notes", COLLECTION_NOTES),
     ("sessions", COLLECTION_CONVERSATIONS),
+    ("wiki", COLLECTION_WIKI),
 ]
 
 
@@ -48,7 +50,12 @@ def _estimate_tokens(text: str) -> int:
 
 
 def _metadata_common(
-    item: IngestItem, chunk: Chunk, chunk_index: int, model: str, dims: int
+    item: IngestItem,
+    chunk: Chunk,
+    chunk_index: int,
+    model: str,
+    dims: int,
+    extra_metadata: dict | None = None,
 ) -> dict:
     md: dict = {
         "content_id": item.item_id,
@@ -70,6 +77,11 @@ def _metadata_common(
         md["started_at"] = item.started_at.isoformat()
     if item.source_ref:
         md["source_ref"] = item.source_ref
+    # Per-item provenance side-input (wiki: num_sources + page_hash + snapshot_id
+    # from resolve.json, its single provenance authority). Other lanes pass
+    # nothing, so this is a no-op for them.
+    if extra_metadata:
+        md.update(extra_metadata)
     return md
 
 
@@ -81,6 +93,7 @@ def _process_item(
     model: str,
     dims: int,
     heading_in_embed: bool,
+    extra_metadata: dict | None = None,
 ) -> tuple[int, int]:
     """Chunk + embed + delete-then-upsert a single item.
 
@@ -102,7 +115,9 @@ def _process_item(
     store_texts = [c.text for c in chunks]
     embeddings = embedder.embed_batch(embed_texts)
     ids = [f"{item.item_id}::chunk-{i}" for i in range(len(chunks))]
-    metadatas = [_metadata_common(item, c, i, model, dims) for i, c in enumerate(chunks)]
+    metadatas = [
+        _metadata_common(item, c, i, model, dims, extra_metadata) for i, c in enumerate(chunks)
+    ]
 
     collection.delete(where={"content_id": item.item_id})
     for sl in _chunked(range(len(chunks)), _UPSERT_BATCH):
@@ -136,11 +151,33 @@ def pending(
         source = getattr(sources, name)()
         all_ids = source.get_item_ids()
         collection = vector_store.get_collection(collection_name)
+        # Wiki pages are rewritten daily but keep their entity_id, so a bare
+        # existence check would serve a stale vector forever (FM1b). For wiki
+        # only, treat an entity as done just when its indexed page_hash matches
+        # the live one (resolve.json); a changed hash re-lists it. Immutable
+        # lanes (raw_store) never edit in place, so they keep the cheap check.
+        live_hashes = (
+            {eid: prov.get("page_hash") for eid, prov in source.resolve_index().items()}
+            if name == "wiki"
+            else {}
+        )
+        # ponytail: freshness only re-embeds pages still on disk; a pruned entity
+        # (in Chroma, gone from resolve.json) is never iterated here, so its old
+        # vector lingers. Accepted as FM1 noise — NA skips dead entity_ids — not
+        # cleaned up. Add an orphan-GC pass (diff Chroma ids vs resolve keys) only
+        # if merge/rename drift measurably pollutes recall.
+        include = ["metadatas"] if name == "wiki" else []
         existing: set[str] = set()
         for batch in _chunked(all_ids, _CHROMA_IN_BATCH):
-            rows = collection.get(where={"content_id": {"$in": list(batch)}}, include=[])
-            for cid in rows.get("ids") or []:
-                existing.add(cid.split("::chunk-")[0])
+            rows = collection.get(where={"content_id": {"$in": list(batch)}}, include=include)
+            metas = rows.get("metadatas") or []
+            for idx, cid in enumerate(rows.get("ids") or []):
+                content_id = cid.split("::chunk-")[0]
+                if name == "wiki":
+                    stored_hash = (metas[idx] or {}).get("page_hash")
+                    if stored_hash != live_hashes.get(content_id):
+                        continue  # stale → leave pending for re-embed
+                existing.add(content_id)
         items = [i for i in all_ids if i not in existing][:MAX_PER_TICK_DEFAULT]
         out[name] = items
         totals[name] = len(all_ids)
@@ -169,6 +206,7 @@ def _run_ingest(
     vector_store: VectorStoreResource,
     source_name: str,
     collection_name: str,
+    extra_metadata_by_id: dict[str, dict] | None = None,
 ) -> dg.MaterializeResult:
     item_ids = pending.get(source_name, [])
     if not item_ids:
@@ -213,7 +251,14 @@ def _run_ingest(
         context.log.info("[%d/%d] ingesting %s", i, len(items), item.item_id)
         try:
             cw, tk = _process_item(
-                item, chunker, embedder, collection, model, dims, heading_in_embed
+                item,
+                chunker,
+                embedder,
+                collection,
+                model,
+                dims,
+                heading_in_embed,
+                (extra_metadata_by_id or {}).get(item.item_id),
             )
         except Exception as e:
             context.log.exception("ingest failed for %s", item.item_id)
@@ -300,4 +345,58 @@ def notes(
     return _run_ingest(context, pending, sources, vector_store, "notes", COLLECTION_NOTES)
 
 
-all_assets = [pending, contents, conversations, notes]
+@dg.asset(
+    key=["vector_store", "wiki"],
+    group_name="vector_store",
+    partitions_def=vector_store_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
+    kinds={"chromadb", "openai"},
+    ins={"pending": dg.AssetIn(["vector_store", "pending"])},
+)
+def wiki(
+    context: dg.AssetExecutionContext,
+    pending: dict[str, list[str]],
+    sources: SourcesResource,
+    vector_store: VectorStoreResource,
+) -> dg.MaterializeResult:
+    # The wiki lane must embed into the same distance space as every other
+    # collection NA queries; a per-lane model/dims override would silently fork
+    # it. Pin the shared contract here so that can't happen unnoticed.
+    assert (EMBEDDING_MODEL_DEFAULT, EMBEDDING_DIMS_DEFAULT) == (
+        "text-embedding-3-small",
+        1536,
+    ), "wiki lane diverged from the shared embedding contract"
+    # resolve.json is the single provenance authority — num_sources + page_hash +
+    # snapshot_id all live there, not in page frontmatter. Load it once per tick.
+    resolve = sources.wiki().resolve_index()
+    # Fail fast if any entity we're about to embed lacks complete provenance: it
+    # means resolve.json is behind the pages on disk (stale index / torn mid-write
+    # read, since resolve.json is written last). Embedding anyway would ship a
+    # vector without the FM2/FM4 metadata NA relies on; a retry re-runs once the
+    # index catches up. num_sources=0 is valid — only None counts as missing.
+    required = ("page_hash", "snapshot_id", "num_sources")
+    incomplete = [
+        iid
+        for iid in pending.get("wiki", [])
+        if any(resolve.get(iid, {}).get(k) is None for k in required)
+    ]
+    if incomplete:
+        raise dg.Failure(
+            description=(
+                f"{len(incomplete)} pending wiki entit(y/ies) missing provenance in "
+                f"resolve.json — index is stale relative to pages on disk: {incomplete[:10]}"
+            )
+        )
+    return _run_ingest(
+        context,
+        pending,
+        sources,
+        vector_store,
+        "wiki",
+        COLLECTION_WIKI,
+        extra_metadata_by_id=resolve,
+    )
+
+
+all_assets = [pending, contents, conversations, notes, wiki]

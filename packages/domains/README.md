@@ -99,7 +99,7 @@ permanently marked processed before the fetcher fills it.
 |---|---|---|---|
 | `RawStoreSource` | `raw_store.db` | none — immutable append | takes a `db_path`; pin or live |
 | `LocalFileSource` | a directory of `*.md` | none — caller filters mtime | YAML frontmatter respected |
-| `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `turns` into a marker-delimited body |
+| `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `events` (user_msg/assistant_msg) into a marker-delimited body |
 | `WikiSource` | a `data/wiki/` dir of `.md` pages | none — page on disk | one page → one item; `text` is the page **summary**, `num_sources` carried for the W3 sparsity gate; skips `_index/` sidecars |
 
 ## SQLite reads
@@ -112,7 +112,7 @@ blocking reads.
 
 ## Sessions: how the transcript flows
 
-`SessionsSource` serializes a session's `turns` rows into a single text body
+`SessionsSource` serializes a session's `events` rows (user_msg/assistant_msg) into a single text body
 on the `IngestItem`, with each turn delimited by a marker line:
 
 ```
