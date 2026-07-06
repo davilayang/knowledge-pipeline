@@ -87,6 +87,21 @@ def _metadata_common(
     return md
 
 
+def _delete_where(item: IngestItem) -> dict:
+    """Delete filter covering every prior chunk of this logical document.
+
+    Local-file lanes (notes, briefs) hash content into item_id, so an edited
+    file mints a new content_id and a content_id-only delete would orphan the
+    old-hash chunks. source_ref is the stable per-document key across all
+    lanes; content_id stays in the filter for legacy chunks written before
+    source_ref landed in metadata.
+    """
+    by_content_id = {"content_id": item.item_id}
+    if not item.source_ref:
+        return by_content_id
+    return {"$or": [by_content_id, {"source_ref": item.source_ref}]}
+
+
 def _process_item(
     item: IngestItem,
     chunker,
@@ -108,7 +123,7 @@ def _process_item(
     """
     chunks: list[Chunk] = chunker(item.text or "")
     if not chunks:
-        collection.delete(where={"content_id": item.item_id})
+        collection.delete(where=_delete_where(item))
         return (0, 0)
 
     embed_texts = [
@@ -121,7 +136,7 @@ def _process_item(
         _metadata_common(item, c, i, model, dims, extra_metadata) for i, c in enumerate(chunks)
     ]
 
-    collection.delete(where={"content_id": item.item_id})
+    collection.delete(where=_delete_where(item))
     for sl in _chunked(range(len(chunks)), _UPSERT_BATCH):
         lo, hi = sl[0], sl[-1] + 1
         collection.upsert(
