@@ -11,6 +11,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **Wiki vector lane** — `populate_vector_store` now indexes synthesized wiki entity summaries into a `wiki` Chroma collection, so newsletter-assistant's `recall` can search entity pages, not just raw content / sessions / notes. Each wiki vector carries provenance metadata: `num_sources` (lets the recall side hedge a single-source page), plus `page_hash` + `snapshot_id` from `_index/resolve.json` (stale-hit detection). The wiki source is kp-owned — it roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`), not the newsletter-assistant `BACKUP_SRC_DIR` mount the other sources read.
 - **Wiki freshness re-embed** — wiki pages are rewritten daily but keep their `entity_id`, so a bare existence check would serve a stale vector forever. Discovery now re-lists a wiki entity whenever its live `page_hash` (from `resolve.json`) differs from the indexed one; immutable lanes (raw_store) keep the cheap existence check.
 
+### Changed
+
+- **`conversations` lane now reads the `events` table, not `turns`.** `SessionsSource` indexed the legacy `turns` table unfiltered, so `tool_call` / `tool_result` rows (agent machinery — raw tool JSON, fetched payloads already indexed in `contents`) leaked into the `conversations` collection as recall noise. It now reads newsletter-assistant's canonical `events` stream filtered to `user_msg` / `assistant_msg`, dropping the tool machinery and shedding the dependency on the deprecated dual-write table.
+
 ---
 
 ## [0.31.2] — 2026-07-04
