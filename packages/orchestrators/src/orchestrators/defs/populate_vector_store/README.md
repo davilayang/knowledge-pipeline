@@ -35,7 +35,9 @@ vector_store/briefings
   │    - embed via OpenAIEmbedder (one OpenAI call per item); for markdown
   │      chunkers the chunk's heading breadcrumb is prepended to the embedded
   │      text (the stored `document` field stays clean)
-  │    - collection.delete(where={"content_id": id}) then upsert in 4000-id batches
+  │    - collection.delete(where=_delete_where(item)) — `$or` of `content_id` and
+  │      `source_ref` so an edited local file (notes/briefs, which hash content into
+  │      item_id) doesn't orphan old-hash chunks — then upsert in 4000-id batches
   │  deterministic chunk ids: f"{item_id}::chunk-{i}"  → idempotent re-runs
 ```
 
@@ -62,7 +64,7 @@ Every upserted chunk carries this metadata:
 
 | Field | Always present | Description |
 |---|---|---|
-| `content_id` | yes | Upstream item id. Used by `delete(where=...)` for idempotent re-ingest. |
+| `content_id` | yes | Upstream item id. Included in `_delete_where(item)` (an `$or` of `content_id` + `source_ref`) for idempotent re-ingest; the `source_ref` arm handles edited local files whose new content hash mints a new `content_id`. |
 | `chunk_index` | yes | Position of this chunk in the item's chunk sequence. |
 | `_embedding_model` | yes | Model id baked into the vector (e.g. `text-embedding-3-small`). |
 | `_embedding_dims` | yes | Vector dimension (e.g. `1536`). |

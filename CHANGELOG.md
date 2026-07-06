@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- **Edited briefs/notes no longer leave stale vectors retrievable.** Local-file lanes hash content into `content_id`, so editing a file minted a new id while the pre-upsert delete only matched the new id — the old-hash chunks stayed in Chroma and an edited brief could be recalled on text it no longer contained. The delete now also matches the stable `source_ref` (`local:{filename}`), clearing prior-hash chunks on re-ingest; stable-id lanes are unaffected (their `source_ref` wraps `content_id` 1:1). Orphans already in `briefings`/`notes` need a one-time cleanup pass — the fix only prevents new ones.
+## [0.32.1] — 2026-07-06
+
+### Changed
+
+- **Edited notes and briefs no longer return stale text from before the edit.** Local-file lanes hash content into `content_id`, so an edit minted a new id while the pre-upsert delete only matched the new one — old-hash chunks lingered. The delete in `_process_item` now also matches the stable `source_ref` (`local:{filename}`) via `_delete_where`, purging prior-hash chunks on re-ingest.
 
 ---
 
