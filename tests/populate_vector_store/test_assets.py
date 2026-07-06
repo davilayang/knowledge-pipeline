@@ -14,6 +14,7 @@ from domains.types import IngestItem
 from orchestrators.defs.populate_vector_store import assets as pvs_assets
 from orchestrators.defs.populate_vector_store.assets import (
     SOURCE_TO_COLLECTION,
+    briefings,
     contents,
     conversations,
     pending,
@@ -83,11 +84,13 @@ class _StubSources:
         notes=None,
         sessions=None,
         wiki=None,
+        briefs=None,
     ):
         self._raw_store = raw_store or _StubSource()
         self._notes = notes or _StubSource()
         self._sessions = sessions or _StubSource()
         self._wiki = wiki or _StubSource()
+        self._briefs = briefs or _StubSource()
 
     def raw_store(self):
         return self._raw_store
@@ -100,6 +103,9 @@ class _StubSources:
 
     def wiki(self):
         return self._wiki
+
+    def briefs(self):
+        return self._briefs
 
 
 class _StubSource:
@@ -211,7 +217,13 @@ def test_pending_zero_items_in_source_short_circuits():
     ctx = MagicMock(spec=dg.AssetExecutionContext)
     result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
 
-    assert result.value == {"raw_store": [], "notes": [], "sessions": [], "wiki": []}
+    assert result.value == {
+        "raw_store": [],
+        "notes": [],
+        "sessions": [],
+        "wiki": [],
+        "briefs": [],
+    }
 
 
 def test_pending_relists_wiki_entity_with_changed_page_hash():
@@ -485,12 +497,47 @@ def test_non_wiki_source_omits_provenance_metadata():
 
 
 # ------------------------------------------------------------------
+# briefings lane (notes-clone off backup_source_dir/briefs)
+# ------------------------------------------------------------------
+
+
+def test_briefings_ingest_upserts_to_briefings_collection():
+    """The briefings asset routes to COLLECTION_BRIEFINGS. Briefs are a straight
+    mirror of notes (content-hashed ids, frontmatter markdown), so no provenance
+    / freshness — just a distinct collection NA can query separately."""
+    sources = _StubSources(briefs=_StubSource([_item("b", text="body", source_type="local_file")]))
+    briefs_collection = _StubCollection()
+    vector_store = _StubVectorStore({"briefings": briefs_collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, _ = _fake_embedder_class()
+
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        briefings.op.compute_fn.decorated_fn(
+            ctx, pending={"briefs": ["b"]}, sources=sources, vector_store=vector_store
+        )
+
+    assert len(briefs_collection.upsert_calls) == 1
+    call = briefs_collection.upsert_calls[0]
+    assert call["ids"] == ["b::chunk-0"]
+    assert call["metadatas"][0]["content_id"] == "b"
+    # notes-clone: no wiki-style provenance keys.
+    assert "num_sources" not in call["metadatas"][0]
+    assert "page_hash" not in call["metadatas"][0]
+
+
+# ------------------------------------------------------------------
 # wiring sanity
 # ------------------------------------------------------------------
 
 
 def test_source_to_collection_covers_all_sources():
-    assert {n for n, _ in SOURCE_TO_COLLECTION} == {"raw_store", "notes", "sessions", "wiki"}
+    assert {n for n, _ in SOURCE_TO_COLLECTION} == {
+        "raw_store",
+        "notes",
+        "sessions",
+        "wiki",
+        "briefs",
+    }
 
 
 # ------------------------------------------------------------------
