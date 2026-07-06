@@ -15,6 +15,7 @@ def test_definitions_load_with_expected_shape():
         "vector_store/contents",
         "vector_store/conversations",
         "vector_store/notes",
+        "vector_store/wiki",
     }
     assert sorted(s.name for s in defs.schedules) == ["run_populate_vector_store"]
     assert sorted(j.name for j in defs.jobs) == ["populate_vector_store"]
