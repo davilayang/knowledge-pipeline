@@ -15,6 +15,7 @@ from .def_config import (
     CHUNK_OVERLAP,
     CHUNK_SIZE,
     CHUNKER_BY_SOURCE,
+    COLLECTION_BRIEFINGS,
     COLLECTION_CONTENTS,
     COLLECTION_CONVERSATIONS,
     COLLECTION_NOTES,
@@ -36,6 +37,7 @@ SOURCE_TO_COLLECTION: list[tuple[str, str]] = [
     ("notes", COLLECTION_NOTES),
     ("sessions", COLLECTION_CONVERSATIONS),
     ("wiki", COLLECTION_WIKI),
+    ("briefs", COLLECTION_BRIEFINGS),
 ]
 
 
@@ -399,4 +401,22 @@ def wiki(
     )
 
 
-all_assets = [pending, contents, conversations, notes, wiki]
+@dg.asset(
+    key=["vector_store", "briefings"],
+    group_name="vector_store",
+    partitions_def=vector_store_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    code_version=POPULATE_VECTOR_STORE_DAG_VERSION,
+    kinds={"chromadb", "openai"},
+    ins={"pending": dg.AssetIn(["vector_store", "pending"])},
+)
+def briefings(
+    context: dg.AssetExecutionContext,
+    pending: dict[str, list[str]],
+    sources: SourcesResource,
+    vector_store: VectorStoreResource,
+) -> dg.MaterializeResult:
+    return _run_ingest(context, pending, sources, vector_store, "briefs", COLLECTION_BRIEFINGS)
+
+
+all_assets = [pending, contents, conversations, notes, wiki, briefings]

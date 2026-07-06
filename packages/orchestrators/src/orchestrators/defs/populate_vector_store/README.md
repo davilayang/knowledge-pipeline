@@ -1,7 +1,7 @@
 # `populate_vector_store` runbook
 
 30-min-cadence ingest of pending items from each domain source
-(`raw_store`, `notes`, `sessions`, `wiki`) into ChromaDB collections. The
+(`raw_store`, `notes`, `sessions`, `wiki`, `briefs`) into ChromaDB collections. The
 pipeline writes pre-computed OpenAI embeddings
 (`text-embedding-3-small @ 1536` by default) and is the producer side of the
 RAG split — query-side cutover happens in Phase F.
@@ -16,7 +16,7 @@ schedule run_populate_vector_store   (cron */30 * * * *, STOPPED)
   │  fires the current half-hour's partition (YYYY-MM-DD-HH:MM)
   ▼
 vector_store/pending   (30-min partition)
-  │  for each of {raw_store, notes, sessions, wiki}:
+  │  for each of {raw_store, notes, sessions, wiki, briefs}:
   │    - source.get_item_ids()
   │    - collection.get(where={"content_id": {"$in": ...}}) in 500-id batches
   │      to find already-indexed content_ids
@@ -28,6 +28,7 @@ vector_store/pending   (30-min partition)
   ▼
 vector_store/contents             vector_store/conversations
 vector_store/notes                vector_store/wiki
+vector_store/briefings
   │  sequential per-item loop:
   │    - source.get_item(id) → IngestItem
   │    - chunker(item.text) per CHUNKER_BY_SOURCE
@@ -49,7 +50,7 @@ vector_store/notes                vector_store/wiki
   via `VectorStoreResource`; the resource's embedding-fn path is unused on
   write. Query-side OpenAI EF wiring is deferred to Phase F.
 - **Heading-aware embeddings for markdown chunkers.** For sources whose
-  chunker is `markdown` (raw_store, notes), the chunk's heading
+  chunker is `markdown` (raw_store, notes, briefs), the chunk's heading
   breadcrumb is prepended to the text before embedding (e.g.
   `"Introduction > Setup\n\n<chunk body>"`) to improve retrieval ranking
   within document sections. The stored Chroma `document` field stays
@@ -80,7 +81,7 @@ Every upserted chunk carries this metadata:
 
 | Var | Required | Purpose |
 |---|---|---|
-| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, and `notes/` (the synced newsletter-assistant data). Bound to `SourcesResource.backup_source_dir`. The `wiki` source does **not** read here — it is kp-owned and roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`, `config.py`). |
+| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `notes/`, and `briefs/` (the synced newsletter-assistant data). Bound to `SourcesResource.backup_source_dir`. The `wiki` source does **not** read here — it is kp-owned and roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`, `config.py`). |
 | `OPENAI_API_KEY` | yes | OpenAI embeddings calls. |
 | `CHROMA_HOST` | yes | Chroma HTTP host — `chroma` in compose; `localhost` for local `poe dagster-dev` against an external `chroma run`. |
 | `CHROMA_PORT` | yes | Chroma HTTP port (8000 default). |
@@ -128,7 +129,7 @@ c = chromadb.HttpClient(
     host=os.environ.get('CHROMA_HOST', 'localhost'),
     port=int(os.environ.get('CHROMA_PORT', 8000)),
 )
-for name in ('contents','conversations','notes','wiki'):
+for name in ('contents','conversations','notes','wiki','briefings'):
     print(name, c.get_or_create_collection(name, embedding_function=None).count())
 "
 ```
@@ -136,11 +137,12 @@ for name in ('contents','conversations','notes','wiki'):
 ### Pending stays full for >2 ticks
 
 The per-source `MAX_PER_TICK_DEFAULT=50` cap with a 30-min schedule drains
-9600 items/day across the four sources. If `pending_by_source` keeps growing:
+2400 items/source/day. If `pending_by_source` keeps growing:
 
 - Check `OPENAI_API_KEY` quota / 429 patterns in run logs.
-- Confirm `BACKUP_SRC_DIR` is the up-to-date backup landing (raw_store, notes, and sessions
-  read from the live mount, not a partition snapshot; wiki roots at `LOCAL_WIKI_DIR`, not here).
+- Confirm `BACKUP_SRC_DIR` is the up-to-date backup landing (raw_store, notes,
+  sessions, and briefs read from the live mount, not a partition snapshot; wiki
+  roots at `LOCAL_WIKI_DIR`, not here).
 - One-shot backfill: bump `MAX_PER_TICK_DEFAULT` in `def_config.py` and
   launch a single partition manually.
 

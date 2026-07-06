@@ -24,6 +24,9 @@ class SourcesResource(dg.ConfigurableResource):
     def notes(self) -> LocalFileSource:
         return LocalFileSource(Path(self.backup_source_dir) / "notes")
 
+    def briefs(self) -> LocalFileSource:
+        return LocalFileSource(Path(self.backup_source_dir) / "briefs")
+
     def sessions(self) -> SessionsSource:
         return SessionsSource(Path(self.backup_source_dir) / "sessions.db")
 
