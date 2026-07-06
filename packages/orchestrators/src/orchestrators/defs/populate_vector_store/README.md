@@ -50,7 +50,7 @@ vector_store/briefings
   via `VectorStoreResource`; the resource's embedding-fn path is unused on
   write. Query-side OpenAI EF wiring is deferred to Phase F.
 - **Heading-aware embeddings for markdown chunkers.** For sources whose
-  chunker is `markdown` (raw_store, notes), the chunk's heading
+  chunker is `markdown` (raw_store, notes, briefs), the chunk's heading
   breadcrumb is prepended to the text before embedding (e.g.
   `"Introduction > Setup\n\n<chunk body>"`) to improve retrieval ranking
   within document sections. The stored Chroma `document` field stays
