@@ -139,8 +139,8 @@ The per-source `MAX_PER_TICK_DEFAULT=50` cap with a 30-min schedule drains
 9600 items/day across the four sources. If `pending_by_source` keeps growing:
 
 - Check `OPENAI_API_KEY` quota / 429 patterns in run logs.
-- Confirm `BACKUP_SRC_DIR` is the up-to-date backup landing (the four
-  sources read from the live mount, not a partition snapshot).
+- Confirm `BACKUP_SRC_DIR` is the up-to-date backup landing (raw_store, notes, and sessions
+  read from the live mount, not a partition snapshot; wiki roots at `LOCAL_WIKI_DIR`, not here).
 - One-shot backfill: bump `MAX_PER_TICK_DEFAULT` in `def_config.py` and
   launch a single partition manually.
 
