@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Redirect URLs whose canonical resolves to a different handler no longer fail the fetch.** `fetch_content` dispatched on the raw `url` column, so a Substack/newsletter redirect (`substack.com/redirect/…?j=…`) that triage resolved to a YouTube video reached the YouTube handler as `substack.com/…` — `extract_video_id` returned None, every YouTube tier no-oped, and the cascade reported "all tiers failed" (Notion Error: `YouTube fetch failed: All tiers failed: all tiers failed for https://substack.com/redirect/…`). The extract op now dispatches on `canonical_url` (which triage always writes, via `normalize_url(effective_url)` after redirect-following), and fails loudly with a specific message if it's missing instead of falling through to the raw URL. Non-redirect captures see no change (canonical is a normalized form of the raw URL).
+
 ---
 
 ## [0.32.1] — 2026-07-06

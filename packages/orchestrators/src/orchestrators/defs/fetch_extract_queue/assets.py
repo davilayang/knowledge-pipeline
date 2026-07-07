@@ -184,9 +184,20 @@ def fetch_content(
             }
         )
 
-    url = row.get("url") or context.run.tags.get("url") or ""
+    url = row.get("canonical_url") or ""
     if not url:
-        raise dg.Failure(description=f"Missing url for page_id={page_id}", allow_retries=False)
+        raise dg.Failure(
+            description=(
+                f"queue_items row for {notion_url} has no canonical_url. "
+                f"Triage did not resolve it — flip Status back to Queued to re-triage."
+            ),
+            allow_retries=False,
+            metadata={
+                "notion_url": dg.MetadataValue.url(notion_url),
+                "notion_page_id": dg.MetadataValue.text(page_id),
+                "raw_url": dg.MetadataValue.text(row.get("url") or ""),
+            },
+        )
 
     override = row.get("raw_content_override") or ""
     if override:
