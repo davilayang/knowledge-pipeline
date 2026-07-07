@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-evals"
-version = "0.32.1"
+version = "0.32.2"
 description = "Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding), wiki dimensions"
 requires-python = ">=3.13"
 dependencies = [
