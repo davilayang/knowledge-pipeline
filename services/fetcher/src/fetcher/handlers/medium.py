@@ -64,6 +64,11 @@ def matches(url: str) -> bool:
     host = (parsed.hostname or "").lower()
     if host.startswith("www."):
         host = host[4:]
+    # `medium.com` in the yaml also claims its author subdomains
+    # (e.g. `pravash-techie.medium.com`) — those are Medium-hosted too and
+    # need the paywall-bypass tier, not the generic article handler.
+    if host.endswith(".medium.com"):
+        return True
     return host in _MEDIUM_DOMAINS
 
 

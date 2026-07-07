@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.32.2] — 2026-07-07
+
+### Changed
+
+- **Extract op dispatches on `canonical_url`, not raw `url`.** Substack/newsletter redirects that triage resolved to a YouTube video (or any other handler) no longer crash the fetcher with "all tiers failed" — the raw redirect URL never reaches a handler that can't parse it. Fails loudly if canonical is missing.
+- **`*.medium.com` author subdomains route to the Medium handler.** `medium.matches()` was exact set-membership against `medium_domains.yaml`, so `pravash-techie.medium.com/…` fell through to the article handler and hit the paywall without RapidAPI's bypass tier.
+
+---
+
 ## [0.32.1] — 2026-07-06
 
 ### Changed

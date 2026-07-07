@@ -92,6 +92,9 @@ def test_medium_matches_configured_domain(medium_domains: set[str]) -> None:
     assert medium.matches("https://medium.com/@author/title-abc123def456") is True
     assert medium.matches("https://towardsdatascience.com/title-abc123def456") is True
     assert medium.matches("https://www.towardsdatascience.com/title-abc123def456") is True
+    # Author subdomains (`<name>.medium.com`) are Medium-hosted too — must
+    # route to the medium handler so the paywall-bypass tier can run.
+    assert medium.matches("https://pravash-techie.medium.com/title-abc123def456") is True
     assert medium.matches("https://example.com/post-abc123def456") is False
     assert medium.matches("mailto:x@y.com") is False
 
