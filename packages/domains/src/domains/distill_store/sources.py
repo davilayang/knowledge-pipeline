@@ -1,19 +1,21 @@
-"""SQLite layer for distill.db — the source of truth for distilled session memory.
+"""SQLite layer for distill.db — the single store written by the distill_sessions DAG.
 
-Written by the distill_sessions pipeline (one producer), read by wiki_synthesis
-(renders `## Your take` from user_generation) and by newsletter-assistant
-(project_open_loops directly). Storage only — no LLM / extraction logic here.
+Aligns to the typed-claim provenance contract (framing §7 / architecture §5.8 /
+ADR-012): provenance is an author attribute, and this store holds the `user`
+class — what the user articulated, verbatim. `wiki_synthesis` (a separate DAG)
+reads these and lands entity-attached ones into wiki.db.claims
+(author=user, origin_type='session'); distill_sessions itself writes only here,
+so it has no wiki.db dependency. Storage only — no LLM / extraction logic.
 
-Schema (v1 SPEC):
-- session_digest      one summary row per session (the session summary, moved
-                      off newsletter-assistant onto this pipeline).
-- user_generation     the user's OWN generation about a content entity —
-                      paraphrase_check / claim / judgment / connection /
-                      open_question. `verbatim_user_text` is stored unsmoothed;
-                      entity is a string `entity_mention` (resolved later by
-                      wiki_synthesis, so this layer has no wiki.db dependency).
-- project_open_loops  self/project-anchored unresolved apply-intents that don't
-                      map to a content entity (e.g. "apply X to my Knowledge OS").
+Schema:
+- session_summary  one summary row per session (the "summarise_session" task).
+- user_claims      the `user` provenance class. `kind` is an articulation-ladder
+                   rung (paraphrase → example → confusion → objection → transfer);
+                   `verbatim_user_text` is stored unsmoothed; `entity_mention` is
+                   a string (a content entity, or a project anchor for a
+                   self/project `transfer` open-loop). Correction is a lineage
+                   relation — a new append-only claim with `refines_id` +
+                   `relation`, never a rewrite.
 """
 
 import json
@@ -23,47 +25,32 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS session_digest (
+CREATE TABLE IF NOT EXISTS session_summary (
     session_id   TEXT PRIMARY KEY,
     session_date TEXT,
     summary      TEXT,
     distilled_at TEXT
 );
 
-CREATE TABLE IF NOT EXISTS user_generation (
-    id                    INTEGER PRIMARY KEY,
-    kind                  TEXT NOT NULL
-        CHECK (kind IN ('paraphrase_check', 'claim', 'judgment',
-                        'connection', 'open_question')),
-    verbatim_user_text    TEXT NOT NULL,
-    status                TEXT NOT NULL
-        CHECK (status IN ('confirmed', 'corrected', 'open', 'superseded')),
-    in_session_correction TEXT,
-    self_ref              INTEGER NOT NULL DEFAULT 0,
-    entity_mention        TEXT,
-    session_id            TEXT NOT NULL,
-    event_seq_span        TEXT,
-    content_source        TEXT,
-    context_date          TEXT,
-    last_validated        TEXT,
-    supersedes_id         INTEGER REFERENCES user_generation(id),
-    display_rank          INTEGER NOT NULL DEFAULT 0
-);
-
-CREATE TABLE IF NOT EXISTS project_open_loops (
+CREATE TABLE IF NOT EXISTS user_claims (
     id                 INTEGER PRIMARY KEY,
+    kind               TEXT NOT NULL
+        CHECK (kind IN ('paraphrase', 'example', 'confusion',
+                        'objection', 'transfer')),
     verbatim_user_text TEXT NOT NULL,
-    loop               TEXT NOT NULL,
     status             TEXT NOT NULL
-        CHECK (status IN ('open', 'resolved', 'superseded')),
-    self_ref           INTEGER NOT NULL DEFAULT 1,
+        CHECK (status IN ('confirmed', 'open', 'superseded')),
+    self_ref           INTEGER NOT NULL DEFAULT 0,
     entity_mention     TEXT,
     session_id         TEXT NOT NULL,
     event_seq_span     TEXT,
     content_source     TEXT,
     context_date       TEXT,
+    refines_id         INTEGER REFERENCES user_claims(id),
+    relation           TEXT CHECK (relation IN ('refines', 'supersedes')),
     note_ref           TEXT,
-    last_validated     TEXT
+    last_validated     TEXT,
+    display_rank       INTEGER NOT NULL DEFAULT 0
 );
 """
 
@@ -88,7 +75,7 @@ def create_schema(*, db_path: Path) -> None:
         conn.executescript(_SCHEMA_SQL)
 
 
-def upsert_session_digest(
+def upsert_session_summary(
     *, db_path: Path, session_id: str, session_date: str, summary: str
 ) -> None:
     """Insert or replace the one summary row for a session (distilled_at stamped)."""
@@ -96,7 +83,7 @@ def upsert_session_digest(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO session_digest (session_id, session_date, summary, distilled_at)
+            INSERT INTO session_summary (session_id, session_date, summary, distilled_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
                 session_date = excluded.session_date,
@@ -107,19 +94,19 @@ def upsert_session_digest(
         )
 
 
-def get_session_digest(*, db_path: Path, session_id: str) -> dict[str, Any] | None:
-    """Return the session_digest row as a dict, or None if absent."""
+def get_session_summary(*, db_path: Path, session_id: str) -> dict[str, Any] | None:
+    """Return the session_summary row as a dict, or None if absent."""
 
     with _connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT * FROM session_digest WHERE session_id = ?", (session_id,)
+            "SELECT * FROM session_summary WHERE session_id = ?", (session_id,)
         ).fetchone()
     return dict(row) if row is not None else None
 
 
-def _decode_row(row: sqlite3.Row) -> dict[str, Any]:
-    """Expose a stored row with self_ref as bool and event_seq_span as list[int]."""
+def _decode_claim(row: sqlite3.Row) -> dict[str, Any]:
+    """Expose a stored claim with self_ref as bool and event_seq_span as list[int]."""
 
     d = dict(row)
     d["self_ref"] = bool(d["self_ref"])
@@ -127,7 +114,7 @@ def _decode_row(row: sqlite3.Row) -> dict[str, Any]:
     return d
 
 
-def insert_user_generation(
+def insert_user_claim(
     *,
     db_path: Path,
     kind: str,
@@ -139,98 +126,53 @@ def insert_user_generation(
     event_seq_span: list[int] | None = None,
     content_source: str | None = None,
     context_date: str | None = None,
-    in_session_correction: str | None = None,
-    supersedes_id: int | None = None,
+    refines_id: int | None = None,
+    relation: str | None = None,
+    note_ref: str | None = None,
     display_rank: int = 0,
 ) -> int:
-    """Insert one user_generation row; return its id."""
+    """Insert one user_claims row; return its id.
+
+    A correction is a new claim carrying `refines_id` + `relation`
+    ('refines' = original stays valid; 'supersedes' = original leaves recall),
+    never a rewrite of the original row.
+    """
 
     with _connect(db_path) as conn:
         cur = conn.execute(
             """
-            INSERT INTO user_generation (
-                kind, verbatim_user_text, status, in_session_correction,
-                self_ref, entity_mention, session_id, event_seq_span,
-                content_source, context_date, supersedes_id, display_rank
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO user_claims (
+                kind, verbatim_user_text, status, self_ref, entity_mention,
+                session_id, event_seq_span, content_source, context_date,
+                refines_id, relation, note_ref, display_rank
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 kind,
                 verbatim_user_text,
                 status,
-                in_session_correction,
                 int(self_ref),
                 entity_mention,
                 session_id,
                 json.dumps(event_seq_span) if event_seq_span is not None else None,
                 content_source,
                 context_date,
-                supersedes_id,
+                refines_id,
+                relation,
+                note_ref,
                 display_rank,
             ),
         )
         return int(cur.lastrowid)
 
 
-def get_user_generations(*, db_path: Path, session_id: str) -> list[dict[str, Any]]:
-    """Return all user_generation rows for a session, ordered by display_rank then id."""
+def get_user_claims(*, db_path: Path, session_id: str) -> list[dict[str, Any]]:
+    """Return all user_claims for a session, ordered by display_rank then id."""
 
     with _connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         rows = conn.execute(
-            "SELECT * FROM user_generation WHERE session_id = ? " "ORDER BY display_rank, id",
+            "SELECT * FROM user_claims WHERE session_id = ? ORDER BY display_rank, id",
             (session_id,),
         ).fetchall()
-    return [_decode_row(r) for r in rows]
-
-
-def insert_project_open_loop(
-    *,
-    db_path: Path,
-    verbatim_user_text: str,
-    loop: str,
-    status: str,
-    session_id: str,
-    self_ref: bool = True,
-    entity_mention: str | None = None,
-    event_seq_span: list[int] | None = None,
-    content_source: str | None = None,
-    context_date: str | None = None,
-    note_ref: str | None = None,
-) -> int:
-    """Insert one project_open_loops row; return its id."""
-
-    with _connect(db_path) as conn:
-        cur = conn.execute(
-            """
-            INSERT INTO project_open_loops (
-                verbatim_user_text, loop, status, self_ref, entity_mention,
-                session_id, event_seq_span, content_source, context_date, note_ref
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            (
-                verbatim_user_text,
-                loop,
-                status,
-                int(self_ref),
-                entity_mention,
-                session_id,
-                json.dumps(event_seq_span) if event_seq_span is not None else None,
-                content_source,
-                context_date,
-                note_ref,
-            ),
-        )
-        return int(cur.lastrowid)
-
-
-def get_project_open_loops(*, db_path: Path, session_id: str) -> list[dict[str, Any]]:
-    """Return all project_open_loops rows for a session, ordered by id."""
-
-    with _connect(db_path) as conn:
-        conn.row_factory = sqlite3.Row
-        rows = conn.execute(
-            "SELECT * FROM project_open_loops WHERE session_id = ? ORDER BY id",
-            (session_id,),
-        ).fetchall()
-    return [_decode_row(r) for r in rows]
+    return [_decode_claim(r) for r in rows]
