@@ -16,6 +16,12 @@ Schema:
                    self/project `transfer` open-loop). Correction is a lineage
                    relation — a new append-only claim with `refines_id` +
                    `relation`, never a rewrite.
+- distill_calls    append-only ledger of every LLM call (summarise_session /
+                   extract_user_claims): prompt label + sha, model, tokens,
+                   latency. Artifacts point back via `call_id`. The output is NOT
+                   stored — the ledger records which prompt+model produced each
+                   call, so any historical output is rebuildable by re-running
+                   that recipe over the (immutable, backed-up) transcript.
 """
 
 import json
@@ -25,10 +31,27 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_SQL = """
+CREATE TABLE IF NOT EXISTS distill_calls (
+    id            INTEGER PRIMARY KEY,
+    session_id    TEXT NOT NULL,
+    call_kind     TEXT NOT NULL
+        CHECK (call_kind IN ('summarise_session', 'extract_user_claims')),
+    prompt_label  TEXT NOT NULL,
+    prompt_sha256 TEXT NOT NULL,
+    schema_name   TEXT,
+    model         TEXT NOT NULL,
+    tokens_in     INTEGER NOT NULL,
+    tokens_out    INTEGER NOT NULL,
+    cached_tokens INTEGER,
+    duration_ms   REAL,
+    generated_at  TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS session_summaries (
     session_id   TEXT PRIMARY KEY,
     session_date TEXT,
     summary      TEXT,
+    call_id      INTEGER REFERENCES distill_calls(id),
     distilled_at TEXT
 );
 
@@ -49,6 +72,7 @@ CREATE TABLE IF NOT EXISTS user_claims (
     refines_id         INTEGER REFERENCES user_claims(id),
     relation           TEXT CHECK (relation IN ('refines', 'supersedes')),
     note_ref           TEXT,
+    call_id            INTEGER REFERENCES distill_calls(id),
     last_validated     TEXT,
     display_rank       INTEGER NOT NULL DEFAULT 0
 );
@@ -75,22 +99,94 @@ def create_schema(*, db_path: Path) -> None:
         conn.executescript(_SCHEMA_SQL)
 
 
+def insert_distill_call(
+    *,
+    db_path: Path,
+    session_id: str,
+    call_kind: str,
+    prompt_label: str,
+    prompt_sha256: str,
+    model: str,
+    tokens_in: int,
+    tokens_out: int,
+    schema_name: str | None = None,
+    cached_tokens: int | None = None,
+    duration_ms: float | None = None,
+) -> int:
+    """Append one LLM-call telemetry row; return its id (generated_at stamped).
+
+    Append-only: re-running a call_kind on a session adds a new row. The output
+    is not stored — prompt_label + prompt_sha256 + model make any historical
+    output rebuildable from the (immutable) transcript.
+    """
+
+    with _connect(db_path) as conn:
+        cur = conn.execute(
+            """
+            INSERT INTO distill_calls (
+                session_id, call_kind, prompt_label, prompt_sha256, schema_name,
+                model, tokens_in, tokens_out, cached_tokens, duration_ms, generated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                session_id,
+                call_kind,
+                prompt_label,
+                prompt_sha256,
+                schema_name,
+                model,
+                tokens_in,
+                tokens_out,
+                cached_tokens,
+                duration_ms,
+                _now_iso(),
+            ),
+        )
+        return int(cur.lastrowid)
+
+
+def get_distill_calls(
+    *, db_path: Path, session_id: str, call_kind: str | None = None
+) -> list[dict[str, Any]]:
+    """Return the call ledger for a session (optionally one call_kind), oldest first."""
+
+    sql = "SELECT * FROM distill_calls WHERE session_id = ?"
+    params: list[Any] = [session_id]
+    if call_kind is not None:
+        sql += " AND call_kind = ?"
+        params.append(call_kind)
+    sql += " ORDER BY id"
+    with _connect(db_path) as conn:
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute(sql, params).fetchall()
+    return [dict(r) for r in rows]
+
+
 def upsert_session_summary(
-    *, db_path: Path, session_id: str, session_date: str, summary: str
+    *,
+    db_path: Path,
+    session_id: str,
+    session_date: str,
+    summary: str,
+    call_id: int | None = None,
 ) -> None:
-    """Insert or replace the one summary row for a session (distilled_at stamped)."""
+    """Insert or replace the one summary row for a session (distilled_at stamped).
+
+    `call_id` links to the distill_calls row that produced this summary.
+    """
 
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO session_summaries (session_id, session_date, summary, distilled_at)
-            VALUES (?, ?, ?, ?)
+            INSERT INTO session_summaries (session_id, session_date, summary, call_id, distilled_at)
+            VALUES (?, ?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
                 session_date = excluded.session_date,
                 summary      = excluded.summary,
+                call_id      = excluded.call_id,
                 distilled_at = excluded.distilled_at
             """,
-            (session_id, session_date, summary, _now_iso()),
+            (session_id, session_date, summary, call_id, _now_iso()),
         )
 
 
@@ -129,13 +225,15 @@ def insert_user_claim(
     refines_id: int | None = None,
     relation: str | None = None,
     note_ref: str | None = None,
+    call_id: int | None = None,
     display_rank: int = 0,
 ) -> int:
     """Insert one user_claims row; return its id.
 
     A correction is a new claim carrying `refines_id` + `relation`
     ('refines' = original stays valid; 'supersedes' = original leaves recall),
-    never a rewrite of the original row.
+    never a rewrite of the original row. `call_id` links to the distill_calls
+    row that produced this claim (one extract call → many claims share it).
     """
 
     with _connect(db_path) as conn:
@@ -144,8 +242,8 @@ def insert_user_claim(
             INSERT INTO user_claims (
                 kind, verbatim_user_text, status, self_ref, entity_mention,
                 session_id, event_seq_span, content_source, context_date,
-                refines_id, relation, note_ref, display_rank
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                refines_id, relation, note_ref, call_id, display_rank
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 kind,
@@ -160,6 +258,7 @@ def insert_user_claim(
                 refines_id,
                 relation,
                 note_ref,
+                call_id,
                 display_rank,
             ),
         )
