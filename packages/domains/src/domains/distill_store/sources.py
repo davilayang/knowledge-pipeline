@@ -8,7 +8,7 @@ reads these and lands entity-attached ones into wiki.db.claims
 so it has no wiki.db dependency. Storage only — no LLM / extraction logic.
 
 Schema:
-- session_summary  one summary row per session (the "summarise_session" task).
+- session_summaries  one summary row per session (the "summarise_session" task).
 - user_claims      the `user` provenance class. `kind` is an articulation-ladder
                    rung (paraphrase → example → confusion → objection → transfer);
                    `verbatim_user_text` is stored unsmoothed; `entity_mention` is
@@ -25,7 +25,7 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS session_summary (
+CREATE TABLE IF NOT EXISTS session_summaries (
     session_id   TEXT PRIMARY KEY,
     session_date TEXT,
     summary      TEXT,
@@ -83,7 +83,7 @@ def upsert_session_summary(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO session_summary (session_id, session_date, summary, distilled_at)
+            INSERT INTO session_summaries (session_id, session_date, summary, distilled_at)
             VALUES (?, ?, ?, ?)
             ON CONFLICT(session_id) DO UPDATE SET
                 session_date = excluded.session_date,
@@ -95,12 +95,12 @@ def upsert_session_summary(
 
 
 def get_session_summary(*, db_path: Path, session_id: str) -> dict[str, Any] | None:
-    """Return the session_summary row as a dict, or None if absent."""
+    """Return the session_summaries row as a dict, or None if absent."""
 
     with _connect(db_path) as conn:
         conn.row_factory = sqlite3.Row
         row = conn.execute(
-            "SELECT * FROM session_summary WHERE session_id = ?", (session_id,)
+            "SELECT * FROM session_summaries WHERE session_id = ?", (session_id,)
         ).fetchone()
     return dict(row) if row is not None else None
 

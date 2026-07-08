@@ -5,7 +5,7 @@ Schema aligns to the typed-claim provenance contract (framing §7 / architecture
 §5.8 / ADR-018): the `user` claim class, articulation-ladder kinds, and
 correction as a lineage relation (refines_id + relation), not a rewrite.
 
-- session_summary  one summary row per session.
+- session_summaries  one summary row per session.
 - user_claims      the `user` provenance class — what the user articulated,
                    verbatim. kind is an articulation-ladder rung. An
                    entity-attached claim renders on a wiki page (`## Your take`);
@@ -33,7 +33,7 @@ def test_create_schema_creates_two_tables(tmp_path: Path) -> None:
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert tables == {"session_summary", "user_claims"}
+    assert tables == {"session_summaries", "user_claims"}
 
 
 def test_session_summary_round_trips(tmp_path: Path) -> None:
