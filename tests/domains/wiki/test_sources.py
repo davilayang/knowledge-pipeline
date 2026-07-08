@@ -6,6 +6,7 @@ with opaque surrogate `e_<hex>` ids (the layout the synthesis pipeline emits
 since the surrogate-identity work). The adapter must read exactly that.
 """
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -147,6 +148,66 @@ class TestFrontmatterAuthoritative:
         item = source.get_item("e_aaaaaaaaaaaaaaaa")
         assert item is not None
         assert item.item_id == "e_aaaaaaaaaaaaaaaa"
+
+
+class TestResolveIndex:
+    """resolve_index() surfaces per-entity provenance (page_hash + the tick's
+    snapshot_id) from _index/resolve.json — the freshness + staleness signals
+    the vector lane stamps onto each embedded page. page_hash lives per-entity;
+    snapshot_id is a single top-level tick fingerprint fanned onto every entity."""
+
+    def _write_resolve(self, wiki_dir: Path, entities: dict, snapshot_id: str) -> None:
+        index_dir = wiki_dir / "_index"
+        index_dir.mkdir(parents=True, exist_ok=True)
+        (index_dir / "resolve.json").write_text(
+            json.dumps(
+                {
+                    "schema_version": 1,
+                    "aliases": {},
+                    "entities": entities,
+                    "generated_at": "2026-06-20T00:00:00+00:00",
+                    "snapshot_id": snapshot_id,
+                }
+            )
+        )
+
+    def test_maps_entity_id_to_page_hash_snapshot_id_num_sources(self, tmp_path: Path):
+        wiki_dir = tmp_path / "wiki"
+        wiki_dir.mkdir()
+        self._write_resolve(
+            wiki_dir,
+            entities={
+                "e_aaaaaaaaaaaaaaaa": {"page_hash": "hash-a", "name": "RAG", "num_sources": 3},
+                "e_bbbbbbbbbbbbbbbb": {"page_hash": "hash-b", "name": "Yazi", "num_sources": 1},
+            },
+            snapshot_id="snap-123",
+        )
+
+        index = WikiSource(wiki_dir).resolve_index()
+
+        # resolve.json is the single provenance authority for the vector lane —
+        # page_hash + snapshot_id + num_sources all come from the same snapshot so
+        # they stay mutually consistent (FM2/FM4).
+        assert index == {
+            "e_aaaaaaaaaaaaaaaa": {
+                "page_hash": "hash-a",
+                "snapshot_id": "snap-123",
+                "num_sources": 3,
+            },
+            "e_bbbbbbbbbbbbbbbb": {
+                "page_hash": "hash-b",
+                "snapshot_id": "snap-123",
+                "num_sources": 1,
+            },
+        }
+
+    def test_absent_resolve_json_returns_empty(self, tmp_path: Path):
+        # build_wiki_index and populate_vector_store run independently; a wiki
+        # dir without a resolve.json yet must degrade to no-provenance, not crash.
+        wiki_dir = tmp_path / "wiki"
+        wiki_dir.mkdir()
+
+        assert WikiSource(wiki_dir).resolve_index() == {}
 
 
 class TestNonPageFilesExcluded:

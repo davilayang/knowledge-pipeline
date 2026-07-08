@@ -22,6 +22,7 @@ Malformed frontmatter (missing ``entity_id`` / ``title`` / ``updated_at``) is a
 producer bug — the adapter fails loud rather than silently skipping the page.
 """
 
+import json
 from datetime import date
 from pathlib import Path
 
@@ -55,6 +56,36 @@ class WikiSource:
             (_item_from_meta(read_meta(p)) for p in self._page_paths()),
             key=lambda item: item.item_id,
         )
+
+    def resolve_index(self) -> dict[str, dict]:
+        """Per-entity provenance from ``_index/resolve.json``:
+        ``{entity_id: {"page_hash": …, "snapshot_id": …, "num_sources": …}}``.
+
+        resolve.json is the single provenance authority for the vector lane —
+        all three fields come from the same snapshot so they stay mutually
+        consistent. ``page_hash`` is per-entity (changes when a page's bytes
+        change); ``snapshot_id`` is the tick-wide fingerprint fanned onto every
+        entity; ``num_sources`` is the distinct-source count. The lane stamps
+        them into each embedded page's metadata so the recall side can detect a
+        stale hit + hedge a single-source page (FM2/FM4) and this side can
+        re-embed a changed page (FM1b). Returns ``{}`` when the sidecar isn't
+        written yet — index-building and vector-population run independently.
+        """
+        try:
+            resolve = json.loads(
+                (self._wiki_dir / "_index" / "resolve.json").read_text(encoding="utf-8")
+            )
+        except (FileNotFoundError, ValueError):
+            return {}
+        snapshot_id = resolve.get("snapshot_id")
+        return {
+            entity_id: {
+                "page_hash": e.get("page_hash"),
+                "snapshot_id": snapshot_id,
+                "num_sources": e.get("num_sources"),
+            }
+            for entity_id, e in resolve.get("entities", {}).items()
+        }
 
     def _page_paths(self) -> list[Path]:
         """Flat page ``.md`` files directly under the wiki dir, skipping

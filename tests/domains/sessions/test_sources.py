@@ -26,6 +26,17 @@ def _make_db(tmp_path: Path, *, wal: bool = True) -> Path:
             content TEXT NOT NULL,
             timestamp TIMESTAMP NOT NULL
         );
+        CREATE TABLE events (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            session_id TEXT NOT NULL REFERENCES sessions(session_id),
+            seq INTEGER NOT NULL,
+            timestamp TEXT NOT NULL,
+            type TEXT NOT NULL,
+            content TEXT,
+            tool_call_ref INTEGER,
+            group_id TEXT,
+            UNIQUE(session_id, seq)
+        );
         """
     )
     conn.execute(
@@ -50,14 +61,34 @@ def _make_db(tmp_path: Path, *, wal: bool = True) -> Path:
             None,
         ),
     )
+    # turns mirrors newsletter-assistant's legacy dual-write, including a
+    # tool_call row — the current unfiltered reader would index this machinery.
     conn.executescript(
         """
         INSERT INTO turns (session_id, role, content, timestamp) VALUES
           ('s_done', 'user', 'What is RAG?', '2026-04-01T14:01:00+00:00'),
+          ('s_done', 'tool_call', 'search_docs({"q": "RAG"})',
+           '2026-04-01T14:01:10+00:00'),
           ('s_done', 'assistant', 'Retrieval-augmented generation.',
            '2026-04-01T14:01:30+00:00'),
           ('s_live', 'user', 'Hello?', '2026-04-02T09:00:30+00:00'),
           ('s_no_summary', 'user', 'Hi', '2026-04-03T08:01:00+00:00');
+        """
+    )
+    # events is the canonical stream; tool_call / tool_result carry recognizable
+    # markers so a test can prove they are filtered out of the indexed text.
+    conn.executescript(
+        """
+        INSERT INTO events (session_id, seq, timestamp, type, content) VALUES
+          ('s_done', 1, '2026-04-01T14:01:00+00:00', 'user_msg', 'What is RAG?'),
+          ('s_done', 2, '2026-04-01T14:01:10+00:00', 'tool_call',
+           'TOOLCALL_MARKER search_docs({"q": "RAG"})'),
+          ('s_done', 3, '2026-04-01T14:01:20+00:00', 'tool_result',
+           'TOOLRESULT_MARKER doc snippets'),
+          ('s_done', 4, '2026-04-01T14:01:30+00:00', 'assistant_msg',
+           'Retrieval-augmented generation.'),
+          ('s_live', 1, '2026-04-02T09:00:30+00:00', 'user_msg', 'Hello?'),
+          ('s_no_summary', 1, '2026-04-03T08:01:00+00:00', 'user_msg', 'Hi');
         """
     )
     conn.commit()
@@ -103,11 +134,15 @@ class TestGetItem:
         assert item is not None
         assert item.title.startswith("Session ")
 
-    def test_text_serializes_turns_in_order(self, tmp_path: Path):
+    def test_text_serializes_dialogue_and_excludes_tool_events(self, tmp_path: Path):
         source = SessionsSource(_make_db(tmp_path))
         item = source.get_item("s_done")
         assert item is not None
+        # Only user_msg / assistant_msg events become turns; tool_call and
+        # tool_result are agent machinery and must not reach the recall index.
         assert item.text.count("<<<TURN") == 2
+        assert "TOOLCALL_MARKER" not in item.text
+        assert "TOOLRESULT_MARKER" not in item.text
         u_idx = item.text.find("role=user")
         a_idx = item.text.find("role=assistant")
         assert 0 <= u_idx < a_idx

@@ -23,11 +23,19 @@ EMBEDDING_DIMS_DEFAULT = 1536
 COLLECTION_CONTENTS = "contents"
 COLLECTION_CONVERSATIONS = "conversations"
 COLLECTION_NOTES = "notes"
+COLLECTION_WIKI = "wiki"
+COLLECTION_BRIEFINGS = "briefings"
 
 CHUNKER_BY_SOURCE = {
     "raw_store": "markdown",
     "notes": "markdown",
     "sessions": "turn_grouping",
+    # A one-sentence entity summary is a single chunk under any splitter, so the
+    # plain recursive splitter suffices — markdown would prepend an empty heading
+    # breadcrumb for a headless summary.
+    "wiki": "recursive",
+    # Briefs are frontmatter markdown, a straight mirror of notes.
+    "briefs": "markdown",
 }
 CHUNK_SIZE = 800
 CHUNK_OVERLAP = 100

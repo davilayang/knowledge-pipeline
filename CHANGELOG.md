@@ -12,6 +12,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.32.2] — 2026-07-07
+
+### Changed
+
+- **Extract op dispatches on `canonical_url`, not raw `url`.** Substack/newsletter redirects that triage resolved to a YouTube video (or any other handler) no longer crash the fetcher with "all tiers failed" — the raw redirect URL never reaches a handler that can't parse it. Fails loudly if canonical is missing.
+- **`*.medium.com` author subdomains route to the Medium handler.** `medium.matches()` was exact set-membership against `medium_domains.yaml`, so `pravash-techie.medium.com/…` fell through to the article handler and hit the paywall without RapidAPI's bypass tier.
+
+---
+
+## [0.32.1] — 2026-07-06
+
+### Changed
+
+- **Edited notes and briefs no longer return stale text from before the edit.** Local-file lanes hash content into `content_id`, so an edit minted a new id while the pre-upsert delete only matched the new one — old-hash chunks lingered. The delete in `_process_item` now also matches the stable `source_ref` (`local:{filename}`) via `_delete_where`, purging prior-hash chunks on re-ingest.
+
+---
+
+## [0.32.0] — 2026-07-06
+
+### Added
+
+- **Wiki vector lane** — `populate_vector_store` now indexes synthesized wiki entity summaries into a `wiki` Chroma collection, so newsletter-assistant's `recall` can search entity pages, not just raw content / sessions / notes. Each wiki vector carries provenance metadata: `num_sources` (lets the recall side hedge a single-source page), plus `page_hash` + `snapshot_id` from `_index/resolve.json` (stale-hit detection). The wiki source is kp-owned — it roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`), not the newsletter-assistant `BACKUP_SRC_DIR` mount the other sources read.
+- **Wiki freshness re-embed** — wiki pages are rewritten daily but keep their `entity_id`, so a bare existence check would serve a stale vector forever. Discovery now re-lists a wiki entity whenever its live `page_hash` (from `resolve.json`) differs from the indexed one; immutable lanes (raw_store) keep the cheap existence check.
+- **Briefings vector lane** — `populate_vector_store` now indexes newsletter-assistant briefs (`briefs/*.md` under `BACKUP_SRC_DIR`) into a `briefings` Chroma collection, so `recall` can search them separately from notes. A straight `LocalFileSource` mirror of the notes lane — content-hashed ids, frontmatter markdown, no provenance/freshness (an edited brief gets a new id and re-ingests naturally).
+
+### Changed
+
+- **`conversations` lane now reads the `events` table, not `turns`.** `SessionsSource` indexed the legacy `turns` table unfiltered, so `tool_call` / `tool_result` rows (agent machinery — raw tool JSON, fetched payloads already indexed in `contents`) leaked into the `conversations` collection as recall noise. It now reads newsletter-assistant's canonical `events` stream filtered to `user_msg` / `assistant_msg`, dropping the tool machinery and shedding the dependency on the deprecated dual-write table.
+
+---
+
 ## [0.31.2] — 2026-07-04
 
 ### Added
