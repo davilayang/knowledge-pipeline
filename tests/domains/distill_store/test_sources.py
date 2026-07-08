@@ -2,7 +2,7 @@
 
 distill.db is the single source of truth written by the distill_sessions DAG.
 Schema aligns to the typed-claim provenance contract (framing §7 / architecture
-§5.8 / ADR-012): the `user` claim class, articulation-ladder kinds, and
+§5.8 / ADR-018): the `user` claim class, articulation-ladder kinds, and
 correction as a lineage relation (refines_id + relation), not a rewrite.
 
 - session_summary  one summary row per session.
@@ -155,7 +155,7 @@ def test_get_user_claims_scoped_by_session(tmp_path: Path) -> None:
 
 def test_correction_is_a_lineage_relation(tmp_path: Path) -> None:
     # Correction = a new append-only claim pointing back via refines_id + relation,
-    # never a rewrite of the original (ADR-012).
+    # never a rewrite of the original (ADR-018).
     db_path = tmp_path / "distill.db"
     create_schema(db_path=db_path)
 

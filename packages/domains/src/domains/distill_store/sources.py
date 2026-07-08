@@ -1,7 +1,7 @@
 """SQLite layer for distill.db — the single store written by the distill_sessions DAG.
 
 Aligns to the typed-claim provenance contract (framing §7 / architecture §5.8 /
-ADR-012): provenance is an author attribute, and this store holds the `user`
+ADR-018): provenance is an author attribute, and this store holds the `user`
 class — what the user articulated, verbatim. `wiki_synthesis` (a separate DAG)
 reads these and lands entity-attached ones into wiki.db.claims
 (author=user, origin_type='session'); distill_sessions itself writes only here,
