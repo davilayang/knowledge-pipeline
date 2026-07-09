@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **Wiki claims admit a `derived` kind.** The `claims.claim_kind` CHECK (`domains/wiki/schema/wiki.sql`) now accepts `derived` alongside `reported`/`opinion` — the type for a user's own synthesis (a promoted note), typed-separate from source-side claims. Schema-only; no producer writes derived claims yet. Existing wiki.db files keep the old CHECK until the next from-empty rebuild (the derived kind has no writer until then).
+- **User-promoted notes flow into the entity wiki as `derived` claims.** A new `synthesize_wiki/promote_notes` asset reads `data/notes/*.md` flagged `promote: true`, resolves each note's relevance-ordered `entities` hints against wiki.db (exact-name + alias, alias-aware — a merged-away hint lands on the survivor; a denylisted hint is dropped; a miss mints a `concept` entity), and writes one `derived` claim per note linked to every resolved entity. Idempotent + reconciling: an edited note replaces its claim, an unpromoted/deleted note is removed. Runs between `attribute_claims` and `render_pages`; `render_pages` now re-renders when either writer changed something. `SYNTHESIZE_WIKI_DAG_VERSION` → 2. **Deploy note:** the first `derived` write needs the prod `claims` CHECK widened first (one-off ALTER or from-empty rebuild) — see the KP-2 deploy gate.
 
 ---
 

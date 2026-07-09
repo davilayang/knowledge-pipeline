@@ -172,6 +172,24 @@ def get_source(conn: sqlite3.Connection, source_id: str) -> SourceRecord | None:
     return SourceRecord(*row) if row else None
 
 
+def get_source_keys_by_origin(conn: sqlite3.Connection, origin_type: str) -> list[str]:
+    """Return the content_keys of every source with the given origin_type.
+
+    The note→wiki reconcile diffs the stored note-origin keys against the live
+    `promote: true` note ids to discover which promoted notes were unpromoted or
+    deleted (their derived claims + source rows must go)."""
+    rows = conn.execute(
+        "SELECT content_key FROM sources WHERE origin_type = ? ORDER BY content_key",
+        (origin_type,),
+    ).fetchall()
+    return [r[0] for r in rows]
+
+
+def delete_source(conn: sqlite3.Connection, source_id: str) -> None:
+    """Delete a source row (ON DELETE CASCADE prunes its claims + claim_entities)."""
+    conn.execute("DELETE FROM sources WHERE source_id = ?", (source_id,))
+
+
 @dataclass(frozen=True)
 class ClaimRecord:
     """One atomic claim as asserted by ONE source. `text_hash` is
@@ -226,6 +244,14 @@ def get_claims_for_source(conn: sqlite3.Connection, source_id: str) -> list[Clai
         (source_id,),
     ).fetchall()
     return [ClaimRecord(*r) for r in rows]
+
+
+def get_entities_for_claim(conn: sqlite3.Connection, claim_id: str) -> set[str]:
+    """Return the set of entity_ids a claim is linked to (its claim_entities rows)."""
+    rows = conn.execute(
+        "SELECT entity_id FROM claim_entities WHERE claim_id = ?", (claim_id,)
+    ).fetchall()
+    return {r[0] for r in rows}
 
 
 def insert_claim_entity(conn: sqlite3.Connection, *, claim_id: str, entity_id: str) -> None:
