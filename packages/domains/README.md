@@ -29,7 +29,7 @@ src/domains/
 │   ├── sources.py      # WikiSource — synthesized .md pages → IngestItems
 │   ├── reject_cli.py   # wiki-reject — delete + tombstone noise entities (reject_entity)
 │   ├── merge_cli.py    # wiki-merge — fold a duplicate entity into a survivor (state.merge_entities)
-│   ├── dedup.py        # merge-candidate data (EntityText/CandidatePair) + wiki.db reader (load_entity_texts); numeric search lives in evals.wiki_dedup
+│   ├── dedup.py        # merge-candidate data (EntityText/CandidatePair) + wiki.db reader (load_entity_texts) + lexical name-only search (find_name_candidates); the numeric embedding search lives in evals.wiki_dedup
 │   ├── claims.py # parse/render per-source [reported]/[opinion] claim files (Layer 1.5)
 │   ├── CURATION.md     # operator runbook: reject noise entities
 │   └── schema/wiki.sql # SQLite schema
