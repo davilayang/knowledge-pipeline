@@ -23,6 +23,7 @@ class LLMCall:
     input_tokens: int
     output_tokens: int
     cached_tokens: int = 0
+    finish_reason: str | None = None  # provider stop reason; "length" == hit max_tokens (truncated)
 
 
 def _get_client() -> Any:
@@ -107,6 +108,7 @@ def generate_messages_with_usage(
         input_tokens=in_tokens,
         output_tokens=out_tokens,
         cached_tokens=cached,
+        finish_reason=getattr(response.choices[0], "finish_reason", None),
     )
 
 
