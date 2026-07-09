@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Wiki dedup name pass drops version/size variants.** `find_name_candidates` (`domains.wiki.dedup`) now skips a pair when both canonical names carry digits that differ (`Claude Opus 4.5`/`4.7`, `Qwen 7B`/`72B`) — version variants are never the same entity, so they no longer reach the human merge gate as false candidates. Same-digit punctuation twins and one-sided-digit pairs (`World War II`/`2`) still surface.
+
 ---
 
 ## [0.32.3] — 2026-07-09

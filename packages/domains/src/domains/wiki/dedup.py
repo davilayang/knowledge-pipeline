@@ -73,6 +73,7 @@ def find_name_candidates(
     common to be a useful block key and is skipped (ponytail: block-size² ceiling;
     a pair sharing only such a token is not compared)."""
     normed = {it.entity_id: " ".join(_WORD.findall(it.canonical_name.lower())) for it in items}
+    digits = {it.entity_id: "".join(re.findall(r"\d", it.canonical_name)) for it in items}
     by_id = {it.entity_id: it for it in items}
 
     token_index: dict[str, list[str]] = {}
@@ -91,6 +92,13 @@ def find_name_candidates(
                 if key in seen:
                     continue
                 seen.add(key)
+                # Both names carry digits that differ → version/size variant
+                # (Opus 4.5 vs 4.7, Qwen 7B vs 72B), never the same entity. Skip.
+                # One-side-only digits (World War II vs World War 2) are left to
+                # the human gate rather than silently dropped.
+                da, db = digits[key[0]], digits[key[1]]
+                if da and db and da != db:
+                    continue
                 score = SequenceMatcher(None, normed[key[0]], normed[key[1]]).ratio()
                 if score >= threshold:
                     pairs.append(CandidatePair(a=by_id[key[0]], b=by_id[key[1]], score=score))

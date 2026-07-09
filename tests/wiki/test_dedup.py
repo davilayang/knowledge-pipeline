@@ -99,3 +99,39 @@ def test_find_name_candidates_pairs_name_twins_ignoring_claim_mass():
 
     assert len(pairs) == 1
     assert {pairs[0].a.entity_id, pairs[0].b.entity_id} == {"e_a", "e_b"}
+
+
+def test_find_name_candidates_drops_version_variants_differing_in_digits():
+    """Names that are lexically near-identical but differ in their digits are
+    version/size variants (Opus 4.5 vs 4.7, Qwen 7B vs 72B) — never the same
+    entity. The digit guard drops them so the human isn't handed a one-keystroke
+    mis-merge."""
+    items = [
+        EntityText("e_a", "Claude Opus 4.5", ""),
+        EntityText("e_b", "Claude Opus 4.7", ""),
+    ]
+
+    pairs = find_name_candidates(items, threshold=0.7)
+
+    assert pairs == []
+
+
+def test_find_name_candidates_keeps_same_digit_and_one_sided_digit_twins():
+    """Guard the keep-side of the digit boundary: a same-digit punctuation twin
+    (Llama 3.1 8B / Llama-3.1-8b) is a real dup and survives; a pair with digits
+    on only one side (World War II / World War 2) is left for the human, not
+    dropped."""
+    items = [
+        EntityText("e_a", "Llama 3.1 8B", ""),
+        EntityText("e_b", "Llama-3.1-8b", ""),  # same digits, punctuation twin
+        EntityText("e_c", "World War II", ""),
+        EntityText("e_d", "World War 2", ""),  # digits one side only
+    ]
+
+    got = {
+        frozenset((p.a.entity_id, p.b.entity_id))
+        for p in find_name_candidates(items, threshold=0.7)
+    }
+
+    assert frozenset(("e_a", "e_b")) in got
+    assert frozenset(("e_c", "e_d")) in got
