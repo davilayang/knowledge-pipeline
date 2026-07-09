@@ -17,6 +17,7 @@ Enum processed_status {
 Enum claim_kind {
   reported
   opinion
+  derived
 }
 
 // ---- identity + page shell ----
