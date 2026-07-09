@@ -23,6 +23,7 @@ class LLMCall:
     input_tokens: int
     output_tokens: int
     cached_tokens: int = 0
+    finish_reason: str | None = None  # OpenAI stop reason; "length" == truncated
 
 
 def _get_client() -> Any:
@@ -107,6 +108,11 @@ def generate_messages_with_usage(
         input_tokens=in_tokens,
         output_tokens=out_tokens,
         cached_tokens=cached,
+        # OpenAI chat-completions always sets finish_reason on a choice ("length"
+        # == hit max_tokens/truncated). This whole module is OpenAI-only (see
+        # _get_client); getattr fails open (→ None → callers treat as not-truncated)
+        # so a future non-OpenAI-compat client degrades safely rather than crashing.
+        finish_reason=getattr(response.choices[0], "finish_reason", None),
     )
 
 

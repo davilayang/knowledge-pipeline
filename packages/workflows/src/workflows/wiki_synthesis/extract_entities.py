@@ -165,6 +165,18 @@ def extract_entities(
     task = EXTRACT_ENTITIES_TASK.format(claims=claim_block)
     messages = shared_prefix_messages(item, task)
     call = generate_messages_with_usage(messages, model=model, temperature=0)
+    if call.finish_reason == "length":
+        # The model hit the output-token cap — for this call shape that only
+        # happens when it degenerated into a repetition loop, emitting hundreds
+        # of near-duplicate run-on names (a real entity list finishes well under
+        # the cap). The whole set is untrustworthy; mint nothing.
+        logger.warning(
+            "extract_entities call was truncated (finish_reason=length) for %s — "
+            "discarding %d candidates as a likely degeneration runaway",
+            item.item_id,
+            call.content.count("\n") + 1,
+        )
+        return [], call
     candidates = parse_entity_candidates(call.content)
     if not candidates and "NONE" not in call.content.upper():
         # No candidates and no honest NONE — the model ignored the line format.

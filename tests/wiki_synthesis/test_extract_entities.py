@@ -42,8 +42,14 @@ def _claims(*texts: str) -> ClaimSet:
     )
 
 
-def _call(content: str) -> LLMCall:
-    return LLMCall(content=content, model="gpt-4.1-mini", input_tokens=1, output_tokens=1)
+def _call(content: str, *, finish_reason: str | None = None) -> LLMCall:
+    return LLMCall(
+        content=content,
+        model="gpt-4.1-mini",
+        input_tokens=1,
+        output_tokens=1,
+        finish_reason=finish_reason,
+    )
 
 
 # --- parse_entity_candidates (pure) ---------------------------------------------
@@ -201,6 +207,36 @@ def test_none_response_yields_no_candidates_without_warning(caplog):
 
     assert cands == []
     assert not [r for r in caplog.records if r.levelname == "WARNING"]
+
+
+def test_truncated_call_discards_all_candidates(caplog):
+    # A call that hit the output-token cap (finish_reason='length') is a runaway
+    # degeneration (the model looped emitting near-duplicate run-on names) — the
+    # whole candidate set is untrustworthy, so mint nothing and log loudly.
+    runaway = "\n".join(
+        f"Agentic harness {w} — concept" for w in ("sensors", "issues", "injection")
+    )
+    with patch(
+        "workflows.wiki_synthesis.extract_entities.generate_messages_with_usage",
+        return_value=_call(runaway, finish_reason="length"),
+    ):
+        cands, _ = extract_entities(_item(), _claims("x"))
+
+    assert cands == []
+    assert any(
+        r.levelname == "WARNING" and "truncated" in r.getMessage().lower() for r in caplog.records
+    )
+
+
+def test_normal_finish_reason_keeps_candidates():
+    # Only 'length' (truncation) discards — a clean 'stop' finish keeps candidates.
+    with patch(
+        "workflows.wiki_synthesis.extract_entities.generate_messages_with_usage",
+        return_value=_call("Docker — tool", finish_reason="stop"),
+    ):
+        cands, _ = extract_entities(_item(), _claims("x"))
+
+    assert [c.name for c in cands] == ["Docker"]
 
 
 def test_malformed_response_logs_a_warning(caplog):

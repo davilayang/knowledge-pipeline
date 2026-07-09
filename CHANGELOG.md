@@ -6,10 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.32.4] — 2026-07-09
+
 ### Changed
 
 - **Wiki dedup name pass drops version/size variants.** `find_name_candidates` (`domains.wiki.dedup`) now skips a pair when both canonical names carry digits that differ (`Claude Opus 4.5`/`4.7`, `Qwen 7B`/`72B`) — version variants are never the same entity, so they no longer reach the human merge gate as false candidates. Same-digit punctuation twins and one-sided-digit pairs (`World War II`/`2`) still surface.
 - **Wiki entity names prefer the singular canonical form.** The entity-extraction prompt (`prompts/wiki/extract_entities_task_v1.md`) now asks for the singular ("Code review", not "Code reviews"), and the curation runbook (`domains/wiki/CURATION.md`, refreshed to cover `wiki-merge`) documents singular-survivor as the merge convention — page titles stay consistent and plural/singular twins stop accumulating.
+- **Wiki entity extraction discards truncated (degenerate) output.** When an `extract_entities` call hits the output-token cap (`finish_reason == 'length'`, now surfaced on `workflows.llm.LLMCall`), the model has degenerated into a repetition loop emitting hundreds of near-duplicate run-on names — the whole set is discarded and logged, not minted. Root cause of the hand-deleted "hallucination cluster" junk entities.
 
 ---
 
