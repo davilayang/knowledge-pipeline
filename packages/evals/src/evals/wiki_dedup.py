@@ -15,7 +15,12 @@ from collections.abc import Callable
 from pathlib import Path
 
 import numpy as np
-from domains.wiki.dedup import CandidatePair, EntityText, load_entity_texts
+from domains.wiki.dedup import (
+    CandidatePair,
+    EntityText,
+    find_name_candidates,
+    load_entity_texts,
+)
 from domains.wiki.state import connection
 
 EmbedBatch = Callable[[list[str]], list[list[float]]]
@@ -67,18 +72,37 @@ def run_candidates(
     return find_merge_candidates(items, embed_batch, threshold=threshold)
 
 
+def _union(*groups: list[CandidatePair]) -> list[CandidatePair]:
+    """Merge candidate lists, keeping one pair per entity-pair (highest score),
+    strongest first. Lets the embedding + lexical passes overlap without dupes."""
+    best: dict[frozenset[str], CandidatePair] = {}
+    for group in groups:
+        for p in group:
+            key = frozenset((p.a.entity_id, p.b.entity_id))
+            if key not in best or p.score > best[key].score:
+                best[key] = p
+    return sorted(best.values(), key=lambda p: (-p.score, p.a.entity_id, p.b.entity_id))
+
+
 def openai_candidates(
     db_path: Path | str,
     *,
     top_n: int = 5,
     threshold: float = 0.8,
+    name_threshold: float = 0.8,
     model: str = "text-embedding-3-small",
     dims: int = 1536,
 ) -> list[CandidatePair]:
-    """The agent's entry point: wire the OpenAI embedder and return the near-dup
-    pairs, strongest first. Read-only — run in-cluster (docker exec) or on a pulled
-    copy. `OPENAI_API_KEY` must be set."""
+    """The agent's entry point: return near-dup pairs, strongest first, from TWO
+    complementary passes unioned — the embedding search (claim-weighted, catches
+    semantic dups) and the lexical name search (claim-blind, catches a claim-rich
+    entity's thin name-twin the embedding pass misses). Read-only — run in-cluster
+    (docker exec) or on a pulled copy. `OPENAI_API_KEY` must be set."""
     from retrievers.embedding import OpenAIEmbedder
 
     embedder = OpenAIEmbedder(model, dims)
-    return run_candidates(db_path, embedder.embed_batch, top_n=top_n, threshold=threshold)
+    with connection(db_path) as conn:
+        items = load_entity_texts(conn, top_n=top_n)
+    embedded = find_merge_candidates(items, embedder.embed_batch, threshold=threshold)
+    named = find_name_candidates(items, threshold=name_threshold)
+    return _union(embedded, named)

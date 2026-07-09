@@ -15,7 +15,7 @@ from domains.wiki.attributed import (
     mint_claim_id,
     upsert_source,
 )
-from domains.wiki.dedup import load_entity_texts
+from domains.wiki.dedup import EntityText, find_name_candidates, load_entity_texts
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import insert_entity
 
@@ -83,3 +83,19 @@ def test_load_entity_texts_embeds_name_plus_top_claims(wiki_db):
     assert "Max is Anthropic's top tier." in item.text
     assert "Max costs more than Pro." in item.text
     assert "Max raises rate limits." not in item.text  # capped at top_n=2
+
+
+def test_find_name_candidates_pairs_name_twins_ignoring_claim_mass():
+    """The rich-vs-thin case the embedding pass structurally misses: a claim-heavy
+    entity and its claim-empty name-twin. The lexical pass keys on the NAME only,
+    so it pairs them regardless; an unrelated name stays unpaired."""
+    items = [
+        EntityText("e_a", "Agent harness", "long specific technical claim text " * 20),
+        EntityText("e_b", "Agentic harness", ""),  # thin twin — no claims
+        EntityText("e_c", "Kubernetes", "container orchestration"),
+    ]
+
+    pairs = find_name_candidates(items, threshold=0.7)
+
+    assert len(pairs) == 1
+    assert {pairs[0].a.entity_id, pairs[0].b.entity_id} == {"e_a", "e_b"}
