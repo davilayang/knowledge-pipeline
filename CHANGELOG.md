@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.32.3] — 2026-07-09
+
 ### Added
 
 - **Wiki dedup now catches a claim-rich entity's thin name-twin.** The merge-candidate search gained a lexical name-only pass (`domains.wiki.dedup.find_name_candidates`) unioned into `evals.wiki_dedup.openai_candidates` alongside the embedding pass. The embedding pass embeds name + claim texts, so it's claim-weighted and a claim-heavy entity never pairs with its claim-empty duplicate (an 18-claim `Agent harness` missed `Agentic harness`); the name pass keys on the canonical name alone and recovers exactly that case.
