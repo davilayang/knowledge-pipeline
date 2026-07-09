@@ -1,20 +1,22 @@
-# Wiki entity curation runbook (reject)
+# Wiki entity curation runbook (reject + merge)
 
-The wiki synthesiser auto-mints an entity per distinct named thing. One failure
-mode needs a human in the loop:
+The wiki synthesiser auto-mints an entity per distinct named thing. Two failure
+modes need a human in the loop:
 
 - **Noise** — site chrome / mis-extractions become pages (`Cookie Policy`,
   `Related Posts`). → **reject** (delete + tombstone).
+- **Duplicates** — the same real entity minted under two surface forms
+  (`Tree of Thoughts` vs `Tree-of-Thoughts`, `Code Reviews` vs `Code Review`).
+  The resolver never auto-merges (a false merge is destructive), so it mints a
+  safe false-split and records a hint. → **merge** (fold the duplicate into a
+  survivor).
 
-> The entity dedup + merge CLIs have been retired; duplicate entities will be
-> handled by claim-centric tooling rebuilt later (issue #15). This runbook
-> covers reject only.
-
-One CLI, reads/operates on `wiki.db` + the `data/wiki/*.md` pages:
+Both CLIs read/operate on `wiki.db` + the `data/wiki/*.md` pages:
 
 | CLI | Package | What it does |
 |---|---|---|
 | `wiki-reject` | `domains` | delete a noise entity + tombstone its name + every alias |
+| `wiki-merge` | `domains` | fold a duplicate ("drop") into a survivor ("keep"); re-points claims + aliases, aliases drop's name onto keep, deletes drop |
 
 ## How to run it — laptop-driven, against prod data
 
@@ -80,6 +82,49 @@ test a reject before touching prod.
   `synthesize_wiki` `build_index` asset regenerates both from `wiki.db` on each
   tick — so a merge/reject that changes the entity set is reflected in the TOC
   and the alias→entity resolution sidecar at the next synthesis run.
+
+## Merge duplicates
+
+Candidate pairs come from the offline dedup search
+(`evals.wiki_dedup.openai_candidates`) — an embedding pass (claim-weighted
+cosine) unioned with a lexical name-only pass (`domains.wiki.dedup.find_name_candidates`,
+which recovers a claim-rich entity's thin name-twin the embedding pass misses).
+An agent JUDGEs the pairs; a human CONFIRMs; then merge in-cluster:
+
+```
+ssh hcloud 'docker exec -w /app <dagster-code> uv run wiki-merge \
+  --db data/wiki.db --wiki-dir data/wiki \
+  --keep e_<survivor> --drop e_<dup> --backup'
+```
+
+`--dry-run` reports the plan and rolls back (rehearse on a pulled copy).
+`--no-alias` keeps two homonyms separate (drop's name mints fresh next time).
+
+**Conventions for the CONFIRM step:**
+
+- **Survivor = the canonical form, not the higher claim count.** `merge_entities`
+  re-points every claim from drop onto keep, so nothing is lost by keeping a
+  lower-claim entity. Pick the survivor by naming convention; the drop's spelling
+  becomes an alias, so it still resolves and future mentions of it auto-route to
+  the survivor.
+- **Prefer the SINGULAR form** for concept/role duplicates — `Code review` not
+  `Code reviews`, `Analytics engineer` not `analytics engineers`, `Multi-agent
+  framework` not `frameworks`. This is the ontology/Wikipedia convention; it only
+  changes the page title + filename. (Keep the plural only when it is the
+  established proper name.)
+- **HOLD — never merge** version/size variants (`Opus 4.5` vs `4.7`, `Qwen 7B`
+  vs `72B`), family-vs-specific (`Claude Sonnet` vs `Claude-4-Sonnet`), or names
+  that merely look alike but are distinct concepts (`Unit Testing` vs `UI
+  Testing`, `10-K` vs `10-Q filings`, `DeepSeek-V3` vs `DeepSeek-VL`). The
+  candidate search auto-drops the digit-differ variants
+  (`find_name_candidates`'s digit guard), but the human gate is the backstop for
+  the rest.
+
+Batch merges need a rollback snapshot first (same command as the reject batch
+below) and a render sweep after — a merge touches no source watermark, so the
+scheduled incremental sweep won't redraw the survivor. Re-run
+`synthesize_wiki/render_pages` + `build_index` (or call `render_entity_pages` +
+`build_wiki_index` directly) to redraw pages and rebuild `resolve.json`.
 
 ## Rebuild carve-out (the option-(b) tax)
 

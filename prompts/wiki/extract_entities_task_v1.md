@@ -43,9 +43,12 @@ DO NOT extract (these are the failure modes):
   "debugging", "production environment") unless the source makes a page-worthy
   claim about that thing specifically.
 
-Use the natural human display name, not a code/import form. Type each entity as
-exactly one of: concept, tool, person, organization, method, dataset, trend,
-other. Prefer a specific type; use "other" sparingly.
+Use the natural human display name, not a code/import form. Prefer the SINGULAR
+form for concepts, methods, and roles ("Code review" not "Code reviews",
+"Analytics engineer" not "Analytics engineers") — keep the plural only when it is
+the established proper name. Type each entity as exactly one of: concept, tool,
+person, organization, method, dataset, trend, other. Prefer a specific type; use
+"other" sparingly.
 
 Output ONLY a flat list, one entity per line, in exactly this form:
 
