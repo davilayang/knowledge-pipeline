@@ -176,8 +176,9 @@ def get_source(conn: sqlite3.Connection, source_id: str) -> SourceRecord | None:
 class ClaimRecord:
     """One atomic claim as asserted by ONE source. `text_hash` is
     `claim_text_hash(text)` — the per-source idempotency key. `claim_kind` is
-    'reported' (the source presents it as fact) or 'opinion' (prediction /
-    opinion / unverified), carrying the extractor's `[reported]`/`[opinion]` tag.
+    'reported' (the source presents it as fact), 'opinion' (prediction /
+    opinion / unverified) — both carrying the extractor's `[reported]`/`[opinion]`
+    tag — or 'derived' (the user's own synthesis, e.g. a promoted note).
     """
 
     claim_id: str

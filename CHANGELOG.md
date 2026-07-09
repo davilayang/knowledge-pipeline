@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Wiki claims admit a `derived` kind.** The `claims.claim_kind` CHECK (`domains/wiki/schema/wiki.sql`) now accepts `derived` alongside `reported`/`opinion` — the type for a user's own synthesis (a promoted note), typed-separate from source-side claims. Schema-only; no producer writes derived claims yet. Existing wiki.db files keep the old CHECK until the next from-empty rebuild (the derived kind has no writer until then).
+
 ---
 
 ## [0.32.4] — 2026-07-09

@@ -123,8 +123,9 @@ CREATE TABLE IF NOT EXISTS sources (
 
 -- ---------------------------------------------------------------------------
 -- claims — one atomic statement as asserted by ONE source, tagged `reported`
--- (the source presents it as fact) or `opinion` (prediction / opinion /
--- unverified). text_hash is sha256 of the normalized claim text; the
+-- (the source presents it as fact), `opinion` (prediction / opinion /
+-- unverified), or `derived` (the user's own synthesis, e.g. a promoted note —
+-- typed-separate from source-side claims). text_hash is sha256 of the normalized claim text; the
 -- UNIQUE(source_id, text_hash) key makes a re-run idempotent — re-extracting a
 -- source's claims re-inserts the same rows without duplicating. ON DELETE
 -- CASCADE so dropping a source removes its claims.
@@ -134,7 +135,7 @@ CREATE TABLE IF NOT EXISTS claims (
     source_id   TEXT NOT NULL REFERENCES sources (source_id) ON DELETE CASCADE,
     text        TEXT NOT NULL,
     text_hash   TEXT NOT NULL,                      -- sha256(normalized text) — idempotency
-    claim_kind  TEXT NOT NULL CHECK (claim_kind IN ('reported', 'opinion')),
+    claim_kind  TEXT NOT NULL CHECK (claim_kind IN ('reported', 'opinion', 'derived')),
     created_at  TEXT NOT NULL,                      -- ISO-8601 UTC
     UNIQUE (source_id, text_hash)
 ) STRICT;

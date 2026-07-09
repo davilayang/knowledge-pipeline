@@ -4,6 +4,9 @@
 Uses the `wiki_db` fixture (a fresh SQLite wiki.db with the schema applied).
 """
 
+import sqlite3
+
+import pytest
 from domains.wiki.attributed import (
     AttributedClaim,
     ClaimRecord,
@@ -187,6 +190,26 @@ def test_insert_claim_idempotent_on_source_and_text_hash(wiki_db):
     wiki_db.commit()
     claims = get_claims_for_source(wiki_db, "src_0000000000000001")
     assert [c.claim_id for c in claims] == ["clm_first"]
+
+
+def test_insert_derived_claim_roundtrips(wiki_db):
+    # A promoted note is stored as a `derived` claim (the user's own synthesis),
+    # a third kind alongside reported/opinion. The claim_kind CHECK is the only
+    # guard, so it must admit 'derived'.
+    upsert_source(wiki_db, _source())
+    clm = _claim(claim_kind="derived")
+    insert_claim(wiki_db, clm)
+    wiki_db.commit()
+    assert get_claims_for_source(wiki_db, "src_0000000000000001") == [clm]
+
+
+def test_insert_claim_rejects_unknown_kind(wiki_db):
+    # The claim_kind CHECK is the sole guard (insert_claim does no Python-side
+    # validation), so a kind outside the enum must be rejected — this locks the
+    # constraint so a future edit that drops the CHECK can't silently pass.
+    upsert_source(wiki_db, _source())
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_claim(wiki_db, _claim(claim_kind="bogus"))
 
 
 def test_delete_claims_for_source_removes_all_and_cascades(wiki_db):
