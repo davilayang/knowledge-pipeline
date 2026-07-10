@@ -294,6 +294,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
             publication="Codrift",
             published_at="2026-03-01",
             url="https://ex.com/d",
+            title="A Title",
         ),
         AttributedClaim(
             text="Undated claim about GraphRAG.",
@@ -302,6 +303,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
             publication="Voidmag",
             published_at=None,
             url="https://ex.com/u",
+            title="A Title",
         ),
     ]
 
@@ -465,6 +467,7 @@ def test_render_attributed_markdown_shape():
         "entity_type: concept\n"
         "aliases: [Graph RAG]\n"
         "related: []\n"
+        "summary: GraphRAG combines vector search with a knowledge graph.\n"
         "num_sources: 2\n"
         "updated_at: 2026-07-02\n"
         "---\n"
@@ -480,6 +483,152 @@ def test_render_attributed_markdown_shape():
         "\n"
         "- GraphRAG will replace naive RAG. — voidmag.com\n"
     )
+
+
+def test_render_attributed_markdown_renders_derived_as_from_my_notes():
+    # A promoted note is a `derived` claim — it renders under its own
+    # `## From my notes` section (the user's own synthesis, kept separate from
+    # source-side Reported/Opinion), with the note text verbatim.
+    entity = _entity_record("e_n", "Agent harness")
+    claims = [
+        AttributedClaim(
+            text="An agent harness wraps guardrails around a raw model.",
+            claim_kind="derived",
+            author=None,
+            publication=None,
+            published_at="2026-07-08",
+            url=None,
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-10"
+    )
+    assert "## From my notes" in md
+    assert "An agent harness wraps guardrails around a raw model." in md
+
+
+def test_render_attributed_markdown_derived_keeps_block_structure():
+    # A note is a structured artifact (headers, lists) — it renders as a verbatim
+    # block, NOT flattened to a single bullet, so its line structure survives.
+    entity = _entity_record("e_n", "Agent harness")
+    note = "### Rubric\n\n1. Control mechanisms\n2. Context management"
+    claims = [
+        AttributedClaim(
+            text=note,
+            claim_kind="derived",
+            author=None,
+            publication=None,
+            published_at="2026-07-08",
+            url=None,
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-10"
+    )
+    assert note in md  # verbatim, newlines + list items intact
+    assert "- ### Rubric" not in md  # not flattened to a bullet
+
+
+def test_render_attributed_markdown_derived_attributes_note_title():
+    # A note-origin derived claim attributes to the NOTE (its title + date), not
+    # the NULL publication/author that would render "source unknown".
+    entity = _entity_record("e_n", "Agent harness")
+    claims = [
+        AttributedClaim(
+            text="An agent harness wraps guardrails around a raw model.",
+            claim_kind="derived",
+            author=None,
+            publication=None,
+            published_at="2026-07-08",
+            url=None,
+            title="Framework for AI Harness Design",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-10"
+    )
+    assert "*Framework for AI Harness Design — my note, 2026-07-08*" in md
+    assert "source unknown" not in md
+
+
+def test_render_attributed_markdown_emits_deterministic_summary():
+    # A `summary:` frontmatter field is emitted deterministically — the first
+    # reported claim (the definitional lead), so the page carries a display line
+    # AND non-empty embed text (the vector lane reads meta["summary"]).
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="GraphRAG combines vector search with a knowledge graph.",
+            claim_kind="reported",
+            author="Jane Doe",
+            publication=None,
+            published_at="2026-03-01",
+            url="https://medium.com/x",
+        ),
+        AttributedClaim(
+            text="GraphRAG will replace naive RAG.",
+            claim_kind="opinion",
+            author=None,
+            publication=None,
+            published_at=None,
+            url="https://voidmag.com/y",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=2, updated_at="2026-07-02"
+    )
+    assert "summary: GraphRAG combines vector search with a knowledge graph." in md
+
+
+def test_render_attributed_markdown_summary_falls_back_to_note_when_derived_only():
+    # A note that mints a fresh entity has NO reported/opinion claims — the summary
+    # falls back to the note's first line (markdown header stripped), so a
+    # derived-only page still embeds non-empty text.
+    entity = _entity_record("e_n", "Agent harness")
+    claims = [
+        AttributedClaim(
+            text="### Rubric\n\n1. Control mechanisms\n2. Context management",
+            claim_kind="derived",
+            author=None,
+            publication=None,
+            published_at="2026-07-08",
+            url=None,
+            title="AI harness design",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-10"
+    )
+    assert "summary: Rubric" in md
+
+
+def test_render_attributed_markdown_summary_skips_blank_claim_text():
+    # A claim with empty/whitespace-only text must not crash the render sweep
+    # (summary runs on every page): the blank claim is skipped and summary falls
+    # through to the next usable claim.
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="   \n  ",
+            claim_kind="reported",
+            author="A",
+            publication=None,
+            published_at="2026-01-01",
+            url=None,
+        ),
+        AttributedClaim(
+            text="GraphRAG combines vector search with a knowledge graph.",
+            claim_kind="reported",
+            author="B",
+            publication=None,
+            published_at="2026-02-01",
+            url=None,
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-02"
+    )
+    assert "summary: GraphRAG combines vector search with a knowledge graph." in md
 
 
 def test_render_attributed_markdown_omits_empty_section():

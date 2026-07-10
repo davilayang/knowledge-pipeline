@@ -100,6 +100,51 @@ def test_resolve_entities_map_orientation_fields(tmp_path, wiki_db_path):
     assert (wiki_dir / ent["file"]).exists()
 
 
+def _add_derived_claim(wiki_db_path, entity_id, *, note_title, body):
+    from domains.wiki.attributed import (
+        ClaimRecord,
+        SourceRecord,
+        claim_text_hash,
+        insert_claim,
+        insert_claim_entity,
+        mint_claim_id,
+        mint_source_id,
+        upsert_source,
+    )
+
+    ck = f"local:{note_title}"
+    sid = mint_source_id(ck)
+    th = claim_text_hash(body)
+    with connection(wiki_db_path) as conn, conn:
+        upsert_source(
+            conn,
+            SourceRecord(
+                sid, ck, "note", note_title, None, None, None, "2026-07-08", None, None, NOW
+            ),
+        )
+        cid = insert_claim(conn, ClaimRecord(mint_claim_id(sid, th), sid, body, th, "derived", NOW))
+        insert_claim_entity(conn, claim_id=cid, entity_id=entity_id)
+
+
+def test_resolve_entities_flag_has_derived(tmp_path, wiki_db_path):
+    # A page carrying a promoted note (a `derived` claim) advertises has_derived:
+    # true in resolve.json so NA / MCP can flag pages that hold the user's own
+    # synthesis; a source-only page is has_derived: false.
+    _seed(wiki_db_path)
+    wiki_dir = tmp_path / "wiki"
+    render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+    with connection(wiki_db_path) as conn:
+        by_name = {e.canonical_name: e for e in get_all_entities(conn)}
+        gr, ms = by_name["GraphRAG"], by_name["Microsoft"]
+    _add_derived_claim(wiki_db_path, gr.entity_id, note_title="My note", body="A harness body.")
+
+    build_wiki_index(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    entities = _read_resolve(wiki_dir)["entities"]
+    assert entities[gr.entity_id]["has_derived"] is True
+    assert entities[ms.entity_id]["has_derived"] is False
+
+
 def test_alias_collision_raises(tmp_path, wiki_db_path):
     # One lowercased key owned by two different entity_ids is a contract error:
     # alias "Microsoft" on GraphRAG's id collides with Microsoft's canonical name.
