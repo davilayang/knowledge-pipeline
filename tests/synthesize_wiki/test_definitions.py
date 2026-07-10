@@ -32,6 +32,7 @@ def test_dag_defs_loads():
     asset_keys = {k.to_user_string() for k in merged.resolve_asset_graph().get_all_asset_keys()}
     assert {
         "synthesize_wiki/attribute_claims",
+        "synthesize_wiki/promote_notes",
         "synthesize_wiki/render_pages",
         "synthesize_wiki/build_index",
     } <= asset_keys

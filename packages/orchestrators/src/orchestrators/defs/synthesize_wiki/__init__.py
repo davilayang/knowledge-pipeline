@@ -10,6 +10,7 @@
 import dagster as dg
 
 from orchestrators.defs.shared.queue_resources import QueueStoreResource
+from orchestrators.defs.shared.resources import NotesResource
 
 from .assets import all_assets
 from .schedules import run_daily_synthesize_wiki, synthesize_wiki_job
@@ -18,5 +19,8 @@ defs = dg.Definitions(
     assets=all_assets,
     jobs=[synthesize_wiki_job],
     schedules=[run_daily_synthesize_wiki],
-    resources={"queue_store": QueueStoreResource()},
+    resources={
+        "queue_store": QueueStoreResource(),
+        "notes": NotesResource(backup_source_dir=dg.EnvVar("BACKUP_SRC_DIR")),
+    },
 )

@@ -18,7 +18,9 @@ src/domains/
 ├── raw_store/          # raw_store.db — newsletter-assistant ingest store
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
-│   └── sources.py      # LocalFileSource
+│   ├── sources.py      # LocalFileSource
+│   └── promoted.py     # PromotedNote + read_promoted_notes — frontmatter-aware
+│                       # reader for `promote: true` notes (KP-2 note→wiki promotion)
 ├── wiki/               # Wiki state — SQLite-backed (wiki.db) run state + page IO
 │   ├── types.py        # WikiPage / ExtractedEntity / ExtractionResult + PageType literal
 │   ├── state.py        # entities / pages / aliases / processed_items / rejected_entities run state

@@ -22,11 +22,18 @@ attribute_claims  (sweep over every queue.db source with both an extract_claims 
         │          synthesized_at watermark stored on the source; a re-extracted source is
         │          re-processed with its claims REPLACED. Fail-soft per source. Returns the
         │          persisted count. Serialized on WIKI_WRITE_POOL.)
-        ▼  (passes persisted count)
-render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources) from wiki.db to
-        │      data/wiki/{slug}-{shortid}.md. SKIPS entirely when the sweep changed nothing —
-        │      a no-op render would rewrite every page's updated_at and churn the downstream
-        │      curation push. Serialized on WIKI_WRITE_POOL.)
+        ▼  (deps ordering only — hints resolve against the freshest entities)
+promote_notes  (attach user-promoted notes (data/notes/*.md, promote: true) to canonical wiki
+        │       entities as one `derived` claim per note, linked to every entity its
+        │       relevance-ordered `entities` hints resolve to (exact-name + alias, alias-aware;
+        │       a miss mints a `concept` entity). Idempotent + reconciling — an edited note
+        │       REPLACES its claim, an unpromoted/deleted note's claim is removed. Returns the
+        │       dirty count (changed + removed). Serialized on WIKI_WRITE_POOL.)
+        ▼  (passes both attribute_claims' persisted count and promote_notes' dirty count)
+render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1 derived note
+        │      claim) from wiki.db to data/wiki/{slug}-{shortid}.md. SKIPS entirely when BOTH
+        │      upstream signals are zero — a no-op render would rewrite every page's updated_at
+        │      and churn the downstream curation push. Serialized on WIKI_WRITE_POOL.)
         ▼  (deps ordering only)
 build_index  (rebuild the whole-wiki index sidecars from wiki.db: data/wiki/_index/resolve.json
               — alias→entity_id resolution + per-entity orientation {name,type,file,num_sources,
@@ -53,7 +60,7 @@ reflects only the current extraction (replace, not merge).
 
 ## Concurrency
 
-All three assets carry the shared `WIKI_WRITE_POOL` op tag (`config.WIKI_WRITE_POOL`,
+All four assets carry the shared `WIKI_WRITE_POOL` op tag (`config.WIKI_WRITE_POOL`,
 also bound by `sync_wiki_curation`'s ops) so a synthesis write never interleaves
 with a curation write against the single-writer `wiki.db`. Load-bearing: the
 serialization only holds because `configs/dagster.yaml` caps the pool at one
@@ -65,6 +72,9 @@ concurrent op (`concurrency.pools.granularity: op, default_limit: 1`).
   key so it doesn't collide with `fetch_extract_queue`'s `store` (Dagster's merge
   forbids two sub-Definitions binding the same key), mirroring triage's
   `triage_store`.
+- `notes` — its own `NotesResource` (`get_notes_dir()` → `BACKUP_SRC_DIR/notes`, the
+  NA-owned notes dir synced by the backup pipeline), bound in this pipeline's
+  `Definitions` (not shared) and consumed by `promote_notes`.
 - `wiki` — the shared `WikiResource` (bound in `shared.defs`), consumed at the
   top-level `Definitions.merge`.
 

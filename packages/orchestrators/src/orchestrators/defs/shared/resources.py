@@ -43,6 +43,18 @@ class VectorStoreResource(dg.ConfigurableResource):
         return get_collection(self._get_client(), name)
 
 
+class NotesResource(dg.ConfigurableResource):
+    """Path to the newsletter-assistant notes dir (NA-owned flat `*.md` files
+    under ``BACKUP_SRC_DIR``, the synced NA data mount — the same root
+    populate_vector_store's SourcesResource reads). Consumed by synthesize_wiki's
+    promote_notes asset."""
+
+    backup_source_dir: str
+
+    def get_notes_dir(self) -> Path:
+        return Path(self.backup_source_dir) / "notes"
+
+
 class WikiResource(dg.ConfigurableResource):
     """Paths for the durable wiki store (key "wiki").
 
