@@ -4,8 +4,9 @@ A plain-function workflow that turns one source document into attributed wiki
 updates. Extract-time Dagster assets in `fetch_extract_queue` call
 `extract_claims` and `extract_entities` per item; `attributed_synthesis.synthesize_source`
 resolves candidates against the live wiki and persists per-source attributed
-claims; `render_entity_pages` sweeps all entities and renders each page from
-its accumulated attributed claims.
+claims; `promote_notes` (below) separately folds user-promoted notes in as
+`derived` claims; `render_entity_pages` sweeps all entities and renders each
+page from its accumulated attributed claims.
 
 For operations (how to launch, retry, debug), see the attributed-lane runbook:
 `packages/orchestrators/src/orchestrators/defs/fetch_extract_queue/README.md`.
@@ -166,3 +167,4 @@ name or a descriptive phrase.
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
 | `attributed_persist.py` | `persist_source_assignment` — writes one source's attributed claims into wiki.db in the caller's transaction: upserts the source row, inserts minted entities, inserts each claim and its claim→entity links. Idempotent (ON CONFLICT DO NOTHING). Returns the surviving source_id |
 | `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor) |
+| `promote_notes.py` | `promote_notes` — reads every `promote: true` note (`domains.notes.promoted.read_promoted_notes`), resolves its `entities` hints against the live wiki in one batch (`resolve_or_mint_batch`; curator-denylisted hints dropped first), and writes each note as a note-origin source (`content_key = local:{note_id}`) with ONE `derived` claim linked to its resolved entities — REPLACE semantics per note (prior claim deleted before re-insert) and reconciling (a note-origin source whose note is no longer promoted is deleted, cascading its claim). Returns a `PromoteResult` (`written` / `changed` / `removed` / `fuzzy_hints`); `.dirty` (`changed + removed`) is the render-trigger signal so an unchanged standing note doesn't force a re-render |
