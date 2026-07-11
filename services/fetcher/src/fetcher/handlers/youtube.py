@@ -6,6 +6,7 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 from fetcher.extractors import oembed as oembed_extractor
+from fetcher.metadata import build_metadata
 from fetcher.extractors import transcript_structurer
 from fetcher.extractors import youtube_transcript as transcript_extractor
 from fetcher.extractors._cloud_chain import StructurerChainFailed
@@ -110,7 +111,10 @@ async def _finalize_chunks(ctx: FetchContext, url: str, chunks: list[dict]) -> R
     body = transcript_extractor.chunks_to_markdown(chunks)
     raw_markdown = header + body
 
-    metadata: dict = {"chunks": chunks}
+    # oEmbed title/channel are provenance — surface them as canonical metadata,
+    # not just in the header. `chunks` is non-attribution sidecar junk it rides
+    # alongside. (Upload date is absent from oEmbed — a separate source, deferred.)
+    metadata: dict = {"chunks": chunks, **build_metadata(title=meta.title, authors=meta.author)}
     extra_log: list[TierLogEntry] = []
     final_markdown = raw_markdown
 

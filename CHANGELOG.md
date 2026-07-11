@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Fetched content now captures the content-published date + author as structured provenance.** A canonical metadata contract (`fetcher.metadata.build_metadata`, keys `title`/`authors`/`published`) carries them from the fetch tiers to `queue_items` → wiki sources, so source claims get real publish dates instead of NULL. Jina (article/Medium) parses `Published Time:` before discarding the preamble; the Facebook `author`-key drift (silently dropped by the `authors`-reading consumer) is fixed.
+- **Fetched content now captures the content-published date + author as structured provenance.** A canonical metadata contract (`fetcher.metadata.build_metadata`, keys `title`/`authors`/`published`/`arxiv_id`) carries them from the fetch tiers to `queue_items` → wiki sources, so source claims get real publish dates instead of NULL. Jina (article/Medium) parses `Published Time:` before discarding the preamble; arxiv emits the paper's published date; YouTube surfaces the oEmbed title/channel; the Facebook `author`-key drift (silently dropped by the `authors`-reading consumer) is fixed.
 
 ### Changed
 

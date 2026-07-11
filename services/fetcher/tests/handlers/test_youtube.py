@@ -68,6 +68,21 @@ async def test_transcript_api_tier_persists_chunks_sidecar_even_when_structurer_
     ]
 
 
+async def test_transcript_api_tier_captures_oembed_title_and_author() -> None:
+    # The oEmbed title/channel are provenance — surface them as canonical metadata
+    # (not just baked into the markdown header) so the wiki source is attributed.
+    ctx = _make_ctx(structurer_enabled=False)
+
+    with (
+        _patch_transcript_api(_fake_snippets()),
+        _patch_oembed(title="My Show", author="The Channel"),
+    ):
+        result = await youtube._transcript_api_tier(ctx, _VIDEO_URL)
+
+    assert result.metadata["title"] == "My Show"
+    assert result.metadata["authors"] == "The Channel"
+
+
 async def test_youtube_structurer_fires_when_flag_enabled() -> None:
     """Flag on + chain succeeds → returned content is the STRUCTURED markdown;
     extra_tier_log carries a transcript_structurer entry the cascade can append."""
