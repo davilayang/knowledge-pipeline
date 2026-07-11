@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Wiki claims now render as real backlinks with distinct provenance dates.** Source claims render their domain as `[domain](url)` (linking to the redirect-resolved `canonical_url`, not the raw url), and publish + fetch dates show as separate labelled signals `(published X, fetched Y)` — a missing publish date shows only the fetch date, never substituted. Implementation: `_attribution` in `domains.wiki.attributed` (+ `AttributedClaim.fetched_at`), `build_source_record` in `wiki_synthesis.attributed_synthesis`.
+- **Promoted-note claims now backlink to their origin note file.** A `derived` claim's source `url` is set to `data/notes/<note_id>.md` (was NULL — an untraceable claim), rendered as a link in the note caption; the `promote_notes` dirty check now counts every render-visible source field (url, title, published_at), so an edit to any of them (or a note predating the backlink) re-renders instead of silently skipping. NA's appended note footer — both the `---`-delimited and bare trailing `Source:`/URL shapes — is stripped before the body becomes claim text. Implementation: `promote_notes._write_note_claim`, `notes.promoted._strip_note_trailer`.
+
 ---
 
 ## [0.34.0] — 2026-07-11

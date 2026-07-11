@@ -295,6 +295,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
             published_at="2026-03-01",
             url="https://ex.com/d",
             title="A Title",
+            fetched_at=NOW,
         ),
         AttributedClaim(
             text="Undated claim about GraphRAG.",
@@ -304,6 +305,7 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
             published_at=None,
             url="https://ex.com/u",
             title="A Title",
+            fetched_at=NOW,
         ),
     ]
 
@@ -477,12 +479,75 @@ def test_render_attributed_markdown_shape():
         "## Reported\n"
         "\n"
         "- GraphRAG combines vector search with a knowledge graph. "
-        "— Jane Doe · medium.com (2026-03-01)\n"
+        "— Jane Doe · [medium.com](https://medium.com/x) (published 2026-03-01)\n"
         "\n"
         "## Opinion\n"
         "\n"
-        "- GraphRAG will replace naive RAG. — voidmag.com\n"
+        "- GraphRAG will replace naive RAG. — [voidmag.com](https://voidmag.com/y)\n"
     )
+
+
+def test_render_attributed_markdown_renders_domain_as_backlink():
+    # Provenance: a source claim's domain renders as a real markdown backlink
+    # `[domain](url)`, not bare text — so every claim links back to its origin.
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="GraphRAG combines vector search with a knowledge graph.",
+            claim_kind="reported",
+            author="Jane Doe",
+            publication=None,
+            published_at="2026-03-01",
+            url="https://medium.com/x",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-02"
+    )
+    assert "[medium.com](https://medium.com/x)" in md
+
+
+def test_render_attributed_markdown_shows_both_dates_labelled():
+    # Both provenance dates surface as DISTINCT, labelled signals so a reader can
+    # tell publish date from fetch date (recency reasoning needs them separate).
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="GraphRAG combines vector search with a knowledge graph.",
+            claim_kind="reported",
+            author="Jane Doe",
+            publication=None,
+            published_at="2026-03-01",
+            url="https://medium.com/x",
+            fetched_at="2026-07-02",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-02"
+    )
+    assert "(published 2026-03-01, fetched 2026-07-02)" in md
+
+
+def test_render_attributed_markdown_no_publish_date_shows_only_fetched():
+    # No publish date → show only the fetch date, labelled — NEVER substitute the
+    # fetch date into the publish slot (that would launder a fake publish signal).
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="GraphRAG will replace naive RAG.",
+            claim_kind="opinion",
+            author=None,
+            publication=None,
+            published_at=None,
+            url="https://voidmag.com/y",
+            fetched_at="2026-07-02",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-02"
+    )
+    assert "(fetched 2026-07-02)" in md
+    assert "published" not in md.split("## Opinion")[1]
 
 
 def test_render_attributed_markdown_renders_derived_as_from_my_notes():
@@ -505,6 +570,30 @@ def test_render_attributed_markdown_renders_derived_as_from_my_notes():
     )
     assert "## From my notes" in md
     assert "An agent harness wraps guardrails around a raw model." in md
+
+
+def test_render_attributed_markdown_derived_backlinks_to_note_file():
+    # A note-origin derived claim must link back to its origin note file, so it's
+    # a traceable claim, not a "fake" unsourced assertion. The note title renders
+    # as a backlink to the note file (carried on the claim's `url`).
+    entity = _entity_record("e_n", "Agent harness")
+    claims = [
+        AttributedClaim(
+            text="An agent harness wraps guardrails around a raw model.",
+            claim_kind="derived",
+            author=None,
+            publication=None,
+            published_at="2026-07-08",
+            url="data/notes/2026-07-08_agent-harness-a1b2c3.md",
+            title="Framework for AI Harness Design",
+        ),
+    ]
+    md = render_attributed_markdown(
+        entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-07-10"
+    )
+    assert (
+        "[Framework for AI Harness Design]" "(data/notes/2026-07-08_agent-harness-a1b2c3.md)" in md
+    )
 
 
 def test_render_attributed_markdown_derived_keeps_block_structure():

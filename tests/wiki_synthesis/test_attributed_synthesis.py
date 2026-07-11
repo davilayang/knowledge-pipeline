@@ -82,7 +82,8 @@ def test_build_source_record_maps_queue_row():
     assert src.title == "A Title"
     assert src.author == "Jane Doe"
     assert src.publication is None
-    assert src.url == "https://medium.com/x?utm=1"
+    # Backlink is the redirect-resolved canonical_url (deduped), not the raw url.
+    assert src.url == "https://medium.com/x"
     assert src.published_at == "2026-03-01"
     assert src.content_hash == "h1"
     assert src.added_at == NOW
@@ -216,7 +217,10 @@ def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
     text = (wiki_dir / filename).read_text(encoding="utf-8")
     assert "# GraphRAG" in text
     assert "## Reported" in text
-    assert "- GraphRAG uses a knowledge graph. — Jane Doe · medium.com (2026-03-01)" in text
+    assert (
+        "- GraphRAG uses a knowledge graph. "
+        "— Jane Doe · [medium.com](https://medium.com/x) (published 2026-03-01)" in text
+    )
 
 
 def _seed_lone_derived(conn, *, entity_id, name, note_title, body):

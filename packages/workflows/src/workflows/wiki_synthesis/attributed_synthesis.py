@@ -61,7 +61,9 @@ def build_source_record(row: dict, *, now: str | None = None) -> SourceRecord:
         title=row.get("title"),
         author=row.get("author"),
         publication=row.get("publication"),
-        url=row.get("url"),
+        # Backlink to the redirect-resolved canonical_url (deduped), not the raw
+        # url, so the claim links to the same origin the source is keyed on.
+        url=content_key,
         published_at=row.get("content_date"),
         content_hash=row.get("content_hash"),
         fetched_at=row.get("fetched_at"),

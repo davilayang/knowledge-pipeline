@@ -53,13 +53,46 @@ def read_promoted_notes(notes_dir: Path) -> list[PromotedNote]:
                 note_id=path.stem,
                 title=meta.get("title", path.stem),
                 date=file_date,
-                body=body,
+                body=_strip_note_trailer(body),
                 entities=tuple(str(e) for e in entities),
                 updated_at=_as_str(meta.get("updated_at")),
                 session_id=_as_str(meta.get("session_id")),
             )
         )
     return out
+
+
+# Footer lines NA appends after the trailing `---`: a source-ref line (`Source:`
+# or a bare URL) and/or a `**Bold:**` reflection. A trailing block made only of
+# these is provenance/reflection metadata, not the note's claim text.
+_FOOTER_PREFIXES = ("**", "Source:", "http://", "https://")
+# The subset that's an UNAMBIGUOUS footer marker even without a `---` rule above
+# it — a `**Bold:**` line alone is left (it could be real content).
+_UNDELIMITED_FOOTER = ("Source:", "http://", "https://")
+
+
+def _strip_note_trailer(body: str) -> str:
+    """Drop NA's appended footer so it doesn't render as prose on the wiki page,
+    where the whole note body becomes a verbatim derived claim. Two footer shapes:
+
+    1. `---`-delimited: the final `---` separator plus a trailing block made only
+       of footer-shaped lines. A `---` with real prose after it (a legitimate
+       mid-body horizontal rule) is left intact.
+    2. undelimited: a bare trailing `Source:` / URL line with no `---` above it.
+
+    ponytail: a trailing `**Bold:**` with no `---` is left — too ambiguous to cut
+    (could be a real closing line like `**Conclusion:** …`)."""
+    lines = body.rstrip().split("\n")
+    for i in range(len(lines) - 1, -1, -1):
+        if lines[i].strip() != "---":
+            continue
+        trailing = [ln.strip() for ln in lines[i + 1 :] if ln.strip()]
+        if trailing and all(ln.startswith(_FOOTER_PREFIXES) for ln in trailing):
+            lines = lines[:i]
+        break  # the last `---` isn't a footer delimiter — don't hunt earlier ones
+    while lines and (not lines[-1].strip() or lines[-1].strip().startswith(_UNDELIMITED_FOOTER)):
+        lines.pop()
+    return "\n".join(lines).rstrip()
 
 
 def _as_str(value: object) -> str | None:
