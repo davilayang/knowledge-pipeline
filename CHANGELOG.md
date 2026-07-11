@@ -8,8 +8,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Wiki claims now render as real backlinks with distinct provenance dates.** Source claims render their domain as `[domain](url)` (linking to the redirect-resolved `canonical_url`, not the raw url), and publish + fetch dates show as separate labelled signals `(published X, fetched Y)` — a missing publish date shows only the fetch date, never substituted. Implementation: `_attribution` in `domains.wiki.attributed` (+ `AttributedClaim.fetched_at`), `build_source_record` in `wiki_synthesis.attributed_synthesis`.
-- **Promoted-note claims now backlink to their origin note file.** A `derived` claim's source `url` is set to `data/notes/<note_id>.md` (was NULL — an untraceable claim), rendered as a link in the note caption; the `promote_notes` dirty check now counts every render-visible source field (url, title, published_at), so an edit to any of them (or a note predating the backlink) re-renders instead of silently skipping. NA's appended note footer — both the `---`-delimited and bare trailing `Source:`/URL shapes — is stripped before the body becomes claim text. Implementation: `promote_notes._write_note_claim`, `notes.promoted._strip_note_trailer`.
+- **Wiki source claims now render as real backlinks with distinct dates.** The domain renders as `[domain](url)` (the redirect-resolved `canonical_url`, not the raw url); publish and fetch dates show as separate labelled signals, a missing publish date never substituted by the fetch date. Implementation: `_attribution` (+ `AttributedClaim.fetched_at`) in `domains.wiki.attributed`, `build_source_record`.
+- **Promoted-note claims now backlink to their origin note file.** A `derived` claim's source `url` is `data/notes/<note_id>.md` (was NULL — untraceable), rendered as a caption link; the `promote_notes` dirty check now counts every render-visible source field so an edit (or a note predating the backlink) re-renders. Implementation: `promote_notes._write_note_claim`.
+- **NA's appended note footer is stripped before a note becomes claim text** — both the `---`-delimited and bare trailing `Source:`/URL shapes — so it no longer leaks as prose onto the wiki page. Implementation: `notes.promoted._strip_note_trailer`.
 
 ---
 
