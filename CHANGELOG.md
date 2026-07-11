@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.34.0] — 2026-07-11
+
 ### Added
 
 - **Promoted notes now render on their entity's wiki page under `## From my notes`.** `render_attributed_markdown` surfaces each `derived` claim as a verbatim markdown block (not a flattened bullet), captioned with the note title + date, kept separate from the source-side Reported/Opinion sections. An entity carrying only a promoted note is exempt from the page-worthiness floor, so a note that mints a fresh entity still gets a page. `resolve.json` entity entries gain `has_derived` so NA / MCP can flag pages holding the user's own synthesis.

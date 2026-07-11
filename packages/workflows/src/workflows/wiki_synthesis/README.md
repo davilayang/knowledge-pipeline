@@ -28,6 +28,14 @@ record) and `pages` (synthesised-artifact record). The same entity is
 mentioned by many documents over time; `render_entity_pages` re-renders the
 page from ALL attributed claims accumulated across sources.
 
+A page's body (`domains.wiki.attributed.render_attributed_markdown`) renders
+`## From my notes` first when the entity carries any `derived` claim (a
+promoted note — see `promote_notes.py` below), as a verbatim block captioned
+by the note's title and date, followed by `## Reported` / `## Opinion`
+sections for the source-attributed claims. Frontmatter carries a deterministic
+`summary:` field (the lead claim's first line, preferring reported over
+opinion over derived) — the text `WikiSource` embeds for the vector lane.
+
 ## Semantic model
 
 | Concept | Storage | Cardinality |
@@ -77,7 +85,7 @@ echoes accumulated metadata back into the body.
 |---|---|
 | `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, entity_type) |
 | `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); entity_type/slug/canonical_name read via join |
-| `_index/resolve.json` — alias→entity_id resolution + per-entity orientation (`name`, `type`, `file`, `num_sources`, `page_hash`); newsletter-assistant bridge sidecar; written last so it never points past an `.md` file already on disk | |
+| `_index/resolve.json` — alias→entity_id resolution + per-entity orientation (`name`, `type`, `file`, `num_sources`, `has_derived`, `page_hash`); newsletter-assistant bridge sidecar; written last so it never points past an `.md` file already on disk | |
 | | `aliases` — entity name → id mapping (normalized_alias PK) |
 | | `processed_items` — per (item_id, source_type) completion markers |
 
@@ -166,5 +174,5 @@ name or a descriptive phrase.
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
 | `attributed_persist.py` | `persist_source_assignment` — writes one source's attributed claims into wiki.db in the caller's transaction: upserts the source row, inserts minted entities, inserts each claim and its claim→entity links. Idempotent (ON CONFLICT DO NOTHING). Returns the surviving source_id |
-| `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor) |
+| `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor; an entity with a `derived` claim is exempt from the floor) |
 | `promote_notes.py` | `promote_notes` — reads every `promote: true` note (`domains.notes.promoted.read_promoted_notes`), resolves its `entities` hints against the live wiki in one batch (`resolve_or_mint_batch`; curator-denylisted hints dropped first), and writes each note as a note-origin source (`content_key = local:{note_id}`) with ONE `derived` claim linked to its resolved entities — REPLACE semantics per note (prior claim deleted before re-insert) and reconciling (a note-origin source whose note is no longer promoted is deleted, cascading its claim). Returns a `PromoteResult` (`written` / `changed` / `removed` / `fuzzy_hints`); `.dirty` (`changed + removed`) is the render-trigger signal so an unchanged standing note doesn't force a re-render |
