@@ -133,8 +133,14 @@ def render_entity_pages(
             # Page-worthiness floor (replaces the raw path's salience gate): a page
             # is earned by ≥2 claims OR claims from ≥2 sources. A single claim from
             # a single source is a passing co-mention, not a page. Threshold is
-            # empirically tunable.
-            if len(claims) < 2 and count_sources_for_entity(conn, entity_id) < 2:
+            # empirically tunable. A `derived` claim (a promoted note) is the user's
+            # own synthesis — page-worthy on its own, so it's exempt from the floor.
+            has_derived = any(c.claim_kind == "derived" for c in claims)
+            if (
+                not has_derived
+                and len(claims) < 2
+                and count_sources_for_entity(conn, entity_id) < 2
+            ):
                 # A re-extraction (claim replacement) can shrink an entity below the
                 # floor after it earned a page. Delete the now-stale page (row + .md)
                 # so it doesn't linger; the source count / claims no longer back it.

@@ -280,6 +280,7 @@ class AttributedClaim:
     publication: str | None
     published_at: str | None
     url: str | None
+    title: str | None = None  # source/note title — the attributor for a derived (note) claim
 
 
 def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[AttributedClaim]:
@@ -290,7 +291,7 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
     else undated rows float to the top), then by claim_id for a stable read."""
     rows = conn.execute(
         """
-        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at, s.url
+        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at, s.url, s.title
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
         JOIN sources s ON s.source_id = c.source_id
@@ -317,6 +318,22 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
         (entity_id,),
     ).fetchone()
     return int(row[0]) if row and row[0] is not None else 0
+
+
+def has_derived_for_entity(conn: sqlite3.Connection, entity_id: str) -> bool:
+    """Whether `entity_id` carries any `derived` claim (a promoted note) — the
+    signal a page holds the user's own synthesis, surfaced in resolve.json."""
+    row = conn.execute(
+        """
+        SELECT 1
+        FROM claim_entities ce
+        JOIN claims c ON c.claim_id = ce.claim_id
+        WHERE ce.entity_id = ? AND c.claim_kind = 'derived'
+        LIMIT 1
+        """,
+        (entity_id,),
+    ).fetchone()
+    return row is not None
 
 
 def _yaml_scalar(value: str) -> str:
@@ -352,6 +369,31 @@ def _attribution(claim: AttributedClaim) -> str:
     return f"{left} ({claim.published_at})" if claim.published_at else left
 
 
+def _summary(claims: list[AttributedClaim]) -> str:
+    """A deterministic one-line summary for the page — the lead claim's first
+    line, preferring a reported (definitional) claim, then opinion, then a
+    promoted note (markdown header markers stripped). Serves both the display
+    line and the vector-lane embed text; a crude heuristic, an LLM summary is the
+    deferred upgrade. Empty only if the page has no claims at all."""
+    for kind in ("reported", "opinion", "derived"):
+        for c in claims:
+            if c.claim_kind != kind:
+                continue
+            lines = c.text.strip().splitlines()  # empty for blank/whitespace-only text
+            if lines and (first_line := lines[0].lstrip("#").strip()):
+                return first_line
+    return ""
+
+
+def _note_caption(claim: AttributedClaim) -> str:
+    """The caption for a derived (promoted-note) block: `<note title> — my note,
+    <date>`. The title names the user's own note; missing parts drop out."""
+    title = claim.title or "Untitled note"
+    return (
+        f"{title} — my note, {claim.published_at}" if claim.published_at else f"{title} — my note"
+    )
+
+
 def render_attributed_markdown(
     *,
     entity: EntityRecord,
@@ -375,11 +417,21 @@ def render_attributed_markdown(
         f"entity_type: {_yaml_scalar(entity.entity_type)}",
         f"aliases: {_yaml_inline_list(aliases)}",
         f"related: {_yaml_inline_list(list(related))}",
+        f"summary: {_yaml_scalar(_summary(claims))}",
         f"num_sources: {int(num_sources)}",
         f"updated_at: {updated_at}",
         "---",
     ]
     sections = []
+    # Derived (promoted-note) claims lead: they are the user's own synthesis, a
+    # structured artifact rendered as a verbatim block (not a one-line bullet),
+    # each captioned with the note it came from (title + date) so the block reads
+    # as attributed to the user's note, never "source unknown".
+    derived_blocks = [
+        f"*{_note_caption(c)}*\n\n{c.text}" for c in claims if c.claim_kind == "derived"
+    ]
+    if derived_blocks:
+        sections.append("## From my notes\n\n" + "\n\n".join(derived_blocks))
     for kind, heading in (("reported", "Reported"), ("opinion", "Opinion")):
         bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.claim_kind == kind]
         if bullets:

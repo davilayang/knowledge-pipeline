@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.34.0] — 2026-07-11
+
+### Added
+
+- **Promoted notes now render on their entity's wiki page under `## From my notes`.** `render_attributed_markdown` surfaces each `derived` claim as a verbatim markdown block (not a flattened bullet), captioned with the note title + date, kept separate from the source-side Reported/Opinion sections. An entity carrying only a promoted note is exempt from the page-worthiness floor, so a note that mints a fresh entity still gets a page. `resolve.json` entity entries gain `has_derived` so NA / MCP can flag pages holding the user's own synthesis.
+- **Wiki pages now emit a deterministic `summary:` frontmatter field** (the lead claim's first line — reported, else opinion, else the promoted note). Fixes the empty-string wiki embed: the vector lane reads `meta["summary"]`, so the `wiki` collection now embeds real text instead of nothing. (A crude heuristic; an LLM summary + a body/summary embedding eval are the deferred follow-up.)
+
+---
+
 ## [0.33.0] — 2026-07-10
 
 ### Added

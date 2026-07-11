@@ -5,9 +5,19 @@ Uses the `wiki_db` / `wiki_db_path` fixtures (fresh SQLite wiki.db, schema
 applied).
 """
 
-from domains.wiki.attributed import attributed_claims_for_entity, mint_source_id
-from domains.wiki.identity import shortid
-from domains.wiki.state import connection, get_all_entities, get_page
+from domains.wiki.attributed import (
+    ClaimRecord,
+    SourceRecord,
+    attributed_claims_for_entity,
+    claim_text_hash,
+    insert_claim,
+    insert_claim_entity,
+    mint_claim_id,
+    mint_source_id,
+    upsert_source,
+)
+from domains.wiki.identity import EntityRecord, normalize_name, shortid, slugify
+from domains.wiki.state import connection, get_all_entities, get_page, insert_entity
 from workflows.wiki_synthesis.attributed_synthesis import (
     build_source_record,
     render_entity_pages,
@@ -207,3 +217,67 @@ def test_render_entity_pages_writes_page_and_upserts(tmp_path, wiki_db_path):
     assert "# GraphRAG" in text
     assert "## Reported" in text
     assert "- GraphRAG uses a knowledge graph. — Jane Doe · medium.com (2026-03-01)" in text
+
+
+def _seed_lone_derived(conn, *, entity_id, name, note_title, body):
+    """Seed a fresh concept entity carrying ONE derived claim from ONE note
+    source — the shape a note that mints a new entity produces."""
+    insert_entity(
+        conn,
+        EntityRecord(
+            entity_id=entity_id,
+            canonical_name=name,
+            normalized_name=normalize_name(name),
+            slug=slugify(name),
+            entity_type="concept",
+            created_at=NOW,
+        ),
+    )
+    ck = f"local:{note_title}"
+    sid = mint_source_id(ck)
+    upsert_source(
+        conn,
+        SourceRecord(
+            source_id=sid,
+            content_key=ck,
+            origin_type="note",
+            title=note_title,
+            author=None,
+            publication=None,
+            url=None,
+            published_at="2026-07-08",
+            content_hash=None,
+            fetched_at=None,
+            added_at=NOW,
+        ),
+    )
+    th = claim_text_hash(body)
+    cid = insert_claim(
+        conn,
+        ClaimRecord(
+            claim_id=mint_claim_id(sid, th),
+            source_id=sid,
+            text=body,
+            text_hash=th,
+            claim_kind="derived",
+            created_at=NOW,
+        ),
+    )
+    insert_claim_entity(conn, claim_id=cid, entity_id=entity_id)
+
+
+def test_render_entity_pages_keeps_lone_derived_entity(tmp_path, wiki_db_path):
+    # A promoted note that mints a fresh entity leaves it with ONE derived claim
+    # from ONE note source — below the source-side floor (≥2 claims / ≥2 sources).
+    # A note is page-worthy on its own, so the page must still render.
+    eid = "e_lonederived01"
+    with connection(wiki_db_path) as conn, conn:
+        _seed_lone_derived(
+            conn, entity_id=eid, name="Agent harness", note_title="My note", body="A harness body."
+        )
+    wiki_dir = tmp_path / "wiki"
+    rendered = render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir, entity_ids=[eid])
+
+    assert rendered == [eid]
+    with connection(wiki_db_path) as conn:
+        assert get_page(conn, eid) is not None

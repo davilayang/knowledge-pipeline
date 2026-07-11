@@ -1,12 +1,11 @@
-"""End-to-end guard for the KP-1 schema slice (derived claim_kind).
+"""End-to-end guard for the derived-claim render path (KP-1 schema + KP-3 render).
 
 Drives the REAL pipeline on a fresh on-disk wiki.db: create_schema (the actual
 schema file, not the fixture) → write a note-as-source + a `derived` claim +
 a `reported` claim → render_entity_pages writes a real .md file. Proves the
-schema admits a note-origin source and a derived claim, and that the existing
-render pipeline TOLERATES a derived claim's presence without crashing. Render
-is not derived-aware yet (that's KP-3), so the derived text must be silently
-absent from the page — never leaked into the Reported/Opinion sections.
+schema admits a note-origin source and a derived claim, and that render surfaces
+the derived claim under its own `## From my notes` section (the user's synthesis)
+without leaking it into the source-side Reported/Opinion sections.
 """
 
 from domains.wiki.attributed import (
@@ -93,4 +92,7 @@ def test_derived_claim_flows_through_render_without_leaking(tmp_path):
     assert len(pages) == 1
     page = pages[0].read_text()
     assert reported_text in page  # source-side claim renders
-    assert derived_text not in page  # render isn't derived-aware yet (KP-3) — no leak
+    assert "## From my notes" in page
+    assert derived_text in page  # the user's synthesis renders under From my notes
+    # No leak: the derived claim must NOT appear in the source-side Reported section.
+    assert derived_text not in page.split("## Reported", 1)[1]
