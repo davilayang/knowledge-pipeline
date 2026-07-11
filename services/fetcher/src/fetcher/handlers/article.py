@@ -115,6 +115,8 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=extracted,
         status=status,
+        # Free provenance from the same HTML — title/author/published date.
+        metadata=trafilatura_extractor.extract_metadata(html),
         detail=None if extracted else "trafilatura produced empty markdown from 2xx html",
     )
 

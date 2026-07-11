@@ -58,8 +58,13 @@ def _format_post_markdown(post: dict) -> str:
     return "\n".join(parts)
 
 
-async def fetch_post(client: httpx.AsyncClient, *, url: str, api_key: str) -> tuple[str, str, str]:
-    """Fetch one Facebook post; return (markdown, title, author).
+async def fetch_post(
+    client: httpx.AsyncClient, *, url: str, api_key: str
+) -> tuple[str, str, str, str]:
+    """Fetch one Facebook post; return (markdown, title, author, published).
+
+    `published` is the raw `publish_time` from the same response (already fetched
+    — no extra call); `build_metadata` normalizes it to a plain date downstream.
 
     Raises ValueError on HTTP ≥400, quota exhausted, unexpected payload,
     or empty body — handler maps to `RawTierResult.detail`.
@@ -81,4 +86,5 @@ async def fetch_post(client: httpx.AsyncClient, *, url: str, api_key: str) -> tu
     author = (
         ((post.get("values") or {}).get("shared_post_details") or {}).get("name") or ""
     ).strip()
-    return markdown, title, author
+    published = ((post.get("values") or {}).get("publish_time") or "").strip()
+    return markdown, title, author, published

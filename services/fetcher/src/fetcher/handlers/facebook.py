@@ -48,7 +48,7 @@ async def _api4_tier(ctx: FetchContext, url: str) -> RawTierResult:
             content="", status=0, detail="api4 skipped: RAPIDAPI_KEY not configured"
         )
     try:
-        markdown, title, author = await facebook_api4.fetch_post(
+        markdown, title, author, published = await facebook_api4.fetch_post(
             ctx.http_client, url=url, api_key=ctx.rapidapi_key
         )
     except ValueError as exc:
@@ -57,7 +57,7 @@ async def _api4_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=markdown,
         status=200,
-        metadata=build_metadata(title=title, authors=author),
+        metadata=build_metadata(title=title, authors=author, published=published),
     )
 
 
@@ -72,7 +72,7 @@ async def _scraper3_tier(ctx: FetchContext, url: str) -> RawTierResult:
         # this tier can't address them. Soft-skip — cascade records detail.
         return RawTierResult(content="", status=0, detail="scraper3: no pfbid in URL")
     try:
-        markdown, title, author = await facebook_scraper3.fetch_post(
+        markdown, title, author, published = await facebook_scraper3.fetch_post(
             ctx.http_client, pfbid=pfbid, api_key=ctx.rapidapi_key
         )
     except ValueError as exc:
@@ -83,7 +83,7 @@ async def _scraper3_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=markdown,
         status=200,
-        metadata=build_metadata(title=title, authors=author),
+        metadata=build_metadata(title=title, authors=author, published=published),
     )
 
 

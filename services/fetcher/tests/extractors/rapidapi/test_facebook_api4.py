@@ -40,7 +40,7 @@ async def test_fetch_post_returns_markdown_title_author_for_200_payload() -> Non
     client = MagicMock()
     client.get = AsyncMock(return_value=_ok_response(payload))
 
-    markdown, title, author = await facebook_api4.fetch_post(
+    markdown, title, author, published = await facebook_api4.fetch_post(
         client, url=_POST_URL, api_key="secret"
     )
 
@@ -57,6 +57,7 @@ async def test_fetch_post_returns_markdown_title_author_for_200_payload() -> Non
     assert f"Source: {_POST_URL}" in markdown
     assert title == "First line of post."
     assert author == "Some Author"
+    assert published == "2026-06-14T10:00:00Z"  # raw; build_metadata normalizes it
 
 
 async def test_fetch_post_raises_on_http_error() -> None:

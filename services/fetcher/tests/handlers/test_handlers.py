@@ -439,5 +439,5 @@ async def test_article_jina_strips_preamble_on_success() -> None:
     # Preamble metadata is captured (title + published) before it's stripped.
     assert result.metadata == {
         "title": "Real Article",
-        "published": "2026-06-29T00:00:00Z",
+        "published": "2026-06-29",  # normalized from the preamble's ISO datetime
     }

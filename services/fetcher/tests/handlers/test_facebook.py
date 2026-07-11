@@ -63,7 +63,7 @@ async def test_api4_tier_returns_content_on_success() -> None:
         "fetcher.handlers.facebook.facebook_api4.fetch_post",
         new_callable=AsyncMock,
     ) as mock:
-        mock.return_value = ("**Author**\n\nbody", "body", "Author")
+        mock.return_value = ("**Author**\n\nbody", "body", "Author", "2026-06-14T10:00:00Z")
         result = await facebook._api4_tier(ctx, _FB_URL)
 
     mock.assert_awaited_once()
@@ -73,7 +73,7 @@ async def test_api4_tier_returns_content_on_success() -> None:
     assert result.status == 200
     assert "body" in result.content
     # Canonical `authors` key (not `author`) — the consumer reads `authors`.
-    assert result.metadata == {"title": "body", "authors": "Author"}
+    assert result.metadata == {"title": "body", "authors": "Author", "published": "2026-06-14"}
 
 
 async def test_api4_tier_surfaces_extractor_error_in_detail() -> None:
@@ -106,7 +106,7 @@ async def test_scraper3_tier_uses_pfbid_from_url() -> None:
         "fetcher.handlers.facebook.facebook_scraper3.fetch_post",
         new_callable=AsyncMock,
     ) as mock:
-        mock.return_value = ("**Author**\n\nbody", "body", "Author")
+        mock.return_value = ("**Author**\n\nbody", "body", "Author", "2026-06-14T10:00:00Z")
         result = await facebook._scraper3_tier(ctx, _FB_URL)
 
     call = mock.await_args

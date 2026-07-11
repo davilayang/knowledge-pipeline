@@ -30,18 +30,22 @@ def extract_pfbid(url: str) -> str | None:
     return match.group(0) if match else None
 
 
+def _ts_to_iso(ts: object) -> str:
+    """A Unix `timestamp` → UTC ISO string, or "" if absent/out of range."""
+    if isinstance(ts, (int, float)):
+        try:
+            return datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        except (OSError, ValueError):
+            return ""
+    return ""
+
+
 def _format_post_markdown(results: dict) -> str:
     author = ((results.get("author") or {}).get("name") or "").strip()
     body = (results.get("message") or "").strip()
-    ts = results.get("timestamp")
     post_url = (results.get("url") or "").strip()
 
-    iso = ""
-    if isinstance(ts, (int, float)):
-        try:
-            iso = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-        except (OSError, ValueError):
-            iso = ""
+    iso = _ts_to_iso(results.get("timestamp"))
 
     parts: list[str] = []
     if author:
@@ -60,8 +64,11 @@ def _format_post_markdown(results: dict) -> str:
 
 async def fetch_post(
     client: httpx.AsyncClient, *, pfbid: str, api_key: str
-) -> tuple[str, str, str]:
-    """Fetch one Facebook post by pfbid; return (markdown, title, author)."""
+) -> tuple[str, str, str, str]:
+    """Fetch one Facebook post by pfbid; return (markdown, title, author, published).
+
+    `published` is the post `timestamp` as a UTC ISO string from the same response
+    (no extra call); `build_metadata` normalizes it to a plain date downstream."""
     response = await client.get(
         _URL, params={"post_id": pfbid}, headers=build_headers(_HOST, api_key)
     )
@@ -80,4 +87,5 @@ async def fetch_post(
     markdown = _format_post_markdown(results)
     title = body.split("\n", 1)[0].strip()[:120] or "Facebook post"
     author = ((results.get("author") or {}).get("name") or "").strip()
-    return markdown, title, author
+    published = _ts_to_iso(results.get("timestamp"))
+    return markdown, title, author, published

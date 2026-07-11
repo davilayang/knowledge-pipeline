@@ -11,12 +11,32 @@ The keys mirror what the consumer reads (`assets.py`): `title`, `authors`,
 `published` (content-published date), `arxiv_id`.
 """
 
+from datetime import date, datetime
 from typing import Any
 
 TITLE = "title"
 AUTHORS = "authors"
 PUBLISHED = "published"
 ARXIV_ID = "arxiv_id"
+
+
+def _normalize_published(value: str | None) -> str | None:
+    """Coerce a publish date to a plain `YYYY-MM-DD` string, or None if it can't be
+    parsed. The consumer reads `published` with `date.fromisoformat`, which rejects
+    a time component (`2026-06-29T00:00:00Z`) — so normalize at the source. An
+    unparseable value (`March 1, 2026`) is dropped: a garbage date that crashes the
+    consumer is worse than an absent one."""
+    if not value:
+        return None
+    text = str(value).strip()
+    try:
+        return date.fromisoformat(text).isoformat()
+    except ValueError:
+        pass
+    try:
+        return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
+    except ValueError:
+        return None
 
 
 def build_metadata(
@@ -34,8 +54,8 @@ def build_metadata(
         out[TITLE] = title
     if authors:
         out[AUTHORS] = authors
-    if published:
-        out[PUBLISHED] = published
+    if normalized := _normalize_published(published):
+        out[PUBLISHED] = normalized
     if arxiv_id:
         out[ARXIV_ID] = arxiv_id
     return out

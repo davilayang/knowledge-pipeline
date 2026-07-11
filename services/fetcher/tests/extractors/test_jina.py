@@ -72,7 +72,7 @@ def test_parse_preamble_extracts_title_and_published() -> None:
     )
     assert jina.parse_preamble(body) == {
         "title": "My Article",
-        "published": "2026-06-29T00:00:00Z",
+        "published": "2026-06-29",  # normalized from the preamble's ISO datetime
     }
 
 
