@@ -458,6 +458,10 @@ def publish_item(
         "Ready",
         description=core_mechanism,
         name=extracted_title,
+        # Surface the content-published date in Notion — the user's own date if
+        # they set one (idempotent), else the fetcher-discovered date filling a
+        # previously-blank field. NULL only if neither source produced a date.
+        published_date=row.get("content_date"),
     )
     return dg.MaterializeResult(
         metadata={
