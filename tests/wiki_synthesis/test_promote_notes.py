@@ -8,7 +8,11 @@ fixture (seed/inspect) + `wiki_db_path` (the workflow opens its own connection).
 
 from pathlib import Path
 
-from domains.wiki.attributed import attributed_claims_for_entity
+from domains.wiki.attributed import (
+    attributed_claims_for_entity,
+    get_source,
+    mint_source_id,
+)
 from domains.wiki.identity import EntityRecord, normalize_name, slugify
 from domains.wiki.state import insert_entity
 from workflows.wiki_synthesis.promote_notes import promote_notes
@@ -58,6 +62,20 @@ def test_promoted_note_lands_derived_claim_on_existing_entity(wiki_db, wiki_db_p
     promote_notes(db_path=wiki_db_path, notes_dir=notes)
 
     assert _derived_texts(wiki_db, eid) == ["Harness = a DX engine."]
+
+
+def test_note_source_backlinks_to_note_file(wiki_db, wiki_db_path, tmp_path):
+    # A promoted note's source must backlink to its origin note file (else its
+    # derived claim is an untraceable "fake" assertion). The backlink is the
+    # stable note-file path, keyed on the note_id.
+    _seed_entity(wiki_db, "e_0000000000000001", "Agent Harness")
+    notes = tmp_path / "notes"
+    _write_note(notes, "2026-07-08_note-a1", entities=["Agent Harness"])
+
+    promote_notes(db_path=wiki_db_path, notes_dir=notes)
+
+    src = get_source(wiki_db, mint_source_id("local:2026-07-08_note-a1"))
+    assert src.url == "data/notes/2026-07-08_note-a1.md"
 
 
 def test_two_notes_same_new_concept_land_on_one_entity(wiki_db, wiki_db_path, tmp_path):
@@ -178,6 +196,42 @@ def test_result_dirty_flags_only_real_changes(wiki_db, wiki_db_path, tmp_path):
 
     _write_note(notes, "note-a1", entities=["Agent Harness"], body="Take one.", promote=False)
     assert promote_notes(db_path=wiki_db_path, notes_dir=notes).dirty >= 1  # removal
+
+
+def test_backlink_added_to_predating_source_is_dirty(wiki_db, wiki_db_path, tmp_path):
+    # A note-source that predates the backlink (url still NULL) must re-render when
+    # the backlink lands — else existing notes' pages silently skip the render and
+    # the new backlink never surfaces (same body + links, only the url changed).
+    _seed_entity(wiki_db, "e_0000000000000001", "Agent Harness")
+    notes = tmp_path / "notes"
+    _write_note(notes, "note-a1", entities=["Agent Harness"], body="Take one.")
+    promote_notes(db_path=wiki_db_path, notes_dir=notes)
+
+    # Simulate the pre-backlink state: wipe the url on the stored source.
+    wiki_db.execute("UPDATE sources SET url = NULL WHERE origin_type = 'note'")
+    wiki_db.commit()
+
+    assert promote_notes(db_path=wiki_db_path, notes_dir=notes).dirty >= 1
+
+
+def test_title_only_edit_is_dirty(wiki_db, wiki_db_path, tmp_path):
+    # The note caption renders the title, so a title-only edit (same body, hints,
+    # date) is render-visible and must be dirty — else the page keeps the old
+    # title. A body/url-only check would miss this.
+    _seed_entity(wiki_db, "e_0000000000000001", "Agent Harness")
+    notes = tmp_path / "notes"
+    notes.mkdir()
+
+    def _write(title):
+        (notes / "note-a1.md").write_text(
+            f"---\ntitle: {title}\ndate: '2026-07-08'\n"
+            "entities: [Agent Harness]\npromote: true\n---\n\nSame body.\n"
+        )
+
+    _write("Old title")
+    promote_notes(db_path=wiki_db_path, notes_dir=notes)
+    _write("New title")
+    assert promote_notes(db_path=wiki_db_path, notes_dir=notes).dirty >= 1
 
 
 def test_hint_only_edit_is_dirty(wiki_db, wiki_db_path, tmp_path):

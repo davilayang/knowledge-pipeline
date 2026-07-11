@@ -25,6 +25,7 @@ from domains.wiki.attributed import (
     delete_source,
     get_claims_for_source,
     get_entities_for_claim,
+    get_source,
     get_source_keys_by_origin,
     insert_claim,
     insert_claim_entity,
@@ -118,11 +119,23 @@ def _write_note_claim(conn, note: PromotedNote, entity_ids: list[str], now: str)
     source_id = mint_source_id(content_key)
     text_hash = claim_text_hash(note.body)
     new_links = set(dict.fromkeys(entity_ids))
+    # Backlink to the origin note file (stable path keyed on note_id) — a derived
+    # claim with no path back to its note is an untraceable "fake" assertion.
+    note_url = f"data/notes/{note.note_id}.md"
+    note_published = note.date.isoformat() if note.date else None
+    prior_source = get_source(conn, source_id)
     prior = get_claims_for_source(conn, source_id)
     unchanged = (
         len(prior) == 1
         and prior[0].text_hash == text_hash
         and get_entities_for_claim(conn, prior[0].claim_id) == new_links
+        # Every render-visible source field must count toward dirty — else an edit
+        # to it (or a source predating the backlink) leaves render_pages skipping a
+        # now-stale page. The caption renders title + date + the note-file backlink.
+        and prior_source is not None
+        and prior_source.url == note_url
+        and prior_source.title == note.title
+        and prior_source.published_at == note_published
     )
     source = SourceRecord(
         source_id=source_id,
@@ -131,8 +144,8 @@ def _write_note_claim(conn, note: PromotedNote, entity_ids: list[str], now: str)
         title=note.title,
         author=None,  # session_id is recoverable from the note file; not smuggled into author
         publication=None,
-        url=None,
-        published_at=note.date.isoformat() if note.date else None,
+        url=note_url,
+        published_at=note_published,
         content_hash=None,
         fetched_at=note.updated_at,  # freshness signal
         added_at=now,

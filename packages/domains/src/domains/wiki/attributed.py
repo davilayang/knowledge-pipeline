@@ -281,6 +281,9 @@ class AttributedClaim:
     published_at: str | None
     url: str | None
     title: str | None = None  # source/note title — the attributor for a derived (note) claim
+    fetched_at: str | None = (
+        None  # when the source was fetched — a distinct recency signal from published_at
+    )
 
 
 def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[AttributedClaim]:
@@ -291,7 +294,8 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
     else undated rows float to the top), then by claim_id for a stable read."""
     rows = conn.execute(
         """
-        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at, s.url, s.title
+        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at,
+               s.url, s.title, s.fetched_at
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
         JOIN sources s ON s.source_id = c.source_id
@@ -365,8 +369,18 @@ def _attribution(claim: AttributedClaim) -> str:
     all renders `source unknown` so it never reads as an unsourced assertion."""
     who = claim.publication or claim.author
     domain = _source_domain(claim.url)
-    left = " · ".join(part for part in (who, domain) if part) or "source unknown"
-    return f"{left} ({claim.published_at})" if claim.published_at else left
+    # A source claim must link back to its origin — render the domain as a real
+    # backlink `[domain](url)`, not bare text, so no claim reads as unsourced.
+    link = f"[{domain}]({claim.url})" if domain and claim.url else domain
+    left = " · ".join(part for part in (who, link) if part) or "source unknown"
+    # Both dates are DISTINCT, explicitly labelled signals — a missing publish
+    # date shows only the fetch date, never substituted into the publish slot.
+    parts = []
+    if claim.published_at:
+        parts.append(f"published {claim.published_at}")
+    if claim.fetched_at:
+        parts.append(f"fetched {claim.fetched_at}")
+    return f"{left} ({', '.join(parts)})" if parts else left
 
 
 def _summary(claims: list[AttributedClaim]) -> str:
@@ -387,10 +401,13 @@ def _summary(claims: list[AttributedClaim]) -> str:
 
 def _note_caption(claim: AttributedClaim) -> str:
     """The caption for a derived (promoted-note) block: `<note title> — my note,
-    <date>`. The title names the user's own note; missing parts drop out."""
+    <date>`. The title names the user's own note and, when a note-file backlink is
+    present, links to it — so a derived claim traces back to its origin note rather
+    than reading as an unsourced assertion. Missing parts drop out."""
     title = claim.title or "Untitled note"
+    label = f"[{title}]({claim.url})" if claim.url else title
     return (
-        f"{title} — my note, {claim.published_at}" if claim.published_at else f"{title} — my note"
+        f"{label} — my note, {claim.published_at}" if claim.published_at else f"{label} — my note"
     )
 
 
