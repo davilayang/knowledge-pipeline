@@ -154,6 +154,9 @@ class TriageInput(dg.Config):
     content_shape: str | None = None
     name: str | None = None
     added_at_iso: str | None = None
+    # User-set Notion "Publish Date" — the manual content-published date. Wins
+    # over the fetcher's auto-detected date (which fills only when this is blank).
+    publish_date_iso: str | None = None
     raw_content_override: str = ""
 
 
@@ -291,6 +294,7 @@ def triaged(
         content_shape=content_shape,
         raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
+        content_date=config.publish_date_iso,
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.

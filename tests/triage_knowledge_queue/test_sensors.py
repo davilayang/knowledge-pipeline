@@ -16,6 +16,7 @@ def _notion_row(
     content_shape: str | None = None,
     name: str = "",
     added_at: str | None = None,
+    publish_date: str | None = None,
     use_page_body: bool | None = None,
 ) -> dict:
     props: dict = {"URL": {"url": url}}
@@ -27,6 +28,8 @@ def _notion_row(
         props["Name"] = {"title": [{"plain_text": name}]}
     if added_at is not None:
         props["Added At"] = {"date": {"start": added_at}}
+    if publish_date is not None:
+        props["Publish Date"] = {"date": {"start": publish_date}}
     if use_page_body is not None:
         props["Use page body"] = {"checkbox": use_page_body}
     return {
@@ -112,6 +115,32 @@ def test_sensor_reads_user_set_content_shape():
         "config"
     ]
     assert triaged_cfg["content_shape"] == "conference_talk"
+
+
+def test_sensor_reads_user_set_publish_date():
+    # A user-set "Publish Date" flows into triaged config as publish_date_iso —
+    # the manual content-published date for items the fetcher can't date.
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://youtube.com/watch?v=x", publish_date="2026-01-15"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_knowledge_queue__triaged"][
+        "config"
+    ]
+    assert triaged_cfg["publish_date_iso"] == "2026-01-15"
+
+
+def test_sensor_emits_none_publish_date_when_unset():
+    notion = MagicMock()
+    notion.query_for_triage.return_value = [
+        _notion_row("p-1", "https://example.com/a"),
+    ]
+    result = poll_notion_for_triage(dg.build_sensor_context(), triage_notion=notion)
+    triaged_cfg = result.run_requests[0].run_config["ops"]["triage_knowledge_queue__triaged"][
+        "config"
+    ]
+    assert triaged_cfg.get("publish_date_iso") is None
 
 
 def test_sensor_emits_none_content_shape_when_unset():

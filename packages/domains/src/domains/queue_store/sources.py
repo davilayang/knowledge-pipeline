@@ -207,6 +207,7 @@ def upsert_triaged(
     content_shape: str | None = None,
     raw_content_override: str = "",
     user_comments_json: str | None = None,
+    content_date: str | None = None,
 ) -> None:
     """Re-triage is a cohort boundary: clear every downstream-produced column
     so `fetched` / `extracted` re-run on the fresh routing. Without this, the
@@ -226,9 +227,9 @@ def upsert_triaged(
             """
             INSERT INTO queue_items (
                 notion_page_id, url, canonical_url, content_type, content_shape,
-                raw_content_override, user_comments_json
+                raw_content_override, user_comments_json, content_date
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 canonical_url = excluded.canonical_url,
@@ -236,6 +237,11 @@ def upsert_triaged(
                 content_shape = excluded.content_shape,
                 raw_content_override = excluded.raw_content_override,
                 user_comments_json = excluded.user_comments_json,
+                -- content_date is a USER INPUT (the Notion "Publish Date"), not a
+                -- fetcher-produced column — re-triage writes the current Notion
+                -- value (which the fetcher later fills only if left blank), it is
+                -- NOT cleared like the downstream columns below.
+                content_date = excluded.content_date,
                 raw_content = NULL,
                 fetched_at = NULL,
                 fetch_tier = NULL,
@@ -244,7 +250,6 @@ def upsert_triaged(
                 content_hash = NULL,
                 title = NULL,
                 author = NULL,
-                content_date = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -262,6 +267,7 @@ def upsert_triaged(
                 content_shape,
                 raw_content_override,
                 user_comments_json,
+                content_date,
             ),
         )
         # FK CASCADE on extraction_calls.notion_page_id only fires on DELETE of
@@ -401,7 +407,9 @@ def upsert_fetched(
                 content_hash = excluded.content_hash,
                 title = excluded.title,
                 author = excluded.author,
-                content_date = excluded.content_date,
+                -- User-set wins: a Notion "Publish Date" written at triage is
+                -- authoritative — the fetcher's date only FILLS when it's blank.
+                content_date = COALESCE(queue_items.content_date, excluded.content_date),
                 error_text = NULL
             """,
             (

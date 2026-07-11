@@ -61,6 +61,15 @@ def poll_notion_for_triage(
         if not existing_added_at:
             added_at_iso = row.get("created_time") or None
 
+        # User-set "Publish Date" (None if unset) — the manual content-published
+        # date for items the fetcher can't date (YouTube, paywalled). Wins over
+        # the fetcher's auto-detected date. Same date-property shape as Added At.
+        publish_date_prop = row.get("properties", {}).get("Publish Date", {})
+        publish_date_date = (
+            publish_date_prop.get("date") if isinstance(publish_date_prop, dict) else None
+        )
+        publish_date_iso = publish_date_date.get("start") if publish_date_date else None
+
         use_body_prop = row.get("properties", {}).get("Use page body", {})
         use_body = bool(use_body_prop.get("checkbox", False))
         raw_content_override = triage_notion.get_page_body_markdown(page_id) if use_body else ""
@@ -81,6 +90,7 @@ def poll_notion_for_triage(
                             content_shape=existing_cs,
                             name=existing_name,
                             added_at_iso=added_at_iso,
+                            publish_date_iso=publish_date_iso,
                             raw_content_override=raw_content_override,
                         ),
                     }

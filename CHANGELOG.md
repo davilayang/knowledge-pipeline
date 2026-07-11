@@ -8,6 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
+- **A Notion "Publish Date" property now sets an item's content-published date.** The triage sensor reads the date property (like `Added At`) into `queue_items.content_date`, so items the fetcher can't date (YouTube, paywalled) get a manual, zero-cost date. User-set wins: `upsert_fetched` COALESCEs, so a fetcher-detected date only fills when the Notion date is blank. Requires adding a `Publish Date` date property to the Queue database.
 - **Fetched content now captures the content-published date + author as structured provenance.** A canonical metadata contract (`fetcher.metadata.build_metadata`, keys `title`/`authors`/`published`/`arxiv_id`) carries them from the fetch tiers to `queue_items` → wiki sources, so source claims get real publish dates instead of NULL. Covered free from data each tier already holds: Jina (article/Medium) `Published Time:`, trafilatura's HTML metadata, arxiv's published date, YouTube's oEmbed title/channel, Facebook's post date. The Facebook `author`-key drift (silently dropped by the `authors`-reading consumer) is fixed. Paid Medium metadata endpoint is deliberately NOT called (cost); its date stays absent. `build_metadata` normalizes every date to plain `YYYY-MM-DD` (dropping an unparseable one) so the consumer's `date.fromisoformat` never crashes.
 
 ### Changed

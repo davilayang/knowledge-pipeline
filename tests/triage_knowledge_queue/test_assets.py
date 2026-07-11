@@ -52,6 +52,7 @@ def _materialize(
     url: str,
     content_type: str | None = None,
     name: str | None = None,
+    publish_date_iso: str | None = None,
 ):
     instance = _instance_with_partition(partition_key)
     op_config: dict = {"url": url}
@@ -59,6 +60,8 @@ def _materialize(
         op_config["content_type"] = content_type
     if name is not None:
         op_config["name"] = name
+    if publish_date_iso is not None:
+        op_config["publish_date_iso"] = publish_date_iso
     return dg.materialize(
         [triaged],
         partition_key=partition_key,
@@ -105,6 +108,21 @@ def test_triaged_returns_youtube_for_youtube_url(tmp_path: Path):
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "YouTube"
+
+
+def test_triaged_writes_user_publish_date_to_queue(tmp_path: Path):
+    # A user-set "Publish Date" (config.publish_date_iso) lands in queue_items
+    # content_date at triage — the manual provenance source the fetcher respects.
+    resources, _ = _resources(tmp_path)
+    result = _materialize(
+        partition_key="p-1",
+        resources=resources,
+        url="https://youtube.com/watch?v=xx12345abcd",
+        publish_date_iso="2026-01-15",
+    )
+    assert result.success
+    row = queue_db.get_row(db_path=Path(tmp_path / "q.db"), notion_page_id="p-1")
+    assert row["content_date"] == "2026-01-15"
 
 
 def test_triaged_returns_article_for_blog_url(tmp_path: Path):
