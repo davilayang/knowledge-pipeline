@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Fetched content now captures the content-published date + author as structured provenance.** A canonical metadata contract (`fetcher.metadata.build_metadata`, keys `title`/`authors`/`published`) carries them from the fetch tiers to `queue_items` → wiki sources, so source claims get real publish dates instead of NULL. Jina (article/Medium) parses `Published Time:` before discarding the preamble; the Facebook `author`-key drift (silently dropped by the `authors`-reading consumer) is fixed.
+
 ### Changed
 
 - **Wiki source claims now render as real backlinks with distinct dates.** The domain renders as `[domain](url)` (the redirect-resolved `canonical_url`, not the raw url); publish and fetch dates show as separate labelled signals, a missing publish date never substituted by the fetch date. Implementation: `_attribution` (+ `AttributedClaim.fetched_at`) in `domains.wiki.attributed`, `build_source_record`.

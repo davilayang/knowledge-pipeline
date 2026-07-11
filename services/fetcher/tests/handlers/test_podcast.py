@@ -38,8 +38,7 @@ def test_matches_zencastr_mp4_url() -> None:
     """Zencastr-style video-podcast MP4 URL → True. Covers the 1.26 GB
     video-podcast case where ffmpeg has to strip video before Whisper."""
     url = (
-        "https://media.zencastr.com/projects/abc/episodes/041/size/1258517258/"
-        "stacked-data-041.mp4"
+        "https://media.zencastr.com/projects/abc/episodes/041/size/1258517258/stacked-data-041.mp4"
     )
     assert podcast.matches(url) is True
 

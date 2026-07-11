@@ -10,6 +10,7 @@ import logging
 from urllib.parse import urlparse
 
 from fetcher.extractors.rapidapi import facebook_api4, facebook_scraper3
+from fetcher.metadata import build_metadata
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -56,7 +57,7 @@ async def _api4_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=markdown,
         status=200,
-        metadata={"title": title, "author": author},
+        metadata=build_metadata(title=title, authors=author),
     )
 
 
@@ -82,7 +83,7 @@ async def _scraper3_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=markdown,
         status=200,
-        metadata={"title": title, "author": author},
+        metadata=build_metadata(title=title, authors=author),
     )
 
 

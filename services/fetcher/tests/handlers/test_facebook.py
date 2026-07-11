@@ -72,7 +72,8 @@ async def test_api4_tier_returns_content_on_success() -> None:
     assert call.kwargs["api_key"] == "rapid-key"
     assert result.status == 200
     assert "body" in result.content
-    assert result.metadata == {"title": "body", "author": "Author"}
+    # Canonical `authors` key (not `author`) — the consumer reads `authors`.
+    assert result.metadata == {"title": "body", "authors": "Author"}
 
 
 async def test_api4_tier_surfaces_extractor_error_in_detail() -> None:

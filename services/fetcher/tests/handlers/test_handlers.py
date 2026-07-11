@@ -414,3 +414,8 @@ async def test_article_jina_strips_preamble_on_success() -> None:
     assert result.content == "# Real Article\n\nThe actual body."
     assert "Title:" not in result.content
     assert "Markdown Content:" not in result.content
+    # Preamble metadata is captured (title + published) before it's stripped.
+    assert result.metadata == {
+        "title": "Real Article",
+        "published": "2026-06-29T00:00:00Z",
+    }
