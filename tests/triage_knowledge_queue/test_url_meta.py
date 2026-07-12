@@ -56,6 +56,25 @@ _HTML_WITH_OG_DESCRIPTION = """
 </html>
 """
 
+_HTML_WITH_PUBLISHED = """
+<html>
+<head>
+  <title>Dated Post</title>
+  <meta property="article:published_time" content="2026-03-01T08:00:00Z">
+</head>
+<body><p>Body text.</p></body>
+</html>
+"""
+
+
+def test_captures_publish_date_from_meta():
+    """trafilatura already extracts the publish date into `.date`; surface it as
+    an ISO YYYY-MM-DD so triage can seed content_date without a separate fetch."""
+    resp = _fake_response(url="https://example.com/dated", text=_HTML_WITH_PUBLISHED)
+    with _patch_get(resp):
+        meta = fetch_url_meta("https://example.com/dated")
+    assert meta.date == "2026-03-01"
+
 
 def test_returns_title_and_description_from_html():
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_META)
@@ -150,6 +169,6 @@ def test_empty_title_normalized_to_none():
 
 
 def test_returns_immutable_dataclass():
-    meta = UrlMeta(redirected_url="x", title=None, description=None)
+    meta = UrlMeta(redirected_url="x", title=None, description=None, date=None)
     with pytest.raises(Exception):
         meta.redirected_url = "y"  # type: ignore[misc]

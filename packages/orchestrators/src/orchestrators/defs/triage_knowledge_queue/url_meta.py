@@ -32,11 +32,14 @@ class UrlMeta:
     """URL after HTTP redirect resolution + page-level meta. `redirected_url`
     is the post-redirect URL (the URL the browser would land on); distinct
     from `canonical_url` (the normalized identity used for dedup) and from
-    `original_url` (the raw input)."""
+    `original_url` (the raw input). `date` is trafilatura's extracted publish
+    date (ISO YYYY-MM-DD) — the earliest, cheapest content-date signal (triage
+    already fetches the HTML), None when the page carries no date meta."""
 
     redirected_url: str
     title: str | None
     description: str | None
+    date: str | None = None  # trailing default: best-effort, keeps existing call sites valid
 
 
 def _normalize(value: str | None, *, max_chars: int | None = None) -> str | None:
@@ -54,25 +57,30 @@ def fetch_url_meta(url: str, *, timeout: float = _TIMEOUT_S) -> UrlMeta:
     try:
         resp = httpx.get(url, follow_redirects=True, timeout=timeout, headers=_HEADERS)
     except httpx.HTTPError:
-        return UrlMeta(redirected_url=url, title=None, description=None)
+        return UrlMeta(redirected_url=url, title=None, description=None, date=None)
 
     redirected_url = str(resp.url) or url
 
     if resp.status_code >= 400:
-        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None, date=None)
 
     content_type = (resp.headers.get("content-type") or "").lower()
     if "html" not in content_type:
-        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None, date=None)
 
     try:
-        metadata = trafilatura.extract_metadata(resp.text)
+        # original_date=True makes htmldate prefer the PUBLISH date over a later
+        # Last-Modified/updated date — else a CDN-served page's modified header can
+        # masquerade as the publish date. Extensive search stays on (default): some
+        # blogs carry the date only in body text, not a meta tag.
+        metadata = trafilatura.extract_metadata(resp.text, date_config={"original_date": True})
     except Exception:
-        return UrlMeta(redirected_url=redirected_url, title=None, description=None)
+        return UrlMeta(redirected_url=redirected_url, title=None, description=None, date=None)
 
     title = _normalize(getattr(metadata, "title", None) if metadata else None)
     description = _normalize(
         getattr(metadata, "description", None) if metadata else None,
         max_chars=_DESCRIPTION_MAX_CHARS,
     )
-    return UrlMeta(redirected_url=redirected_url, title=title, description=description)
+    date = _normalize(getattr(metadata, "date", None) if metadata else None)
+    return UrlMeta(redirected_url=redirected_url, title=title, description=description, date=date)

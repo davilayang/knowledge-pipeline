@@ -125,6 +125,47 @@ def test_triaged_writes_user_publish_date_to_queue(tmp_path: Path):
     assert row["content_date"] == "2026-01-15"
 
 
+def test_triaged_writes_trafilatura_date_for_article(tmp_path: Path):
+    # For an Article, the publish date trafilatura extracts at triage seeds
+    # content_date (no user Publish Date set) — the earliest, cheapest date signal.
+    resources, _ = _resources(tmp_path)
+    meta = UrlMeta(
+        redirected_url="https://blog.example.com/post",
+        title="Post",
+        description="d",
+        date="2026-03-01",
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1", resources=resources, url="https://blog.example.com/post"
+        )
+    assert result.success
+    row = queue_db.get_row(db_path=Path(tmp_path / "q.db"), notion_page_id="p-1")
+    assert row["content_date"] == "2026-03-01"
+
+
+def test_triaged_ignores_trafilatura_date_for_youtube(tmp_path: Path):
+    # YouTube's real publish date comes from the fetcher (watch-page uploadDate);
+    # a triage-side HTML date must NOT seed content_date, or first-write-wins would
+    # lock out the authoritative fetcher value. Triage dates Articles only.
+    resources, _ = _resources(tmp_path)
+    meta = UrlMeta(
+        redirected_url="https://youtube.com/watch?v=xx12345abcd",
+        title="Vid",
+        description="d",
+        date="2026-03-01",
+    )
+    with _patch_fetch(meta):
+        result = _materialize(
+            partition_key="p-1",
+            resources=resources,
+            url="https://youtube.com/watch?v=xx12345abcd",
+        )
+    assert result.success
+    row = queue_db.get_row(db_path=Path(tmp_path / "q.db"), notion_page_id="p-1")
+    assert row["content_date"] is None
+
+
 def test_triaged_returns_article_for_blog_url(tmp_path: Path):
     resources, _ = _resources(tmp_path)
     result = _materialize(

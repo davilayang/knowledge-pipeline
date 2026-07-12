@@ -13,6 +13,7 @@ from orchestrators.defs.shared.queue_resources import (
 
 from .classify import (
     ALL_CONTENT_TYPES,
+    CONTENT_TYPE_ARTICLE,
     CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_PODCAST,
     CONTENT_TYPE_YOUTUBE,
@@ -295,7 +296,13 @@ def triaged(
         content_shape=content_shape,
         raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
-        content_date=config.publish_date_iso,
+        # Triage dates ARTICLES only. trafilatura's HTML date is reliable for
+        # articles/blogs, but YouTube/arXiv/PDF/podcast are dated authoritatively
+        # by the fetcher (watch-page uploadDate, arXiv API). content_date is
+        # first-write-wins downstream, so a triage guess on those types would lock
+        # out the better fetcher value. A user-set Publish Date still wins over both.
+        content_date=config.publish_date_iso
+        or (meta.date if content_type == CONTENT_TYPE_ARTICLE else None),
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.
