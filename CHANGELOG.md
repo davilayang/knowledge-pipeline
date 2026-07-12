@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Articles now get a publish date at triage, from the HTML triage already fetches.** `fetch_url_meta` surfaces trafilatura's date (`original_date=True`, so a Last-Modified header can't pose as the publish date); triage seeds `content_date` for `Article` URLs only — YouTube/arXiv/PDF/podcast keep the fetcher as the authoritative dater (`content_date` is first-write-wins). Implementation: `triage_knowledge_queue.url_meta.UrlMeta.date`, `assets.triaged`.
+- **Articles now get a publish date at triage, from the HTML triage already fetches.** `fetch_url_meta` surfaces trafilatura's date (`original_date=True`, so a Last-Modified header can't pose as the publish date); triage seeds `content_date` for open `Article` URLs only. YouTube/arXiv/PDF/podcast — and Medium/Facebook, which classify as Article but the fetcher dates authoritatively (Medium serves triage a 200 soft-404 with a bogus date) — keep the fetcher as the dater (`content_date` is first-write-wins). Implementation: `url_meta.UrlMeta.date`, `classify.is_fetcher_dated_domain`, `assets.triaged`.
 
 ### Changed
 

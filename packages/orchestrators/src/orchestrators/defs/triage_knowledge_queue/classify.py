@@ -93,6 +93,22 @@ def classify_content_type(url: str) -> str:
             return CONTENT_TYPE_ARTICLE
 
 
+# Domains that CLASSIFY as Article but the fetcher dates authoritatively via a
+# dedicated handler (Medium's paywall-bypass, Facebook's API). Triage's plain GET
+# is unreliable for them — Medium serves a 200 soft-404 to it, whose HTML yields a
+# bogus date — so triage must not seed content_date for these, or first-write-wins
+# would lock the junk in over the fetcher's correct value.
+_FETCHER_DATED_HOSTS = ("medium.com", "facebook.com")
+
+
+def is_fetcher_dated_domain(url: str) -> bool:
+    """True when the fetcher, not triage, is the authoritative dater for this
+    Article-classified URL (Medium / Facebook). Matches the host and its
+    subdomains (e.g. `steve-yegge.medium.com`)."""
+    host = (urlparse(url).hostname or "").lower()
+    return any(host == h or host.endswith("." + h) for h in _FETCHER_DATED_HOSTS)
+
+
 def normalize_url(url: str) -> str:
     """Pure URL normalization — must equal newsletter-assistant's
     `normalize_url` (`packages/knowledge/src/knowledge/fetcher/orchestrator.py`)

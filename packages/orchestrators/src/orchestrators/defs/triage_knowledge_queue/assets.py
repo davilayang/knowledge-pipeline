@@ -18,6 +18,7 @@ from .classify import (
     CONTENT_TYPE_PODCAST,
     CONTENT_TYPE_YOUTUBE,
     classify_content_type,
+    is_fetcher_dated_domain,
     normalize_url,
 )
 from .content_shape import (
@@ -296,13 +297,19 @@ def triaged(
         content_shape=content_shape,
         raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
-        # Triage dates ARTICLES only. trafilatura's HTML date is reliable for
-        # articles/blogs, but YouTube/arXiv/PDF/podcast are dated authoritatively
-        # by the fetcher (watch-page uploadDate, arXiv API). content_date is
-        # first-write-wins downstream, so a triage guess on those types would lock
-        # out the better fetcher value. A user-set Publish Date still wins over both.
+        # Triage dates ARTICLES only, EXCLUDING Medium/Facebook. trafilatura's HTML
+        # date is reliable for open articles/blogs, but YouTube/arXiv/PDF/podcast —
+        # and the Article-classified-but-fetcher-special Medium/Facebook — are dated
+        # authoritatively by the fetcher (uploadDate, arXiv API, paywall-bypass).
+        # content_date is first-write-wins downstream, so a triage guess on those
+        # would lock out the better fetcher value (Medium in particular serves triage
+        # a 200 soft-404 with a bogus date). A user Publish Date still wins over both.
         content_date=config.publish_date_iso
-        or (meta.date if content_type == CONTENT_TYPE_ARTICLE else None),
+        or (
+            meta.date
+            if content_type == CONTENT_TYPE_ARTICLE and not is_fetcher_dated_domain(canonical)
+            else None
+        ),
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.

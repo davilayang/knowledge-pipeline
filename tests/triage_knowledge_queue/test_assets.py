@@ -144,6 +144,22 @@ def test_triaged_writes_trafilatura_date_for_article(tmp_path: Path):
     assert row["content_date"] == "2026-03-01"
 
 
+def test_triaged_does_not_date_medium_despite_article_type(tmp_path: Path):
+    # Medium classifies as Article, but the fetcher dates it authoritatively
+    # (its paywall-bypass handler) — triage's plain GET gets a 200 soft-404 with a
+    # bogus date. Triage must NOT write it, or first-write-wins locks it in over
+    # the fetcher's correct date.
+    resources, _ = _resources(tmp_path)
+    url = "https://medium.com/airbnb-engineering/scaling-beyond-one-9d4bc4a1d0f9"
+    meta = UrlMeta(redirected_url=url, title="404", description="d", date="2026-07-10")
+    with _patch_fetch(meta):
+        result = _materialize(partition_key="p-1", resources=resources, url=url)
+    assert result.success
+    row = queue_db.get_row(db_path=Path(tmp_path / "q.db"), notion_page_id="p-1")
+    assert row["content_type"] == "Article"
+    assert row["content_date"] is None
+
+
 def test_triaged_ignores_trafilatura_date_for_youtube(tmp_path: Path):
     # YouTube's real publish date comes from the fetcher (watch-page uploadDate);
     # a triage-side HTML date must NOT seed content_date, or first-write-wins would
