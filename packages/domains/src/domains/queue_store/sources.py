@@ -409,8 +409,14 @@ def upsert_fetched(
                 content_hash = excluded.content_hash,
                 title = excluded.title,
                 author = excluded.author,
-                -- User-set wins: a Notion "Publish Date" written at triage is
-                -- authoritative — the fetcher's date only FILLS when it's blank.
+                -- Deliberate policy (single scalar, no separate provenance): the
+                -- FIRST non-null date wins and sticks — a Notion "Publish Date"
+                -- set at triage, else the fetcher's first discovered date. The
+                -- fetcher only FILLS a blank value, it never overwrites. Tradeoff
+                -- accepted: the fetcher cannot auto-correct its own earlier guess
+                -- (date sources are stable, so this is rare; a manual Notion edit
+                -- is the correction path). If it bites, split into distinct
+                -- user/fetcher date columns and prefer user at read.
                 content_date = COALESCE(queue_items.content_date, excluded.content_date),
                 error_text = NULL
             """,
