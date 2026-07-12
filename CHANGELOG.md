@@ -6,11 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.34.1] — 2026-07-12
+
+### Added
+
+- **Wiki claims and notes now carry a content-published date.** The fetcher captures it free per source (Jina `Published Time:`, trafilatura HTML metadata, arXiv/Facebook API fields, and the YouTube watch-page `uploadDate` via the SOCKS5 proxy — no yt-dlp), preserved across tier fallback and normalized to `YYYY-MM-DD`. Implementation: `fetcher.metadata.build_metadata`, per-handler tiers, `cascade` metadata carry.
+- **A Notion "Publish Date" property sets an item's date, both ways.** Triage reads it into `queue_items.content_date`; the fetch stage writes the fetcher-discovered date back to Notion so it's visible. User-set wins (`COALESCE` in `upsert_fetched`); the fetcher only fills a blank. Requires adding a `Publish Date` date property to the Queue database.
+
 ### Changed
 
-- **Wiki source claims now render as real backlinks with distinct dates.** The domain renders as `[domain](url)` (the redirect-resolved `canonical_url`, not the raw url); publish and fetch dates show as separate labelled signals, a missing publish date never substituted by the fetch date. Implementation: `_attribution` (+ `AttributedClaim.fetched_at`) in `domains.wiki.attributed`, `build_source_record`.
-- **Promoted-note claims now backlink to their origin note file.** A `derived` claim's source `url` is `data/notes/<note_id>.md` (was NULL — untraceable), rendered as a caption link; the `promote_notes` dirty check now counts every render-visible source field so an edit (or a note predating the backlink) re-renders. Implementation: `promote_notes._write_note_claim`.
-- **NA's appended note footer is stripped before a note becomes claim text** — both the `---`-delimited and bare trailing `Source:`/URL shapes — so it no longer leaks as prose onto the wiki page. Implementation: `notes.promoted._strip_note_trailer`.
+- **Wiki source claims render as `[domain](url)` backlinks with distinct published + fetch dates**, and **promoted-note claims backlink to their origin note file** (`data/notes/<note_id>.md`). Implementation: `domains.wiki.attributed._attribution`, `wiki_synthesis.promote_notes`.
+- **NA's appended note footer is stripped before a note becomes claim text** (both `---`-delimited and bare `Source:`/URL shapes). Implementation: `notes.promoted._strip_note_trailer`.
 
 ---
 

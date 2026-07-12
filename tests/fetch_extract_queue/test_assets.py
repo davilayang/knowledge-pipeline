@@ -660,7 +660,34 @@ def test_published_flips_notion_and_writes_topic_card_to_name_and_description(tm
         "Ready",
         description="Distilled mechanism summary.",
         name="T",
+        published_date=None,
     )
+
+
+def test_published_writes_content_date_back_to_notion(tmp_path: Path):
+    # A content_date on the row (user-set or fetcher-discovered) is written back to
+    # Notion's Publish Date in the same status flip, so the date surfaces there.
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    queue_db.upsert_fetched(
+        db_path=db_path,
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        raw_content="y" * 5000,
+        fetch_tier="youtube",
+        fetch_tier_log=[],
+        fetched_content_char_count=5000,
+        content_hash="h",
+        content_date="2026-03-01",
+    )
+    _record_three_call_extraction(db_path, "p-1")
+    store = QueueStoreResource(db_path=str(db_path))
+    notion = MagicMock()
+    result = _materialize(
+        publish_item, partition_key="p-1", resources={"notion": notion, "store": store}
+    )
+    assert result.success
+    assert notion.update_status.call_args.kwargs["published_date"] == "2026-03-01"
 
 
 def test_published_skips_description_when_no_topic_card_row(tmp_path: Path):
@@ -691,7 +718,9 @@ def test_published_skips_description_when_no_topic_card_row(tmp_path: Path):
         resources={"notion": notion, "store": store},
     )
     assert result.success
-    notion.update_status.assert_called_once_with("p-1", "Ready", description=None, name=None)
+    notion.update_status.assert_called_once_with(
+        "p-1", "Ready", description=None, name=None, published_date=None
+    )
 
 
 def test_published_fails_when_no_extraction(tmp_path: Path):

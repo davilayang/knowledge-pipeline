@@ -6,6 +6,8 @@ import time
 from urllib.parse import parse_qs, urlparse
 
 from fetcher.extractors import oembed as oembed_extractor
+from fetcher.extractors import youtube_watch
+from fetcher.metadata import build_metadata
 from fetcher.extractors import transcript_structurer
 from fetcher.extractors import youtube_transcript as transcript_extractor
 from fetcher.extractors._cloud_chain import StructurerChainFailed
@@ -110,7 +112,17 @@ async def _finalize_chunks(ctx: FetchContext, url: str, chunks: list[dict]) -> R
     body = transcript_extractor.chunks_to_markdown(chunks)
     raw_markdown = header + body
 
-    metadata: dict = {"chunks": chunks}
+    # oEmbed gives title/channel; the upload date comes from the watch page's SEO
+    # microformat (oEmbed has none), fetched through the SOCKS5 proxy since a
+    # data-center IP gets a consent-wall variant that strips it. Best-effort.
+    upload_date = await youtube_watch.fetch_upload_date(
+        ctx.socks5_url, url, timeout=ctx.upstream_timeout_s
+    )
+    # `chunks` is non-attribution sidecar junk the attribution metadata rides alongside.
+    metadata: dict = {
+        "chunks": chunks,
+        **build_metadata(title=meta.title, authors=meta.author, published=upload_date),
+    }
     extra_log: list[TierLogEntry] = []
     final_markdown = raw_markdown
 

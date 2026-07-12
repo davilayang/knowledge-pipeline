@@ -42,7 +42,7 @@ async def test_fetch_post_returns_markdown_title_author() -> None:
     client = MagicMock()
     client.get = AsyncMock(return_value=response)
 
-    markdown, title, author = await facebook_scraper3.fetch_post(
+    markdown, title, author, published = await facebook_scraper3.fetch_post(
         client, pfbid=_PFBID, api_key="secret"
     )
 
@@ -58,6 +58,7 @@ async def test_fetch_post_returns_markdown_title_author() -> None:
     assert f"Source: {_POST_URL}" in markdown
     assert title == "Post body line 1."
     assert author == "Some Author"
+    assert published == "2025-06-14T12:00:00+00:00"  # from timestamp; normalized downstream
 
 
 async def test_fetch_post_raises_on_http_error() -> None:

@@ -8,6 +8,7 @@ import arxiv as arxiv_pypi
 
 from fetcher.extractors import llamaparse as llamaparse_extractor
 from fetcher.extractors import pymupdf as pymupdf_extractor
+from fetcher.metadata import build_metadata
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -61,6 +62,17 @@ def extract_arxiv_id(url: str) -> str:
     if not match:
         raise ValueError(f"not a recognisable arXiv ID in URL: {url!r}")
     return match.group(1)
+
+
+def _build_metadata(meta: arxiv_pypi.Result, arxiv_id: str) -> dict:
+    """Canonical provenance from the arxiv paper — the same title/authors/published
+    the header formats, captured as structured metadata for the wiki source."""
+    return build_metadata(
+        title=meta.title.strip() if meta.title else None,
+        authors=[author.name for author in meta.authors] or None,
+        published=meta.published.date().isoformat() if meta.published else None,
+        arxiv_id=arxiv_id,
+    )
 
 
 def _format_header(meta: arxiv_pypi.Result, arxiv_id: str) -> str:
@@ -122,7 +134,11 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
         return RawTierResult(
             content="", status=0, detail=f"pymupdf produced empty markdown for {arxiv_id}"
         )
-    return RawTierResult(content=_format_header(paper, arxiv_id) + body, status=200)
+    return RawTierResult(
+        content=_format_header(paper, arxiv_id) + body,
+        status=200,
+        metadata=_build_metadata(paper, arxiv_id),
+    )
 
 
 async def _arxiv_llamaparse(ctx: FetchContext, url: str) -> RawTierResult:
@@ -138,7 +154,11 @@ async def _arxiv_llamaparse(ctx: FetchContext, url: str) -> RawTierResult:
         api_key=ctx.llama_parse_api_key,
         tier=ctx.llama_parse_tier_arxiv,
     )
-    return RawTierResult(content=_format_header(paper, arxiv_id) + body, status=200)
+    return RawTierResult(
+        content=_format_header(paper, arxiv_id) + body,
+        status=200,
+        metadata=_build_metadata(paper, arxiv_id),
+    )
 
 
 TIERS: list[Tier] = [

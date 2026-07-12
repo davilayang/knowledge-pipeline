@@ -1,8 +1,11 @@
 """Markdown via Jina Reader (https://r.jina.ai/<encoded-url>)."""
 
+from typing import Any
 from urllib.parse import quote
 
 import httpx
+
+from fetcher.metadata import build_metadata
 
 _JINA_BASE = "https://r.jina.ai/"
 _REQUEST_HEADERS = {"X-Return-Format": "markdown", "X-Timeout": "20"}
@@ -20,6 +23,22 @@ def wraps_upstream_error(body: str) -> bool:
 
 
 _PREAMBLE_MARKER = "Markdown Content:"
+
+
+def parse_preamble(body: str) -> dict[str, Any]:
+    """Extract provenance metadata (title, published date) from Jina's preamble
+    BEFORE `strip_preamble` discards the whole block — the `Published Time:` line
+    is this corpus's main content-published-date source. Returns canonical
+    metadata (empty for non-Jina bodies that carry no preamble)."""
+    if not body.lstrip().startswith("Title:"):
+        return {}
+    preamble = body[: body.find(_PREAMBLE_MARKER)] if _PREAMBLE_MARKER in body else body
+    fields: dict[str, str] = {}
+    for line in preamble.splitlines():
+        key, sep, value = line.partition(":")
+        if sep and value.strip():
+            fields[key.strip()] = value.strip()
+    return build_metadata(title=fields.get("Title"), published=fields.get("Published Time"))
 
 
 def strip_preamble(body: str) -> str:

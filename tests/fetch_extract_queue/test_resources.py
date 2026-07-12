@@ -120,6 +120,34 @@ def test_notion_update_status_strips_description_and_skips_when_empty():
     assert "Description" not in props
 
 
+def test_notion_update_status_writes_publish_date_when_provided():
+    # The fetch-discovered content-published date is written back to Notion's
+    # "Publish Date" property in the same update call — so the user sees it.
+    resource = NotionQueueResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.update_status("page-id", "Ready", published_date="2026-03-01")
+    props = fake_client.pages.update.call_args.kwargs["properties"]
+    assert props["Publish Date"] == {"date": {"start": "2026-03-01"}}
+
+
+def test_notion_update_status_omits_publish_date_when_absent():
+    resource = NotionQueueResource(
+        integration_token="secret_x",
+        queue_db_id="db-123",
+        queue_data_source_id="ds-456",
+    )
+    fake_client = MagicMock()
+    with patch.object(NotionQueueResource, "_client", return_value=fake_client):
+        resource.update_status("page-id", "Ready", published_date=None)
+    props = fake_client.pages.update.call_args.kwargs["properties"]
+    assert "Publish Date" not in props
+
+
 def test_notion_update_status_omits_description_when_not_provided():
     resource = NotionQueueResource(
         integration_token="secret_x",

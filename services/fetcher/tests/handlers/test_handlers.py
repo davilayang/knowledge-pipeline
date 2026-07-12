@@ -46,6 +46,28 @@ def test_strict_paid_tier_flags() -> None:
     assert youtube.STRICT_PAID_TIER is False
 
 
+def test_arxiv_build_metadata_from_paper() -> None:
+    # The arxiv tiers already have the paper's title/authors/published/id (they
+    # format them into the header) — capture the same as canonical metadata so
+    # the wiki source gets the real publish date + author.
+    from datetime import datetime
+    from types import SimpleNamespace
+
+    from fetcher.handlers.arxiv import _build_metadata
+
+    paper = SimpleNamespace(
+        title="  A Paper  ",
+        authors=[SimpleNamespace(name="Jane Doe"), SimpleNamespace(name="John Roe")],
+        published=datetime(2026, 3, 1, 12, 0),
+    )
+    assert _build_metadata(paper, "2401.001") == {
+        "title": "A Paper",
+        "authors": ["Jane Doe", "John Roe"],
+        "published": "2026-03-01",
+        "arxiv_id": "2401.001",
+    }
+
+
 def test_arxiv_tier_order_is_pymupdf_then_llamaparse() -> None:
     """arxiv order matters: pymupdf4llm must run first (free, fast) before
     falling through to LlamaParse (paid). Other handlers' tier lists are
@@ -414,3 +436,8 @@ async def test_article_jina_strips_preamble_on_success() -> None:
     assert result.content == "# Real Article\n\nThe actual body."
     assert "Title:" not in result.content
     assert "Markdown Content:" not in result.content
+    # Preamble metadata is captured (title + published) before it's stripped.
+    assert result.metadata == {
+        "title": "Real Article",
+        "published": "2026-06-29",  # normalized from the preamble's ISO datetime
+    }

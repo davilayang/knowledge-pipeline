@@ -41,6 +41,90 @@ async def test_cascade_returns_first_passing_free_tier() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cascade_carries_metadata_from_below_floor_tier() -> None:
+    # Paywalled Medium: the free (Jina) tier fetches the preamble metadata
+    # (title + published date) but its BODY is below floor, so a paid tier wins on
+    # content. The date must survive onto the winning result, not be discarded.
+    ctx = MagicMock(spec=FetchContext)
+    free = Tier(
+        "free",
+        "free",
+        10000,  # floor above the short body → below floor
+        10**9,
+        AsyncMock(
+            return_value=RawTierResult(
+                content="x" * 100,
+                status=200,
+                metadata={"title": "T", "published": "2026-03-01"},
+            )
+        ),
+    )
+    paid = Tier(
+        "paid",
+        "paid",
+        10,
+        10,
+        AsyncMock(return_value=RawTierResult(content="rich content body", status=200, metadata={})),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [free, paid]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=True)
+    assert result.tier_used == "paid"
+    assert result.content == "rich content body"
+    assert result.metadata == {"title": "T", "published": "2026-03-01"}
+
+
+async def test_cascade_best_result_keeps_winning_tier_metadata() -> None:
+    # No tier meets floor → the LONGEST validated tier wins on content. Its
+    # provenance must win too — a later, shorter validated tier must NOT stamp its
+    # own date onto the winner's content (they'd be from different fetches).
+    ctx = MagicMock(spec=FetchContext)
+    longest = Tier(
+        "longest",
+        "free",
+        10**9,  # nothing meets this floor
+        10**9,
+        AsyncMock(
+            return_value=RawTierResult(
+                content="y" * 500, status=200, metadata={"title": "A", "published": "2026-01-01"}
+            )
+        ),
+    )
+    shorter_later = Tier(
+        "shorter",
+        "free",
+        10**9,
+        10**9,
+        AsyncMock(
+            return_value=RawTierResult(
+                content="x" * 100, status=200, metadata={"title": "B", "published": "2026-09-09"}
+            )
+        ),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [longest, shorter_later]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert result.tier_used == "longest"
+    assert result.content == "y" * 500
+    assert result.metadata == {"title": "A", "published": "2026-01-01"}
+
+
 async def test_cascade_escalates_to_paid_when_allowed() -> None:
     ctx = MagicMock(spec=FetchContext)
     free = Tier(

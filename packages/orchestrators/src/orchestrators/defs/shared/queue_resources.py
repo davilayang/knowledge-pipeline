@@ -174,6 +174,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         *,
         description: str | None = None,
         name: str | None = None,
+        published_date: str | None = None,
     ) -> None:
         """Lifecycle Status flip used by extract `published`. Optional
         `description` and `name` overwrite Notion's Description / Name
@@ -199,6 +200,14 @@ class NotionQueueResource(dg.ConfigurableResource):
             clean_name = name.strip()
             if clean_name:
                 properties["Name"] = {"title": [{"text": {"content": clean_name}}]}
+        # Write the content-published date back so a fetcher-discovered date
+        # surfaces in Notion (it's gated on content_date being set, which — via
+        # upsert_fetched's COALESCE — is the user's date if they set one, else the
+        # fetcher's). Idempotent for a user-set date; fills the field otherwise.
+        if published_date is not None:
+            clean_date = published_date.strip()
+            if clean_date:
+                properties["Publish Date"] = {"date": {"start": clean_date}}
         self._client().pages.update(page_id=page_id, properties=properties)
 
     def update_status_failed(self, page_id: str, error: str) -> None:
@@ -354,6 +363,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         content_shape: str | None = None,
         raw_content_override: str = "",
         user_comments_json: str | None = None,
+        content_date: str | None = None,
     ) -> None:
         queue_db.upsert_triaged(
             db_path=self._path(),
@@ -364,6 +374,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             content_shape=content_shape,
             raw_content_override=raw_content_override,
             user_comments_json=user_comments_json,
+            content_date=content_date,
         )
 
     def upsert_enriched(

@@ -330,6 +330,72 @@ def test_upsert_triaged_round_trips_canonical_and_content_type(db_path: Path):
     assert row["content_type"] == "youtube"
 
 
+def test_upsert_triaged_persists_user_content_date(db_path: Path):
+    # A user-set "Publish Date" from the Notion page flows in at triage time as
+    # content_date — the manual override + fallback for items the fetcher can't
+    # auto-date (PDF, podcast, date-less sites).
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="t-date",
+        url="https://youtube.com/watch?v=x",
+        canonical_url="https://youtube.com/watch?v=x",
+        content_type="youtube",
+        content_date="2026-01-15",
+    )
+    row = get_row(db_path=db_path, notion_page_id="t-date")
+    assert row["content_date"] == "2026-01-15"
+
+
+def test_fetcher_does_not_clobber_user_set_content_date(db_path: Path):
+    # A user-set Notion date is authoritative: a later fetch that finds its own
+    # date must NOT overwrite it (COALESCE keeps the existing user value).
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="t-keep",
+        url="https://youtube.com/watch?v=x",
+        canonical_url="https://youtube.com/watch?v=x",
+        content_type="youtube",
+        content_date="2026-01-15",
+    )
+    upsert_fetched(
+        db_path=db_path,
+        notion_page_id="t-keep",
+        url="https://youtube.com/watch?v=x",
+        raw_content="body",
+        fetch_tier="jina",
+        fetch_tier_log=[],
+        fetched_content_char_count=4,
+        content_hash="h",
+        content_date="2099-09-09",  # fetcher's guess — must lose to the user's
+    )
+    row = get_row(db_path=db_path, notion_page_id="t-keep")
+    assert row["content_date"] == "2026-01-15"
+
+
+def test_fetcher_fills_content_date_when_user_left_it_blank(db_path: Path):
+    # No user date at triage → the fetcher's date fills the gap (COALESCE takes it).
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id="t-fill",
+        url="https://medium.com/x",
+        canonical_url="https://medium.com/x",
+        content_type="Article",
+    )
+    upsert_fetched(
+        db_path=db_path,
+        notion_page_id="t-fill",
+        url="https://medium.com/x",
+        raw_content="body",
+        fetch_tier="jina",
+        fetch_tier_log=[],
+        fetched_content_char_count=4,
+        content_hash="h",
+        content_date="2026-03-01",
+    )
+    row = get_row(db_path=db_path, notion_page_id="t-fill")
+    assert row["content_date"] == "2026-03-01"
+
+
 def test_upsert_triaged_persists_raw_content_override(db_path: Path):
     upsert_triaged(
         db_path=db_path,

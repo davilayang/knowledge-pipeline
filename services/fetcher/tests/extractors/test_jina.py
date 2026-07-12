@@ -60,6 +60,33 @@ def test_strip_preamble_handles_varied_fields_and_order() -> None:
     assert jina.strip_preamble(body) == "Real body starts here."
 
 
+def test_parse_preamble_extracts_title_and_published() -> None:
+    # Jina's preamble carries the article's Title + Published Time — capture them
+    # as provenance metadata BEFORE strip_preamble discards the whole block.
+    body = (
+        "Title: My Article\n"
+        "URL Source: https://example.com/a\n"
+        "Published Time: 2026-06-29T00:00:00Z\n\n"
+        "Markdown Content:\n"
+        "# My Article\n\nThe real body."
+    )
+    assert jina.parse_preamble(body) == {
+        "title": "My Article",
+        "published": "2026-06-29",  # normalized from the preamble's ISO datetime
+    }
+
+
+def test_parse_preamble_omits_absent_published() -> None:
+    # No Published Time line → no `published` key (absent, never a fake value).
+    body = "Title: My Article\n\nMarkdown Content:\nBody."
+    assert jina.parse_preamble(body) == {"title": "My Article"}
+
+
+def test_parse_preamble_empty_without_preamble() -> None:
+    # Non-Jina body (trafilatura / rapidapi) has no preamble → empty metadata.
+    assert jina.parse_preamble("# Just a body\n\nprose") == {}
+
+
 def test_strip_preamble_noop_without_marker() -> None:
     # Starts like a preamble but has no Markdown Content marker — leave unchanged.
     body = "Title: Odd\nURL Source: https://example.com/a\nno marker here"

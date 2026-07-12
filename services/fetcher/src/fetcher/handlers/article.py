@@ -58,9 +58,13 @@ async def _jina_fetch(ctx: FetchContext, url: str) -> RawTierResult:
             status=status,
             detail=f"jina wrapped upstream error: {_truncate(body)}",
         )
-    # Strip Jina's metadata preamble only after the error check above — the
-    # upstream-error marker lives in that preamble region.
-    return RawTierResult(content=jina_extractor.strip_preamble(body), status=status)
+    # Capture the preamble's provenance (title + published date) BEFORE stripping
+    # it — the error check above must run first (its marker lives in the preamble).
+    return RawTierResult(
+        content=jina_extractor.strip_preamble(body),
+        status=status,
+        metadata=jina_extractor.parse_preamble(body),
+    )
 
 
 async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
@@ -111,6 +115,8 @@ async def _curl_cffi_trafilatura(ctx: FetchContext, url: str) -> RawTierResult:
     return RawTierResult(
         content=extracted,
         status=status,
+        # Free provenance from the same HTML — title/author/published date.
+        metadata=trafilatura_extractor.extract_metadata(html),
         detail=None if extracted else "trafilatura produced empty markdown from 2xx html",
     )
 
