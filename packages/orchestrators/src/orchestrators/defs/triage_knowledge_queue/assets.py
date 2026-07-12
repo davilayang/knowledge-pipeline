@@ -154,8 +154,9 @@ class TriageInput(dg.Config):
     content_shape: str | None = None
     name: str | None = None
     added_at_iso: str | None = None
-    # User-set Notion "Publish Date" — the manual content-published date. Wins
-    # over the fetcher's auto-detected date (which fills only when this is blank).
+    # User-set Notion "Publish Date" — the manual override (and the fallback for
+    # types the fetcher can't auto-date: PDF, podcast, date-less sites). Wins over
+    # the fetcher's auto-detected date, which fills only when this is blank.
     publish_date_iso: str | None = None
     raw_content_override: str = ""
 

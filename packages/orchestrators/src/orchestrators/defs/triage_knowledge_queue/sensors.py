@@ -61,9 +61,10 @@ def poll_notion_for_triage(
         if not existing_added_at:
             added_at_iso = row.get("created_time") or None
 
-        # User-set "Publish Date" (None if unset) — the manual content-published
-        # date for items the fetcher can't date (YouTube, paywalled). Wins over
-        # the fetcher's auto-detected date. Same date-property shape as Added At.
+        # User-set "Publish Date" (None if unset). Most types are auto-dated at
+        # fetch (Medium/YouTube/arXiv/Facebook/most articles); this is the manual
+        # override + the fallback for the residual gaps (PDF, podcast, date-less
+        # sites). Wins over the fetcher's date. Same date-property shape as Added At.
         publish_date_prop = row.get("properties", {}).get("Publish Date", {})
         publish_date_date = (
             publish_date_prop.get("date") if isinstance(publish_date_prop, dict) else None

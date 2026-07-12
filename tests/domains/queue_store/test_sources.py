@@ -332,7 +332,8 @@ def test_upsert_triaged_round_trips_canonical_and_content_type(db_path: Path):
 
 def test_upsert_triaged_persists_user_content_date(db_path: Path):
     # A user-set "Publish Date" from the Notion page flows in at triage time as
-    # content_date — the manual provenance source for items the fetcher can't date.
+    # content_date — the manual override + fallback for items the fetcher can't
+    # auto-date (PDF, podcast, date-less sites).
     upsert_triaged(
         db_path=db_path,
         notion_page_id="t-date",

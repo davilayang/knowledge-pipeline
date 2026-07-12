@@ -237,10 +237,12 @@ def upsert_triaged(
                 content_shape = excluded.content_shape,
                 raw_content_override = excluded.raw_content_override,
                 user_comments_json = excluded.user_comments_json,
-                -- content_date is a USER INPUT (the Notion "Publish Date"), not a
-                -- fetcher-produced column — re-triage writes the current Notion
-                -- value (which the fetcher later fills only if left blank), it is
-                -- NOT cleared like the downstream columns below.
+                -- content_date is the "Publish Date" — a bidirectional signal, NOT
+                -- a purely fetcher-produced column: it holds the user's Notion
+                -- value OR a fetcher-discovered date written back to Notion. So
+                -- re-triage writes the current Notion value (the fetcher later
+                -- fills it only if still blank); it is NOT cleared like the
+                -- fetcher-produced columns below.
                 content_date = excluded.content_date,
                 raw_content = NULL,
                 fetched_at = NULL,
