@@ -6,16 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.34.1] — 2026-07-12
+
 ### Added
 
-- **A Notion "Publish Date" property now carries an item's content-published date, both ways.** The triage sensor reads the date property (like `Added At`) into `queue_items.content_date`, and the fetch stage writes the discovered date **back** to Notion's Publish Date (in the existing `update_status` call, no extra API cost) so it surfaces for the user. User-set wins: `upsert_fetched` COALESCEs, so a fetcher-detected date only fills when the Notion date is blank; a user's date is preserved and just re-affirmed. Requires adding a `Publish Date` date property to the Queue database.
-- **Fetched content now captures the content-published date + author as structured provenance.** A canonical metadata contract (`fetcher.metadata.build_metadata`, keys `title`/`authors`/`published`/`arxiv_id`) carries them from the fetch tiers to `queue_items` → wiki sources, so source claims get real publish dates instead of NULL. Covered free from data each tier already holds: Jina (article/Medium) `Published Time:`, trafilatura's HTML metadata, arxiv's published date, YouTube's oEmbed title/channel, Facebook's post date. The YouTube **upload date** comes from the watch page's SEO microformat (`"uploadDate"`), fetched via curl_cffi through the SOCKS5 residential proxy (a data-center IP gets a consent-wall variant that strips it) — no yt-dlp, no API key. The Facebook `author`-key drift (silently dropped by the `authors`-reading consumer) is fixed. The cascade now preserves attribution metadata across tier fallback, so a **paywalled Medium** article keeps Jina's preamble date even when its body falls below floor and RapidAPI supplies the content (the paid Medium metadata endpoint is still never called). `build_metadata` normalizes every date to plain `YYYY-MM-DD` (dropping an unparseable one) so the consumer's `date.fromisoformat` never crashes.
+- **Wiki claims and notes now carry a content-published date.** The fetcher captures it free per source (Jina `Published Time:`, trafilatura HTML metadata, arXiv/Facebook API fields, and the YouTube watch-page `uploadDate` via the SOCKS5 proxy — no yt-dlp), preserved across tier fallback and normalized to `YYYY-MM-DD`. Implementation: `fetcher.metadata.build_metadata`, per-handler tiers, `cascade` metadata carry.
+- **A Notion "Publish Date" property sets an item's date, both ways.** Triage reads it into `queue_items.content_date`; the fetch stage writes the fetcher-discovered date back to Notion so it's visible. User-set wins (`COALESCE` in `upsert_fetched`); the fetcher only fills a blank. Requires adding a `Publish Date` date property to the Queue database.
 
 ### Changed
 
-- **Wiki source claims now render as real backlinks with distinct dates.** The domain renders as `[domain](url)` (the redirect-resolved `canonical_url`, not the raw url); publish and fetch dates show as separate labelled signals, a missing publish date never substituted by the fetch date. Implementation: `_attribution` (+ `AttributedClaim.fetched_at`) in `domains.wiki.attributed`, `build_source_record`.
-- **Promoted-note claims now backlink to their origin note file.** A `derived` claim's source `url` is `data/notes/<note_id>.md` (was NULL — untraceable), rendered as a caption link; the `promote_notes` dirty check now counts every render-visible source field so an edit (or a note predating the backlink) re-renders. Implementation: `promote_notes._write_note_claim`.
-- **NA's appended note footer is stripped before a note becomes claim text** — both the `---`-delimited and bare trailing `Source:`/URL shapes — so it no longer leaks as prose onto the wiki page. Implementation: `notes.promoted._strip_note_trailer`.
+- **Wiki source claims render as `[domain](url)` backlinks with distinct published + fetch dates**, and **promoted-note claims backlink to their origin note file** (`data/notes/<note_id>.md`). Implementation: `domains.wiki.attributed._attribution`, `wiki_synthesis.promote_notes`.
+- **NA's appended note footer is stripped before a note becomes claim text** (both `---`-delimited and bare `Source:`/URL shapes). Implementation: `notes.promoted._strip_note_trailer`.
 
 ---
 
