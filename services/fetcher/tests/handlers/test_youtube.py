@@ -3,12 +3,24 @@
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pytest
 
 from fetcher.extractors._cloud_chain import StructurerChainFailed
 from fetcher.handlers import youtube
 
 
 _VIDEO_URL = "https://www.youtube.com/watch?v=dQw4w9WgXcQ"
+
+
+@pytest.fixture(autouse=True)
+def _no_watch_date():
+    """Default: the watch-page upload-date fetch (real curl_cffi network) returns
+    None, so existing tests don't hit the network. Date-specific tests override."""
+    with patch(
+        "fetcher.handlers.youtube.youtube_watch.fetch_upload_date",
+        new=AsyncMock(return_value=None),
+    ):
+        yield
 
 
 def _make_ctx(
@@ -81,6 +93,24 @@ async def test_transcript_api_tier_captures_oembed_title_and_author() -> None:
 
     assert result.metadata["title"] == "My Show"
     assert result.metadata["authors"] == "The Channel"
+
+
+async def test_transcript_api_tier_captures_youtube_upload_date() -> None:
+    # oEmbed has no date; the watch page's SEO microformat does. Its uploadDate
+    # is surfaced as the canonical `published`, normalized to a plain date.
+    ctx = _make_ctx(structurer_enabled=False)
+
+    with (
+        _patch_transcript_api(_fake_snippets()),
+        _patch_oembed(),
+        patch(
+            "fetcher.handlers.youtube.youtube_watch.fetch_upload_date",
+            new=AsyncMock(return_value="2026-01-20T22:00:25-08:00"),
+        ),
+    ):
+        result = await youtube._transcript_api_tier(ctx, _VIDEO_URL)
+
+    assert result.metadata["published"] == "2026-01-20"
 
 
 async def test_youtube_structurer_fires_when_flag_enabled() -> None:
