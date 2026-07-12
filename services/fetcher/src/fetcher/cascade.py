@@ -100,6 +100,16 @@ async def run_cascade(
     """Run free tiers first, then paid tiers when allowed."""
     tier_log: list[TierLogEntry] = []
     best_result: tuple[Tier, RawTierResult] | None = None
+    # Attribution metadata (title / authors / published) accumulated across every
+    # validated tier, so a field one tier fetched survives even when a LATER tier's
+    # content wins — e.g. paywalled Medium: Jina's preamble carries the published
+    # date but its body falls below floor, so RapidAPI wins the body with no date.
+    # Later non-empty values win per key (the content-winning tier takes precedence);
+    # earlier tiers fill the gaps it leaves.
+    carried_meta: dict = {}
+
+    def _carry(raw: RawTierResult) -> None:
+        carried_meta.update({k: v for k, v in raw.metadata.items() if v})
 
     for tier in handler.TIERS:
         if tier.cost != "free":
@@ -128,9 +138,12 @@ async def run_cascade(
         )
         tier_log.extend(raw.extra_tier_log)
         if _tier_meets_floor(tier, raw.content, quality):
-            return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
-        if validated and (best_result is None or len(raw.content) > len(best_result[1].content)):
-            best_result = (tier, raw)
+            _carry(raw)
+            return CascadeResult(raw.content, tier.name, tier_log, metadata=dict(carried_meta))
+        if validated:
+            _carry(raw)
+            if best_result is None or len(raw.content) > len(best_result[1].content):
+                best_result = (tier, raw)
 
     if allow_paid:
         for tier in handler.TIERS:
@@ -167,14 +180,15 @@ async def run_cascade(
             )
             tier_log.extend(raw.extra_tier_log)
             if _tier_meets_floor(tier, raw.content, quality):
-                return CascadeResult(raw.content, tier.name, tier_log, metadata=raw.metadata)
-            if validated and (
-                best_result is None or len(raw.content) > len(best_result[1].content)
-            ):
-                best_result = (tier, raw)
+                _carry(raw)
+                return CascadeResult(raw.content, tier.name, tier_log, metadata=dict(carried_meta))
+            if validated:
+                _carry(raw)
+                if best_result is None or len(raw.content) > len(best_result[1].content):
+                    best_result = (tier, raw)
 
     if best_result is not None:
         return CascadeResult(
-            best_result[1].content, best_result[0].name, tier_log, metadata=best_result[1].metadata
+            best_result[1].content, best_result[0].name, tier_log, metadata=dict(carried_meta)
         )
     return CascadeResult("", "", tier_log, metadata={})
