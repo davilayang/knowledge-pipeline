@@ -19,6 +19,11 @@ AUTHORS = "authors"
 PUBLISHED = "published"
 ARXIV_ID = "arxiv_id"
 
+# The canonical attribution keys — the source-provenance subset a handler emits.
+# Distinct from non-attribution handler junk (e.g. YouTube's transcript `chunks`,
+# structurer usage) that also rides in the metadata dict.
+ATTRIBUTION_KEYS = (TITLE, AUTHORS, PUBLISHED, ARXIV_ID)
+
 
 def _normalize_published(value: str | None) -> str | None:
     """Coerce a publish date to a plain `YYYY-MM-DD` string, or None if it can't be

@@ -3,6 +3,7 @@
 import logging
 import time
 
+from fetcher.metadata import ATTRIBUTION_KEYS
 from fetcher.rate_limits import get_semaphore
 from fetcher.types import (
     CascadeResult,
@@ -100,16 +101,24 @@ async def run_cascade(
     """Run free tiers first, then paid tiers when allowed."""
     tier_log: list[TierLogEntry] = []
     best_result: tuple[Tier, RawTierResult] | None = None
-    # Attribution metadata (title / authors / published) accumulated across every
-    # validated tier, so a field one tier fetched survives even when a LATER tier's
-    # content wins — e.g. paywalled Medium: Jina's preamble carries the published
-    # date but its body falls below floor, so RapidAPI wins the body with no date.
-    # Later non-empty values win per key (the content-winning tier takes precedence);
-    # earlier tiers fill the gaps it leaves.
-    carried_meta: dict = {}
+    # Attribution metadata (title / authors / published) accumulated from every
+    # validated tier that did NOT win, so a field one tier fetched survives even
+    # when another tier's content wins — e.g. paywalled Medium: Jina's preamble
+    # carries the published date but its body falls below floor, so RapidAPI wins
+    # the body with no date. Only attribution keys are carried (not per-tier junk
+    # like YouTube's `chunks`); the winning tier's own metadata always takes
+    # precedence, earlier tiers only fill the attribution gaps it leaves.
+    carried_attr: dict = {}
 
     def _carry(raw: RawTierResult) -> None:
-        carried_meta.update({k: v for k, v in raw.metadata.items() if v})
+        carried_attr.update({k: v for k, v in raw.metadata.items() if v and k in ATTRIBUTION_KEYS})
+
+    def _final_meta(winning: RawTierResult) -> dict:
+        final = dict(winning.metadata)
+        for key, value in carried_attr.items():
+            if not final.get(key):
+                final[key] = value
+        return final
 
     for tier in handler.TIERS:
         if tier.cost != "free":
@@ -138,8 +147,7 @@ async def run_cascade(
         )
         tier_log.extend(raw.extra_tier_log)
         if _tier_meets_floor(tier, raw.content, quality):
-            _carry(raw)
-            return CascadeResult(raw.content, tier.name, tier_log, metadata=dict(carried_meta))
+            return CascadeResult(raw.content, tier.name, tier_log, metadata=_final_meta(raw))
         if validated:
             _carry(raw)
             if best_result is None or len(raw.content) > len(best_result[1].content):
@@ -180,8 +188,7 @@ async def run_cascade(
             )
             tier_log.extend(raw.extra_tier_log)
             if _tier_meets_floor(tier, raw.content, quality):
-                _carry(raw)
-                return CascadeResult(raw.content, tier.name, tier_log, metadata=dict(carried_meta))
+                return CascadeResult(raw.content, tier.name, tier_log, metadata=_final_meta(raw))
             if validated:
                 _carry(raw)
                 if best_result is None or len(raw.content) > len(best_result[1].content):
@@ -189,6 +196,9 @@ async def run_cascade(
 
     if best_result is not None:
         return CascadeResult(
-            best_result[1].content, best_result[0].name, tier_log, metadata=dict(carried_meta)
+            best_result[1].content,
+            best_result[0].name,
+            tier_log,
+            metadata=_final_meta(best_result[1]),
         )
     return CascadeResult("", "", tier_log, metadata={})
