@@ -41,6 +41,13 @@ def _normalize_published(value: str | None) -> str | None:
     try:
         return datetime.fromisoformat(text.replace("Z", "+00:00")).date().isoformat()
     except ValueError:
+        pass
+    # US MM/DD/YYYY (e.g. humanlayer's Jina Published Time) — single-digit m/d ok.
+    # US-only: an unparseable-as-US value (e.g. 25/11/2025) falls through to None
+    # rather than risk a day/month swap.
+    try:
+        return datetime.strptime(text, "%m/%d/%Y").date().isoformat()
+    except ValueError:
         return None
 
 

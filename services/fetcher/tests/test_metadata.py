@@ -35,3 +35,10 @@ def test_build_metadata_drops_unparseable_published():
     # A date the source can't parse to ISO is worse than none — it would crash the
     # consumer's date.fromisoformat. Drop it rather than emit a landmine.
     assert build_metadata(title="T", published="March 1, 2026") == {"title": "T"}
+
+
+def test_build_metadata_normalizes_us_slash_dates():
+    # Jina returns some sources' Published Time as US MM/DD/YYYY (e.g. humanlayer);
+    # coerce to ISO rather than drop a real date. Single-digit month/day allowed.
+    assert build_metadata(published="11/25/2025") == {"published": "2025-11-25"}
+    assert build_metadata(published="3/12/2026") == {"published": "2026-03-12"}
