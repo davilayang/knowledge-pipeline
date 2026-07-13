@@ -12,7 +12,7 @@ from fetcher.types import FetchContext, RawTierResult, Tier
 
 logger = logging.getLogger(__name__)
 
-NAME = "pdf"
+NAME = "file_pdf"
 STRICT_PAID_TIER = False
 
 __all__ = ["MAX_PDF_BYTES", "TIERS", "matches"]
