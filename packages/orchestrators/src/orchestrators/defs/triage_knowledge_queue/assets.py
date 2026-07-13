@@ -14,7 +14,7 @@ from orchestrators.defs.shared.queue_resources import (
 from .classify import (
     ALL_CONTENT_TYPES,
     CONTENT_TYPE_ARXIV,
-    CONTENT_TYPE_PODCAST,
+    CONTENT_TYPE_FILE_AUDIO,
     CONTENT_TYPE_YOUTUBE,
     classify_content_type,
     normalize_url,
@@ -210,7 +210,7 @@ def triaged(
     # the canonical URL and reclassify as YouTube so downstream fetcher
     # dispatch returns a free transcript instead of paying for Whisper.
     podcast_substituted_to: str | None = None
-    if content_type == CONTENT_TYPE_PODCAST:
+    if content_type == CONTENT_TYPE_FILE_AUDIO:
         audio_title_for_lookup = config.name or meta.title or ""
         substituted = maybe_redirect_podcast_to_youtube(
             audio_url=canonical,
@@ -271,7 +271,7 @@ def triaged(
         # arXiv URLs host research papers; no reason to round-trip the LLM.
         content_shape = SHAPE_RESEARCH_SUMMARY
         content_shape_source = "url_fastpath"
-    elif content_type == CONTENT_TYPE_PODCAST:
+    elif content_type == CONTENT_TYPE_FILE_AUDIO:
         content_shape = SHAPE_PODCAST_EPISODE
         content_shape_source = "url_fastpath"
     else:

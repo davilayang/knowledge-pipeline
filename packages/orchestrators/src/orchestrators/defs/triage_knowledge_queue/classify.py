@@ -1,66 +1,60 @@
 """URL classification + canonicalization. Pure-Python; no I/O.
 
-Adapted from newsletter-assistant's fetcher/orchestrator.py URL routing,
-with the voice-tuned tier complexity stripped. `classify_content_type`
-emits values that match kp's Notion `Content Type` SELECT options
-(Article / YouTube / arXiv / Podcast / Other; PDF is in `ALL_CONTENT_TYPES`
-for user override but never auto-emitted — PDF URLs fall through to
-Article and the fetcher's file_pdf handler claims them). These get written
-back to Notion as select-property values, so case + spelling must match
-exactly.
+`classify_content_type` emits the kp `Content Type` taxonomy — the lowercase
+routing names shared with the fetcher via `domains.classify_url_type`, so a URL's
+type and the handler that fetches it can't disagree. These get written back to
+Notion as `Content Type` select-property values, so spelling must match the
+Notion SELECT options exactly.
 """
 
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 
 from domains.arxiv_urls import extract_arxiv_id
+from domains.content_urls import classify_url_type
 
-CONTENT_TYPE_ARTICLE = "Article"
-CONTENT_TYPE_YOUTUBE = "YouTube"
-CONTENT_TYPE_ARXIV = "arXiv"
-CONTENT_TYPE_PDF = "PDF"
-CONTENT_TYPE_PODCAST = "Podcast"
-CONTENT_TYPE_OTHER = "Other"
+CONTENT_TYPE_ARTICLE = "article"
+CONTENT_TYPE_YOUTUBE = "youtube"
+CONTENT_TYPE_ARXIV = "arxiv"
+CONTENT_TYPE_MEDIUM = "medium"
+CONTENT_TYPE_FACEBOOK = "facebook"
+CONTENT_TYPE_GITHUB = "github"
+CONTENT_TYPE_FILE_PDF = "file_pdf"
+CONTENT_TYPE_FILE_AUDIO = "file_audio"
+# `other` is never auto-emitted (article is the catch-all) — it's a user-only
+# override value, kept as a valid Notion Content Type option.
+CONTENT_TYPE_OTHER = "other"
 
 ALL_CONTENT_TYPES = {
-    CONTENT_TYPE_ARTICLE,
     CONTENT_TYPE_YOUTUBE,
     CONTENT_TYPE_ARXIV,
-    CONTENT_TYPE_PDF,
-    CONTENT_TYPE_PODCAST,
+    CONTENT_TYPE_MEDIUM,
+    CONTENT_TYPE_FACEBOOK,
+    CONTENT_TYPE_GITHUB,
+    CONTENT_TYPE_FILE_PDF,
+    CONTENT_TYPE_FILE_AUDIO,
+    CONTENT_TYPE_ARTICLE,
     CONTENT_TYPE_OTHER,
 }
 
-
-_AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus")
+# Web-page types that share `article`'s HTML-meta enrichment + display seeding
+# (Medium/Facebook/GitHub were all `Article` before the taxonomy split).
+ARTICLE_LIKE_TYPES = (
+    CONTENT_TYPE_ARTICLE,
+    CONTENT_TYPE_MEDIUM,
+    CONTENT_TYPE_FACEBOOK,
+    CONTENT_TYPE_GITHUB,
+)
 
 
 def classify_content_type(url: str) -> str:
-    """Pure URL → kp Content Type.
+    """Pure URL → kp Content Type, delegated to the shared `classify_url_type`.
 
-    Returns one of:
-      - "YouTube" for youtube.com / youtu.be / m.youtube.com / music.youtube.com
-      - "arXiv" for arxiv.org and any subdomain ending in .arxiv.org
-      - "Podcast" for audio file suffixes (.mp3 / .m4a / .ogg / .wav / .opus)
-        — covers podtrac redirects, libsyn, megaphone, etc.
-      - "Article" as the default fallback for any other host
-
-    PDF classification is intentionally NOT emitted — the Notion Content
-    Type SELECT does not have a PDF option. PDF URLs fall through to
-    Article (the fetcher's file_pdf handler still claims them via the registry).
+    Returns the lowercase taxonomy: youtube / arxiv / medium / facebook / github /
+    file_pdf / file_audio / article (the catch-all). The fetcher routes on the same
+    function, so content_type and fetch handler always agree (e.g. a non-paper
+    arxiv.org page is `article`, matching that it's fetched by the article handler).
     """
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").removeprefix("www.")
-    path = (parsed.path or "").lower()
-
-    match host:
-        case "youtube.com" | "m.youtube.com" | "music.youtube.com" | "youtu.be":
-            return CONTENT_TYPE_YOUTUBE
-        case h if h == "arxiv.org" or h.endswith(".arxiv.org"):
-            return CONTENT_TYPE_ARXIV
-        case _ if path.endswith(_AUDIO_SUFFIXES):
-            return CONTENT_TYPE_PODCAST
-        case _:
-            return CONTENT_TYPE_ARTICLE
+    return classify_url_type(url)
 
 
 def normalize_url(url: str) -> str:

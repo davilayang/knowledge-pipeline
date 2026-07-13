@@ -32,13 +32,13 @@ def _notion_row(
     }
 
 
-def test_supported_content_types_includes_podcast():
-    """Podcast rows whose URL has no YouTube mirror in
-    `podcast_canonicalize.podcast_youtube_map.yaml` stay typed as Podcast
-    after triage. They must flow through fetch_extract_queue so the
-    fetcher's podcast handler (PR #133) transcribes via Whisper. Pin the
-    membership — silent removal would re-strand audio rows at Fetching."""
-    assert "Podcast" in SUPPORTED_CONTENT_TYPES
+def test_supported_content_types_includes_file_audio():
+    """Audio rows whose URL has no YouTube mirror in
+    `podcast_canonicalize.podcast_youtube_map.yaml` stay typed as file_audio
+    after triage. They must flow through fetch_extract_queue so the fetcher's
+    file_audio handler transcribes via Whisper. Pin the membership — silent
+    removal would re-strand audio rows at Fetching."""
+    assert "file_audio" in SUPPORTED_CONTENT_TYPES
 
 
 def test_poll_notion_for_extract_emits_one_run_request_per_fetching_row():

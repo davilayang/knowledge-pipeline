@@ -33,7 +33,7 @@ _OEMBED_RESPONSE = {
     "author_name": "AI Engineer",
     "author_url": "https://www.youtube.com/@aiengineer",
     "type": "video",
-    "provider_name": "YouTube",
+    "provider_name": "youtube",
 }
 
 
@@ -48,7 +48,7 @@ def _fake_response(status_code: int = 200, json_data: dict | None = None) -> Mag
 def test_youtube_signals_extracts_channel_and_title():
     resp = _fake_response(json_data=_OEMBED_RESPONSE)
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
-        signals = enrich_url("https://www.youtube.com/watch?v=abc123", "YouTube")
+        signals = enrich_url("https://www.youtube.com/watch?v=abc123", "youtube")
     assert signals.youtube == YoutubeSignals(
         channel="AI Engineer",
         title="How to ship a thing",
@@ -60,14 +60,14 @@ def test_youtube_signals_returns_empty_on_oembed_http_error():
         "orchestrators.defs.triage_knowledge_queue.enrich.httpx.get",
         side_effect=httpx.ConnectError("offline"),
     ):
-        signals = enrich_url("https://www.youtube.com/watch?v=abc123", "YouTube")
+        signals = enrich_url("https://www.youtube.com/watch?v=abc123", "youtube")
     assert signals.youtube == YoutubeSignals()
 
 
 def test_youtube_signals_returns_empty_on_oembed_4xx():
     resp = _fake_response(status_code=404)
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
-        signals = enrich_url("https://www.youtube.com/watch?v=missing", "YouTube")
+        signals = enrich_url("https://www.youtube.com/watch?v=missing", "youtube")
     assert signals.youtube == YoutubeSignals()
 
 
@@ -101,7 +101,7 @@ def _fake_arxiv_response(text: str = _ARXIV_ATOM_XML, status_code: int = 200) ->
 def test_arxiv_signals_extracts_title_abstract_categories():
     resp = _fake_arxiv_response()
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
-        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arXiv")
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
     assert signals.arxiv is not None
     assert signals.arxiv.title == "Sample arXiv Title"
     assert signals.arxiv.abstract == "Sample abstract body explaining the result."
@@ -113,14 +113,14 @@ def test_arxiv_signals_returns_empty_on_http_error():
         "orchestrators.defs.triage_knowledge_queue.enrich.httpx.get",
         side_effect=httpx.ReadTimeout("export.arxiv.org slow"),
     ):
-        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arXiv")
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
     assert signals.arxiv == ArxivSignals()
 
 
 def test_arxiv_signals_returns_empty_on_invalid_id():
     """URL doesn't look like an arXiv ID → skip the API entirely."""
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get") as fake:
-        signals = enrich_url("https://arxiv.org/about", "arXiv")
+        signals = enrich_url("https://arxiv.org/about", "arxiv")
     assert signals.arxiv == ArxivSignals()
     fake.assert_not_called()
 
@@ -128,7 +128,7 @@ def test_arxiv_signals_returns_empty_on_invalid_id():
 def test_arxiv_signals_returns_empty_on_malformed_xml():
     resp = _fake_arxiv_response(text="<not><valid>xml")
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
-        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arXiv")
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
     assert signals.arxiv == ArxivSignals()
 
 
@@ -145,7 +145,7 @@ def test_article_signals_passes_through_url_meta():
         "orchestrators.defs.triage_knowledge_queue.enrich.fetch_url_meta",
         return_value=meta,
     ):
-        signals = enrich_url("https://example.com/post", "Article")
+        signals = enrich_url("https://example.com/post", "article")
     assert signals.article == ArticleSignals(
         redirected_url="https://example.com/post?utm=x",
         title="Hello",
@@ -159,7 +159,7 @@ def test_article_signals_empty_when_url_meta_returns_nothing():
         "orchestrators.defs.triage_knowledge_queue.enrich.fetch_url_meta",
         return_value=meta,
     ):
-        signals = enrich_url("https://example.com", "Article")
+        signals = enrich_url("https://example.com", "article")
     assert signals.article == ArticleSignals(
         redirected_url="https://example.com",
         title=None,
@@ -173,7 +173,7 @@ def test_article_signals_empty_when_url_meta_returns_nothing():
 def test_enrich_url_returns_empty_signals_for_podcast():
     """Podcast URLs aren't enriched in `enrich_url` — out of scope here."""
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get") as fake:
-        signals = enrich_url("https://podtrac.example.com/show.mp3", "Podcast")
+        signals = enrich_url("https://podtrac.example.com/show.mp3", "file_audio")
     assert signals == EnrichmentSignals()
     fake.assert_not_called()
 
@@ -193,7 +193,7 @@ def test_enrich_url_never_raises_on_unexpected_error():
         "orchestrators.defs.triage_knowledge_queue.enrich._youtube_signals",
         side_effect=RuntimeError("unexpected"),
     ):
-        signals = enrich_url("https://youtube.com/watch?v=abc", "YouTube")
+        signals = enrich_url("https://youtube.com/watch?v=abc", "youtube")
     assert signals == EnrichmentSignals()
 
 

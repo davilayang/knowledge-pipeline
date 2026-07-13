@@ -12,6 +12,11 @@ from domains.content_urls import classify_url_type
         ("https://music.youtube.com/watch?v=abc", "youtube"),
         ("https://arxiv.org/abs/2401.00001", "arxiv"),
         ("https://arxiv.org/pdf/2401.00001v2.pdf", "arxiv"),  # arxiv beats file_pdf
+        (
+            "https://arxiv.org/about",
+            "article",
+        ),  # non-paper arxiv page → article (ID-based, not host)
+        ("https://arxiv.org/list/cs.AI/recent", "article"),
         ("https://github.com/chio-labs/sqlbuild", "github"),
         ("https://gist.github.com/user/abc", "github"),
         ("https://www.facebook.com/openai/posts/123", "facebook"),

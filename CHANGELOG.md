@@ -6,18 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.35.0] — 2026-07-13
+
 ### Added
 
-- **Shared URL → content-type classifier** — `domains.classify_url_type` gives triage and the fetcher one source to route on (`youtube` / `arxiv` / `medium` / `github` / `facebook` / `file_pdf` / `file_audio` / `article`), extending `domains.arxiv_urls`. Groundwork for the Content Type taxonomy rename; not yet wired into triage.
-- **GitHub repos now ingest their README** instead of the article catch-all (which 403s on GitHub and mis-prompts the extractor on code). A new `github` fetch handler fetches `raw.githubusercontent.com/<org>/<repo>/HEAD/README.md`; a repo with no `README.md` (or a private one) falls to the manual-paste error-state. Implementation: `fetcher.handlers.github`.
+- **GitHub repos now ingest their README** — a new `github` handler fetches `raw.githubusercontent.com/<org>/<repo>/HEAD/README.md` instead of the article catch-all (which 403s on GitHub and mis-prompts the extractor on code); no README → the manual-paste error-state. Implementation: `fetcher.handlers.github`.
 
 ### Changed
 
-- **The fetch cascade now walks each handler's tiers in declared preference order** rather than all free tiers before all paid, so a quality-first handler (arXiv: LlamaParse then pymupdf) is honoured; `allow_paid` still gates paid tiers wherever they sit. Implementation: `fetcher.cascade.run_cascade`.
-- **A paywalled article's publish date now survives even when its body is rejected.** A tier opts in via `Tier.carry_meta_on_reject` (the Jina tiers, whose structured `Published Time:` preamble is trustworthy regardless of body quality) to carry its date onto the winning tier; heuristic scrapers like trafilatura stay opt-out so a wrong date can't leak onto a good fetch.
-- **arXiv fetches are more robust:** a non-2xx PDF response now fails the tier cleanly instead of returning garbage extracted from the error page, and arXiv PDFs are size-capped (50MB) like generic PDFs. Implementation: `fetcher.handlers.arxiv` via the shared `handlers/_pdf_download.py`.
-- **Medium host identity is unified into `domains.medium_urls`** — the fetcher's medium handler and the shared URL classifier now source Medium from one frozenset (replacing the fetcher-only `medium_domains.yaml` + its loader), so the two can't drift. Medium routing is unchanged.
-- **`.opus` audio files now transcribe** instead of falling to the article handler. The fetcher's file-matched handlers are renamed to match the taxonomy — `podcast` → `file_audio` and `pdf` → `file_pdf` — and the audio/video suffix set is unified with the classifier via `domains.AUDIO_SUFFIXES`, so routing and classification agree on what's a media file. Implementation: `fetcher.handlers.file_audio` / `file_pdf`.
+- **Content Type is now a lowercase routing taxonomy** — `youtube`/`arxiv`/`medium`/`facebook`/`github`/`file_pdf`/`file_audio`/`article` (+ `other` override). Triage and the fetcher route on one shared source (`domains.classify_url_type`), so Medium/Facebook/GitHub surface instead of hiding under `Article` and a URL's type always matches its fetch handler. Requires matching Notion "Content Type" options + a one-time row migration.
+- **The fetch cascade walks each handler's tiers in declared preference order** rather than all-free-then-paid, so a quality-first handler (arXiv: LlamaParse then pymupdf) is honoured; `allow_paid` still gates paid tiers. Implementation: `fetcher.cascade.run_cascade`.
+- **A paywalled article's publish date now survives body rejection** — the Jina tiers opt in via `Tier.carry_meta_on_reject` to carry their structured `Published Time` onto the winning tier; heuristic scrapers stay opt-out so a wrong date can't leak onto a good fetch.
+- **arXiv fetches are more robust** — a non-2xx PDF response fails the tier cleanly instead of extracting garbage from the error page, and arXiv PDFs are 50MB-capped like generic PDFs. Implementation: `fetcher.handlers.arxiv` via shared `handlers/_pdf_download.py`.
+- **`.opus` audio files now transcribe** instead of falling to the article handler. The file-matched handlers are renamed to match the taxonomy (`podcast`→`file_audio`, `pdf`→`file_pdf`), suffix set unified via `domains.AUDIO_SUFFIXES`.
 
 ---
 

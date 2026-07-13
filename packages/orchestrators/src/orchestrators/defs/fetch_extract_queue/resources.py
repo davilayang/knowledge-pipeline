@@ -76,7 +76,9 @@ class FetcherResource(dg.ConfigurableResource):
             return _call_service(client, self.service_url, url, allow_paid=allow_paid)
 
     def fetch(self, url: str) -> FetchResult:
-        return self.fetch_for_type(url, content_type="Article")
+        # content_type is discarded by fetch_for_type (the service routes by URL);
+        # pass the catch-all so no stale taxonomy value lingers here.
+        return self.fetch_for_type(url, content_type="article")
 
     def structure(self, raw_content: str, *, title: str = "", source_url: str = "") -> FetchResult:
         endpoint = f"{self.service_url.rstrip('/')}/v1/structure"

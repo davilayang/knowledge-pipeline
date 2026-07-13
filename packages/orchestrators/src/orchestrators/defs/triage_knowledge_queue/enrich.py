@@ -22,7 +22,7 @@ from defusedxml import ElementTree as ET
 from domains.arxiv_urls import extract_arxiv_id
 
 from .classify import (
-    CONTENT_TYPE_ARTICLE,
+    ARTICLE_LIKE_TYPES,
     CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_YOUTUBE,
 )
@@ -195,7 +195,7 @@ def _article_signals(url: str) -> ArticleSignals:
 def enrich_url(url: str, content_type: str) -> EnrichmentSignals:
     """Dispatch enrichment by `content_type`. Never raises.
 
-    Returns `EnrichmentSignals()` (all-None) for `Podcast` / `Other` content
+    Returns `EnrichmentSignals()` (all-None) for `file_pdf` / `file_audio` content
     types — out of scope here. Any unexpected exception from a per-source
     helper is swallowed and collapses to empty signals so triage stays
     unblocked.
@@ -205,7 +205,7 @@ def enrich_url(url: str, content_type: str) -> EnrichmentSignals:
             return EnrichmentSignals(youtube=_youtube_signals(url))
         if content_type == CONTENT_TYPE_ARXIV:
             return EnrichmentSignals(arxiv=_arxiv_signals(url))
-        if content_type == CONTENT_TYPE_ARTICLE:
+        if content_type in ARTICLE_LIKE_TYPES:
             return EnrichmentSignals(article=_article_signals(url))
         return EnrichmentSignals()
     except Exception:

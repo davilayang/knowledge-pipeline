@@ -12,15 +12,21 @@ LIFECYCLE_DRIFT_AGE_MINUTES = 60
 JOB_MAX_RETRIES = "1"
 
 # Content Type values that this pipeline supports. Triage routes every row
-# whose type is in this set to Status=Fetching; the fetcher service's
-# handler registry then claims the URL (article handler is a catch-all for
-# anything not yt/arxiv/pdf/medium/podcast, so "Article" and "Other" both
-# reach it safely). `Podcast` covers audio rows whose URL has no YouTube
-# mirror in `podcast_canonicalize.podcast_youtube_map.yaml` — the
-# substitution path keeps reclassifying mirrored podcasts as YouTube
-# upstream, so only un-mirrored audio reaches the fetcher's file_audio
-# handler (Whisper). Extend when the PDF fetcher port lands.
-SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other", "Podcast")
+# whose type is in this set to Status=Fetching; the fetcher service's handler
+# registry then claims the URL. Every type has a handler (article is the
+# catch-all, so `other` reaches it safely), so this is the full taxonomy —
+# must match the Notion "Content Type" SELECT options + `classify.ALL_CONTENT_TYPES`.
+SUPPORTED_CONTENT_TYPES: tuple[str, ...] = (
+    "youtube",
+    "arxiv",
+    "medium",
+    "facebook",
+    "github",
+    "file_pdf",
+    "file_audio",
+    "article",
+    "other",
+)
 
 # Active prompt labels — basenames of the markdown files under prompts/.
 # Code-level constants (not env vars) because prompt versions don't vary
