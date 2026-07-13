@@ -10,6 +10,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **The fetch cascade now walks each handler's tiers in declared preference order** rather than all free tiers before all paid, so a quality-first handler (arXiv: LlamaParse then pymupdf) is honoured; `allow_paid` still gates paid tiers wherever they sit. Implementation: `fetcher.cascade.run_cascade`.
 - **A paywalled article's publish date now survives even when its body is rejected.** A tier opts in via `Tier.carry_meta_on_reject` (the Jina tiers, whose structured `Published Time:` preamble is trustworthy regardless of body quality) to carry its date onto the winning tier; heuristic scrapers like trafilatura stay opt-out so a wrong date can't leak onto a good fetch.
+- **arXiv fetches are more robust:** a non-2xx PDF response now fails the tier cleanly instead of returning garbage extracted from the error page, and arXiv PDFs are size-capped (50MB) like generic PDFs. Implementation: `fetcher.handlers.arxiv` via the shared `handlers/_pdf_download.py`.
 
 ---
 
