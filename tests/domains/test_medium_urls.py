@@ -21,5 +21,10 @@ def test_is_medium_url_rejects_non_medium_and_malformed() -> None:
 
 
 def test_medium_domains_seed_set() -> None:
+    # Non-empty is a load-bearing invariant: the old yaml loader raised on an
+    # empty set so the medium handler couldn't silently go unreachable. A literal
+    # frozenset can't fail to ship, but pin the invariant so a future edit that
+    # sources it dynamically can't reintroduce that failure class.
+    assert MEDIUM_DOMAINS
     assert "medium.com" in MEDIUM_DOMAINS
     assert "towardsdatascience.com" in MEDIUM_DOMAINS
