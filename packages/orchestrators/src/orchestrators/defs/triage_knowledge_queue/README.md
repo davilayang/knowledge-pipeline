@@ -21,7 +21,7 @@ triage_knowledge_queue_job  (partition_key = notion_page_id)
         │              empty signals on per-source HTTP error.)
         │
         └──► triaged  (consumes enriched; resolve Content Type (Notion override >
-                       URL classifier), canonicalize URL; Podcast → YouTube
+                       URL classifier), canonicalize URL; file_audio → YouTube
                        substitution via podcast_canonicalize.py on map hit;
                        classify content_shape via priority chain (Notion
                        override → arXiv/audio URL fast-paths → LLM resource);
@@ -55,7 +55,7 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 | Field | Behavior |
 |---|---|
 | `URL` | Required input. Asset fails fast if missing. |
-| `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`Article`/`YouTube`/`arXiv`/`PDF`/`Podcast`/`Other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
+| `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`youtube`/`arxiv`/`medium`/`facebook`/`github`/`file_pdf`/`file_audio`/`article`/`other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
 | `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls into the priority chain: arXiv URLs → `research_summary` (fast-path); audio URLs → `podcast_episode` (fast-path); everything else → `ContentShapeClassifier` LLM resource (Groq `llama-3.3-70b-versatile` primary, OpenAI `gpt-4.1-mini` fallback). LLM may return `unknown` honestly when no category fits — user disambiguates in Notion. `content_shape_source` metadata records which path fired (`notion` / `url_fastpath` / `llm_classified` / `unknown`). |
 | `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `fetch_extract_queue.published` later overwrites Name with `topic_card.extracted_title`. |
 
@@ -75,20 +75,25 @@ No new env vars beyond what `fetch_extract_queue` already requires:
 
 The Notion Queue DB must have a `Content Type` SELECT property with options:
 
-- `Article`
-- `YouTube`
-- `arXiv`
-- `Podcast`
-- `Other`
+- `article`
+- `youtube`
+- `arxiv`
+- `medium`
+- `facebook`
+- `github`
+- `file_pdf`
+- `file_audio`
+- `other`
 
-`PDF` is intentionally absent — `classify_content_type` never emits it; PDF
-URLs fall through to `Article` and the fetcher's file_pdf handler claims them via
-the registry catch-all. `Podcast` must now be present: audio-suffix URLs
-(`.mp3` / `.m4a` / `.ogg` / `.wav` / `.opus`) are classified as Podcast, and
-`podcast_canonicalize.py` may then substitute a YouTube URL on a map hit
-(reclassifying the row to YouTube before it reaches the store). Without the
-Podcast option the Notion API rejects Content Type writes for audio items
-that don't hit the substitution map.
+`article` is the catch-all — `classify_content_type` emits it for anything not
+matched by a more specific rule, and the fetcher's article handler claims those
+URLs via the registry catch-all. `file_audio` must be present: audio-suffix
+URLs (`.mp3` / `.m4a` / `.ogg` / `.wav` / `.opus` / `.flac` / `.mp4` / `.webm` /
+`.mov`) are classified as `file_audio`, and `podcast_canonicalize.py` may then
+substitute a YouTube URL on a map hit (reclassifying the row to `youtube`
+before it reaches the store). Without the `file_audio` option the Notion API
+rejects Content Type writes for audio items that don't hit the substitution
+map.
 
 A `Content Shape` SELECT property is also required, with options:
 

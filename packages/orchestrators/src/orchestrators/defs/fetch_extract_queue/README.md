@@ -4,10 +4,11 @@ Sensor-driven pipeline that turns Notion-captured URLs into extracted Topic
 Cards stored locally for newsletter-assistant to retrieve on engagement.
 
 Picks up rows after triage_knowledge_queue has classified them: sensor filter is
-Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({YouTube, arXiv,
-Article, Other, Podcast}). The fetcher service's handler registry routes the URL by
-host; the article handler is a catch-all for anything not yt/arxiv/pdf/medium/podcast,
-so Article and Other reach a real fetcher path. Triage also registers the
+Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({youtube, arxiv,
+medium, facebook, github, file_pdf, file_audio, article, other}). The fetcher
+service's handler registry routes the URL by host; the article handler is a
+catch-all for anything not yt/arxiv/medium/facebook/github/file_pdf/file_audio,
+so article and other reach a real fetcher path. Triage also registers the
 dynamic partition; this pipeline only runs the job. Triage is therefore the
 sole writer to `queue_items` partition state — a Notion row reaching
 Status=Fetching without going through triage (manual edit, env misroute,
@@ -48,7 +49,8 @@ queue_items row has `raw_content_override` set (user ticked
 `Use page body` in Notion; see `FetcherResource.structure`
 in `resources.py` and the override branch in `assets.fetch_content`). For
 `/v1/fetch`, the service is authoritative for source matching
-(article / arxiv / youtube) and quality-floor enforcement. `extract_reading_card`
+(arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
+and quality-floor enforcement. `extract_reading_card`
 runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetch_content +
 extract_reading_card include `content_preview` / `narrative_preview` / `topic_card_preview`
 metadata (head + tail of the content) for at-a-glance verification.
@@ -101,7 +103,7 @@ dg launch --job fetch_extract_queue --partition <notion_page_id>
   not a select) with options
   `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`
   (triage additionally requires `Skipped`),
-  a `URL` url property, a `Content Type` select property (YouTube, arXiv, …),
+  a `URL` url property, a `Content Type` select property (youtube, arxiv, …),
   and an `Error` rich-text property.
 - **Fetcher service** — `FETCHER_URL` must point to a reachable
   `services/fetcher/` instance. In docker-compose the sidecar container
