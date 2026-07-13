@@ -9,6 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **Shared URL → content-type classifier** — `domains.classify_url_type` gives triage and the fetcher one source to route on (`youtube` / `arxiv` / `medium` / `github` / `facebook` / `file_pdf` / `file_audio` / `article`), extending `domains.arxiv_urls`. Groundwork for the Content Type taxonomy rename; not yet wired into triage.
+- **GitHub repos now ingest their README** instead of the article catch-all (which 403s on GitHub and mis-prompts the extractor on code). A new `github` fetch handler fetches `raw.githubusercontent.com/<org>/<repo>/HEAD/README.md`; a repo with no `README.md` (or a private one) falls to the manual-paste error-state. Implementation: `fetcher.handlers.github`.
 
 ### Changed
 
