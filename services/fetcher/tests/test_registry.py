@@ -9,6 +9,7 @@ def test_registered_handlers_order() -> None:
         "youtube",
         "medium",
         "facebook",
+        "github",
         "pdf",
         "podcast",
         "article",
@@ -41,3 +42,14 @@ def test_find_handler_routes_facebook_url_to_facebook_not_article() -> None:
 def test_find_handler_routes_medium_url_to_medium_not_article() -> None:
     # towardsdatascience.com is in the shared domains.medium_urls set.
     assert find_handler("https://towardsdatascience.com/title-abc123def456").NAME == "medium"
+
+
+def test_find_handler_routes_github_url_to_github_not_article() -> None:
+    # A repo-root URL used to hit the article catch-all (Jina 403s, code mis-prompted).
+    assert find_handler("https://github.com/chio-labs/sqlbuild").NAME == "github"
+    # A GitHub-hosted PDF must still reach the pdf handler — github matches only the
+    # 2-segment repo root, so the deeper .pdf path falls through to pdf.
+    assert find_handler("https://github.com/org/repo/blob/main/paper.pdf").NAME == "pdf"
+    # gist / raw host / docs are not repo-root github.com — stay in the generic lane.
+    assert find_handler("https://gist.github.com/user/abc").NAME == "article"
+    assert find_handler("https://raw.githubusercontent.com/a/b/main/README.md").NAME == "article"
