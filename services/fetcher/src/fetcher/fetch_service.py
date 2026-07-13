@@ -77,7 +77,11 @@ async def run_fetch_request(
                 return FetchOutcome(
                     status="success",
                     markdown=cached.markdown,
-                    kind=cached.source_type,
+                    # Report the current handler's NAME, not the persisted
+                    # source_type — a row cached under an old routing name (e.g.
+                    # `pdf` before the file_pdf rename) must not return a stale
+                    # `kind` that a fresh fetch of the same URL wouldn't.
+                    kind=handler.NAME,
                     canonical_url=cached.canonical_url,
                     tier_used=cached.tier_used,
                     fetched_at=cached.fetched_at,

@@ -2,7 +2,7 @@
 
 import pytest
 
-from fetcher.handlers import article, arxiv, medium, pdf, youtube
+from fetcher.handlers import article, arxiv, file_pdf, medium, youtube
 
 
 @pytest.fixture
@@ -270,18 +270,18 @@ def test_article_matches_excludes_medium_host(medium_domains: set[str]) -> None:
 
 
 def test_pdf_matches_pdf_url_not_arxiv() -> None:
-    assert pdf.matches("https://example.com/paper.pdf") is True
-    assert pdf.matches("https://example.com/path/file.PDF") is True
-    assert pdf.matches("https://arxiv.org/pdf/2401.00001v2.pdf") is False
-    assert pdf.matches("https://export.arxiv.org/pdf/2401.00001.pdf") is False
-    assert pdf.matches("https://example.com/article") is False
-    assert pdf.matches("mailto:x@y.com") is False
+    assert file_pdf.matches("https://example.com/paper.pdf") is True
+    assert file_pdf.matches("https://example.com/path/file.PDF") is True
+    assert file_pdf.matches("https://arxiv.org/pdf/2401.00001v2.pdf") is False
+    assert file_pdf.matches("https://export.arxiv.org/pdf/2401.00001.pdf") is False
+    assert file_pdf.matches("https://example.com/article") is False
+    assert file_pdf.matches("mailto:x@y.com") is False
 
 
 def test_pdf_llamaparse_tier_is_paid() -> None:
     """llamaparse tier must be marked paid + rate-limited under the llamaparse
     key. Tier ordering is enforced by the paid-tier-gating cascade logic."""
-    paid = next(tier for tier in pdf.TIERS if tier.name == "llamaparse")
+    paid = next(tier for tier in file_pdf.TIERS if tier.name == "llamaparse")
     assert paid.cost == "paid"
     assert paid.rate_limit_key == "llamaparse"
 
@@ -308,7 +308,7 @@ def _stream_ctxmgr(status_code: int, chunks: list[bytes]):
 async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> None:
     from unittest.mock import MagicMock, patch
 
-    from fetcher.handlers.pdf import _pymupdf4llm_fetch
+    from fetcher.handlers.file_pdf import _pymupdf4llm_fetch
 
     ctx = MagicMock()
     ctx.upstream_timeout_s = 30
@@ -316,7 +316,9 @@ async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> Non
         return_value=_stream_ctxmgr(200, [b"%PDF-1.4 ", b"fake bytes"])
     )
 
-    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown", return_value="# md") as render:
+    with patch(
+        "fetcher.handlers.file_pdf.pymupdf_extractor.to_markdown", return_value="# md"
+    ) as render:
         result = await _pymupdf4llm_fetch(ctx, "https://example.com/paper.pdf")
 
     # Byte accumulation across chunks is a real streaming-correctness contract:
@@ -333,7 +335,7 @@ async def test_pdf_free_tier_streams_bytes_then_calls_pymupdf_extractor() -> Non
 async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
     from unittest.mock import MagicMock, patch
 
-    from fetcher.handlers.pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
+    from fetcher.handlers.file_pdf import MAX_PDF_BYTES, _pymupdf4llm_fetch
 
     ctx = MagicMock()
     ctx.upstream_timeout_s = 30
@@ -341,7 +343,7 @@ async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
     over_cap = [b"x" * MAX_PDF_BYTES, b"y" * 1024]
     ctx.http_client.stream = MagicMock(return_value=_stream_ctxmgr(200, over_cap))
 
-    with patch("fetcher.handlers.pdf.pymupdf_extractor.to_markdown") as render:
+    with patch("fetcher.handlers.file_pdf.pymupdf_extractor.to_markdown") as render:
         result = await _pymupdf4llm_fetch(ctx, "https://example.com/big.pdf")
 
     # Aborted: extractor never called, empty result with status=0 signals tier failure.
@@ -353,14 +355,14 @@ async def test_pdf_free_tier_aborts_when_stream_exceeds_max_bytes() -> None:
 async def test_pdf_paid_tier_calls_llamaparse_render_pdf() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from fetcher.handlers.pdf import _llamaparse_fetch
+    from fetcher.handlers.file_pdf import _llamaparse_fetch
 
     ctx = MagicMock()
     ctx.llama_parse_api_key = "k"
     ctx.llama_parse_tier_pdf = "agentic_plus"
 
     with patch(
-        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        "fetcher.handlers.file_pdf.llamaparse_extractor.render_pdf",
         new=AsyncMock(return_value="# heavy md"),
     ) as render:
         result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")
@@ -378,13 +380,13 @@ async def test_pdf_paid_tier_calls_llamaparse_render_pdf() -> None:
 async def test_pdf_paid_tier_demotes_extractor_failure() -> None:
     from unittest.mock import AsyncMock, MagicMock, patch
 
-    from fetcher.handlers.pdf import _llamaparse_fetch
+    from fetcher.handlers.file_pdf import _llamaparse_fetch
 
     ctx = MagicMock()
     ctx.llama_parse_api_key = "k"
     ctx.llama_parse_tier_pdf = "agentic_plus"
     with patch(
-        "fetcher.handlers.pdf.llamaparse_extractor.render_pdf",
+        "fetcher.handlers.file_pdf.llamaparse_extractor.render_pdf",
         new=AsyncMock(side_effect=ValueError("boom")),
     ):
         result = await _llamaparse_fetch(ctx, "https://example.com/paper.pdf")

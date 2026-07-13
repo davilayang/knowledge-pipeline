@@ -10,8 +10,8 @@ def test_registered_handlers_order() -> None:
         "medium",
         "facebook",
         "github",
-        "pdf",
-        "podcast",
+        "file_pdf",
+        "file_audio",
         "article",
     ]
 
@@ -24,7 +24,7 @@ def test_find_handler_routes_specific_before_article() -> None:
 
 
 def test_find_handler_routes_pdf_url_to_pdf_not_article() -> None:
-    assert find_handler("https://example.com/paper.pdf").NAME == "pdf"
+    assert find_handler("https://example.com/paper.pdf").NAME == "file_pdf"
     # arXiv PDFs still go to the arxiv handler (more-specific match wins via order).
     assert find_handler("https://arxiv.org/pdf/2401.00001v2.pdf").NAME == "arxiv"
 
@@ -49,7 +49,7 @@ def test_find_handler_routes_github_url_to_github_not_article() -> None:
     assert find_handler("https://github.com/chio-labs/sqlbuild").NAME == "github"
     # A GitHub-hosted PDF must still reach the pdf handler — github matches only the
     # 2-segment repo root, so the deeper .pdf path falls through to pdf.
-    assert find_handler("https://github.com/org/repo/blob/main/paper.pdf").NAME == "pdf"
+    assert find_handler("https://github.com/org/repo/blob/main/paper.pdf").NAME == "file_pdf"
     # gist / raw host / docs are not repo-root github.com — stay in the generic lane.
     assert find_handler("https://gist.github.com/user/abc").NAME == "article"
     assert find_handler("https://raw.githubusercontent.com/a/b/main/README.md").NAME == "article"

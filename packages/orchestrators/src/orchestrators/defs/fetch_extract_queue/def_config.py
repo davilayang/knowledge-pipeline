@@ -18,7 +18,7 @@ JOB_MAX_RETRIES = "1"
 # reach it safely). `Podcast` covers audio rows whose URL has no YouTube
 # mirror in `podcast_canonicalize.podcast_youtube_map.yaml` — the
 # substitution path keeps reclassifying mirrored podcasts as YouTube
-# upstream, so only un-mirrored audio reaches the fetcher's podcast
+# upstream, so only un-mirrored audio reaches the fetcher's file_audio
 # handler (Whisper). Extend when the PDF fetcher port lands.
 SUPPORTED_CONTENT_TYPES: tuple[str, ...] = ("YouTube", "arXiv", "Article", "Other", "Podcast")
 

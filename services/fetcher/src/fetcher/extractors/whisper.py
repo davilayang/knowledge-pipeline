@@ -4,7 +4,7 @@ Direct httpx multipart POST to `/audio/transcriptions`. Both providers
 expose the identical OpenAI-compatible endpoint shape, so we swap base_url
 and the rest is identical.
 
-Used by the upcoming `handlers/podcast.py` for MP3 / video-podcast inputs
+Used by the upcoming `handlers/file_audio.py` for MP3 / video-podcast inputs
 that have no YouTube mirror.
 """
 

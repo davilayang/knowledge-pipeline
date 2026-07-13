@@ -49,6 +49,38 @@ def test_lookup_miss_returns_none(db_path: Path) -> None:
     assert lookup(db_path=db_path, canonical_url="https://nothing.com") is None
 
 
+async def test_cache_hit_reports_current_handler_name_not_stale_source_type(db_path: Path) -> None:
+    """A row cached under an old routing name returns the CURRENT handler's NAME
+    on a cache hit, so a renamed handler (pdf → file_pdf) never returns a stale
+    `kind` that a fresh fetch of the same URL wouldn't."""
+    from unittest.mock import MagicMock, patch
+
+    from fetcher.fetch_service import run_fetch_request
+    from fetcher.types import FetchContext, FetchRequest
+
+    url = "https://example.com/paper.pdf"  # routes to the file_pdf handler
+    # Seed the cache under the OLD source_type "pdf", content clearing the
+    # pymupdf tier's fast floor (1500 chars) so the cache-hit path is taken.
+    upsert(
+        db_path=db_path,
+        canonical_url=url,
+        source_type="pdf",
+        markdown="x" * 2000,
+        tier_used="pymupdf4llm",
+        metadata={},
+        tier_log=[],
+        ttl_days=365,
+    )
+    req = FetchRequest(url=url, quality="fast", allow_paid=False)
+    with patch("fetcher.fetch_service.canonicalize", return_value=MagicMock(canonical_url=url)):
+        outcome = await run_fetch_request(
+            req, db_path=db_path, ctx=MagicMock(spec=FetchContext), ttl_days=365
+        )
+
+    assert outcome.cache_hit is True
+    assert outcome.kind == "file_pdf"  # not the stale "pdf"
+
+
 def test_upsert_overwrites_prior_row(db_path: Path) -> None:
     upsert(
         db_path=db_path,

@@ -1,4 +1,4 @@
-"""Tests for the podcast handler — MP3 / video-podcast URLs without YouTube mirror.
+"""Tests for the file_audio handler — MP3 / video-podcast URLs without YouTube mirror.
 
 Path B of the podcast pipeline: when `podcast_canonicalize.maybe_redirect_*`
 finds no YouTube mirror, the URL stays as an audio/video URL and this
@@ -9,29 +9,35 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from fetcher.extractors import whisper
-from fetcher.handlers import podcast
+from fetcher.handlers import file_audio
 
 
-def test_registry_dispatches_mp3_url_to_podcast() -> None:
-    """find_handler resolves an audio-native MP3 URL to the podcast handler
+def test_registry_dispatches_mp3_url_to_file_audio() -> None:
+    """find_handler resolves an audio-native MP3 URL to the file_audio handler
     (must come before the catch-all article handler in REGISTERED_HANDLERS)."""
     from fetcher.registry import find_handler
 
     handler = find_handler("https://dcs-cached.megaphone.fm/abc.mp3")
     assert handler is not None
-    assert handler.NAME == "podcast"
+    assert handler.NAME == "file_audio"
 
 
 def test_matches_mp3_url() -> None:
     """megaphone.fm-style audio-native MP3 URL → True."""
     url = "https://dcs-cached.megaphone.fm/SUPERDATASCIENCEPTYLTD7992118381.mp3"
-    assert podcast.matches(url) is True
+    assert file_audio.matches(url) is True
 
 
 def test_does_not_match_html_url() -> None:
     """Plain article URL → False (would route to article handler)."""
     url = "https://www.example.com/post/some-essay.html"
-    assert podcast.matches(url) is False
+    assert file_audio.matches(url) is False
+
+
+def test_matches_opus_url() -> None:
+    """`.opus` is in the shared domains.AUDIO_SUFFIXES set — the fetcher now
+    matches it (it used to fall through to the article handler)."""
+    assert file_audio.matches("https://cdn.example.com/ep/episode.opus") is True
 
 
 def test_matches_zencastr_mp4_url() -> None:
@@ -40,7 +46,7 @@ def test_matches_zencastr_mp4_url() -> None:
     url = (
         "https://media.zencastr.com/projects/abc/episodes/041/size/1258517258/stacked-data-041.mp4"
     )
-    assert podcast.matches(url) is True
+    assert file_audio.matches(url) is True
 
 
 async def test_whisper_tier_happy_path_returns_structured_markdown(
@@ -76,7 +82,7 @@ async def test_whisper_tier_happy_path_returns_structured_markdown(
     ctx.upstream_timeout_s = 300
 
     with (
-        patch.object(podcast, "_download_audio", side_effect=fake_download),
+        patch.object(file_audio, "_download_audio", side_effect=fake_download),
         patch.object(whisper, "transcribe_chunk", side_effect=fake_transcribe),
         patch.object(whisper, "get_chain", return_value=fake_chain),
         patch(
@@ -88,7 +94,7 @@ async def test_whisper_tier_happy_path_returns_structured_markdown(
             return_value=[object()],
         ),
     ):
-        result = await podcast.TIERS[0].run(ctx, url)
+        result = await file_audio.TIERS[0].run(ctx, url)
 
     assert result.status == 200
     assert "STRUCTURED:" in result.content
@@ -125,7 +131,7 @@ async def test_whisper_tier_falls_back_to_raw_when_structurer_fails(
     ctx.upstream_timeout_s = 300
 
     with (
-        patch.object(podcast, "_download_audio", side_effect=fake_download),
+        patch.object(file_audio, "_download_audio", side_effect=fake_download),
         patch.object(whisper, "transcribe_chunk", side_effect=fake_transcribe),
         patch.object(
             whisper,
@@ -141,7 +147,7 @@ async def test_whisper_tier_falls_back_to_raw_when_structurer_fails(
             return_value=[object()],
         ),
     ):
-        result = await podcast.TIERS[0].run(ctx, url)
+        result = await file_audio.TIERS[0].run(ctx, url)
 
     assert result.status == 200
     assert "raw chunk transcript text" in result.content
