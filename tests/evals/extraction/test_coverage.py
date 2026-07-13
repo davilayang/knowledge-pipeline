@@ -22,8 +22,18 @@ def _claim(idx: int, tok: int | None = None) -> Claim:
 def test_distinct_span_coverage_and_tail_coverage():
     cov = coverage(UNITS, [_claim(0), _claim(1), _claim(7), _claim(9)])
     assert cov["distinct_span_coverage"] == 0.4  # deciles {0,1,7,9}
-    assert cov["tail_coverage"] == 0.5  # 2 of 4 supported claims cite decile >=7
+    assert cov["tail_coverage"] == 2 / 3  # 2 of the 3 tail deciles (7,9) grounded
     assert cov["supported_claims"] == 4
+
+
+def test_tail_coverage_is_volume_independent():
+    # Same tail deciles grounded in both, but the second run piles on early-decile
+    # claims. As a claim-count ratio the tail metric would sag; as the fraction of
+    # tail deciles (7,8,9) grounded it must not move — an arm that emits more claims
+    # can't look worse at the tail just for being verbose.
+    tail_only = coverage(UNITS, [_claim(7), _claim(8), _claim(9)])
+    with_early = coverage(UNITS, [_claim(7), _claim(8), _claim(9), _claim(0), _claim(1), _claim(2)])
+    assert tail_only["tail_coverage"] == with_early["tail_coverage"] == 1.0
 
 
 def test_unsupported_claim_excluded_from_coverage():

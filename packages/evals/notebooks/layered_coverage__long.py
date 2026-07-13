@@ -161,11 +161,11 @@ for name, run in runs.items():
     print(f"  {name:>12}: " + " ".join(f"{h:>3}" for h in hist))
 
 # %% tags=["act"]
-# GATE: layered tail_coverage > wide-single tail_coverage across CONTENT_ID_INDEX
-# 0,1,2 at a tolerable token multiple → chunking is the tail lever, worth wiring
-# in as an offline shadow extractor. If layered doesn't lift the tail deciles,
-# chunking isn't it. (Watch distinct_span_coverage too — the tail_coverage ratio
-# is diluted when an arm emits many more claims.)
+# GATE: layered tail_coverage >= wide-single across CONTENT_ID_INDEX 0,1,2 at a
+# tolerable token multiple → chunking is the tail lever, worth wiring in as an
+# offline shadow extractor. If layered doesn't lift the tail deciles, chunking
+# isn't it. tail_coverage is the fraction of tail deciles (7,8,9) grounded, so it
+# is volume-independent — a more-verbose arm can't win or lose it on claim count.
 tc_wide = covs["wide-single"]["tail_coverage"]
 tc_layered = covs["layered"]["tail_coverage"]
 print(

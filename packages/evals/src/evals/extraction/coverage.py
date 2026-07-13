@@ -25,21 +25,21 @@ def coverage(units: list[str], claims: list[Claim]) -> dict:
     grounded, ungrounded = verify_grounding(claims, units)
 
     covered: set[int] = set()
-    tail_hits = 0
     redundancy = 0
     for claim in grounded:
         deciles = _deciles(claim.cited_indices, n) if n else set()
-        if any(d >= 7 for d in deciles):
-            tail_hits += 1
         if deciles and deciles <= covered:
             redundancy += 1  # cites only already-covered regions — padding
         covered |= deciles
 
-    supported = len(grounded)
+    tail = {7, 8, 9}
     return {
-        "supported_claims": supported,
+        "supported_claims": len(grounded),
         "unsupported_claims": len(ungrounded),
         "distinct_span_coverage": len(covered) / 10,
-        "tail_coverage": (tail_hits / supported) if supported else 0.0,
+        # Fraction of the tail's 3 deciles grounded — NOT tail-claims / all-claims.
+        # A claim-count ratio sags when an arm emits more (early) claims; this
+        # measures whether the document tail is reached, independent of volume.
+        "tail_coverage": len(covered & tail) / len(tail),
         "redundancy": redundancy,
     }
