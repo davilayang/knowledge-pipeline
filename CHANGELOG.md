@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Extraction workbench can now measure cite-by-index coverage of the wide schema on long content.** A `make_wide_variant` arm numbers the source into citable units and emits length-scaled atomic claims that each cite the supporting unit indices (`cited_indices`); `coverage(units, claims)` reports distinct source deciles grounded + tail coverage over only the *faithful* claims (verified by a token-presence check against the cited unit), so volume can't inflate it and fabricated claims are excluded. Mirrors newsletter-assistant's shipped grounding schema (`Claim{text, cited_indices}`, `verify_grounding`) so the two repos converge on one shape. Ships a long-content fixture cohort (`extraction_eval_long.jsonl`, 53K–253K-char real items) and the `wide_coverage__long` notebook. Workbench-only: prod's `TopicCard` contract is untouched. Implementation: `evals.extraction.{units,wide,verify,coverage}`. (Replaces an earlier verbatim-`support_quote` attempt the live run disproved — gpt-4.1-mini paraphrases/elides, so quote-then-substring-match grounded ~10%.)
+
 ---
 
 ## [0.34.1] — 2026-07-12
