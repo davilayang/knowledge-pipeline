@@ -19,6 +19,8 @@ from domains.content_urls import classify_url_type
         ("https://example.com/paper.pdf", "file_pdf"),
         ("https://podtrac.com/ep/episode.mp3", "file_audio"),
         ("https://zencastr.com/ep/show.mp4", "file_audio"),  # .mp4 is audio/av now
+        ("https://cdn.example.com/ep/episode.opus", "file_audio"),
+        ("https://cdn.example.com/ep/episode.flac", "file_audio"),
         ("https://example.com/some-article", "article"),
         ("https://medium.com/@a/post-123", "medium"),
         ("https://towardsdatascience.com/title-abc", "medium"),

@@ -11,7 +11,7 @@ def test_registered_handlers_order() -> None:
         "facebook",
         "github",
         "pdf",
-        "podcast",
+        "file_audio",
         "article",
     ]
 

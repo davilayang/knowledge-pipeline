@@ -17,6 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **A paywalled article's publish date now survives even when its body is rejected.** A tier opts in via `Tier.carry_meta_on_reject` (the Jina tiers, whose structured `Published Time:` preamble is trustworthy regardless of body quality) to carry its date onto the winning tier; heuristic scrapers like trafilatura stay opt-out so a wrong date can't leak onto a good fetch.
 - **arXiv fetches are more robust:** a non-2xx PDF response now fails the tier cleanly instead of returning garbage extracted from the error page, and arXiv PDFs are size-capped (50MB) like generic PDFs. Implementation: `fetcher.handlers.arxiv` via the shared `handlers/_pdf_download.py`.
 - **Medium host identity is unified into `domains.medium_urls`** — the fetcher's medium handler and the shared URL classifier now source Medium from one frozenset (replacing the fetcher-only `medium_domains.yaml` + its loader), so the two can't drift. Medium routing is unchanged.
+- **`.opus` audio files now transcribe** instead of falling to the article handler. The fetcher's podcast handler is renamed `file_audio` and its audio/video suffix set is unified with the classifier via `domains.AUDIO_SUFFIXES`, so the two agree on what's a media file. Implementation: `fetcher.handlers.file_audio`.
 
 ---
 

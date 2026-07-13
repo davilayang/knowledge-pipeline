@@ -20,8 +20,10 @@ _YOUTUBE_HOSTS = frozenset(
 )
 _FACEBOOK_BARE_HOSTS = frozenset({"facebook.com", "fb.com", "fb.watch"})
 # file_audio names the class "an audio/av file", not one extension — whisper
-# handles them all, and a zencastr .mp4 podcast already exists in the corpus.
-_AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus", ".mp4")
+# handles them all (incl. video, from which it extracts audio), and a zencastr
+# .mp4 podcast already exists in the corpus. Shared with the fetcher's file_audio
+# handler so the classifier and the fetch routing agree on the set.
+AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus", ".flac", ".mp4", ".webm", ".mov")
 
 
 def classify_url_type(url: str) -> str:
@@ -46,6 +48,6 @@ def classify_url_type(url: str) -> str:
         return "facebook"
     if path.endswith(".pdf"):
         return "file_pdf"
-    if path.endswith(_AUDIO_SUFFIXES):
+    if path.endswith(AUDIO_SUFFIXES):
         return "file_audio"
     return "article"

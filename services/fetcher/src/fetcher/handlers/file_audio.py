@@ -1,5 +1,5 @@
-"""Podcast handler: Whisper transcription for MP3 / video-podcast URLs
-without a YouTube mirror (Path B of the podcast pipeline)."""
+"""file_audio handler: Whisper transcription for audio/video-file URLs
+(mp3 / m4a / mp4 / … — a raw media file at a URL, no YouTube mirror)."""
 
 import logging
 import shutil
@@ -8,6 +8,7 @@ import time
 from pathlib import Path
 from urllib.parse import urlparse
 
+from domains.content_urls import AUDIO_SUFFIXES
 from fetcher.extractors import transcript_structurer
 from fetcher.extractors import whisper as whisper_extractor
 from fetcher.extractors._cloud_chain import StructurerChainFailed
@@ -17,13 +18,11 @@ from fetcher.types import FetchContext, RawTierResult, Tier, TierLogEntry
 logger = logging.getLogger(__name__)
 
 
-NAME = "podcast"
+NAME = "file_audio"
 STRICT_PAID_TIER = False
 
-_AUDIO_EXTS = {".mp3", ".m4a", ".ogg", ".flac", ".wav"}
-_VIDEO_EXTS = {".mp4", ".webm", ".mov"}
-_ALL_EXTS = _AUDIO_EXTS | _VIDEO_EXTS
-
+# Audio + video suffixes shared with domains.classify_url_type so routing and
+# classification agree on the set (whisper strips video to audio before ASR).
 _MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024  # 2 GB — covers Zencastr-style video podcasts
 
 
@@ -34,15 +33,14 @@ def matches(url: str) -> bool:
         return False
     if parsed.scheme not in {"http", "https"}:
         return False
-    path_lower = parsed.path.lower()
-    return any(path_lower.endswith(ext) for ext in _ALL_EXTS)
+    return parsed.path.lower().endswith(AUDIO_SUFFIXES)
 
 
 async def _download_audio(ctx: FetchContext, url: str) -> Path:
     """Stream-download the audio to a tempfile. Aborts beyond
     `_MAX_DOWNLOAD_BYTES` so a misbehaving Zencastr URL can't fill disk."""
     parsed_suffix = Path(urlparse(url).path).suffix.lower()
-    suffix = parsed_suffix if parsed_suffix in _ALL_EXTS else ".bin"
+    suffix = parsed_suffix if parsed_suffix in AUDIO_SUFFIXES else ".bin"
     with tempfile.NamedTemporaryFile(prefix="podcast-dl-", suffix=suffix, delete=False) as tmp:
         out_path = Path(tmp.name)
 
