@@ -34,16 +34,21 @@ def test_render_chunk_uses_global_indices():
     assert render_chunk(chunk) == "[5] fifth sentence.\n[6] sixth sentence."
 
 
-def test_layered_merge_preserves_global_indices_into_the_tail():
-    # Four sentences → two chunks. A stub per-chunk extractor emits one tokenless
-    # claim citing the highest global index it was shown. The last chunk sees
-    # indices {2,3}; index 3 is decile 7 (tail). If the merge kept indices global,
-    # coverage() reports tail_coverage > 0 — the whole point of chunking.
-    content = "Alpha first here. Beta second here. Gamma third here. Delta fourth here."
+def test_layered_merge_preserves_global_index_to_content_alignment():
+    # Four sentences, each with a unique number → two chunks. The stub reads the
+    # LAST rendered `[i] text` line of each chunk, pulls that line's number, and
+    # emits a claim carrying the number and citing i. verify_grounding (via
+    # coverage) then checks the number is present in the GLOBAL units[i]. This only
+    # holds if render_chunk labeled i with the unit whose content it actually is —
+    # a mislabel (wrong global index, or a dropped unit) makes units[i]'s number
+    # differ, and the claim goes unsupported. So supported == both chunks proves
+    # the `[i]` label ↔ unit-content alignment end to end, not just index survival.
+    content = "Alpha has 11 apples. Beta has 22 apples. Gamma has 33 apples. Delta has 44 apples."
 
     def stub_chunk_fn(numbered: str) -> tuple[dict, int, int]:
-        idxs = [int(m) for m in re.findall(r"\[(\d+)\]", numbered)]
-        claim = {"text": "a plain grounded note", "cited_indices": [max(idxs)], "type": "claim"}
+        idx, text = re.findall(r"\[(\d+)\]\s+(.*)", numbered)[-1]  # last line of the chunk
+        number = re.search(r"\d+", text).group()
+        claim = {"text": f"note about {number}", "cited_indices": [int(idx)], "type": "claim"}
         return {"extracted_title": "T", "claims": [claim]}, 1, 1
 
     extract_fn = make_layered_extract_fn(
@@ -53,4 +58,5 @@ def test_layered_merge_preserves_global_indices_into_the_tail():
 
     units = citable_units(content)
     cov = coverage(units, [Claim(**c) for c in out["claims"]])
-    assert cov["tail_coverage"] > 0
+    assert cov["supported_claims"] == 2  # both chunks' claims align index → content
+    assert cov["tail_coverage"] == 1.0  # the last chunk cited the reachable tail decile

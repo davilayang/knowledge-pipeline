@@ -26,6 +26,17 @@ def test_distinct_span_coverage_and_tail_coverage():
     assert cov["supported_claims"] == 4
 
 
+def test_metrics_scale_to_reachable_deciles_for_short_docs():
+    # 4 units → cited indices map only to deciles {0,2,5,7} (idx*10//4); deciles
+    # 1,3,4,6,8,9 are unreachable, so a hardcoded /10 or /3 denominator would cap
+    # a fully-grounded short doc below 1.0. Grounding every reachable region must
+    # score 1.0 — the denominator is reachable deciles, not a constant.
+    short = [f"Unit number {i} says thing {i}." for i in range(4)]
+    cov = coverage(short, [_claim(0), _claim(1), _claim(2), _claim(3)])
+    assert cov["distinct_span_coverage"] == 1.0  # all 4 reachable deciles grounded
+    assert cov["tail_coverage"] == 1.0  # the one reachable tail decile (7) grounded
+
+
 def test_tail_coverage_is_volume_independent():
     # Same tail deciles grounded in both, but the second run piles on early-decile
     # claims. As a claim-count ratio the tail metric would sag; as the fraction of

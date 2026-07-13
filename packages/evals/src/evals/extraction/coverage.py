@@ -29,17 +29,28 @@ def coverage(units: list[str], claims: list[Claim]) -> dict:
     for claim in grounded:
         deciles = _deciles(claim.cited_indices, n) if n else set()
         if deciles and deciles <= covered:
-            redundancy += 1  # cites only already-covered regions — padding
+            # Cites only already-covered regions — padding. NOTE: under layered
+            # extraction with chunk overlap + concat merge this also counts the
+            # same claim extracted from two overlapping windows, so it conflates
+            # windowing artifact with genuine model repetition until dedup collapses
+            # the overlap duplicates first.
+            redundancy += 1
         covered |= deciles
 
-    tail = {7, 8, 9}
+    # Denominators are the deciles actually *reachable* for this n, not constants:
+    # `idx*10//n` can't hit every decile when n < 10 (e.g. n=4 → only {0,2,5,7}),
+    # so dividing by 10 (or the tail's 3) would cap a fully-grounded short doc
+    # below 1.0. For the long cohort (n ≥ 10) reachable == all 10, so this is a
+    # no-op there and only fixes the short-doc case.
+    reachable = {min(9, i * 10 // n) for i in range(n)} if n else set()
+    tail = reachable & {7, 8, 9}
     return {
         "supported_claims": len(grounded),
         "unsupported_claims": len(ungrounded),
-        "distinct_span_coverage": len(covered) / 10,
-        # Fraction of the tail's 3 deciles grounded — NOT tail-claims / all-claims.
-        # A claim-count ratio sags when an arm emits more (early) claims; this
+        "distinct_span_coverage": (len(covered) / len(reachable)) if reachable else 0.0,
+        # Fraction of the tail deciles grounded — NOT tail-claims / all-claims. A
+        # claim-count ratio sags when an arm emits more (early) claims; this
         # measures whether the document tail is reached, independent of volume.
-        "tail_coverage": len(covered & tail) / len(tail),
+        "tail_coverage": (len(covered & tail) / len(tail)) if tail else 0.0,
         "redundancy": redundancy,
     }
