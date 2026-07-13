@@ -366,6 +366,213 @@ async def test_cascade_tier_log_records_exception_kind() -> None:
 
 
 @pytest.mark.asyncio
+async def test_cascade_carries_metadata_from_validation_failed_tier() -> None:
+    """A tier that OPTS IN still contributes its preamble date when its body fails.
+
+    Paywalled Medium/FB: Jina extracts a real `Published Time:` into metadata but
+    its body is a paywall stub that fails `validate`. Jina's preamble is
+    structured (independent of body quality), so its tier sets
+    `carry_meta_on_reject=True` and the date carries onto the winning tier — the
+    invalid content itself must NOT win, only its metadata survives.
+    """
+    ctx = MagicMock(spec=FetchContext)
+    stub = Tier(
+        "jina_stub",
+        "free",
+        10,
+        100,
+        AsyncMock(
+            return_value=RawTierResult(
+                content="paywall stub",
+                status=200,
+                metadata={"published": "2026-03-01"},
+            )
+        ),
+        validate=lambda _c: False,  # body rejected
+        carry_meta_on_reject=True,  # preamble date is trustworthy anyway
+    )
+    paid = Tier(
+        "rapidapi",
+        "paid",
+        10,
+        10,
+        AsyncMock(return_value=RawTierResult(content="full body text", status=200, metadata={})),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [stub, paid]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=True)
+    assert result.tier_used == "rapidapi"
+    assert result.content == "full body text"
+    assert result.metadata == {"published": "2026-03-01"}
+
+
+@pytest.mark.asyncio
+async def test_cascade_does_not_carry_metadata_from_rejected_tier_without_optin() -> None:
+    """A rejected tier that did NOT opt in must not stamp its metadata onto the winner.
+
+    article.py's trafilatura tier scrapes title/date heuristically off the same
+    HTML that failed body validation — a soft-404 / login wall can yield a
+    plausible-but-WRONG date. Without `carry_meta_on_reject`, that date must be
+    discarded, not carried onto a genuinely-good winner (a wrong provenance date
+    is worse than a missing one). Covers the best_result fallback path.
+    """
+    ctx = MagicMock(spec=FetchContext)
+    good = Tier(
+        "jina_good",
+        "free",
+        10**9,  # validated but below floor → becomes best_result winner, no date
+        10**9,
+        AsyncMock(return_value=RawTierResult(content="y" * 500, status=200, metadata={})),
+        validate=lambda _c: True,
+    )
+    trafilatura = Tier(
+        "trafilatura",
+        "free",
+        10,
+        100,
+        AsyncMock(
+            return_value=RawTierResult(
+                content="soft-404 boilerplate",
+                status=200,
+                metadata={"published": "1999-01-01"},  # bogus scrape off a broken page
+            )
+        ),
+        validate=lambda _c: False,  # body rejected
+        # no carry_meta_on_reject → its metadata must NOT survive
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [good, trafilatura]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert result.tier_used == "jina_good"
+    assert result.metadata == {}  # the bogus 1999 date was discarded, not carried
+
+
+@pytest.mark.asyncio
+async def test_cascade_honours_handler_tier_order_paid_first() -> None:
+    """A handler that lists its paid quality tier first tries it before the cheap one.
+
+    arXiv wants llamaparse (quality) ahead of pymupdf (cheap fallback). The
+    cascade must walk TIERS in the handler's declared order, not force every
+    free tier ahead of every paid one.
+    """
+    ctx = MagicMock(spec=FetchContext)
+    paid_first = Tier(
+        "paid_first",
+        "paid",
+        10,
+        100,
+        AsyncMock(return_value=RawTierResult(content="p" * 50, status=200)),
+    )
+    free_fallback = Tier(
+        "free_fallback",
+        "free",
+        10,
+        100,
+        AsyncMock(return_value=RawTierResult(content="f" * 50, status=200)),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [paid_first, free_fallback]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=True)
+    assert result.tier_used == "paid_first"
+    free_fallback.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cascade_skips_paid_tier_when_not_allowed_paid_first() -> None:
+    """When allow_paid=False, a paid-first handler still falls back to its free tier."""
+    ctx = MagicMock(spec=FetchContext)
+    paid_first = Tier(
+        "paid_first",
+        "paid",
+        10,
+        100,
+        AsyncMock(return_value=RawTierResult(content="p" * 50, status=200)),
+    )
+    free_fallback = Tier(
+        "free_fallback",
+        "free",
+        10,
+        100,
+        AsyncMock(return_value=RawTierResult(content="f" * 50, status=200)),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = False
+        TIERS = [paid_first, free_fallback]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert result.tier_used == "free_fallback"
+    paid_first.run.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_cascade_strict_paid_tier_skipped_when_not_allowed_does_not_raise() -> None:
+    """STRICT_PAID_TIER must not fire on a paid tier that allow_paid=False skips.
+
+    The cost gate skips the paid tier before its run/except is reached, so a
+    strict handler with allow_paid=False falls back to the free tier rather than
+    raising — the paid tier never executes.
+    """
+    ctx = MagicMock(spec=FetchContext)
+    free = Tier(
+        "free",
+        "free",
+        10,
+        100,
+        AsyncMock(return_value=RawTierResult(content="x" * 50, status=200)),
+    )
+    paid = Tier(
+        "paid",
+        "paid",
+        10,
+        10,
+        AsyncMock(side_effect=ValueError("must never run")),
+    )
+
+    class FakeSource:
+        NAME = "fake"
+        STRICT_PAID_TIER = True
+        TIERS = [free, paid]
+
+        @staticmethod
+        def matches(url: str) -> bool:
+            return True
+
+    result = await run_cascade(FakeSource, ctx, "https://x", quality="fast", allow_paid=False)
+    assert result.tier_used == "free"
+    paid.run.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_cascade_strict_paid_tier_raises() -> None:
     ctx = MagicMock(spec=FetchContext)
     free = Tier(

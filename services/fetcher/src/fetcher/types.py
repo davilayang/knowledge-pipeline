@@ -113,6 +113,14 @@ class Tier:
     validate: Callable[[str], bool] | None = None
     applies: Callable[[str], bool] | None = None
     rate_limit_key: str | None = None
+    # When True, this tier's attribution metadata (title / published) is carried
+    # onto the winning tier even if its own body FAILS validation. Set only on
+    # tiers whose metadata is structurally independent of body quality — e.g. a
+    # Jina preamble `Published Time:` parsed before the paywall-stub body is
+    # stripped. Leave False for tiers that scrape metadata heuristically off the
+    # same HTML that failed validation (trafilatura on a soft-404 can return a
+    # wrong date) — a wrong provenance date is worse than a missing one.
+    carry_meta_on_reject: bool = False
 
 
 class URLHandler(Protocol):
