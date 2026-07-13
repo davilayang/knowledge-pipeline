@@ -5,7 +5,7 @@ with the voice-tuned tier complexity stripped. `classify_content_type`
 emits values that match kp's Notion `Content Type` SELECT options
 (Article / YouTube / arXiv / Podcast / Other; PDF is in `ALL_CONTENT_TYPES`
 for user override but never auto-emitted — PDF URLs fall through to
-Article and the fetcher's pdf handler claims them). These get written
+Article and the fetcher's file_pdf handler claims them). These get written
 back to Notion as select-property values, so case + spelling must match
 exactly.
 """
@@ -46,7 +46,7 @@ def classify_content_type(url: str) -> str:
 
     PDF classification is intentionally NOT emitted — the Notion Content
     Type SELECT does not have a PDF option. PDF URLs fall through to
-    Article (the fetcher's pdf handler still claims them via the registry).
+    Article (the fetcher's file_pdf handler still claims them via the registry).
     """
     parsed = urlparse(url)
     host = (parsed.hostname or "").removeprefix("www.")

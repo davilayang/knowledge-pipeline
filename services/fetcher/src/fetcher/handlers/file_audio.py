@@ -41,7 +41,7 @@ async def _download_audio(ctx: FetchContext, url: str) -> Path:
     `_MAX_DOWNLOAD_BYTES` so a misbehaving Zencastr URL can't fill disk."""
     parsed_suffix = Path(urlparse(url).path).suffix.lower()
     suffix = parsed_suffix if parsed_suffix in AUDIO_SUFFIXES else ".bin"
-    with tempfile.NamedTemporaryFile(prefix="podcast-dl-", suffix=suffix, delete=False) as tmp:
+    with tempfile.NamedTemporaryFile(prefix="file-audio-dl-", suffix=suffix, delete=False) as tmp:
         out_path = Path(tmp.name)
 
     total = 0
@@ -56,7 +56,7 @@ async def _download_audio(ctx: FetchContext, url: str) -> Path:
                 if total > _MAX_DOWNLOAD_BYTES:
                     out_path.unlink(missing_ok=True)
                     raise ValueError(f"audio exceeds {_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB cap")
-    logger.info("podcast download: %d bytes from %s", total, url)
+    logger.info("file_audio download: %d bytes from %s", total, url)
     return out_path
 
 
@@ -64,7 +64,7 @@ async def _whisper_tier(ctx: FetchContext, url: str) -> RawTierResult:
     try:
         audio_path = await _download_audio(ctx, url)
     except Exception as exc:
-        logger.warning("podcast download failed for %s: %s", url, exc)
+        logger.warning("file_audio download failed for %s: %s", url, exc)
         return RawTierResult(content="", status=0, detail=_exception_detail(exc))
 
     chunk_dir: Path | None = None
@@ -81,7 +81,7 @@ async def _whisper_tier(ctx: FetchContext, url: str) -> RawTierResult:
             transcript_parts.append(text)
         transcript = "\n\n".join(transcript_parts)
     except whisper_extractor.WhisperChainFailed as exc:
-        logger.warning("podcast whisper transcription failed for %s: %s", url, exc)
+        logger.warning("file_audio whisper transcription failed for %s: %s", url, exc)
         return RawTierResult(content="", status=0, detail=_exception_detail(exc))
     finally:
         if chunk_dir is not None:
@@ -124,7 +124,7 @@ async def _run_structurer(
         )
     except StructurerChainFailed as exc:
         duration_ms = int((time.monotonic() - t0) * 1000)
-        logger.warning("podcast transcript structurer failed: %s", exc)
+        logger.warning("file_audio transcript structurer failed: %s", exc)
         entry = TierLogEntry(
             tier="transcript_structurer",
             status=0,
