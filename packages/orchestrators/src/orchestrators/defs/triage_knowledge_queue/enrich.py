@@ -19,12 +19,12 @@ from dataclasses import asdict, dataclass
 
 import httpx
 from defusedxml import ElementTree as ET
+from domains.arxiv_urls import extract_arxiv_id
 
 from .classify import (
     CONTENT_TYPE_ARTICLE,
     CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_YOUTUBE,
-    _extract_arxiv_id,
 )
 from .url_meta import fetch_url_meta
 
@@ -157,7 +157,7 @@ def _youtube_signals(url: str, *, timeout: float = _TIMEOUT_S) -> YoutubeSignals
 
 
 def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
-    arxiv_id = _extract_arxiv_id(url)
+    arxiv_id = extract_arxiv_id(url)
     if arxiv_id is None:
         return ArxivSignals()
     try:

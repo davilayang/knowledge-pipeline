@@ -3,10 +3,10 @@
 import logging
 from urllib.parse import urlparse
 
+from domains.arxiv_urls import ARXIV_HOSTS
 from fetcher.extractors import llamaparse as llamaparse_extractor
 from fetcher.extractors import pymupdf as pymupdf_extractor
 from fetcher.handlers._pdf_download import MAX_PDF_BYTES, PdfTooLarge, download_pdf_bytes
-from fetcher.handlers.arxiv import _ARXIV_HOSTS
 from fetcher.types import FetchContext, RawTierResult, Tier
 
 
@@ -28,7 +28,7 @@ def matches(url: str) -> bool:
     if not parsed.path.lower().endswith(".pdf"):
         return False
     host = (parsed.hostname or "").lower()
-    if host in _ARXIV_HOSTS:
+    if host in ARXIV_HOSTS:
         return False
     return True
 
