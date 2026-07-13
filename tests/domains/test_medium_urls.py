@@ -7,6 +7,9 @@ def test_is_medium_url_known_publication_hosts() -> None:
     assert is_medium_url("https://medium.com/@a/title-abc123def456") is True
     assert is_medium_url("https://towardsdatascience.com/title-abc123def456") is True
     assert is_medium_url("https://www.towardsdatascience.com/title-abc") is True  # www stripped
+    assert is_medium_url("https://ai.plainenglish.io/title-abc") is True
+    assert is_medium_url("https://gitconnected.com/title-abc") is True
+    assert is_medium_url("https://blog.stackademic.com/title-abc") is True
 
 
 def test_is_medium_url_author_subdomain() -> None:

@@ -8,15 +8,24 @@ subscription set — it's the canonical core, not exhaustive.
 
 from urllib.parse import urlparse
 
-# Hostnames whose articles are served by Medium's platform (bare host, no www).
+# Hostnames whose articles are served by Medium's platform (bare host, no www —
+# is_medium_url strips a leading www.). These also drive Medium-API parsing.
 MEDIUM_DOMAINS = frozenset(
     {
-        "medium.com",
-        "towardsdatascience.com",
-        "levelup.gitconnected.com",
+        "ai.gopubby.com",
+        "ai.plainenglish.io",
+        "betterhumans.pub",
         "betterprogramming.pub",
-        "uxdesign.cc",
+        "blog.devgenius.io",
+        "blog.stackademic.com",
+        "gitconnected.com",
+        "javascript.plainenglish.io",
+        "levelup.gitconnected.com",
+        "medium.com",
         "pub.towardsai.net",
+        "python.plainenglish.io",
+        "towardsdatascience.com",
+        "uxdesign.cc",
     }
 )
 
