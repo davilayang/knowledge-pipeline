@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Shared URL → content-type classifier** — `domains.classify_url_type` gives triage and the fetcher one source to route on (`youtube` / `arxiv` / `github` / `facebook` / `file_pdf` / `file_audio` / `article`), extending `domains.arxiv_urls`. Groundwork for the Content Type taxonomy rename; not yet wired into triage.
+
 ### Changed
 
 - **The fetch cascade now walks each handler's tiers in declared preference order** rather than all free tiers before all paid, so a quality-first handler (arXiv: LlamaParse then pymupdf) is honoured; `allow_paid` still gates paid tiers wherever they sit. Implementation: `fetcher.cascade.run_cascade`.
