@@ -34,11 +34,14 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v1.md` (server-side `_PROMPT_VERSION` — bumping is a service change, not a client header).
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
 - **Handlers:**
-  - `article` — Jina → curl_cffi+trafilatura → Tavily Extract (paid).
   - `arxiv` — pymupdf (50MB cap) → LlamaParse agentic_plus (strict paid).
   - `youtube` — transcript-api with oEmbed metadata header.
-  - `medium` — Jina → mediumapi.com RapidAPI paywall bypass (paid). Domain set loaded from `src/fetcher/data/medium_domains.yaml` (ships inside the package via hatchling `force-include`; `_load_domains` fails fast on missing/empty file).
-  - `pdf` — pymupdf4llm (50MB cap) → LlamaParse agentic_plus (paid). Routes generic-PDF URLs that don't match arxiv.
+  - `medium` — Jina → mediumapi.com RapidAPI paywall bypass (paid). Host set: shared `domains.medium_urls` (`medium.com` + `*.medium.com` + known publications).
+  - `facebook` — RapidAPI (api4 → scraper3), no free tier.
+  - `github` — raw `README.md` from `raw.githubusercontent.com/<org>/<repo>/HEAD/README.md` (repo-root URLs only; no README → error-state).
+  - `file_pdf` — pymupdf4llm (50MB cap) → LlamaParse agentic_plus (paid). Generic-PDF URLs that don't match arxiv.
+  - `file_audio` — Whisper transcription for audio/video-file URLs (mp3/m4a/mp4/… — suffix set shared via `domains.AUDIO_SUFFIXES`).
+  - `article` — Jina → curl_cffi+trafilatura → Tavily Extract (paid). The catch-all.
 - **Preference-ordered tier cascade** per handler: walk tiers in each handler's declared order (free-first for most; a quality-first handler like `arxiv` may list its paid tier first), stopping at the first to clear the quality floor. Paid tiers are gated on `allow_paid=true` wherever they sit in the order.
 - **SQLite cache** with three tables: `cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
 - **Container** in this repo's docker-compose stack, attached to `dagster_network` and `kos-network` with the alias `kp-fetcher`.

@@ -82,7 +82,7 @@ The Notion Queue DB must have a `Content Type` SELECT property with options:
 - `Other`
 
 `PDF` is intentionally absent — `classify_content_type` never emits it; PDF
-URLs fall through to `Article` and the fetcher's pdf handler claims them via
+URLs fall through to `Article` and the fetcher's file_pdf handler claims them via
 the registry catch-all. `Podcast` must now be present: audio-suffix URLs
 (`.mp3` / `.m4a` / `.ogg` / `.wav` / `.opus`) are classified as Podcast, and
 `podcast_canonicalize.py` may then substitute a YouTube URL on a map hit
