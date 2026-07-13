@@ -64,7 +64,7 @@ def test_no_keys_configured_returns_unknown() -> None:
 
     shape, metadata = classifier.classify(
         enrichment=EnrichmentSignals(),
-        content_type="Article",
+        content_type="article",
         url="https://example.com/post",
     )
 
@@ -87,7 +87,7 @@ def test_groq_returns_valid_shape() -> None:
             enrichment=EnrichmentSignals(
                 article=ArticleSignals(title="Build X with Y", description="A walkthrough.")
             ),
-            content_type="Article",
+            content_type="article",
             url="https://example.com/build-x",
         )
 
@@ -115,7 +115,7 @@ def test_llm_returning_unknown_is_honored() -> None:
     ) as mock_post:
         shape, metadata = classifier.classify(
             enrichment=EnrichmentSignals(),
-            content_type="Other",
+            content_type="other",
             url="https://example.com/ambiguous",
         )
 
@@ -141,7 +141,7 @@ def test_groq_returning_invalid_shape_falls_through_to_openai() -> None:
     ) as mock_post:
         shape, metadata = classifier.classify(
             enrichment=EnrichmentSignals(),
-            content_type="Article",
+            content_type="article",
             url="https://example.com/post",
         )
 
@@ -169,7 +169,7 @@ def test_groq_exception_falls_through_to_openai() -> None:
     ) as mock_post:
         shape, metadata = classifier.classify(
             enrichment=EnrichmentSignals(),
-            content_type="Article",
+            content_type="article",
             url="https://example.com/post",
         )
 
@@ -193,7 +193,7 @@ def test_all_tiers_fail_returns_unknown_with_exception_status() -> None:
     ) as mock_post:
         shape, metadata = classifier.classify(
             enrichment=EnrichmentSignals(),
-            content_type="Article",
+            content_type="article",
             url="https://example.com/post",
         )
 
