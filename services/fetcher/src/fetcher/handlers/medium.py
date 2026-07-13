@@ -2,11 +2,9 @@
 
 import logging
 import re
-from pathlib import Path
 from urllib.parse import urlparse
 
-import yaml
-
+from domains.medium_urls import is_medium_url
 from fetcher.extractors import jina as jina_extractor
 from fetcher.extractors.rapidapi import medium as rapidapi_medium_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier
@@ -19,57 +17,12 @@ STRICT_PAID_TIER = False
 
 _ARTICLE_ID_RE = re.compile(r"-([0-9a-f]{8,12})$", re.IGNORECASE)
 
-# medium_domains.yaml ships inside the `fetcher` package (src/fetcher/data/)
-# so it travels with the wheel into the venv. Anchored via __file__ so the
-# same path resolves identically in dev, tests, and the Docker runtime —
-# no env var, no Dockerfile COPY of a sibling config dir.
-_DEFAULT_DOMAINS_PATH = Path(__file__).resolve().parent.parent / "data" / "medium_domains.yaml"
-
-
-def _load_domains(path: str | Path) -> set[str]:
-    """Read the medium domains YAML and return a lowercased, www-stripped set.
-
-    Fails fast on missing/empty file. A silent empty set (the previous
-    behaviour) made the handler unreachable in prod whenever the YAML
-    wasn't copied into the runtime image — Medium URLs then fell through
-    to the article handler and never hit the paywall-bypass tier."""
-    with open(path) as f:
-        data = yaml.safe_load(f) or {}
-    domains = data.get("medium_domains") or []
-    result: set[str] = set()
-    for raw in domains:
-        host = str(raw).strip().lower()
-        if host.startswith("www."):
-            host = host[4:]
-        if host:
-            result.add(host)
-    if not result:
-        raise RuntimeError(
-            f"medium domains YAML at {path} produced an empty domain set; "
-            f"medium handler would be unreachable"
-        )
-    return result
-
-
-_MEDIUM_DOMAINS: set[str] = _load_domains(_DEFAULT_DOMAINS_PATH)
-
 
 def matches(url: str) -> bool:
-    try:
-        parsed = urlparse(url)
-    except Exception:
-        return False
-    if parsed.scheme not in {"http", "https"}:
-        return False
-    host = (parsed.hostname or "").lower()
-    if host.startswith("www."):
-        host = host[4:]
-    # `medium.com` in the yaml also claims its author subdomains
-    # (e.g. `pravash-techie.medium.com`) — those are Medium-hosted too and
-    # need the paywall-bypass tier, not the generic article handler.
-    if host.endswith(".medium.com"):
-        return True
-    return host in _MEDIUM_DOMAINS
+    # Medium host identity is the shared `domains.medium_urls` (known publication
+    # hosts + `*.medium.com` author subdomains) — one source for the fetcher +
+    # triage routing.
+    return is_medium_url(url)
 
 
 def extract_article_id(url: str) -> str:

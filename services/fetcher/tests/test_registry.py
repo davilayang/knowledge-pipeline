@@ -39,12 +39,5 @@ def test_find_handler_routes_facebook_url_to_facebook_not_article() -> None:
 
 
 def test_find_handler_routes_medium_url_to_medium_not_article() -> None:
-    from fetcher.handlers import medium
-
-    # Pin the domain set for deterministic routing.
-    original = medium._MEDIUM_DOMAINS
-    medium._MEDIUM_DOMAINS = {"medium.com", "towardsdatascience.com"}
-    try:
-        assert find_handler("https://towardsdatascience.com/title-abc123def456").NAME == "medium"
-    finally:
-        medium._MEDIUM_DOMAINS = original
+    # towardsdatascience.com is in the shared domains.medium_urls set.
+    assert find_handler("https://towardsdatascience.com/title-abc123def456").NAME == "medium"

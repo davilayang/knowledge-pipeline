@@ -1,9 +1,9 @@
 """Canonical URL → content-type classification, shared by kp's triage
 (`classify_content_type`) and the fetcher's routing intent.
 
-One source so the two layers can't drift on what a URL *is*. arXiv identity lives
-in the sibling `arxiv_urls` module (regex-based); this module owns the host-set and
-file-suffix rules for the rest of the taxonomy.
+One source so the two layers can't drift on what a URL *is*. Platform identity
+lives in sibling modules (`arxiv_urls`, `medium_urls`); this module owns the
+remaining host-set + file-suffix rules and the precedence order.
 
 Returns the lowercase taxonomy: youtube / arxiv / medium / facebook / github /
 file_pdf / file_audio / article (the catch-all). Precedence follows the fetcher's
@@ -13,6 +13,7 @@ registry order — host-matched platforms first, then file-suffix, then article.
 from urllib.parse import urlparse
 
 from domains.arxiv_urls import is_arxiv_url
+from domains.medium_urls import is_medium_url
 
 _YOUTUBE_HOSTS = frozenset(
     {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
@@ -24,12 +25,7 @@ _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus", ".mp4")
 
 
 def classify_url_type(url: str) -> str:
-    """Pure URL → content-type. Never raises — malformed input falls to `article`.
-
-    `medium` is not yet emitted here (its domain set still lives in the fetcher
-    package); Medium URLs fall through to `article` until that set moves into
-    `domains`. Every other type is authoritative.
-    """
+    """Pure URL → content-type. Never raises — malformed input falls to `article`."""
     try:
         parsed = urlparse(url)
         host = (parsed.hostname or "").lower()
@@ -42,6 +38,8 @@ def classify_url_type(url: str) -> str:
         return "youtube"
     if is_arxiv_url(url):
         return "arxiv"
+    if is_medium_url(url):
+        return "medium"
     if bare == "github.com" or bare.endswith(".github.com"):
         return "github"
     if bare in _FACEBOOK_BARE_HOSTS or bare.endswith(".facebook.com"):

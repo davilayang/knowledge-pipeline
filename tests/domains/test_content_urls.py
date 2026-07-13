@@ -20,7 +20,9 @@ from domains.content_urls import classify_url_type
         ("https://podtrac.com/ep/episode.mp3", "file_audio"),
         ("https://zencastr.com/ep/show.mp4", "file_audio"),  # .mp4 is audio/av now
         ("https://example.com/some-article", "article"),
-        ("https://medium.com/@a/post-123", "article"),  # medium deferred → article for now
+        ("https://medium.com/@a/post-123", "medium"),
+        ("https://towardsdatascience.com/title-abc", "medium"),
+        ("https://pravash-techie.medium.com/title-abc", "medium"),  # author subdomain
         ("http://[malformed", "article"),  # malformed URL never raises
     ],
 )
