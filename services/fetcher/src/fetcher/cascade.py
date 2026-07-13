@@ -151,13 +151,10 @@ async def run_cascade(
         tier_log.extend(raw.extra_tier_log)
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log, metadata=_final_meta(raw))
-        # Carry attribution metadata (title / published) onto the eventual winner
-        # from a validated tier, OR from a rejected tier that opted in via
-        # `carry_meta_on_reject` (its metadata is trustworthy even when its body
-        # failed — e.g. a Jina preamble date). A rejected tier that did NOT opt in
-        # (trafilatura scraping a wrong date off a soft-404) is dropped. Content,
-        # separately, only competes for best_result when validated: invalid
-        # content never wins, only trusted metadata does.
+        # Carry attribution metadata onto the eventual winner from a validated
+        # tier, or from a rejected tier that opted in via carry_meta_on_reject.
+        # Content is separate: only a validated tier competes for best_result, so
+        # invalid content never wins — only trusted metadata does.
         if validated or tier.carry_meta_on_reject:
             _carry(raw)
         if validated and (best_result is None or len(raw.content) > len(best_result[1].content)):
