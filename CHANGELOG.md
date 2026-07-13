@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The fetch cascade now walks each handler's tiers in declared preference order** instead of forcing every free tier ahead of every paid one, so a quality-first handler (e.g. arXiv: LlamaParse then pymupdf) is honoured; `allow_paid` still gates paid tiers wherever they sit. A tier that opts in via `Tier.carry_meta_on_reject` (the Jina tiers, whose `Published Time:` preamble is parsed before a paywall-stub body is stripped) now contributes its date to the winning tier even when its own body fails validation — invalid content never wins, only trusted metadata; a tier that scrapes dates heuristically (trafilatura) is not trusted on reject. Implementation: `fetcher.cascade.run_cascade`.
+
 ---
 
 ## [0.34.1] — 2026-07-12

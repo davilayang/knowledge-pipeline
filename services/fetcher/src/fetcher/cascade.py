@@ -98,7 +98,13 @@ async def run_cascade(
     quality: str,
     allow_paid: bool,
 ) -> CascadeResult:
-    """Run free tiers first, then paid tiers when allowed."""
+    """Walk handler.TIERS in declared preference order until one clears the floor.
+
+    Order is the handler's — a quality-first handler (arXiv: llamaparse then
+    pymupdf) is honoured, not forced free-before-paid. `cost` is an orthogonal
+    spend axis: a `paid` tier is skipped when the caller passes allow_paid=False,
+    wherever it sits in the order.
+    """
     tier_log: list[TierLogEntry] = []
     best_result: tuple[Tier, RawTierResult] | None = None
     # Attribution metadata (title / authors / published) accumulated from every
@@ -121,24 +127,21 @@ async def run_cascade(
         return final
 
     for tier in handler.TIERS:
-        if tier.cost != "free":
+        if tier.cost == "paid" and not allow_paid:
             continue
         if tier.applies is not None and not tier.applies(url):
             continue
         started = time.monotonic()
         try:
-            match tier:
-                case Tier():
-                    raw = await _run_tier(handler, ctx, tier, url)
-                case _:
-                    logger.warning("unknown tier kind: %s", type(tier))
-                    continue
+            raw = await _run_tier(handler, ctx, tier, url)
         except Exception as exc:
             tier_log.append(
                 _exception_entry(
                     tier, exc, quality=quality, duration_ms=int((time.monotonic() - started) * 1000)
                 )
             )
+            if tier.cost == "paid" and handler.STRICT_PAID_TIER:
+                raise
             continue
         duration_ms = int((time.monotonic() - started) * 1000)
         validated = tier.validate is None or tier.validate(raw.content)
@@ -148,51 +151,17 @@ async def run_cascade(
         tier_log.extend(raw.extra_tier_log)
         if _tier_meets_floor(tier, raw.content, quality):
             return CascadeResult(raw.content, tier.name, tier_log, metadata=_final_meta(raw))
-        if validated:
+        # Carry attribution metadata (title / published) onto the eventual winner
+        # from a validated tier, OR from a rejected tier that opted in via
+        # `carry_meta_on_reject` (its metadata is trustworthy even when its body
+        # failed — e.g. a Jina preamble date). A rejected tier that did NOT opt in
+        # (trafilatura scraping a wrong date off a soft-404) is dropped. Content,
+        # separately, only competes for best_result when validated: invalid
+        # content never wins, only trusted metadata does.
+        if validated or tier.carry_meta_on_reject:
             _carry(raw)
-            if best_result is None or len(raw.content) > len(best_result[1].content):
-                best_result = (tier, raw)
-
-    if allow_paid:
-        for tier in handler.TIERS:
-            if tier.cost != "paid":
-                continue
-            if tier.applies is not None and not tier.applies(url):
-                continue
-            started = time.monotonic()
-            try:
-                match tier:
-                    case Tier():
-                        raw = await _run_tier(handler, ctx, tier, url)
-                    case _:
-                        logger.warning("unknown tier kind: %s", type(tier))
-                        continue
-            except Exception as exc:
-                tier_log.append(
-                    _exception_entry(
-                        tier,
-                        exc,
-                        quality=quality,
-                        duration_ms=int((time.monotonic() - started) * 1000),
-                    )
-                )
-                if handler.STRICT_PAID_TIER:
-                    raise
-                continue
-            duration_ms = int((time.monotonic() - started) * 1000)
-            validated = tier.validate is None or tier.validate(raw.content)
-            tier_log.append(
-                _result_entry(
-                    tier, raw, validated=validated, quality=quality, duration_ms=duration_ms
-                )
-            )
-            tier_log.extend(raw.extra_tier_log)
-            if _tier_meets_floor(tier, raw.content, quality):
-                return CascadeResult(raw.content, tier.name, tier_log, metadata=_final_meta(raw))
-            if validated:
-                _carry(raw)
-                if best_result is None or len(raw.content) > len(best_result[1].content):
-                    best_result = (tier, raw)
+        if validated and (best_result is None or len(raw.content) > len(best_result[1].content)):
+            best_result = (tier, raw)
 
     if best_result is not None:
         return CascadeResult(

@@ -143,6 +143,10 @@ TIERS: list[Tier] = [
         _jina_fetch,
         validate=is_acceptable,
         rate_limit_key="jina",
+        # Jina's `Published Time:` preamble is parsed before the paywall-stub body
+        # is stripped, so its date is trustworthy even when the body fails
+        # validation — carry it onto the rapidapi tier that wins the content.
+        carry_meta_on_reject=True,
     ),
     Tier(
         "rapidapi",
