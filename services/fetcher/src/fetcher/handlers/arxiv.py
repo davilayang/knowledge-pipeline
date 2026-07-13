@@ -81,7 +81,7 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     if not paper.pdf_url:
         return RawTierResult(content="", status=0, detail=f"arxiv paper {arxiv_id} has no pdf_url")
     try:
-        pdf_bytes, _status = await download_pdf_bytes(
+        pdf_bytes, status = await download_pdf_bytes(
             ctx.http_client, paper.pdf_url, timeout=ctx.upstream_timeout_s
         )
     except PdfTooLarge as exc:
@@ -92,6 +92,13 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
             content="",
             status=0,
             detail=f"arxiv pdf download failed: {type(exc).__name__}: {exc}"[:500],
+        )
+    # A non-2xx PDF URL must fail the tier — never run pymupdf on a 404 error page,
+    # which would "extract" garbage and return it as a soft success. (The shared
+    # downloader streams the body regardless of status; arxiv enforces it here.)
+    if status >= 400:
+        return RawTierResult(
+            content="", status=0, detail=f"arxiv pdf HTTP {status} for {paper.pdf_url}"
         )
     body = pymupdf_extractor.to_markdown(pdf_bytes)
     if not body:

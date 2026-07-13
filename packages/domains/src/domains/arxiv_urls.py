@@ -28,8 +28,13 @@ def extract_arxiv_id(url: str) -> str | None:
     Handles the abs/pdf/html path prefixes and a trailing `.pdf`. Returns None
     when the host isn't an arXiv host or the path holds no recognisable ID.
     """
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
+    try:
+        parsed = urlparse(url)
+        host = (parsed.hostname or "").lower()
+    except ValueError:
+        # urlparse / .hostname raises on malformed input (e.g. bad IPv6) — a
+        # "is this arXiv" query should answer "no", not blow up on a stray URL.
+        return None
     if host not in ARXIV_HOSTS:
         return None
     path = parsed.path.strip("/")

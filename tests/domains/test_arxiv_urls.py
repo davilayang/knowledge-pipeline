@@ -27,6 +27,15 @@ def test_is_arxiv_url() -> None:
     assert is_arxiv_url("https://example.com/paper") is False
 
 
+def test_bare_host_and_malformed_urls_are_not_arxiv() -> None:
+    # As the single source of truth, these must return cleanly (never raise) —
+    # a future direct caller won't have a wrapping try/except.
+    assert extract_arxiv_id("https://arxiv.org") is None  # bare host, empty path
+    assert extract_arxiv_id("https://arxiv.org/") is None
+    assert extract_arxiv_id("http://[malformed") is None  # urlparse-hostile
+    assert is_arxiv_url("http://[malformed") is False
+
+
 def test_is_arxiv_id() -> None:
     assert is_arxiv_id("2401.00001") is True
     assert is_arxiv_id("hep-th/9901001") is True
