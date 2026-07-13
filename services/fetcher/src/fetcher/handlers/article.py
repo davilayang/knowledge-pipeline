@@ -149,6 +149,9 @@ TIERS: list[Tier] = [
         _jina_fetch,
         validate=is_acceptable,
         rate_limit_key="jina",
+        # Jina's `Published Time:` preamble date is trustworthy on reject; the
+        # curl_cffi/trafilatura tier below scrapes heuristically, so it stays opt-out.
+        carry_meta_on_reject=True,
     ),
     Tier("curl_cffi", "free", 1500, 6000, _curl_cffi_trafilatura, validate=is_acceptable),
     Tier(

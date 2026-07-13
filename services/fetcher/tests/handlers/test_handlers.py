@@ -6,10 +6,12 @@ from fetcher.handlers import article, arxiv, medium, pdf, youtube
 
 
 @pytest.fixture
-def medium_domains(monkeypatch: pytest.MonkeyPatch) -> set[str]:
-    """Pin the medium handler's domain set for deterministic match tests."""
-    pinned = {"medium.com", "towardsdatascience.com", "betterprogramming.pub"}
-    monkeypatch.setattr(medium, "_MEDIUM_DOMAINS", pinned)
+def medium_domains(monkeypatch: pytest.MonkeyPatch) -> frozenset[str]:
+    """Pin the shared medium domain set for deterministic match tests."""
+    from domains import medium_urls
+
+    pinned = frozenset({"medium.com", "towardsdatascience.com", "betterprogramming.pub"})
+    monkeypatch.setattr(medium_urls, "MEDIUM_DOMAINS", pinned)
     return pinned
 
 
@@ -66,6 +68,70 @@ def test_arxiv_build_metadata_from_paper() -> None:
         "published": "2026-03-01",
         "arxiv_id": "2401.001",
     }
+
+
+async def test_arxiv_pymupdf_tier_aborts_when_pdf_exceeds_max_bytes() -> None:
+    """arxiv's pymupdf tier now streams through the shared capped downloader, so a
+    pathologically large PDF aborts instead of being read fully into memory."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers._pdf_download import MAX_PDF_BYTES
+    from fetcher.handlers.arxiv import _arxiv_pymupdf
+
+    ctx = MagicMock()
+    ctx.upstream_timeout_s = 30
+    ctx.http_client.stream = MagicMock(
+        return_value=_stream_ctxmgr(200, [b"x" * MAX_PDF_BYTES, b"y" * 1024])
+    )
+    paper = SimpleNamespace(pdf_url="https://arxiv.org/pdf/2401.00001.pdf")
+
+    with (
+        patch(
+            "fetcher.handlers.arxiv._fetch_metadata",
+            new=AsyncMock(return_value=("2401.00001", paper)),
+        ),
+        patch("fetcher.handlers.arxiv.pymupdf_extractor.to_markdown") as render,
+    ):
+        result = await _arxiv_pymupdf(ctx, "https://arxiv.org/abs/2401.00001")
+
+    render.assert_not_called()
+    assert result.content == ""
+    assert result.status == 0
+
+
+async def test_arxiv_pymupdf_tier_fails_on_http_error_status() -> None:
+    """A non-2xx from the PDF URL must fail the pymupdf tier, not extract from the
+    error-page body. Restores the raise_for_status semantics the shared-downloader
+    refactor dropped: pymupdf will happily produce garbage from a 404 HTML page,
+    which would otherwise be returned as a soft status=200 success."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers.arxiv import _arxiv_pymupdf
+
+    ctx = MagicMock()
+    ctx.upstream_timeout_s = 30
+    ctx.http_client.stream = MagicMock(
+        return_value=_stream_ctxmgr(404, [b"<html>Not Found</html>"])
+    )
+    paper = SimpleNamespace(pdf_url="https://arxiv.org/pdf/2401.00001.pdf")
+
+    with (
+        patch(
+            "fetcher.handlers.arxiv._fetch_metadata",
+            new=AsyncMock(return_value=("2401.00001", paper)),
+        ),
+        patch(
+            "fetcher.handlers.arxiv.pymupdf_extractor.to_markdown",
+            return_value="garbage extracted from the error page",
+        ) as render,
+    ):
+        result = await _arxiv_pymupdf(ctx, "https://arxiv.org/abs/2401.00001")
+
+    render.assert_not_called()
+    assert result.content == ""
+    assert result.status == 0
 
 
 def test_arxiv_tier_order_is_pymupdf_then_llamaparse() -> None:
@@ -147,38 +213,6 @@ def test_medium_extract_article_id_from_url() -> None:
     )
     with pytest.raises(ValueError):
         medium.extract_article_id("https://medium.com/no-trailing-id-here")
-
-
-def test_medium_load_domains_lowercases_and_strips_www(tmp_path) -> None:
-    yaml_path = tmp_path / "domains.yaml"
-    yaml_path.write_text(
-        "medium_domains:\n"
-        "  - Medium.com\n"
-        "  - www.TowardsDataScience.com\n"
-        "  - betterprogramming.pub\n"
-    )
-    domains = medium._load_domains(str(yaml_path))
-    assert domains == {
-        "medium.com",
-        "towardsdatascience.com",
-        "betterprogramming.pub",
-    }
-
-
-def test_medium_load_domains_raises_on_missing_file(tmp_path) -> None:
-    # Silent empty-set fallback masked a Dockerfile bug for months — the medium
-    # handler became unreachable in prod whenever the YAML wasn't packaged.
-    # Fail-fast at module import is the right blast-radius for a missing file.
-    missing = tmp_path / "does-not-exist.yaml"
-    with pytest.raises(FileNotFoundError):
-        medium._load_domains(str(missing))
-
-
-def test_medium_load_domains_raises_on_empty_set(tmp_path) -> None:
-    yaml_path = tmp_path / "empty.yaml"
-    yaml_path.write_text("medium_domains: []\n")
-    with pytest.raises(RuntimeError, match="empty domain set"):
-        medium._load_domains(str(yaml_path))
 
 
 async def test_medium_rapidapi_skipped_when_key_unset(medium_domains: set[str]) -> None:

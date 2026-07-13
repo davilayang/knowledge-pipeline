@@ -10,8 +10,9 @@ back to Notion as select-property values, so case + spelling must match
 exactly.
 """
 
-import re
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+
+from domains.arxiv_urls import extract_arxiv_id
 
 CONTENT_TYPE_ARTICLE = "Article"
 CONTENT_TYPE_YOUTUBE = "YouTube"
@@ -31,37 +32,6 @@ ALL_CONTENT_TYPES = {
 
 
 _AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus")
-
-_ARXIV_HOSTS = ("arxiv.org", "www.arxiv.org", "export.arxiv.org")
-_ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
-# Mirrors NA's `arxiv_fetcher._NEW_ID_RE` / `_OLD_ID_RE` and kp fetcher's
-# `services/fetcher/src/fetcher/handlers/arxiv.py` — three copies of the
-# same regex, all required to match byte-for-byte. Update all three on any
-# arxiv ID-format change; group(1) returns the version-stripped canonical
-# ID. Duplicated rather than shared because the fetcher service is not a
-# kp workspace member, and `classify.py` (in `orchestrators`) cannot depend
-# on NA at all.
-_NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
-_OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
-
-
-def _strip_pdf_suffix(value: str) -> str:
-    return value[:-4] if value.endswith(".pdf") else value
-
-
-def _extract_arxiv_id(url: str) -> str | None:
-    parsed = urlparse(url)
-    host = (parsed.hostname or "").lower()
-    if host not in _ARXIV_HOSTS:
-        return None
-    path = parsed.path.strip("/")
-    if not path:
-        return None
-    if path.startswith(_ARXIV_PATH_PREFIXES):
-        path = path.split("/", 1)[1]
-    path = _strip_pdf_suffix(path)
-    match = _NEW_ID_RE.match(path) or _OLD_ID_RE.match(path)
-    return match.group(1) if match else None
 
 
 def classify_content_type(url: str) -> str:
@@ -119,7 +89,7 @@ def normalize_url(url: str) -> str:
         query = urlencode({"v": v}) if v else ""
         return urlunparse(parsed._replace(query=query, fragment="")).rstrip("/")
 
-    arxiv_id = _extract_arxiv_id(url)
+    arxiv_id = extract_arxiv_id(url)
     if arxiv_id is not None:
         return urlunparse(
             parsed._replace(

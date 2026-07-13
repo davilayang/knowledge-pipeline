@@ -1,13 +1,13 @@
 """arXiv handler: pymupdf4llm free tier, then strict LlamaParse paid tier."""
 
 import logging
-import re
-from urllib.parse import urlparse
 
 import arxiv as arxiv_pypi
 
+from domains.arxiv_urls import extract_arxiv_id, is_arxiv_url
 from fetcher.extractors import llamaparse as llamaparse_extractor
 from fetcher.extractors import pymupdf as pymupdf_extractor
+from fetcher.handlers._pdf_download import PdfTooLarge, download_pdf_bytes
 from fetcher.metadata import build_metadata
 from fetcher.types import FetchContext, RawTierResult, Tier
 
@@ -17,51 +17,18 @@ logger = logging.getLogger(__name__)
 NAME = "arxiv"
 STRICT_PAID_TIER = True
 
-_ARXIV_HOSTS = {"arxiv.org", "www.arxiv.org", "export.arxiv.org"}
-_ARXIV_PATH_PREFIXES = ("abs/", "pdf/", "html/")
-# Same regex shape as NA's `arxiv_fetcher._NEW_ID_RE` / `_OLD_ID_RE` and
-# kp's `packages/orchestrators/.../triage_knowledge_queue/classify.py` —
-# three copies, all required to stay byte-for-byte identical. Update
-# all three on any arXiv ID-format change. Can't share: fetcher service
-# is not a kp workspace member, NA is a separate repo.
-_NEW_ID_RE = re.compile(r"^(\d{4}\.\d{4,5})(v\d+)?$")
-_OLD_ID_RE = re.compile(r"^([a-z\-]+(?:\.[A-Z]{2})?/\d{7})(v\d+)?$")
+# arXiv URL identity (host set + ID regexes + `extract_arxiv_id`) is the shared
+# `domains.arxiv_urls` — one source for kp's fetcher + triage. `extract_arxiv_id`
+# is re-exported above so `arxiv.extract_arxiv_id(...)` keeps working.
 
-
-def _strip_pdf_suffix(value: str) -> str:
-    return value[:-4] if value.endswith(".pdf") else value
-
-
-def _looks_like_id(candidate: str) -> bool:
-    return bool(_NEW_ID_RE.match(candidate) or _OLD_ID_RE.match(candidate))
+__all__ = ["NAME", "STRICT_PAID_TIER", "TIERS", "extract_arxiv_id", "matches"]
 
 
 def matches(url: str) -> bool:
     try:
-        parsed = urlparse(url)
+        return is_arxiv_url(url)
     except Exception:
         return False
-    host = (parsed.hostname or "").lower()
-    if host not in _ARXIV_HOSTS:
-        return False
-    path = parsed.path.strip("/")
-    if not path:
-        return False
-    if path.startswith(_ARXIV_PATH_PREFIXES):
-        path = path.split("/", 1)[1]
-    return _looks_like_id(_strip_pdf_suffix(path))
-
-
-def extract_arxiv_id(url: str) -> str:
-    parsed = urlparse(url)
-    path = parsed.path.strip("/")
-    if path.startswith(_ARXIV_PATH_PREFIXES):
-        path = path.split("/", 1)[1]
-    path = _strip_pdf_suffix(path)
-    match = _NEW_ID_RE.match(path) or _OLD_ID_RE.match(path)
-    if not match:
-        raise ValueError(f"not a recognisable arXiv ID in URL: {url!r}")
-    return match.group(1)
 
 
 def _build_metadata(meta: arxiv_pypi.Result, arxiv_id: str) -> dict:
@@ -94,10 +61,9 @@ def _format_header(meta: arxiv_pypi.Result, arxiv_id: str) -> str:
 
 
 async def _fetch_metadata(url: str) -> tuple[str, arxiv_pypi.Result] | None:
-    try:
-        arxiv_id = extract_arxiv_id(url)
-    except ValueError as exc:
-        logger.info("arxiv id extraction failed for %s: %s", url, exc)
+    arxiv_id = extract_arxiv_id(url)
+    if arxiv_id is None:
+        logger.info("arxiv id extraction failed for %s", url)
         return None
     client = arxiv_pypi.Client(page_size=1, num_retries=1, delay_seconds=3)
     try:
@@ -105,12 +71,6 @@ async def _fetch_metadata(url: str) -> tuple[str, arxiv_pypi.Result] | None:
     except Exception as exc:
         logger.warning("arxiv metadata lookup failed for %s: %s", arxiv_id, exc)
         return None
-
-
-async def _download_pdf(ctx: FetchContext, pdf_url: str) -> bytes:
-    response = await ctx.http_client.get(pdf_url, timeout=ctx.upstream_timeout_s)
-    response.raise_for_status()
-    return response.content
 
 
 async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
@@ -121,13 +81,24 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     if not paper.pdf_url:
         return RawTierResult(content="", status=0, detail=f"arxiv paper {arxiv_id} has no pdf_url")
     try:
-        pdf_bytes = await _download_pdf(ctx, paper.pdf_url)
+        pdf_bytes, status = await download_pdf_bytes(
+            ctx.http_client, paper.pdf_url, timeout=ctx.upstream_timeout_s
+        )
+    except PdfTooLarge as exc:
+        return RawTierResult(content="", status=0, detail=str(exc))
     except Exception as exc:
         logger.warning("arxiv PDF download failed for %s: %s", paper.pdf_url, exc)
         return RawTierResult(
             content="",
             status=0,
             detail=f"arxiv pdf download failed: {type(exc).__name__}: {exc}"[:500],
+        )
+    # A non-2xx PDF URL must fail the tier — never run pymupdf on a 404 error page,
+    # which would "extract" garbage and return it as a soft success. (The shared
+    # downloader streams the body regardless of status; arxiv enforces it here.)
+    if status >= 400:
+        return RawTierResult(
+            content="", status=0, detail=f"arxiv pdf HTTP {status} for {paper.pdf_url}"
         )
     body = pymupdf_extractor.to_markdown(pdf_bytes)
     if not body:
