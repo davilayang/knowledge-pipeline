@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Content Type is now the lowercase routing taxonomy** — `youtube` / `arxiv` / `medium` / `facebook` / `github` / `file_pdf` / `file_audio` / `article` (+ `other` as a user-only override). Triage's `classify_content_type` delegates to the shared `domains.classify_url_type`, so a URL's type and the handler that fetches it always agree (Medium/Facebook/GitHub are now surfaced instead of hidden under `Article`; `.pdf`/audio URLs classify as `file_pdf`/`file_audio`). **Requires the matching Notion "Content Type" SELECT options + a one-time row migration.**
+
 ### Added
 
 - **Shared URL → content-type classifier** — `domains.classify_url_type` gives triage and the fetcher one source to route on (`youtube` / `arxiv` / `medium` / `github` / `facebook` / `file_pdf` / `file_audio` / `article`), extending `domains.arxiv_urls`. Groundwork for the Content Type taxonomy rename; not yet wired into triage.

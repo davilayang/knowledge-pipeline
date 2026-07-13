@@ -11,51 +11,51 @@ from orchestrators.defs.triage_knowledge_queue.classify import (
 
 
 def test_youtube_canonical_url():
-    assert classify_content_type("https://youtube.com/watch?v=abc123") == "YouTube"
+    assert classify_content_type("https://youtube.com/watch?v=abc123") == "youtube"
 
 
 def test_youtube_short_url():
-    assert classify_content_type("https://youtu.be/abc123") == "YouTube"
+    assert classify_content_type("https://youtu.be/abc123") == "youtube"
 
 
 def test_youtube_mobile_url():
-    assert classify_content_type("https://m.youtube.com/watch?v=abc123") == "YouTube"
+    assert classify_content_type("https://m.youtube.com/watch?v=abc123") == "youtube"
 
 
 def test_youtube_music_url():
-    assert classify_content_type("https://music.youtube.com/watch?v=abc123") == "YouTube"
+    assert classify_content_type("https://music.youtube.com/watch?v=abc123") == "youtube"
 
 
 def test_youtube_shorts_url():
-    assert classify_content_type("https://youtube.com/shorts/abc123") == "YouTube"
+    assert classify_content_type("https://youtube.com/shorts/abc123") == "youtube"
 
 
 def test_arxiv_abs_url():
-    assert classify_content_type("https://arxiv.org/abs/2310.06770") == "arXiv"
+    assert classify_content_type("https://arxiv.org/abs/2310.06770") == "arxiv"
 
 
 def test_arxiv_pdf_url():
-    assert classify_content_type("https://arxiv.org/pdf/2310.06770.pdf") == "arXiv"
+    assert classify_content_type("https://arxiv.org/pdf/2310.06770.pdf") == "arxiv"
 
 
 def test_arxiv_subdomain_url():
-    assert classify_content_type("https://export.arxiv.org/abs/2310.06770") == "arXiv"
+    assert classify_content_type("https://export.arxiv.org/abs/2310.06770") == "arxiv"
 
 
 def test_arbitrary_blog_url():
-    assert classify_content_type("https://blog.example.com/post") == "Article"
+    assert classify_content_type("https://blog.example.com/post") == "article"
 
 
 def test_substack_url():
-    assert classify_content_type("https://someone.substack.com/p/post-title") == "Article"
+    assert classify_content_type("https://someone.substack.com/p/post-title") == "article"
 
 
-def test_pdf_falls_through_to_article():
-    assert classify_content_type("https://example.com/whitepaper.pdf") == "Article"
+def test_pdf_classifies_as_file_pdf():
+    assert classify_content_type("https://example.com/whitepaper.pdf") == "file_pdf"
 
 
 def test_apple_podcast_falls_through_to_article():
-    assert classify_content_type("https://podcasts.apple.com/us/podcast/foo/id123") == "Article"
+    assert classify_content_type("https://podcasts.apple.com/us/podcast/foo/id123") == "article"
 
 
 @pytest.mark.parametrize(
@@ -70,7 +70,7 @@ def test_apple_podcast_falls_through_to_article():
     ],
 )
 def test_audio_suffix_classifies_as_podcast(url: str):
-    assert classify_content_type(url) == "Podcast"
+    assert classify_content_type(url) == "file_audio"
 
 
 def test_classification_returns_value_in_all_content_types_set():

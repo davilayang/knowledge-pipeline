@@ -122,7 +122,7 @@ def test_enriched_metadata_lists_signals_fetched(tmp_path: Path):
             store=store,
         )
     md = _get_metadata(result)
-    assert md["content_type"].text == "arXiv"
+    assert md["content_type"].text == "arxiv"
     assert md["signals_fetched"].text == "arxiv"
     assert md["enrichment_chars"].value == len(signals.to_json())
 
@@ -153,4 +153,4 @@ def test_enriched_classifies_content_type_from_url(tmp_path: Path):
             store=store,
         )
     md = _get_metadata(result)
-    assert md["content_type"].text == "Article"
+    assert md["content_type"].text == "article"

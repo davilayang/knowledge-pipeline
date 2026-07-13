@@ -7,7 +7,7 @@ source per content_type from the enrichment signals (already fetched by the
 """
 
 from .classify import (
-    CONTENT_TYPE_ARTICLE,
+    ARTICLE_LIKE_TYPES,
     CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_YOUTUBE,
 )
@@ -22,7 +22,7 @@ def resolve_display_title(*, content_type: str, enrichment: EnrichmentSignals) -
             return enrichment.youtube.title if enrichment.youtube else None
         case t if t == CONTENT_TYPE_ARXIV:
             return enrichment.arxiv.title if enrichment.arxiv else None
-        case t if t == CONTENT_TYPE_ARTICLE:
+        case t if t in ARTICLE_LIKE_TYPES:
             return enrichment.article.title if enrichment.article else None
         case _:
             return None
@@ -34,7 +34,7 @@ def resolve_display_description(*, content_type: str, enrichment: EnrichmentSign
     match content_type:
         case t if t == CONTENT_TYPE_YOUTUBE:
             return None
-        case t if t == CONTENT_TYPE_ARTICLE:
+        case t if t in ARTICLE_LIKE_TYPES:
             return enrichment.article.description if enrichment.article else None
         case t if t == CONTENT_TYPE_ARXIV:
             return enrichment.arxiv.abstract if enrichment.arxiv else None

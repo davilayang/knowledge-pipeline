@@ -107,7 +107,7 @@ def test_triaged_returns_youtube_for_youtube_url(tmp_path: Path):
     )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "YouTube"
+    assert metadata["content_type"].text == "youtube"
 
 
 def test_triaged_writes_user_publish_date_to_queue(tmp_path: Path):
@@ -134,7 +134,7 @@ def test_triaged_returns_article_for_blog_url(tmp_path: Path):
     )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "Article"
+    assert metadata["content_type"].text == "article"
 
 
 # -------- routing side effects --------
@@ -151,7 +151,7 @@ def test_triaged_writes_status_fetching_for_youtube(tmp_path: Path):
     notion.write_triaged.assert_called_once()
     call_kwargs = notion.write_triaged.call_args.kwargs
     assert call_kwargs["status_after"] == "Fetching"
-    assert call_kwargs["content_type"] == "YouTube"
+    assert call_kwargs["content_type"] == "youtube"
 
 
 def test_triaged_writes_status_fetching_for_article(tmp_path: Path):
@@ -166,7 +166,7 @@ def test_triaged_writes_status_fetching_for_article(tmp_path: Path):
     assert result.success
     call_kwargs = notion.write_triaged.call_args.kwargs
     assert call_kwargs["status_after"] == "Fetching"
-    assert call_kwargs["content_type"] == "Article"
+    assert call_kwargs["content_type"] == "article"
 
 
 def test_triaged_writes_fetched_title_to_notion_when_config_name_empty(tmp_path: Path):
@@ -376,7 +376,7 @@ def test_triaged_uses_redirected_url_for_classification_after_redirect(tmp_path:
         )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "YouTube"
+    assert metadata["content_type"].text == "youtube"
 
 
 # -------- user override --------
@@ -389,11 +389,11 @@ def test_triaged_respects_user_set_content_type(tmp_path: Path):
         partition_key="p-1",
         resources=resources,
         url="https://blog.example.com/post",
-        content_type="YouTube",
+        content_type="youtube",
     )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "YouTube"
+    assert metadata["content_type"].text == "youtube"
     assert metadata["content_type_source"].text == "notion"
     assert notion.write_triaged.call_args.kwargs["status_after"] == "Fetching"
 
@@ -409,7 +409,7 @@ def test_triaged_falls_back_to_classifier_on_typo_content_type(tmp_path: Path):
     )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "YouTube"  # classifier from URL
+    assert metadata["content_type"].text == "youtube"  # classifier from URL
     assert metadata["content_type_source"].text == "classified"
 
 
@@ -423,7 +423,7 @@ def test_triaged_falls_back_to_classifier_on_empty_content_type(tmp_path: Path):
     )
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "arXiv"
+    assert metadata["content_type"].text == "arxiv"
     assert metadata["content_type_source"].text == "classified"
 
 
@@ -504,7 +504,7 @@ def _seed_existing_triaged(
         notion_page_id=page_id,
         url=canonical_url,
         canonical_url=canonical_url,
-        content_type="Article",
+        content_type="article",
     )
 
 
@@ -653,11 +653,11 @@ def test_triaged_substitutes_podcast_url_to_youtube_on_match(tmp_path: Path):
 
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "YouTube"
+    assert metadata["content_type"].text == "youtube"
     assert metadata["canonical_url"].url == youtube_url
     assert metadata["podcast_substituted_to"].url == youtube_url
     write_kwargs = notion.write_triaged.call_args.kwargs
-    assert write_kwargs["content_type"] == "YouTube"
+    assert write_kwargs["content_type"] == "youtube"
     assert write_kwargs["canonical_url"] == youtube_url
 
 
@@ -679,11 +679,11 @@ def test_triaged_keeps_podcast_classification_when_no_substitution(tmp_path: Pat
 
     assert result.success
     metadata = _get_metadata(result)
-    assert metadata["content_type"].text == "Podcast"
+    assert metadata["content_type"].text == "file_audio"
     assert metadata["canonical_url"].url == podcast_url
     assert "podcast_substituted_to" not in metadata
     write_kwargs = notion.write_triaged.call_args.kwargs
-    assert write_kwargs["content_type"] == "Podcast"
+    assert write_kwargs["content_type"] == "file_audio"
     assert write_kwargs["canonical_url"] == podcast_url
 
 
@@ -839,7 +839,7 @@ def test_triaged_invokes_llm_classifier_for_general_article(tmp_path: Path):
     # Classifier was actually called — not bypassed by any fast-path.
     classifier.classify.assert_called_once()
     call_kwargs = classifier.classify.call_args.kwargs
-    assert call_kwargs["content_type"] == "Article"
+    assert call_kwargs["content_type"] == "article"
     assert call_kwargs["url"] == "https://example.com/post"
 
 

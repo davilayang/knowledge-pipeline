@@ -23,7 +23,7 @@ def test_youtube_uses_oembed_title() -> None:
         youtube=YoutubeSignals(channel="AI Engineer", title="How to ship a thing"),
     )
 
-    title = resolve_display_title(content_type="YouTube", enrichment=enrichment)
+    title = resolve_display_title(content_type="youtube", enrichment=enrichment)
 
     assert title == "How to ship a thing"
 
@@ -34,7 +34,7 @@ def test_youtube_without_oembed_returns_none() -> None:
     '- YouTube' static-HTML scrape."""
     enrichment = EnrichmentSignals(youtube=None)
 
-    title = resolve_display_title(content_type="YouTube", enrichment=enrichment)
+    title = resolve_display_title(content_type="youtube", enrichment=enrichment)
 
     assert title is None
 
@@ -44,7 +44,7 @@ def test_arxiv_uses_atom_title() -> None:
         arxiv=ArxivSignals(title="Attention Is All You Need", abstract="..."),
     )
 
-    title = resolve_display_title(content_type="arXiv", enrichment=enrichment)
+    title = resolve_display_title(content_type="arxiv", enrichment=enrichment)
 
     assert title == "Attention Is All You Need"
 
@@ -62,7 +62,7 @@ def test_article_uses_article_signal_title() -> None:
         ),
     )
 
-    title = resolve_display_title(content_type="Article", enrichment=enrichment)
+    title = resolve_display_title(content_type="article", enrichment=enrichment)
 
     assert title == "LLMs likes C4 Diagrams"
 
@@ -70,7 +70,7 @@ def test_article_uses_article_signal_title() -> None:
 def test_unenriched_content_type_returns_none() -> None:
     """Podcast / Other have no enrichment path today — resolver returns
     None and the asset falls back to leaving Notion Name alone."""
-    title = resolve_display_title(content_type="Podcast", enrichment=EnrichmentSignals())
+    title = resolve_display_title(content_type="file_audio", enrichment=EnrichmentSignals())
 
     assert title is None
 
@@ -87,7 +87,7 @@ def test_youtube_description_returns_none() -> None:
         youtube=YoutubeSignals(channel="AI Engineer", title="How to ship a thing"),
     )
 
-    description = resolve_display_description(content_type="YouTube", enrichment=enrichment)
+    description = resolve_display_description(content_type="youtube", enrichment=enrichment)
 
     assert description is None
 
@@ -101,7 +101,7 @@ def test_article_description_uses_article_signal() -> None:
         ),
     )
 
-    description = resolve_display_description(content_type="Article", enrichment=enrichment)
+    description = resolve_display_description(content_type="article", enrichment=enrichment)
 
     assert description == "After 25 years of drawing boxes..."
 
@@ -117,6 +117,6 @@ def test_arxiv_description_uses_abstract() -> None:
         ),
     )
 
-    description = resolve_display_description(content_type="arXiv", enrichment=enrichment)
+    description = resolve_display_description(content_type="arxiv", enrichment=enrichment)
 
     assert description == "The dominant sequence transduction models..."
