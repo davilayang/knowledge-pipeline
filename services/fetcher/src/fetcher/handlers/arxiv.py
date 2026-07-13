@@ -8,6 +8,7 @@ import arxiv as arxiv_pypi
 
 from fetcher.extractors import llamaparse as llamaparse_extractor
 from fetcher.extractors import pymupdf as pymupdf_extractor
+from fetcher.handlers._pdf_download import PdfTooLarge, download_pdf_bytes
 from fetcher.metadata import build_metadata
 from fetcher.types import FetchContext, RawTierResult, Tier
 
@@ -107,12 +108,6 @@ async def _fetch_metadata(url: str) -> tuple[str, arxiv_pypi.Result] | None:
         return None
 
 
-async def _download_pdf(ctx: FetchContext, pdf_url: str) -> bytes:
-    response = await ctx.http_client.get(pdf_url, timeout=ctx.upstream_timeout_s)
-    response.raise_for_status()
-    return response.content
-
-
 async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     metadata = await _fetch_metadata(url)
     if metadata is None:
@@ -121,7 +116,11 @@ async def _arxiv_pymupdf(ctx: FetchContext, url: str) -> RawTierResult:
     if not paper.pdf_url:
         return RawTierResult(content="", status=0, detail=f"arxiv paper {arxiv_id} has no pdf_url")
     try:
-        pdf_bytes = await _download_pdf(ctx, paper.pdf_url)
+        pdf_bytes, _status = await download_pdf_bytes(
+            ctx.http_client, paper.pdf_url, timeout=ctx.upstream_timeout_s
+        )
+    except PdfTooLarge as exc:
+        return RawTierResult(content="", status=0, detail=str(exc))
     except Exception as exc:
         logger.warning("arxiv PDF download failed for %s: %s", paper.pdf_url, exc)
         return RawTierResult(

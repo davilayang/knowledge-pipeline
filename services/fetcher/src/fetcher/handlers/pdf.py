@@ -5,6 +5,7 @@ from urllib.parse import urlparse
 
 from fetcher.extractors import llamaparse as llamaparse_extractor
 from fetcher.extractors import pymupdf as pymupdf_extractor
+from fetcher.handlers._pdf_download import MAX_PDF_BYTES, PdfTooLarge, download_pdf_bytes
 from fetcher.handlers.arxiv import _ARXIV_HOSTS
 from fetcher.types import FetchContext, RawTierResult, Tier
 
@@ -13,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 NAME = "pdf"
 STRICT_PAID_TIER = False
-MAX_PDF_BYTES = 50_000_000
+
+__all__ = ["MAX_PDF_BYTES", "TIERS", "matches"]
 
 
 def matches(url: str) -> bool:
@@ -33,24 +35,16 @@ def matches(url: str) -> bool:
 
 async def _pymupdf4llm_fetch(ctx: FetchContext, url: str) -> RawTierResult:
     try:
-        async with ctx.http_client.stream(
-            "GET", url, follow_redirects=True, timeout=ctx.upstream_timeout_s
-        ) as response:
-            status = response.status_code
-            chunks: list[bytes] = []
-            total = 0
-            async for chunk in response.aiter_bytes(chunk_size=64 * 1024):
-                total += len(chunk)
-                if total > MAX_PDF_BYTES:
-                    logger.warning(
-                        "pdf at %s exceeds %d-byte cap; aborting download", url, MAX_PDF_BYTES
-                    )
-                    return RawTierResult(content="", status=0)
-                chunks.append(chunk)
+        pdf_bytes, status = await download_pdf_bytes(
+            ctx.http_client, url, timeout=ctx.upstream_timeout_s
+        )
+    except PdfTooLarge as exc:
+        logger.warning("%s; aborting download", exc)
+        return RawTierResult(content="", status=0)
     except Exception as exc:
         logger.warning("pdf download failed for %s: %s", url, exc)
         return RawTierResult(content="", status=0)
-    content = pymupdf_extractor.to_markdown(b"".join(chunks))
+    content = pymupdf_extractor.to_markdown(pdf_bytes)
     return RawTierResult(content=content, status=status)
 
 

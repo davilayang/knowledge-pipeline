@@ -68,6 +68,36 @@ def test_arxiv_build_metadata_from_paper() -> None:
     }
 
 
+async def test_arxiv_pymupdf_tier_aborts_when_pdf_exceeds_max_bytes() -> None:
+    """arxiv's pymupdf tier now streams through the shared capped downloader, so a
+    pathologically large PDF aborts instead of being read fully into memory."""
+    from types import SimpleNamespace
+    from unittest.mock import AsyncMock, MagicMock, patch
+
+    from fetcher.handlers._pdf_download import MAX_PDF_BYTES
+    from fetcher.handlers.arxiv import _arxiv_pymupdf
+
+    ctx = MagicMock()
+    ctx.upstream_timeout_s = 30
+    ctx.http_client.stream = MagicMock(
+        return_value=_stream_ctxmgr(200, [b"x" * MAX_PDF_BYTES, b"y" * 1024])
+    )
+    paper = SimpleNamespace(pdf_url="https://arxiv.org/pdf/2401.00001.pdf")
+
+    with (
+        patch(
+            "fetcher.handlers.arxiv._fetch_metadata",
+            new=AsyncMock(return_value=("2401.00001", paper)),
+        ),
+        patch("fetcher.handlers.arxiv.pymupdf_extractor.to_markdown") as render,
+    ):
+        result = await _arxiv_pymupdf(ctx, "https://arxiv.org/abs/2401.00001")
+
+    render.assert_not_called()
+    assert result.content == ""
+    assert result.status == 0
+
+
 def test_arxiv_tier_order_is_pymupdf_then_llamaparse() -> None:
     """arxiv order matters: pymupdf4llm must run first (free, fast) before
     falling through to LlamaParse (paid). Other handlers' tier lists are
