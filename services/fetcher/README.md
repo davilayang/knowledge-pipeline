@@ -35,7 +35,7 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
 - **Handlers:**
   - `article` — Jina → curl_cffi+trafilatura → Tavily Extract (paid).
-  - `arxiv` — pymupdf → LlamaParse agentic_plus (strict paid).
+  - `arxiv` — pymupdf (50MB cap) → LlamaParse agentic_plus (strict paid).
   - `youtube` — transcript-api with oEmbed metadata header.
   - `medium` — Jina → mediumapi.com RapidAPI paywall bypass (paid). Domain set loaded from `src/fetcher/data/medium_domains.yaml` (ships inside the package via hatchling `force-include`; `_load_domains` fails fast on missing/empty file).
   - `pdf` — pymupdf4llm (50MB cap) → LlamaParse agentic_plus (paid). Routes generic-PDF URLs that don't match arxiv.
