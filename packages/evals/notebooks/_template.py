@@ -34,6 +34,7 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
+from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -69,9 +70,9 @@ print(f"loaded {len(fixtures)} fixtures from {FIXTURE_SET}")
 # %% tags=["adapter"]
 # Wire variants here. Read prompt text from prompts/extraction/<file>.md.
 PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative = (PROMPTS / "narrative_v1.md").read_text()
-topic_card = (PROMPTS / "topic_card_v1.md").read_text()
-followups = (PROMPTS / "followups_v1.md").read_text()
+narrative = strip_design_notes((PROMPTS / "narrative_v1.md").read_text())
+topic_card = strip_design_notes((PROMPTS / "topic_card_v1.md").read_text())
+followups = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
 
 variants = [
     make_three_call_variant(

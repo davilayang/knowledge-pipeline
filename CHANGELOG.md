@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **Narrative coverage is now a scored eval, not an eyeball** — `NarrativeCoverageScorer` judges each candidate narrative present/absent against a pinned 7-item, 137-thread gold (`packages/evals/datasets/narrative_coverage_gold.jsonl`), reporting `coverage@present` stratified by content shape. `run_benchmark` is now scorer-agnostic (the scorer owns fixture/run selection), so the next narrative prompt change is measured against the gold instead of hand-scored.
 
+### Fixed
+
+- **Extraction prompt design-notes headers no longer leak into the model prompt** — each `prompts/extraction/*.md` file's header (above the first `---`) is now stripped at load via `domains.extraction.strip_design_notes`, applied at every read site (production `ExtractorRegistry` + eval harness/notebooks). Previously the whole file — including change-history notes — was sent as the system prompt. Affects all three extraction prompts; the model-facing body is unchanged.
+
 ---
 
 ## [0.35.0] — 2026-07-13

@@ -37,6 +37,7 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
+from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -72,9 +73,9 @@ print(f"fixture {fixture.fixture_id} ({fixture.content_shape}) — {len(fixture.
 PROMPTS = REPO_ROOT / "prompts" / "extraction"
 variant = make_three_call_variant(
     name="candidate",
-    narrative_prompt_text=(PROMPTS / NARRATIVE).read_text(),
-    topic_card_prompt_text=(PROMPTS / "topic_card_v1.md").read_text(),
-    followups_prompt_text=(PROMPTS / "followups_v1.md").read_text(),
+    narrative_prompt_text=strip_design_notes((PROMPTS / NARRATIVE).read_text()),
+    topic_card_prompt_text=strip_design_notes((PROMPTS / "topic_card_v1.md").read_text()),
+    followups_prompt_text=strip_design_notes((PROMPTS / "followups_v1.md").read_text()),
     prompt_versions={"narrative": NARRATIVE.replace(".md", ""), "topic_card": "v1", "followups": "v1"},
     model=MODEL,
     api_key=os.environ["OPENAI_API_KEY"],

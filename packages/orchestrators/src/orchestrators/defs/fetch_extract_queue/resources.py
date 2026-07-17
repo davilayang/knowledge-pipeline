@@ -14,6 +14,7 @@ from typing import Any
 
 import dagster as dg
 import httpx
+from domains.extraction.prompts import strip_design_notes
 from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
 from orchestrators.defs.shared.queue_resources import (
@@ -202,7 +203,9 @@ class ExtractorRegistry(dg.ConfigurableResource):
     max_tokens: int = 4096
 
     def _prompt_text(self, label: str) -> str:
-        return (_PROMPTS_DIR / f"{label}.md").read_text()
+        # Strip the design-notes header (above the first `---`) so only the
+        # prompt body reaches the model — see domains.extraction.strip_design_notes.
+        return strip_design_notes((_PROMPTS_DIR / f"{label}.md").read_text())
 
     def build(self) -> ThreeCallOpenAIExtractor:
         # One bundle registered as the generic fallback. Per-shape bundles
