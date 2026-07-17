@@ -15,9 +15,10 @@ from collections import defaultdict
 from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Protocol
+from typing import Protocol
 
 from evals.core import (
+    FieldScore,
     FixtureRun,
     RunRecord,
     RunStatus,
@@ -34,7 +35,15 @@ _RECORD_VERSION = "v1"
 
 
 class ScorerProtocol(Protocol):
-    def score(self, *, expected: dict[str, Any], actual: dict[str, Any]) -> Any: ...
+    name: str
+
+    def score_run(self, *, fixture: ExtractionFixture, run: FixtureRun) -> FieldScore:
+        """Own selection: pull what to score from the fixture + run, return a FieldScore.
+
+        Keeps run_benchmark scorer-agnostic — it never names topic_card / narrative_md.
+        run_benchmark reads `.value` (float per field, incl. `__overall__`).
+        """
+        ...
 
 
 def run_benchmark(
@@ -51,24 +60,31 @@ def run_benchmark(
     samples: list[FixtureRun] = []
     per_field_acc: dict[str, list[float]] = defaultdict(list)
     per_type_overall: dict[str, list[float]] = defaultdict(list)
+    per_shape_overall: dict[str, list[float]] = defaultdict(list)
     for fix in fixtures:
         fr = run_variant(variant, fix)
         samples.append(fr)
         if fr.status != RunStatus.SUCCESS or fr.output is None:
             continue
-        actual_card = fr.output.get("topic_card", {})
-        score = scorer.score(expected=fix.expected_topic_card, actual=actual_card)
+        score = scorer.score_run(fixture=fix, run=fr)
         for field, v in score.value.items():
             per_field_acc[field].append(v)
-        per_type_overall[fix.content_type].append(score.value.get("__overall__", 0.0))
+        overall = score.value.get("__overall__", 0.0)
+        per_type_overall[fix.content_type].append(overall)
+        if fix.content_shape is not None:
+            per_shape_overall[fix.content_shape].append(overall)
     completed = datetime.now(UTC).isoformat()
 
     metrics = {field: sum(vs) / len(vs) for field, vs in per_field_acc.items() if vs}
     stratifications = {
         "by_content_type": {ct: sum(vs) / len(vs) for ct, vs in per_type_overall.items() if vs}
     }
+    if per_shape_overall:
+        stratifications["by_content_shape"] = {
+            s: sum(vs) / len(vs) for s, vs in per_shape_overall.items() if vs
+        }
     sr = ScoreReport(
-        scorer_name="TopicCardScorer",
+        scorer_name=scorer.name,
         metrics=metrics,
         stratifications=stratifications,
         sample_count=len(samples),

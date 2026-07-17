@@ -300,8 +300,8 @@ def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path
     assert len(base.bundle_sha256("unknown")) == 64
 
 
-def test_extractor_uses_real_v1_prompt_labels():
-    """narrative_v1.md / topic_card_v1.md / followups_v1.md ship in the
+def test_extractor_uses_real_prompt_labels():
+    """The active narrative/topic_card/followups prompt files ship in the
     package — the registry loads them without monkeypatching anything."""
     from orchestrators.defs.fetch_extract_queue.def_config import (
         PROMPT_LABEL_FOLLOWUPS,
@@ -309,7 +309,7 @@ def test_extractor_uses_real_v1_prompt_labels():
         PROMPT_LABEL_TOPIC_CARD,
     )
 
-    assert PROMPT_LABEL_NARRATIVE == "narrative_v1"
+    assert PROMPT_LABEL_NARRATIVE == "narrative_v2"
     assert PROMPT_LABEL_TOPIC_CARD == "topic_card_v1"
     assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
 

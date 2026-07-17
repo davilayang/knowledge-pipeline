@@ -53,7 +53,9 @@ def _fixtures(n=3, content_type="Article"):
 
 
 class _PerfectScorer:
-    def score(self, *, expected, actual):
+    name = "TopicCardScorer"
+
+    def score_run(self, *, fixture, run):
         return FieldScore(
             value={"extracted_title": 1.0, "__overall__": 1.0},
             metadata={"judge_per_field": {"extracted_title": "exact"}},
@@ -101,6 +103,34 @@ def test_run_benchmark_stratifies_by_content_type(tmp_path):
     assert "by_content_type" in strats
     assert strats["by_content_type"]["Article"] == 1.0
     assert strats["by_content_type"]["YouTube"] == 1.0
+
+
+def test_run_benchmark_stratifies_by_content_shape_when_present(tmp_path):
+    fixtures = [
+        ExtractionFixture(
+            fixture_id="a",
+            content_type="youtube",
+            content="c",
+            expected_topic_card={"extracted_title": "T"},
+            content_shape="prose",
+        ),
+        ExtractionFixture(
+            fixture_id="b",
+            content_type="arxiv",
+            content="c",
+            expected_topic_card={"extracted_title": "T"},
+            content_shape="dense",
+        ),
+    ]
+    rec = run_benchmark(
+        variant=_variant("v5"),
+        fixtures=fixtures,
+        scorer=_PerfectScorer(),
+        data_root=tmp_path,
+        persist=False,
+    )
+    by_shape = rec.scores[0].stratifications["by_content_shape"]
+    assert by_shape == {"prose": 1.0, "dense": 1.0}
 
 
 def test_run_benchmark_skips_scoring_for_errored_runs(tmp_path):

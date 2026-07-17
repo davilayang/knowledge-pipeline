@@ -61,6 +61,7 @@ def make_three_call_variant(
     corpus_anchor: str | None = None,
     output_schema_version: int = 1,
     cost_estimator: Callable[[int, int], float] | None = None,
+    max_tokens: int = 4096,
 ) -> Variant:
     """Build a Variant that runs the three-call extractor on one fixture.
 
@@ -68,10 +69,15 @@ def make_three_call_variant(
     `cost_estimator(tokens_in, tokens_out) -> usd` populates `FixtureRun.cost_usd`;
     defaults to $0.0 so callers without pricing data still see a structurally
     complete record.
+
+    `max_tokens` (default 4096) is threaded to the extractor so the harness
+    measures the same output ceiling as prod — a lower value silently truncates
+    rich narratives and under-measures coverage.
     """
     config = {
         "extractor": "ThreeCallOpenAIExtractor",
         "model": model,
+        "max_tokens": max_tokens,
         "narrative_prompt_sha": _sha_short(narrative_prompt_text),
         "topic_card_prompt_sha": _sha_short(topic_card_prompt_text),
         "followups_prompt_sha": _sha_short(followups_prompt_text),
@@ -95,9 +101,14 @@ def make_three_call_variant(
             api_key=api_key,
             model=model,
             prompt_sets={"unknown": bundle},
+            max_tokens=max_tokens,
         )
         t0 = time.monotonic()
         try:
+            # content_shape="unknown" is deliberate: the extractor routes on its
+            # own shape taxonomy (only the generic bundle is registered), whereas
+            # ExtractionFixture.content_shape is a reporting-only label (prose/
+            # survey/…) used for stratification — the two are distinct axes.
             payload, records = _call_extractor(
                 extractor,
                 fixture.content,

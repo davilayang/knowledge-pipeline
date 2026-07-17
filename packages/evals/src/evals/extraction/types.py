@@ -17,6 +17,11 @@ class ExtractionFixture:
     content_type: str
     content: str
     expected_topic_card: dict[str, Any]
+    # Carried for stratified reporting only — scorers do not route on it.
+    content_shape: str | None = None
+    # Gold for the narrative-coverage scorer; a row feeds whichever scorer
+    # applies, so this stays optional beside expected_topic_card.
+    gold_threads: list[str] | None = None
 
 
 @dataclass(frozen=True)
