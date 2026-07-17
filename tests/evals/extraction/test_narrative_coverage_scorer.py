@@ -40,13 +40,28 @@ def test_partial_or_stringy_verdicts_coerced():
 
 
 def test_broken_judge_raises_not_zero_coverage():
-    """An empty/malformed judge map must fail loudly, not look like a real 0%."""
+    """A persistently empty/malformed judge map must fail loudly, not look like a real 0%."""
     scorer = NarrativeCoverageScorer(chat_fn=_stub_chat({}))
     with pytest.raises(ValueError, match="not a real 0%"):
         scorer.score(
             expected={"gold_threads": ["a", "b"]},
             actual={"narrative_md": "x"},
         )
+
+
+def test_incomplete_judge_map_is_retried_then_succeeds():
+    """A transient incomplete map (missing keys) is retried; a later complete map wins."""
+    responses = [{"0": 1}, {"0": 1, "1": 0}]  # first drops key 1, retry is complete
+
+    def flaky_chat(prompt: str) -> dict:
+        return responses.pop(0)
+
+    scorer = NarrativeCoverageScorer(chat_fn=flaky_chat, max_retries=2)
+    score = scorer.score(
+        expected={"gold_threads": ["a", "b"]},
+        actual={"narrative_md": "x"},
+    )
+    assert score.value["__overall__"] == pytest.approx(0.5, abs=1e-6)
 
 
 def test_one_based_judge_response_raises():

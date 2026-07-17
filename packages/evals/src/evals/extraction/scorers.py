@@ -124,9 +124,15 @@ class NarrativeCoverageScorer:
         *,
         chat_fn: Callable[[str], dict],
         prompt_template: str = DEFAULT_COVERAGE_PROMPT,
+        max_retries: int = 2,
     ) -> None:
         self._chat = chat_fn
         self._tmpl = prompt_template
+        # Batched LLM judges occasionally drop keys on a large thread list; retry
+        # the call before giving up, so one transient flake doesn't abort a
+        # multi-fixture / multi-run harness. A persistently incomplete map still
+        # raises (fail loud, never mis-score).
+        self._max_retries = max_retries
 
     def score_run(self, *, fixture: "ExtractionFixture", run: "FixtureRun") -> FieldScore:
         """Selection adapter — pull gold_threads + narrative_md from the fixture/run."""
@@ -143,21 +149,23 @@ class NarrativeCoverageScorer:
             return FieldScore(value={"__overall__": 0.0}, metadata={"per_thread": {}, "raw": {}})
         numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(threads))
         prompt = self._tmpl.format(narrative=narrative, threads=numbered, n=len(threads))
-        raw = self._chat(prompt)
         # Validate the keyset before scoring: a broken/empty judge map or a
         # 1-based response must FAIL loudly, not masquerade as legitimate 0%
         # coverage (which would silently hide a real regression) or mis-align
-        # verdicts onto the wrong threads.
+        # verdicts onto the wrong threads. Retry a transient incomplete map first.
         expected_keys = {str(i) for i in range(len(threads))}
-        got_keys = {str(k) for k in raw}
-        if not expected_keys.issubset(got_keys):
-            missing = sorted(expected_keys - got_keys, key=int)
+        raw: dict = {}
+        for _attempt in range(self._max_retries + 1):
+            raw = self._chat(prompt)
+            if expected_keys.issubset({str(k) for k in raw}):
+                break
+        else:
+            missing = sorted(expected_keys - {str(k) for k in raw}, key=int)
             preview = ", ".join(missing[:5]) + ("…" if len(missing) > 5 else "")
             raise ValueError(
-                f"coverage judge returned an incomplete/misaligned verdict map: "
-                f"missing keys [{preview}] (expected 0..{len(threads) - 1}, "
-                f"got {sorted(got_keys, key=lambda k: (len(k), k))[:6]}). "
-                f"Broken judge output — not a real 0% coverage."
+                f"coverage judge returned an incomplete/misaligned verdict map after "
+                f"{self._max_retries + 1} attempts: missing keys [{preview}] "
+                f"(expected 0..{len(threads) - 1}). Broken judge output — not a real 0% coverage."
             )
         per_thread: dict[str, float] = {}
         for i, thread in enumerate(threads):
