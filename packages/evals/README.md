@@ -40,8 +40,9 @@ packages/evals/
 │   │   ├── types.py              # fixture + scoring types
 │   │   ├── variants.py           # Variant constructors for extraction configs
 │   │   ├── workbench.py          # notebook-friendly run helpers
-│   │   ├── benchmark.py          # eval-extraction CLI entry point
-│   │   └── scorers.py            # per-field scoring logic
+│   │   ├── benchmark.py          # eval-extraction CLI (Topic Card scoring)
+│   │   ├── coverage_cli.py       # eval-narrative-coverage CLI (narrative coverage, mean-of-N)
+│   │   └── scorers.py            # TopicCardScorer + NarrativeCoverageScorer
 │   └── wiki/                     # ✅ active wiki page-quality judges + extract-claims harness
 │       ├── judges.py             # FaithfulnessJudge, SpecificityJudge, TaggingJudge (injected chat_fn)
 │       ├── chat.py               # production chat_fn builders (workflows.llm)
@@ -78,7 +79,7 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 |---|---|---|---|
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
-| `evals.extraction` | ✅ active | Topic Card field scoring with variant comparison + per-content-type stratification. Composes `workflows.extraction.ThreeCallOpenAIExtractor` via injected callables. | `uv run eval-extraction` |
+| `evals.extraction` | ✅ active | Two scored surfaces over `ThreeCallOpenAIExtractor`: **Topic Card** field scoring (variant comparison + per-content-type stratification) and **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per shape, mean-of-N runs). Injected callables. | `uv run eval-extraction`, `uv run eval-narrative-coverage` |
 | `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding), `SpecificityJudge` (numeric/date/name/quote recall), `TaggingJudge` (reported/opinion tag correctness). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`). | (imported by harnesses; no standalone CLI) |
 | `evals.wiki.claims` | ✅ active | Extract-claims producer eval — faithfulness (grounded_fraction per claim), tagging accuracy, and claim volume aggregated per content shape. TaggingJudge calibration against 60-claim human gold (`calibration.py`). | `uv run eval-extract-claims` |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |
