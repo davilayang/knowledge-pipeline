@@ -114,6 +114,67 @@ Refresh when:
 - Score variance between v5 and v6 candidate runs is dominated by 1–2 fixtures → add diversity in that content_type to dilute the outlier.
 - Quarterly (whichever sooner), revisit topic diversity — the user's interests drift over time.
 
+## `narrative_coverage_gold.jsonl`
+
+Gold for the **narrative-coverage** scorer (`evals.extraction.NarrativeCoverageScorer`) — does the
+extractor's `narrative_md` cover the distinct follow-up threads a listener could ask about? Header
+`schema_version=1`, `fixture_kind="narrative_coverage"`; rows are
+`{fixture_id, content_type, content_shape, content, gold_threads}`. Loaded by
+`evals.core.load_fixtures(expected_schema_version=1)`. `content_shape` is carried for **stratified
+reporting only** — the scorer does not route on it; it's how "no shape regresses" stays visible
+run-over-run.
+
+### v0 (2026-07-17) — bootstrap
+
+**7 sources, 137 gold threads**, spanning the shapes where coverage diverges most:
+
+| fixture | content_type | content_shape | threads | chars |
+|---|---|---|---|---|
+| talk_389 | youtube | prose | 23 | 107K |
+| talk_39a | youtube | prose | 11 | 16K |
+| podcast_37b | file_audio | advice | 23 | 54K |
+| essay_38a | article | argument | 34 | 15K |
+| essay_396 | medium | listicle | 11 | 16K |
+| arxiv_382 | arxiv | survey | 12 | 158K |
+| arxiv_376 | arxiv | dense | 23 | 253K |
+
+### How the gold was built
+
+- **Threads drafted by chunked cross-family read** (long sources split ~35K/2K-overlap, each chunk
+  read for micro-points, then consolidated to **distinct-follow-up grain** — one thread per point a
+  listener could ask a *separate* follow-up about). Grain is load-bearing: at coarse 7-bucket grain
+  every narrative scores ~100%; the divergence only shows at follow-up grain.
+- **Blind-scored, partial = absent (FN-heavy loss).** A thread counts as covered only if the
+  narrative surfaces its specific anchor (a name, number, mechanism, or concrete example); a vague or
+  figure-dropping mention is absent. This asymmetric loss is deliberate — a coverage number that
+  rewards near-misses hides exactly the regressions this eval exists to catch.
+
+### Measurement caveat (load-bearing)
+
+The scorer's present/absent verdict is an **LLM judge** (`gpt-4.1-mini`, one batched call per
+fixture). Its dangerous failure is the **false positive** — calling a thread "present" when the
+anchor is missing — which inflates coverage and masks regressions. **Per-thread manual gold is not
+yet frozen to disk** (only the aggregate blind-score verdict table is: `narrative_v1` 97/137 = 71%,
+`narrative_v2` 117/137 = 85% at gpt-4.1-mini). Until per-thread manual labels are captured, calibrate
+the judge against those aggregate totals (the runner prints the comparison) and treat the automated
+absolute as a few points lenient — the delta and per-shape ordering are the trustworthy signal, not
+the absolute level.
+
+**N-run averaging is required — a single run is noisy.** The 137-thread aggregate is tight
+*within* a batch (3 back-to-back re-runs held ±1pt), but a single run can still land as an unlucky
+draw: one matched-format run put the `v1→v2` delta at +1.3pt, while the 3-run mean put it at +12.6pt
+(0.794 → 0.919), reproducing the manual +14.6pt. Record the **mean of ≥3 full re-runs** (extraction +
+judge) with the observed range; never headline a single run. Per-shape cells are n=1 and swing more
+cross-batch — read them as directional. Capturing per-thread manual gold (→ FP/FN + per-shape
+agreement) is the next calibration step.
+
+### Cadence review
+
+Refresh when a new `content_type` ships in production extraction, when the corpus shape drifts, or
+when the narrative prompt changes enough that the gold's anchors no longer represent live content.
+Re-run on any model bump (gpt-4.1-mini → next) as a regression floor — confirm the shipped prompt
+still scores ≥ the prior one per shape.
+
 ## `extract_claims_eval.jsonl`
 
 Pinned cohort for the extract-claims producer eval (`evals.wiki.claims`).

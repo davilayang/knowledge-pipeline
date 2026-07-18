@@ -9,7 +9,7 @@ Eval substrate (`src/evals/core/`) + per-pipeline harnesses. Substrate primitive
 - **Cross-package imports are allowed downward**: `domains` for `IngestItem`, `retrievers` for chunkers (`get_chunking_fn`) and chunk types, `workflows` for LLM-calling primitives. Never depend on `orchestrators`.
 - **External services are explicit.** OpenAI (embedding + judge) is a hard dep in the harness layer, never in the substrate; harnesses use `tenacity` retry on transient failures only. Chroma is reached via `HttpClient` — caller starts the server, eval doesn't.
 - **Datasets live with the package** (`packages/evals/datasets/`), not at repo root. They're part of the package contract; moving evals out of this repo someday should take the dataset along.
-- **Results are local-only.** `data/eval_runs/{kind}/{target}/{version}/{run_id}/` is gitignored — chronological on the laptop, never committed. `workbench` runs auto-prune at 30d via `uv run poe eval-cleanup-workbench`; `benchmark` runs retained indefinitely (trend data); `promoted/` excluded from cleanup for manual preservation.
+- **Results are two-tier — detail local, headline in Notion.** Detailed per-sample run JSON stays local under `data/eval_runs/{kind}/{target}/{version}/{run_id}/` (and `data/eval_results/` for retrieval) — gitignored, chronological on the laptop, never committed. `workbench` runs auto-prune at 30d via `uv run poe eval-cleanup-workbench`; `benchmark` runs retained indefinitely (trend data); `promoted/` excluded from cleanup for manual preservation. **The headline number of a benchmark run goes to the cross-KOS [Knowledge OS — Eval Runs](https://app.notion.com/p/38fd130d6131807896d3ec0df240fc93) Notion DB** (shared by NA + KP) so the progression is reviewable later without the local files: one row per `(Project, Benchmark, Variant, Metric)` with Value / N / Dataset / Model / Code rev / Run date / Link + a self-contained Notes field (the row must be interpretable on its own — define the metric, the gold, the arm, the comparison, and any caveat). **Do not git-track scores**; only the gold datasets are versioned in-repo. For a noisy LLM-judge metric, record the **mean of ≥3 runs** with the observed range, not a single run.
 
 ## Layout
 
@@ -40,8 +40,9 @@ packages/evals/
 │   │   ├── types.py              # fixture + scoring types
 │   │   ├── variants.py           # Variant constructors for extraction configs
 │   │   ├── workbench.py          # notebook-friendly run helpers
-│   │   ├── benchmark.py          # eval-extraction CLI entry point
-│   │   └── scorers.py            # per-field scoring logic
+│   │   ├── benchmark.py          # eval-extraction CLI (Topic Card scoring)
+│   │   ├── coverage_cli.py       # eval-narrative-coverage CLI (narrative coverage, mean-of-N)
+│   │   └── scorers.py            # TopicCardScorer + NarrativeCoverageScorer
 │   └── wiki/                     # ✅ active wiki page-quality judges + extract-claims harness
 │       ├── judges.py             # FaithfulnessJudge, SpecificityJudge, TaggingJudge (injected chat_fn)
 │       ├── chat.py               # production chat_fn builders (workflows.llm)
@@ -78,7 +79,7 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 |---|---|---|---|
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
-| `evals.extraction` | ✅ active | Topic Card field scoring with variant comparison + per-content-type stratification. Composes `workflows.extraction.ThreeCallOpenAIExtractor` via injected callables. | `uv run eval-extraction` |
+| `evals.extraction` | ✅ active | Two scored surfaces over `ThreeCallOpenAIExtractor`: **Topic Card** field scoring (variant comparison + per-content-type stratification) and **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per shape, mean-of-N runs). Injected callables. | `uv run eval-extraction`, `uv run eval-narrative-coverage` |
 | `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding), `SpecificityJudge` (numeric/date/name/quote recall), `TaggingJudge` (reported/opinion tag correctness). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`). | (imported by harnesses; no standalone CLI) |
 | `evals.wiki.claims` | ✅ active | Extract-claims producer eval — faithfulness (grounded_fraction per claim), tagging accuracy, and claim volume aggregated per content shape. TaggingJudge calibration against 60-claim human gold (`calibration.py`). | `uv run eval-extract-claims` |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |

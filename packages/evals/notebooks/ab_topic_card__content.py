@@ -40,6 +40,7 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
+from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -73,10 +74,10 @@ print(f"using fixture {fixture.fixture_id} ({fixture.content_type})")
 
 # %% tags=["adapter"]
 PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative_text = (PROMPTS / "narrative_v1.md").read_text()
-followups_text = (PROMPTS / "followups_v1.md").read_text()
-baseline_text = (PROMPTS / BASELINE_TOPIC_CARD).read_text()
-candidate_text = (PROMPTS / CANDIDATE_TOPIC_CARD).read_text()
+narrative_text = strip_design_notes((PROMPTS / "narrative_v1.md").read_text())
+followups_text = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
+baseline_text = strip_design_notes((PROMPTS / BASELINE_TOPIC_CARD).read_text())
+candidate_text = strip_design_notes((PROMPTS / CANDIDATE_TOPIC_CARD).read_text())
 
 variants = [
     make_three_call_variant(

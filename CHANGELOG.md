@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.35.1] — 2026-07-18
+
+### Changed
+
+- **Narrative extraction now covers the whole source, not a fixed ~8-section basket** — the `narrative_v2` prompt is threads-first (catalogue every follow-up thread, list item, and figure), lifting gold-set coverage 71%→85% at gpt-4.1-mini. `max_tokens` raised 2048→4096. Implementation: `prompts/extraction/narrative_v2.md`, `PROMPT_LABEL_NARRATIVE`.
+- **Extraction prompt design-notes headers no longer reach the model** — each `prompts/extraction/*.md` header (above the first `---`) is stripped at load via `domains.extraction.strip_design_notes`, at every read site. Model-facing body unchanged.
+
+### Added
+
+- **Narrative coverage is now a scored, re-runnable eval** — `NarrativeCoverageScorer` judges each narrative present/absent against a pinned 137-thread gold set (`packages/evals/datasets/narrative_coverage_gold.jsonl`). The `eval-narrative-coverage` CLI re-runs N times (default 3; headline is mean + range), diffs a `--baseline` prompt, and reports `coverage@present` by content shape.
+
+---
+
 ## [0.35.0] — 2026-07-13
 
 ### Added
