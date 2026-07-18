@@ -6,17 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.35.1] — 2026-07-18
+
 ### Changed
 
-- **Narrative extraction now enumerates every distinct follow-up thread and preserves figures** — the `narrative_v2` prompt is threads-first (cover the whole source, catalogue every list item, carry every number/benchmark as an anchor) instead of filling a fixed ~8-section basket, lifting gold-set coverage 71%→85% at gpt-4.1-mini with no routing or schema change. `max_tokens` raised 2048→4096 so the richest prose isn't truncated. Implementation: `prompts/extraction/narrative_v2.md`, `PROMPT_LABEL_NARRATIVE`, `ExtractorRegistry.max_tokens`.
+- **Narrative extraction now covers the whole source, not a fixed ~8-section basket** — the `narrative_v2` prompt is threads-first (catalogue every follow-up thread, list item, and figure), lifting gold-set coverage 71%→85% at gpt-4.1-mini. `max_tokens` raised 2048→4096. Implementation: `prompts/extraction/narrative_v2.md`, `PROMPT_LABEL_NARRATIVE`.
+- **Extraction prompt design-notes headers no longer reach the model** — each `prompts/extraction/*.md` header (above the first `---`) is stripped at load via `domains.extraction.strip_design_notes`, at every read site. Model-facing body unchanged.
 
 ### Added
 
-- **Narrative coverage is now a scored eval, not an eyeball** — `NarrativeCoverageScorer` judges each candidate narrative present/absent against a pinned 7-item, 137-thread gold (`packages/evals/datasets/narrative_coverage_gold.jsonl`), reporting `coverage@present` stratified by content shape. `run_benchmark` is now scorer-agnostic (the scorer owns fixture/run selection), so the next narrative prompt change is measured against the gold instead of hand-scored.
-
-### Fixed
-
-- **Extraction prompt design-notes headers no longer leak into the model prompt** — each `prompts/extraction/*.md` file's header (above the first `---`) is now stripped at load via `domains.extraction.strip_design_notes`, applied at every read site (production `ExtractorRegistry` + eval harness/notebooks). Previously the whole file — including change-history notes — was sent as the system prompt. Affects all three extraction prompts; the model-facing body is unchanged.
+- **Narrative coverage is now a scored, re-runnable eval** — `NarrativeCoverageScorer` judges each narrative present/absent against a pinned 137-thread gold set (`packages/evals/datasets/narrative_coverage_gold.jsonl`). The `eval-narrative-coverage` CLI re-runs N times (default 3; headline is mean + range), diffs a `--baseline` prompt, and reports `coverage@present` by content shape.
 
 ---
 
