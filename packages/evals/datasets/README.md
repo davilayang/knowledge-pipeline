@@ -154,11 +154,19 @@ run-over-run.
 The scorer's present/absent verdict is an **LLM judge** (`gpt-4.1-mini`, one batched call per
 fixture). Its dangerous failure is the **false positive** — calling a thread "present" when the
 anchor is missing — which inflates coverage and masks regressions. **Per-thread manual gold is not
-yet frozen to disk** (only the aggregate blind-score verdict table is: A0 97/137 = 71%, A2 117/137 =
-85% at gpt-4.1-mini). Until per-thread manual labels are captured, calibrate the judge against those
-aggregate totals (the runner prints the comparison) and treat a single automated run as advisory to
-±a few points — the tagging judge next door swung ~88–98% run-to-run, so N-run averaging applies here
-too. Capturing per-thread manual gold (→ FP/FN + per-shape agreement) is the next calibration step.
+yet frozen to disk** (only the aggregate blind-score verdict table is: `narrative_v1` 97/137 = 71%,
+`narrative_v2` 117/137 = 85% at gpt-4.1-mini). Until per-thread manual labels are captured, calibrate
+the judge against those aggregate totals (the runner prints the comparison) and treat the automated
+absolute as a few points lenient — the delta and per-shape ordering are the trustworthy signal, not
+the absolute level.
+
+**N-run averaging is required — a single run is noisy.** The 137-thread aggregate is tight
+*within* a batch (3 back-to-back re-runs held ±1pt), but a single run can still land as an unlucky
+draw: one matched-format run put the `v1→v2` delta at +1.3pt, while the 3-run mean put it at +12.6pt
+(0.794 → 0.919), reproducing the manual +14.6pt. Record the **mean of ≥3 full re-runs** (extraction +
+judge) with the observed range; never headline a single run. Per-shape cells are n=1 and swing more
+cross-batch — read them as directional. Capturing per-thread manual gold (→ FP/FN + per-shape
+agreement) is the next calibration step.
 
 ### Cadence review
 
