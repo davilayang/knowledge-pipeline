@@ -2,6 +2,8 @@
 
 Eval substrate (`src/evals/core/`) + per-pipeline harnesses. Substrate primitives are pure-function (frozen dataclasses, schema-versioned fixtures, JSON-safe snapshots, judge skeletons with injected callables). Per-pipeline harnesses (`src/evals/extraction/`, `src/evals/workflows/`, `src/evals/retrieval/`) compose substrate primitives into runnable workbenches + benchmark CLIs.
 
+Cross-surface conventions (surface roles, subject seam, judge-family, per-category README contract) live in [`STYLEGUIDE.md`](STYLEGUIDE.md); the package-wide substrate rules are below.
+
 ## Rules
 
 - **No Dagster imports.** Evals run from a CLI or notebook, not from an asset graph.
@@ -40,7 +42,7 @@ packages/evals/
 │   │   ├── types.py              # fixture + scoring types
 │   │   ├── variants.py           # Variant constructors for extraction configs
 │   │   ├── workbench.py          # notebook-friendly run helpers
-│   │   ├── benchmark.py          # eval-extraction CLI (Topic Card scoring)
+│   │   ├── benchmark.py          # run_benchmark — thin wrapper over core.run_and_report (no CLI)
 │   │   ├── coverage_cli.py       # eval-narrative-coverage CLI (narrative coverage, mean-of-N)
 │   │   └── scorers.py            # TopicCardScorer + NarrativeCoverageScorer
 │   └── wiki/                     # ✅ active wiki page-quality judges + extract-claims harness
@@ -79,7 +81,7 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 |---|---|---|---|
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
-| `evals.extraction` | ✅ active | Two scored surfaces over `ThreeCallOpenAIExtractor`: **Topic Card** field scoring (variant comparison + per-content-type stratification) and **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per shape, mean-of-N runs). Injected callables. | `uv run eval-extraction`, `uv run eval-narrative-coverage` |
+| `evals.extraction` | ✅ active | Two scored surfaces over `ThreeCallOpenAIExtractor`: **Topic Card** field scoring (variant comparison + per-content-type stratification, run via workbench notebooks / `run_benchmark` — no CLI) and **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per shape, mean-of-N runs). Injected callables. | `uv run eval-narrative-coverage` |
 | `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding), `SpecificityJudge` (numeric/date/name/quote recall), `TaggingJudge` (reported/opinion tag correctness). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`). | (imported by harnesses; no standalone CLI) |
 | `evals.wiki.claims` | ✅ active | Extract-claims producer eval — faithfulness (grounded_fraction per claim), tagging accuracy, and claim volume aggregated per content shape. TaggingJudge calibration against 60-claim human gold (`calibration.py`). | `uv run eval-extract-claims` |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |
@@ -226,10 +228,11 @@ The submodule shape (`types.py` → `variants.py` → `workbench.py` → `benchm
 2. **Decide the fixture contract first** — define `<Target>Fixture` in `evals/<target>/types.py` with the row shape (`fixture_id` + `expected_*` fields). Pin `schema_version` for the JSONL header.
 3. **Build variant constructors** in `evals/<target>/variants.py` — small builder functions that return `Variant(config=..., provenance=..., run=...)`. The `run` callable wraps the actual extractor / LangGraph workflow / retrieval index.
 4. **Add a `workbench.py`** with notebook-friendly helpers (`run_variant`, `run_variants`, render-results-as-HTML).
-5. **Add a `benchmark.py`** with a CLI entrypoint that takes a variant label + fixture set + budget and returns a `RunRecord` with scored aggregation. Console script in `pyproject.toml`.
-6. **Drop a sibling dataset** at `packages/evals/datasets/<target>_eval.jsonl` with a schema-versioned header.
+5. **Score through the shared runner if the shape fits.** A `variant.run(fixture) → FixtureRun → score` harness calls `evals.core.run_and_report` (or `run_repeated` for N-run mean+range) — don't hand-roll the loop/aggregation/persistence. Harnesses whose shape doesn't fit (retrieval's index-then-query, claims' source-level aggregation) keep their own run model.
+6. **Attach a `RunManifest`** at the entrypoint (see `evals.core.manifest`) — persisted into the result JSON or printed with `format_manifest_line`. This is the one provenance contract every harness shares, regardless of run model. `code_rev()` fills the git sha.
+7. **Drop a sibling dataset** at `packages/evals/datasets/<target>_eval.jsonl` with a schema-versioned header, and add a console script in `pyproject.toml` only if the harness gates or reports from the CLI.
 
-For pre-substrate harnesses (`evals.retrieval` predates `evals.core`), the legacy submodule shape (`types.py` → `dataset.py` → `runner.py` → `cli.py`) still works; Step 8 lifts it to the substrate-aligned form by adding `variants.py` + a `RetrievalVariant`-aware `benchmark.py` (was: `runner.py`).
+See [`STYLEGUIDE.md`](STYLEGUIDE.md) for the cross-surface conventions (subject seam, judge family, run mode, when a category needs its own README).
 
 ## Reference
 

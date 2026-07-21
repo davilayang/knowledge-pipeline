@@ -86,14 +86,29 @@ def format_report(aggs: list[ShapeAgg]) -> str:
 
 def main() -> None:
     """`eval-extract-claims [--limit N]` — run the real judges over the cohort."""
-    from workflows.wiki_synthesis.extract_claims import extract_claims
+    from workflows.wiki_synthesis.extract_claims import EXTRACT_CLAIMS_MODEL, extract_claims
 
-    from evals.wiki.chat import make_faithfulness_chat_fn, make_tagging_chat_fn
+    from evals.core.manifest import RunManifest, code_rev, format_manifest_line
+    from evals.wiki.chat import JUDGE_MODEL, make_faithfulness_chat_fn, make_tagging_chat_fn
     from evals.wiki.judges import FaithfulnessJudge, TaggingJudge
+
+    from .dataset import SCHEMA_VERSION
 
     ap = argparse.ArgumentParser()
     ap.add_argument("--limit", type=int, default=None, help="score only the first N sources")
     args = ap.parse_args()
+
+    manifest = RunManifest(
+        dataset=DATASET_PATH.name,
+        dataset_schema=SCHEMA_VERSION,
+        subject="extract_claims",  # the producer under test
+        subject_model=EXTRACT_CLAIMS_MODEL,
+        judge_model=JUDGE_MODEL,
+        code_rev=code_rev(),
+        mode="report",
+        runs=1,
+    )
+    print(format_manifest_line(manifest))
 
     fixtures = load_source_fixtures(DATASET_PATH)
     if args.limit:

@@ -1,13 +1,13 @@
 # `evals/extraction/`
 
-First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via the `eval-extraction` CLI.
+First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via `run_benchmark` (the thin extraction wrapper over `evals.core.run_and_report`).
 
 ## Two scored surfaces
 
-| What it scores | Scorer | CLI |
+| What it scores | Scorer | How it's run |
 |---|---|---|
-| **Topic Card** field quality vs a v5 baseline | `TopicCardScorer` | `eval-extraction` |
-| **Narrative coverage** — does `narrative_md` cover the gold follow-up threads? | `NarrativeCoverageScorer` | `eval-narrative-coverage` |
+| **Topic Card** field quality vs a v5 baseline | `TopicCardScorer` | workbench notebooks (`run_variants`) / `run_benchmark` — no CLI |
+| **Narrative coverage** — does `narrative_md` cover the gold follow-up threads? | `NarrativeCoverageScorer` | `eval-narrative-coverage` CLI |
 
 ### Re-running narrative coverage
 

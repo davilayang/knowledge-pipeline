@@ -23,18 +23,18 @@ detailed per-run JSON persists under `data/eval_runs/`.
 import argparse
 import json
 import os
-import subprocess
 from collections.abc import Sequence
 from pathlib import Path
 
 from domains.extraction.prompts import strip_design_notes
 
-from evals.core import load_fixtures
+from evals.core import RunManifest, load_fixtures
+from evals.core.harness import run_repeated
+from evals.core.manifest import code_rev
 from evals.extraction import (
     ExtractionFixture,
     NarrativeCoverageScorer,
     make_three_call_variant,
-    run_benchmark,
 )
 
 _DEFAULT_GOLD = "packages/evals/datasets/narrative_coverage_gold.jsonl"
@@ -45,17 +45,6 @@ def _repo_root() -> Path:
         if (parent / "pyproject.toml").exists() and (parent / "packages").is_dir():
             return parent
     return Path.cwd()
-
-
-def _mean(xs: Sequence[float]) -> float:
-    return sum(xs) / len(xs) if xs else 0.0
-
-
-def _code_rev() -> str:
-    try:
-        return subprocess.check_output(["git", "rev-parse", "--short", "HEAD"], text=True).strip()
-    except Exception:
-        return "unknown"
 
 
 def _fixtures(gold_path: Path) -> list[ExtractionFixture]:
@@ -104,44 +93,49 @@ def _run_arm(
     runs: int,
     gold_rel: str,
 ):
+    label = narrative_file.replace(".md", "")
     variant = make_three_call_variant(
-        name=narrative_file.replace(".md", ""),
+        name=label,
         narrative_prompt_text=strip_design_notes((prompts_dir / narrative_file).read_text()),
         topic_card_prompt_text=strip_design_notes((prompts_dir / "topic_card_v1.md").read_text()),
         followups_prompt_text=strip_design_notes((prompts_dir / "followups_v1.md").read_text()),
         prompt_versions={
-            "narrative": narrative_file.replace(".md", ""),
+            "narrative": label,
             "topic_card": "v1",
             "followups": "v1",
         },
         model=model,
         api_key=api_key,
         max_tokens=max_tokens,
-        code_revision=_code_rev(),
+        code_revision=code_rev(),
     )
     scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, model))
-    # Each run_benchmark re-extracts AND re-judges — N runs capture total variance.
-    records = [
-        run_benchmark(variant=variant, fixtures=fixtures, scorer=scorer, fixture_set=gold_rel)
-        for _ in range(runs)
-    ]
-    aggs = [r.scores[0].metrics.get("__overall__", 0.0) for r in records]
-    shapes = set().union(
-        *(r.scores[0].stratifications.get("by_content_shape", {}) for r in records)
+    manifest = RunManifest(
+        dataset=Path(gold_rel).name,
+        dataset_schema=1,
+        subject=label,
+        subject_model=model,
+        judge_model=model,
+        code_rev=code_rev(),
+        mode="report",
+        runs=runs,
     )
-    by_shape = {
-        s: _mean(
-            [r.scores[0].stratifications.get("by_content_shape", {}).get(s, 0.0) for r in records]
-        )
-        for s in shapes
-    }
+    report = run_repeated(
+        variant=variant,
+        fixtures=fixtures,
+        scorer=scorer,
+        manifest=manifest,
+        runs=runs,
+        target="extraction",
+        fixture_set=gold_rel,
+    )
     return {
-        "variant": narrative_file.replace(".md", ""),
-        "mean": _mean(aggs),
-        "lo": min(aggs),
-        "hi": max(aggs),
-        "per_run": aggs,
-        "by_shape": by_shape,
+        "variant": label,
+        "mean": report.mean,
+        "lo": report.lo,
+        "hi": report.hi,
+        "per_run": report.per_run,
+        "by_shape": report.by_stratum.get("by_content_shape", {}),
     }
 
 
