@@ -51,9 +51,9 @@ def run_and_report(
 ) -> RunRecord:
     """Run a variant over fixtures, score each, aggregate per-field + stratified.
 
-    `manifest` rides in RunRecord.config. Optional during migration; becomes
-    required once every caller supplies one.
-    ponytail: manifest optional bridge — make required in P2 when all paths pass one.
+    When a `manifest` is passed it rides in RunRecord.config; when omitted,
+    config is left empty. ponytail: optional so callers can adopt it one at a
+    time — tighten to required once every entrypoint passes one.
     """
     started = datetime.now(UTC).isoformat()
     samples: list[FixtureRun] = []
@@ -141,7 +141,7 @@ def run_repeated(
     """Run the benchmark `runs` times; return the mean + observed range.
 
     Each re-run re-runs the variant AND re-scores, so N runs capture total
-    variance (extraction + judge). Promoted out of the coverage CLI so every
+    variance (extraction + judge). Lives in the substrate, not per-CLI, so every
     noisy-judge harness averages the same way.
     """
     records = [

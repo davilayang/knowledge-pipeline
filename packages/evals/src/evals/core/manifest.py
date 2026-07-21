@@ -1,9 +1,11 @@
-"""RunManifest — the one provenance envelope persisted with every eval run.
+"""RunManifest — the one provenance envelope recorded with every eval run.
 
-Replaces per-CLI scattered provenance (local JSON, CLI prints, hand-typed
-Notion rows). Frozen + JSON-safe so it rides in RunRecord.config via asdict.
-Cross-family-judge is a DERIVED property (judge_is_cross_family), not a stored
-field — one source of truth for subject/judge models, no drift.
+Gives every eval a single "what dataset / model / judge / code / runs produced
+this score" answer, instead of provenance scattered across local JSON, CLI
+prints, and hand-typed Notion rows. Frozen + JSON-safe so it rides in
+RunRecord.config via asdict. It stores `subject_model` and `judge_model`
+separately; whether the judge is a different family is read off those two, not
+stored as a third field that could drift out of sync.
 """
 
 import subprocess

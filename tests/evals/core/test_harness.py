@@ -91,7 +91,7 @@ def test_run_and_report_matches_benchmark_shape_and_attaches_manifest(tmp_path):
 
 
 def test_run_and_report_without_manifest_leaves_config_empty(tmp_path):
-    """Backward-compat: the pre-manifest run_benchmark path kept config == {}."""
+    """No manifest supplied → config is left empty (run_benchmark's default path)."""
     rec = run_and_report(
         variant=_variant("v5"),
         fixtures=_fixtures(),

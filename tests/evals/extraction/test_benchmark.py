@@ -64,7 +64,7 @@ def test_run_benchmark_emits_scores_per_field(tmp_path):
     )
     assert rec.kind == "benchmark"
     assert rec.target == "extraction"
-    assert rec.config == {}  # no manifest supplied → config stays empty (pre-manifest parity)
+    assert rec.config == {}  # no manifest supplied → config stays empty
     assert len(rec.scores) == 1
     assert rec.scores[0].metrics["extracted_title"] == 1.0
     assert rec.scores[0].metrics["__overall__"] == 1.0

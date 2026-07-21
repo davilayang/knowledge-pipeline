@@ -2,7 +2,7 @@
 
 Eval substrate (`src/evals/core/`) + per-pipeline harnesses. Substrate primitives are pure-function (frozen dataclasses, schema-versioned fixtures, JSON-safe snapshots, judge skeletons with injected callables). Per-pipeline harnesses (`src/evals/extraction/`, `src/evals/workflows/`, `src/evals/retrieval/`) compose substrate primitives into runnable workbenches + benchmark CLIs.
 
-Cross-surface conventions (surface roles, subject seam, judge-family, per-category README contract) live in [`STYLEGUIDE.md`](STYLEGUIDE.md); the package-wide substrate rules are below.
+Cross-surface conventions (the shared runner + manifest, subject seam, judge family, run mode, when a category needs its own README) live in [`STYLEGUIDE.md`](STYLEGUIDE.md); the package-wide substrate rules are below.
 
 ## Rules
 
@@ -30,6 +30,8 @@ packages/evals/
 │   │   ├── snapshotter.py        # snapshot() — JSON-safe with {"__skipped__": "<type>"} sentinels
 │   │   ├── runs.py               # save_run/load_run/run_dir — Inspect-AI-shaped per-run JSON
 │   │   ├── diff.py               # DiffReport + text/HTML renderers
+│   │   ├── harness.py            # run_and_report/run_repeated/RepeatedReport — shared variant→FixtureRun→score runner
+│   │   ├── manifest.py           # RunManifest/code_rev/format_manifest_line — provenance envelope for every entrypoint
 │   │   └── judges/               # ExactMatchJudge, EmbeddingSimilarityJudge, LLMJudge (injected callables)
 │   ├── retrieval/                # ✅ active retrieval eval harness
 │   │   ├── types.py              # EvalPair, EvalConfig, SourceMetrics, EvalRunResult
@@ -112,6 +114,8 @@ from evals.core import (
     VariantProvenance, FixtureRef,
     snapshot, save_run, load_run, run_dir,
     DiffReport, diff_runs, render_diff_text, render_diff_html,
+    run_and_report, run_repeated, RepeatedReport,
+    RunManifest, code_rev, format_manifest_line,
 )
 from evals.core.judges import (
     JudgeProtocol, ExactMatchJudge, EmbeddingSimilarityJudge, LLMJudge,

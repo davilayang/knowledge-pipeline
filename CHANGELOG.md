@@ -6,9 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.0] — 2026-07-21
+
 ### Changed
 
-- **Eval runs now share one run-layer + a provenance manifest across every entrypoint** — `evals.core.run_and_report` is the shared runner (variant → score → stratified aggregate → persist) and `run_repeated` owns N-run mean+observed-range averaging, replacing the loops that lived inside the extraction benchmark and the `eval-narrative-coverage` CLI. A `RunManifest` (dataset, schema, subject, subject/judge models, code rev, gate-vs-report mode, N runs) is now attached to every real eval entrypoint: in `RunRecord.config` (extraction/coverage), persisted into the result JSON (`eval-retrieval`), and printed with the report (`eval-extract-claims`) — one consistent "what produced this score" answer. The dead `eval-extraction` console script (a never-wired stub) is retired; `eval-narrative-coverage` is the extraction eval CLI. The manifest is a provenance standard, not a unified run model — retrieval and extract-claims keep their own run shapes.
+- **Every eval run now records a `RunManifest` provenance envelope** — dataset, schema, subject, subject/judge models, code rev, gate-vs-report mode, N runs — attached in `RunRecord.config` (extraction/coverage), the result JSON (`eval-retrieval`), or the printed report (`eval-extract-claims`), giving one consistent "what produced this score" answer. Implementation: `evals.core.manifest`.
+- **Eval scoring runs through one shared runner** — `evals.core.run_and_report` (score → stratified aggregate → persist) + `run_repeated` (N-run mean+observed-range), replacing the per-harness loops in the extraction benchmark and `eval-narrative-coverage`. Retrieval and extract-claims keep their own run shapes; only the manifest is shared.
+
+### Removed
+
+- **`eval-extraction` console script** — a never-wired stub. `eval-narrative-coverage` is the extraction eval CLI; topic-card scoring runs through the workbench notebooks / `run_benchmark`.
 
 ---
 
