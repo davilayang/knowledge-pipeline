@@ -27,6 +27,8 @@ from pathlib import Path
 from domains.types import IngestItem
 from retrievers.embedding import OpenAIEmbedder
 
+from evals.core.manifest import RunManifest, code_rev
+
 from .cache import CachedEmbedder
 from .dataset import load_eval_set
 from .runner import run_eval
@@ -76,8 +78,19 @@ def main(argv: list[str] | None = None) -> int:
         chroma_client=chroma_client,
     )
 
+    chunker_sig = "/".join(f"{k}={v}" for k, v in sorted(config.chunker_by_source.items()))
+    manifest = RunManifest(
+        dataset=args.eval_set.name,
+        dataset_schema=1,  # retrieval eval set is unversioned JSONL — the implicit v1
+        subject=chunker_sig,  # chunker config is what iteration puts under test
+        subject_model=args.embedding_model,
+        judge_model=None,  # retrieval metrics are deterministic — no LLM judge
+        code_rev=code_rev(),
+        mode="report",
+        runs=1,
+    )
     _print_summary(result)
-    out_path = _write_result(result, results_dir=args.results_dir)
+    out_path = _write_result(result, manifest=manifest, results_dir=args.results_dir)
     print(f"\nWrote {out_path}")
     if not result.per_source:
         # Sources loaded zero items, or eval set didn't cover any source we
@@ -145,11 +158,12 @@ def _load_items(args: argparse.Namespace) -> dict[str, list[IngestItem]]:
     return items
 
 
-def _write_result(result: EvalRunResult, *, results_dir: Path) -> Path:
+def _write_result(result: EvalRunResult, *, manifest: RunManifest, results_dir: Path) -> Path:
     results_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.now(tz=UTC).strftime("%Y%m%dT%H%M%SZ")
     out = results_dir / f"retrieval_{ts}.json"
-    out.write_text(json.dumps(asdict(result), indent=2), encoding="utf-8")
+    payload = {"manifest": asdict(manifest), **asdict(result)}
+    out.write_text(json.dumps(payload, indent=2), encoding="utf-8")
     return out
 
 

@@ -54,3 +54,6 @@ k8s/secret.env
 
 # Superpowers working docs (specs, plans) — local-only, not part of the codebase
 docs/superpowers/
+
+# macOS Finder metadata
+.DS_Store

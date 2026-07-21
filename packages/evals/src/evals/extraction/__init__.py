@@ -4,11 +4,11 @@ Public surface:
   Variants:    make_three_call_variant
   Scorers:     TopicCardScorer, NarrativeCoverageScorer
   Workbench:   run_variant, run_variants
-  Benchmark:   run_benchmark, dry_run_estimate, main
+  Benchmark:   run_benchmark
   Types:       ExtractionFixture, TopicCardFields, ExtractionDiffReport
 """
 
-from evals.extraction.benchmark import dry_run_estimate, run_benchmark
+from evals.extraction.benchmark import run_benchmark
 from evals.extraction.scorers import NarrativeCoverageScorer, TopicCardScorer
 from evals.extraction.types import (
     ExtractionDiffReport,
@@ -24,7 +24,6 @@ __all__ = [
     "NarrativeCoverageScorer",
     "TopicCardFields",
     "TopicCardScorer",
-    "dry_run_estimate",
     "make_three_call_variant",
     "run_benchmark",
     "run_variant",

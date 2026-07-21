@@ -68,7 +68,7 @@ Re-run on any embedding-model or synthesis-prompt change (the synthesis prompt r
 
 ## `extraction_eval.jsonl`
 
-JSONL of `{fixture_id, content_type, content, expected_topic_card}` rows consumed by the `evals.extraction` harness — `eval-extraction --fixtures …` (benchmark, scored) and the workbench notebooks under `packages/evals/notebooks/ab_*__content.ipynb` (single-fixture eyeball). Schema validated by `evals.core.load_fixtures(expected_schema_version=1)` — bad rows fail loudly.
+JSONL of `{fixture_id, content_type, content, expected_topic_card}` rows consumed by the `evals.extraction` harness — `run_benchmark` (scored aggregation over `evals.core.run_and_report`) and the workbench notebooks under `packages/evals/notebooks/ab_*__content.ipynb` (single-fixture eyeball). Schema validated by `evals.core.load_fixtures(expected_schema_version=1)` — bad rows fail loudly.
 
 ### v0 (2026-06-06) — Step 3 synthetic first-cut
 
@@ -91,7 +91,7 @@ JSONL of `{fixture_id, content_type, content, expected_topic_card}` rows consume
 
 `expected_topic_card` rows are **hand-written examples of what v5-shaped output *should* look like — they are NOT actual v5 extractor outputs.** Scoring a candidate prompt against this set tells you *"does the candidate produce output that looks like what I think v5 should produce"* — it does NOT tell you *"does the candidate match what v5 actually produces"*. Score deltas in this v0 are direction signals, not absolute rankings.
 
-Real v5-baseline curation (run the production three-call extractor against 15 real raw_store rows, pair each with its output as `expected_topic_card`) lands once `eval-corpus` tooling exists (spec Step 6). Until then, treat absolute scores from `eval-extraction` against this set as advisory; trust ordinal comparisons between variants more than absolute numbers.
+Real v5-baseline curation (run the production three-call extractor against 15 real raw_store rows, pair each with its output as `expected_topic_card`) lands once `eval-corpus` tooling exists (spec Step 6). Until then, treat absolute scores from this set as advisory; trust ordinal comparisons between variants more than absolute numbers.
 
 ### Known v0 gaps
 
@@ -104,7 +104,7 @@ Real v5-baseline curation (run the production three-call extractor against 15 re
 1. Pick a `fixture_id` matching the pattern: `art_<NNN>` / `arx_<NNN>` / `yt_<NNN>`. Increment within the existing range; ids are stable handles that cache keys depend on.
 2. Append the row to `extraction_eval.jsonl` (one row per line, no trailing comma).
 3. Validate: `uv run python -c "from pathlib import Path; from evals.core import load_fixtures; h,r=load_fixtures(Path('packages/evals/datasets/extraction_eval.jsonl'), expected_schema_version=1); print(len(r))"`
-4. Re-run `eval-extraction baseline --fixtures … --dry-run` to confirm the new count + estimate.
+4. Score the new set via a workbench notebook (`run_variants`) or `run_benchmark` to confirm it loads + scores.
 
 ### Cadence review
 

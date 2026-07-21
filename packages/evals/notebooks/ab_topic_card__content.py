@@ -23,7 +23,7 @@
 # **Use this when:** you've drafted a candidate `topic_card_v2.md` and want
 # a single-content read before a corpus-wide benchmark.
 #
-# **Don't use this for:** corpus-wide scoring (use `eval-extraction` CLI).
+# **Don't use this for:** corpus-wide scoring (use `run_benchmark` / `run_variants`).
 
 # %% tags=["config", "parameters"]
 NOTEBOOK_STEM = "ab_topic_card__content"
@@ -155,4 +155,4 @@ RESULTS["scores"] = None
 # If candidate wins on this content, re-run with CONTENT_ID_INDEX=1, 2, … on
 # 2-3 more fixtures. Then promote: copy candidate_text into
 # prompts/extraction/<new>.md, update EXTRACT_QUEUE_PROMPT_LABEL_<CT> in .env,
-# run `eval-extraction <new> --fixtures …` for the scored corpus run.
+# run `run_variants` / `run_benchmark` over the fixture set for the scored corpus run.

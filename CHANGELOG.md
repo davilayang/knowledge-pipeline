@@ -8,6 +8,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.0] — 2026-07-21
+
+### Changed
+
+- **Every eval run now records a `RunManifest` provenance envelope** — dataset, schema, subject, subject/judge models, code rev, gate-vs-report mode, N runs — attached in `RunRecord.config` (extraction/coverage), the result JSON (`eval-retrieval`), or the printed report (`eval-extract-claims`), giving one consistent "what produced this score" answer. Implementation: `evals.core.manifest`.
+- **Eval scoring runs through one shared runner** — `evals.core.run_and_report` (score → stratified aggregate → persist) + `run_repeated` (N-run mean+observed-range), replacing the per-harness loops in the extraction benchmark and `eval-narrative-coverage`. Retrieval and extract-claims keep their own run shapes; only the manifest is shared.
+
+### Removed
+
+- **`eval-extraction` console script** — a never-wired stub. `eval-narrative-coverage` is the extraction eval CLI; topic-card scoring runs through the workbench notebooks / `run_benchmark`.
+
+---
+
 ## [0.35.1] — 2026-07-18
 
 ### Changed

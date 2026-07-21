@@ -8,6 +8,8 @@ Judges live under evals.core.judges to keep the top-level surface readable.
 from evals.core.cost import BudgetExceededError, CostBudget, CostEstimatorProtocol
 from evals.core.diff import DiffReport, diff_runs, render_diff_html, render_diff_text
 from evals.core.fixtures import FixtureHeader, SchemaVersionMismatch, load_fixtures, save_fixtures
+from evals.core.harness import RepeatedReport, run_and_report, run_repeated
+from evals.core.manifest import RunManifest, code_rev, format_manifest_line
 from evals.core.runs import load_run, run_dir, save_run
 from evals.core.snapshotter import snapshot
 from evals.core.types import (
@@ -31,21 +33,27 @@ __all__ = [
     "FixtureHeader",
     "FixtureRef",
     "FixtureRun",
+    "RepeatedReport",
     "RetrievalVariant",
+    "RunManifest",
     "RunRecord",
     "RunStatus",
     "SchemaVersionMismatch",
     "ScoreReport",
+    "code_rev",
     "StageTrace",
     "Variant",
     "VariantProvenance",
     "corpus_signature",
     "diff_runs",
+    "format_manifest_line",
     "load_fixtures",
     "load_run",
     "render_diff_html",
     "render_diff_text",
+    "run_and_report",
     "run_dir",
+    "run_repeated",
     "save_fixtures",
     "save_run",
     "snapshot",

@@ -1,16 +1,8 @@
 """Tests for evals.extraction.benchmark — scored aggregation + CLI."""
 
-import json
-from pathlib import Path
-
-import pytest
 from evals.core import FieldScore, FixtureRun, RunStatus, Variant, VariantProvenance
-from evals.extraction.benchmark import dry_run_estimate, main, run_benchmark
+from evals.extraction.benchmark import run_benchmark
 from evals.extraction.types import ExtractionFixture
-
-
-def _write_jsonl(path: Path, rows: list[dict]) -> None:
-    path.write_text("\n".join(json.dumps(r) for r in rows) + "\n")
 
 
 def _variant(name: str) -> Variant:
@@ -72,6 +64,7 @@ def test_run_benchmark_emits_scores_per_field(tmp_path):
     )
     assert rec.kind == "benchmark"
     assert rec.target == "extraction"
+    assert rec.config == {}  # no manifest supplied → config stays empty
     assert len(rec.scores) == 1
     assert rec.scores[0].metrics["extracted_title"] == 1.0
     assert rec.scores[0].metrics["__overall__"] == 1.0
@@ -168,62 +161,3 @@ def test_run_benchmark_skips_scoring_for_errored_runs(tmp_path):
     )
     assert rec.scores[0].sample_count == 2
     assert rec.scores[0].metrics == {}
-
-
-def test_dry_run_estimate_computes_total_usd():
-    est = dry_run_estimate(
-        n_fixtures=15,
-        n_calls_per_fixture=3,
-        avg_tokens_per_call=2500,
-        cost_per_1k_tokens=0.005,
-    )
-    assert est == pytest.approx(0.5625, abs=1e-6)
-
-
-def test_cli_dry_run_reads_fixture_set(tmp_path, capsys):
-    """eval-extraction --dry-run loads fixtures, prints estimate, returns 0."""
-    fixture_set = tmp_path / "fx.jsonl"
-    _write_jsonl(
-        fixture_set,
-        [
-            {"schema_version": 1, "anchored_to_backup": None, "fixture_kind": "extraction"},
-            {
-                "fixture_id": "a",
-                "content_type": "Article",
-                "content": "c",
-                "expected_topic_card": {},
-            },
-            {
-                "fixture_id": "b",
-                "content_type": "Article",
-                "content": "c",
-                "expected_topic_card": {},
-            },
-        ],
-    )
-    rc = main(["v5_baseline", "--fixtures", str(fixture_set), "--dry-run"])
-    assert rc == 0
-    out = capsys.readouterr().out
-    assert "Estimated" in out
-    assert "2 fixtures" in out
-
-
-def test_cli_live_mode_exits_with_message(capsys, tmp_path):
-    """Variant registry not wired in Step 3 — live mode must surface a clear message."""
-    fixture_set = tmp_path / "fx.jsonl"
-    _write_jsonl(
-        fixture_set,
-        [
-            {"schema_version": 1, "anchored_to_backup": None, "fixture_kind": "extraction"},
-            {
-                "fixture_id": "a",
-                "content_type": "Article",
-                "content": "c",
-                "expected_topic_card": {},
-            },
-        ],
-    )
-    rc = main(["v5_baseline", "--fixtures", str(fixture_set)])
-    assert rc == 2
-    err = capsys.readouterr().err
-    assert "registry" in err.lower() or "workbench" in err.lower()
