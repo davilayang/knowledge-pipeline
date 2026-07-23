@@ -189,25 +189,43 @@ class NarrativeCoverageScorer:
 
 
 DEFAULT_FIDELITY_PROMPT = """\
-You are a strict fidelity judge. Below is a CANDIDATE narrative and a numbered
-list of GOLD threads (each a distinct point with a specific anchor — a name,
-number, mechanism, or example). For each gold thread, judge how the candidate
-represents it:
-- "faithful": the thread's content AND its anchor appear, meaning intact.
-- "distorted": the thread appears but its meaning is corrupted — wrong
-  attribution, a wrong/changed figure, a flipped/negated claim, or a dropped
-  load-bearing caveat that changes the meaning.
-- "absent": the thread's specific content does not appear (a vague or
-  anchor-dropping mention counts as absent).
+You are a fidelity judge for a knowledge-extraction eval. Below is a CANDIDATE
+summary and a numbered list of GOLD reference points from the same source. For
+each gold point, decide how the candidate represents it. Use these definitions —
+they are calibrated against human rulings, so apply them literally rather than
+your own instinct for "strict" vs "lenient":
 
-CANDIDATE NARRATIVE:
+- "faithful": the point's claim AND its meaning-bearing specifics are present.
+  STILL faithful when the candidate drops DERIVABLE scaffolding (a sub-value you
+  could reconstruct from what's kept — e.g. "3 posts and 8 votes" behind the
+  ratio 0.375), drops an ILLUSTRATIVE example while fully stating the claim it
+  illustrated, or compresses wording while the essence survives.
+- "distorted": what the candidate KEPT is corrupted — a wrong/flipped figure or
+  attribution; a number stripped of the context that carries its meaning (e.g.
+  "30/30 confirmed" without the denominator/precision that shows it's rare, not
+  universal); a specific vaguened into an abstraction (e.g. "row-level security"
+  → "security policies", or a "only one field required" point diluted into a
+  multi-field structure); or false completeness (a closed count when the source
+  listed more).
+- "absent": the point is missing, too vague to count, OR reduced to a generic
+  restatement that loses its distinctive specifics (e.g. a concrete step-by-step
+  walkthrough compressed to "navigates the files"). Test: is what remains still
+  THIS specific point, or has it collapsed into a restatement of a more general
+  claim? Collapsed → absent.
+
+If a gold point enumerates a LIST, its members ARE the information: a member the
+candidate simply left out lowers fidelity toward "absent" (an omission), NOT
+"distorted" — reserve "distorted" for a member that's vaguened, or a partial list
+the candidate implies is complete.
+
+CANDIDATE SUMMARY:
 {narrative}
 
-GOLD THREADS ({n}):
+GOLD REFERENCE POINTS ({n}):
 {threads}
 
-Return a JSON object mapping each thread's number (as a string) to exactly one
-of "faithful", "distorted", or "absent".
+Return a JSON object mapping each point's number (as a string) to exactly one of
+"faithful", "distorted", or "absent".
 """
 
 
