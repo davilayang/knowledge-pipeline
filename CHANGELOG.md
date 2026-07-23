@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Narrative-fidelity floor eval (seed).** A reader-anchored gold set — `packages/evals/datasets/narrative_fidelity_gold_seed.jsonl`, 11 fixtures each with `critical_threads` — plus the three-metric primitives (`faithful_recall`, `distortion_rate`, `fabrication_rate`, `severe_omission_count`, and the two-juror `conservative_merge`) in `evals.extraction.fidelity`, scoring `narrative_v2` for omission / corruption / invention against gold. `critical` is reader-anchored (main claim, actionable takeaway, or understanding-shift); statistics stay anchors inside their thread, not critical.
+
 ---
 
 ## [0.36.0] — 2026-07-21
