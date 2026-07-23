@@ -6,10 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.1] — 2026-07-23
+
 ### Added
 
-- **Narrative-fidelity floor eval (seed).** Reader-anchored gold set (`narrative_fidelity_gold_seed.jsonl`, 11 fixtures with `critical_threads`) plus `NarrativeFidelityScorer` scoring `narrative_v2` for omission / corruption / invention against gold via two injected judges with false-pass-averse conservative merge. Substrate in `evals.extraction.fidelity` (`faithful_recall` / `distortion_rate` / `fabrication_rate` / `severe_omission_count`). `critical` threads are reader-anchored (main claim / actionable takeaway / understanding-shift).
-- **Human-calibrated fidelity grading rubric** (`DEFAULT_FIDELITY_PROMPT`): the conclusion test — dropped derivable scaffolding or illustrative examples stay `faithful`; a figure stripped of meaning-carrying context or a specific vaguened into an abstraction is `distorted`; a point collapsed into a generic restatement is `absent`. Pins grading so the floor no longer swings with judge strictness.
+- **Narrative-fidelity floor eval for `narrative_v2`.** Gold seed (`narrative_fidelity_gold_seed.jsonl`, 11 reader-anchored fixtures with `critical_threads`) plus `NarrativeFidelityScorer` scoring omission / corruption / invention against gold via two cross-family judges with conservative merge. Metrics in `evals.extraction.fidelity`: `faithful_recall` / `distortion_rate` / `fabrication_rate` / `severe_omission_count`.
+- **Human-calibrated fidelity rubric** (`DEFAULT_FIDELITY_PROMPT`): the conclusion test — dropped derivable scaffolding stays `faithful`, a figure stripped of meaning-carrying context is `distorted`, a point collapsed to a generic restatement is `absent`. Pins grading so the floor doesn't swing with judge strictness.
 
 ---
 

@@ -1,12 +1,14 @@
-"""Per-Topic-Card-field scorer — composes three judges from evals.core.judges.
+"""Extraction scorers — one per output the extractor produces.
 
-Each field is mapped to a single judge; the overall score is the unweighted
-mean of per-field scores. Callers inject `embed_fn` and `chat_fn` so the
-scorer carries no provider dependency — tests pass stubs; runtime callers
-wire OpenAI clients.
+- `TopicCardScorer` — per-field Topic Card scoring (exact / embedding / LLM
+  judge per field; overall = unweighted mean).
+- `NarrativeCoverageScorer` — per-gold-thread present/absent coverage over
+  `narrative_md` (coverage@present).
+- `NarrativeFidelityScorer` — three-metric fidelity floor over the narrative
+  threads (omission / corruption / invention).
 
-List-valued fields (`candidate_tie_backs`) are joined deterministically
-before judging — order matters and is preserved.
+Callers inject `embed_fn` / `chat_fn` so every scorer carries no provider
+dependency — tests pass stubs; runtime callers wire OpenAI clients.
 """
 
 from collections.abc import Callable
