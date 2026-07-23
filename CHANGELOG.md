@@ -8,7 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Narrative-fidelity floor eval (seed).** A reader-anchored gold set — `packages/evals/datasets/narrative_fidelity_gold_seed.jsonl`, 11 fixtures each with `critical_threads` — plus the three-metric primitives (`faithful_recall`, `distortion_rate`, `fabrication_rate`, `severe_omission_count`, and the two-juror `conservative_merge`) in `evals.extraction.fidelity`, scoring `narrative_v2` for omission / corruption / invention against gold. `critical` is reader-anchored (main claim, actionable takeaway, or understanding-shift); statistics stay anchors inside their thread, not critical.
+- **Narrative-fidelity floor eval (seed).** Reader-anchored gold set (`narrative_fidelity_gold_seed.jsonl`, 11 fixtures with `critical_threads`) plus `NarrativeFidelityScorer` scoring `narrative_v2` for omission / corruption / invention against gold via two injected judges with false-pass-averse conservative merge. Substrate in `evals.extraction.fidelity` (`faithful_recall` / `distortion_rate` / `fabrication_rate` / `severe_omission_count`). `critical` threads are reader-anchored (main claim / actionable takeaway / understanding-shift).
+- **Human-calibrated fidelity grading rubric** (`DEFAULT_FIDELITY_PROMPT`): the conclusion test — dropped derivable scaffolding or illustrative examples stay `faithful`; a figure stripped of meaning-carrying context or a specific vaguened into an abstraction is `distorted`; a point collapsed into a generic restatement is `absent`. Pins grading so the floor no longer swings with judge strictness.
 
 ---
 

@@ -66,6 +66,28 @@ def severe_omission_count(verdicts: list[str], critical_indices: list[int]) -> i
     return sum(v == "absent" for i, v in enumerate(verdicts) if i in crit)
 
 
+def merge_fidelity_verdicts(a: list[str], b: list[str]) -> list[str]:
+    """Fold two jurors' per-thread verdict lists to the per-thread lower fidelity.
+
+    Elementwise `conservative_merge` — a self-preferring juror can only add a
+    caught failure, never hide one (the false-pass-averse floor).
+    """
+    if len(a) != len(b):
+        raise ValueError(f"juror verdict lists differ in length: {len(a)} vs {len(b)}")
+    return [conservative_merge(x, y) for x, y in zip(a, b)]
+
+
+def merge_invented(a: list[bool], b: list[bool]) -> list[bool]:
+    """Fold two jurors' per-thread fabrication flags — invented if EITHER says so.
+
+    OR-merge keeps fabrication scoring false-pass-averse: one juror catching an
+    invention is enough to flag the thread.
+    """
+    if len(a) != len(b):
+        raise ValueError(f"juror fabrication lists differ in length: {len(a)} vs {len(b)}")
+    return [x or y for x, y in zip(a, b)]
+
+
 def conservative_merge(a: str, b: str) -> str:
     """Merge two jurors' per-thread fidelity verdicts, taking the lower.
 
