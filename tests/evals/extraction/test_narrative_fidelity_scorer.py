@@ -5,13 +5,17 @@ faithful_recall (omission) / distortion_rate (corruption) / fabrication_rate
 Judge calls are injected + stubbed — the scorer carries no provider dependency.
 """
 
+import pytest
 from evals.extraction.fidelity import (
     conservative_merge,
     distortion_rate,
     fabrication_rate,
     faithful_recall,
+    merge_fidelity_verdicts,
+    merge_invented,
     severe_omission_count,
 )
+from evals.extraction.scorers import NarrativeFidelityScorer
 
 
 def test_faithful_recall_counts_only_faithful():
@@ -53,6 +57,91 @@ def test_severe_omission_counts_absent_critical_threads_only():
     # critical = [1, 2, 3]; only index 2 is both critical AND absent → 1.
     # index 0 (absent, non-critical) = minor; index 3 (distorted, critical) = a distortion.
     assert severe_omission_count(verdicts, [1, 2, 3]) == 1
+
+
+def test_scorer_reports_faithful_recall_from_judge_verdicts():
+    """The scorer batches gold threads to an injected fidelity judge and turns
+    its per-thread verdicts into faithful_recall in the FieldScore."""
+
+    def fake_fidelity(_prompt: str) -> dict:
+        return {"0": "faithful", "1": "absent", "2": "faithful"}
+
+    scorer = NarrativeFidelityScorer(
+        fidelity_chat_fn=fake_fidelity,
+        fabrication_chat_fn=lambda _p: {},
+    )
+    score = scorer.score(
+        expected={"gold_threads": ["t0", "t1", "t2"], "critical_threads": [], "source": "src"},
+        actual={"narrative_md": "candidate", "threads": []},
+    )
+    assert score.value["faithful_recall"] == pytest.approx(2 / 3)
+
+
+def test_scorer_reports_distortion_rate_from_same_verdicts():
+    """distortion_rate comes from the same fidelity call — no extra judge round."""
+
+    def fake_fidelity(_prompt: str) -> dict:
+        return {"0": "faithful", "1": "distorted", "2": "absent"}
+
+    scorer = NarrativeFidelityScorer(
+        fidelity_chat_fn=fake_fidelity,
+        fabrication_chat_fn=lambda _p: {},
+    )
+    score = scorer.score(
+        expected={"gold_threads": ["a", "b", "c"], "critical_threads": [], "source": "s"},
+        actual={"narrative_md": "n", "threads": []},
+    )
+    # present = faithful + distorted = 2; distorted = 1 → 0.5
+    assert score.value["distortion_rate"] == 0.5
+
+
+def test_scorer_reports_severe_omissions_over_critical_threads():
+    """The tripwire input: only absent *critical* threads count as severe."""
+
+    def fake_fidelity(_prompt: str) -> dict:
+        return {"0": "absent", "1": "faithful", "2": "absent"}
+
+    scorer = NarrativeFidelityScorer(
+        fidelity_chat_fn=fake_fidelity,
+        fabrication_chat_fn=lambda _p: {},
+    )
+    score = scorer.score(
+        expected={"gold_threads": ["a", "b", "c"], "critical_threads": [0, 1], "source": "s"},
+        actual={"narrative_md": "n", "threads": []},
+    )
+    # critical = [0, 1]; absent-and-critical = index 0 only → 1
+    # (index 2 is absent but non-critical → minor, not severe)
+    assert score.value["severe_omissions"] == 1
+
+
+def test_scorer_reports_fabrication_rate_from_fabrication_judge():
+    """A second judge flags produced threads not supported by the source."""
+
+    def fake_fabrication(_prompt: str) -> dict:
+        return {"0": False, "1": True, "2": False, "3": False}
+
+    scorer = NarrativeFidelityScorer(
+        fidelity_chat_fn=lambda _p: {"0": "faithful"},
+        fabrication_chat_fn=fake_fabrication,
+    )
+    score = scorer.score(
+        expected={"gold_threads": ["g"], "critical_threads": [], "source": "the source text"},
+        actual={"narrative_md": "n", "threads": ["p0", "p1", "p2", "p3"]},
+    )
+    # 1 invented of 4 produced → 0.25
+    assert score.value["fabrication_rate"] == 0.25
+
+
+def test_merge_fidelity_verdicts_elementwise_conservative():
+    """Two jurors' verdict lists fold to the per-thread lower fidelity."""
+    a = ["faithful", "faithful", "distorted"]
+    b = ["distorted", "faithful", "faithful"]
+    assert merge_fidelity_verdicts(a, b) == ["distorted", "faithful", "distorted"]
+
+
+def test_merge_invented_flags_when_either_juror_does():
+    """Fabrication is false-pass-averse: either juror flagging invention counts."""
+    assert merge_invented([False, True, False], [False, False, True]) == [False, True, True]
 
 
 def test_conservative_merge_takes_lower_fidelity_on_disagreement():
