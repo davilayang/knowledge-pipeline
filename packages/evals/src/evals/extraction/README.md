@@ -2,12 +2,13 @@
 
 First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via `run_benchmark` (the thin extraction wrapper over `evals.core.run_and_report`).
 
-## Two scored surfaces
+## Three scored surfaces
 
 | What it scores | Scorer | How it's run |
 |---|---|---|
 | **Topic Card** field quality vs a v5 baseline | `TopicCardScorer` | workbench notebooks (`run_variants`) / `run_benchmark` — no CLI |
 | **Narrative coverage** — does `narrative_md` cover the gold follow-up threads? | `NarrativeCoverageScorer` | `eval-narrative-coverage` CLI |
+| **Narrative fidelity** — omission / corruption / invention vs gold threads | `NarrativeFidelityScorer` (substrate in `evals.extraction.fidelity`) | seed stage — scorer + gold exist, not wired into a CLI or `evals.extraction.__init__` exports yet |
 
 ### Re-running narrative coverage
 
@@ -22,6 +23,17 @@ set -a && source .env && set +a && \
 - `--runs N` (default 3) — the LLM judge is noisy at n=7; the CLI reports the **mean + observed range** over N full re-runs. `--dry-run` estimates cost first.
 - Both prompts are loaded with design-notes headers stripped (`strip_design_notes`, matches prod). Output ends with **Notion-ready rows** — log the mean to the Eval Runs DB (see [`../../README.md`](../../README.md) → "Results are two-tier"). Detailed per-run JSON persists under `data/eval_runs/` (gitignored).
 - The gold lives at [`datasets/narrative_coverage_gold.jsonl`](../../datasets/README.md#narrative_coverage_goldjsonl); the single-fixture hit/miss inspector is the `ab_narrative_coverage__content` workbench notebook.
+
+### Narrative fidelity (seed, no CLI yet)
+
+`NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores `narrative_v2`'s `narrative_md`
+against gold threads for omission (`faithful_recall`), corruption (`distortion_rate`), and
+invention (`fabrication_rate`), via two injected judges (`DEFAULT_FIDELITY_PROMPT` /
+`DEFAULT_FABRICATION_PROMPT`) merged conservatively (false-pass-averse) by
+`evals.extraction.fidelity.merge_fidelity_verdicts` / `merge_invented`. The gold lives at
+[`datasets/narrative_fidelity_gold_seed.jsonl`](../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
+(11 fixtures). This is substrate only — no `eval-*` CLI entry point and not yet re-exported from
+`evals.extraction.__init__` — until a runner lands.
 
 ## Public API
 

@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.1] — 2026-07-23
+
+### Added
+
+- **Narrative-fidelity floor eval for `narrative_v2`.** Gold seed (`narrative_fidelity_gold_seed.jsonl`, 11 reader-anchored fixtures with `critical_threads`) plus `NarrativeFidelityScorer` scoring omission / corruption / invention against gold via two cross-family judges with conservative merge. Metrics in `evals.extraction.fidelity`: `faithful_recall` / `distortion_rate` / `fabrication_rate` / `severe_omission_count`.
+- **Human-calibrated fidelity rubric** (`DEFAULT_FIDELITY_PROMPT`): the conclusion test — dropped derivable scaffolding stays `faithful`, a figure stripped of meaning-carrying context is `distorted`, a point collapsed to a generic restatement is `absent`. Pins grading so the floor doesn't swing with judge strictness.
+
+---
+
 ## [0.36.0] — 2026-07-21
 
 ### Changed

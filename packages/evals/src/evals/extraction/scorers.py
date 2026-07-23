@@ -1,12 +1,14 @@
-"""Per-Topic-Card-field scorer — composes three judges from evals.core.judges.
+"""Extraction scorers — one per output the extractor produces.
 
-Each field is mapped to a single judge; the overall score is the unweighted
-mean of per-field scores. Callers inject `embed_fn` and `chat_fn` so the
-scorer carries no provider dependency — tests pass stubs; runtime callers
-wire OpenAI clients.
+- `TopicCardScorer` — per-field Topic Card scoring (exact / embedding / LLM
+  judge per field; overall = unweighted mean).
+- `NarrativeCoverageScorer` — per-gold-thread present/absent coverage over
+  `narrative_md` (coverage@present).
+- `NarrativeFidelityScorer` — three-metric fidelity floor over the narrative
+  threads (omission / corruption / invention).
 
-List-valued fields (`candidate_tie_backs`) are joined deterministically
-before judging — order matters and is preserved.
+Callers inject `embed_fn` / `chat_fn` so every scorer carries no provider
+dependency — tests pass stubs; runtime callers wire OpenAI clients.
 """
 
 from collections.abc import Callable
@@ -14,6 +16,12 @@ from typing import TYPE_CHECKING, Any
 
 from evals.core import FieldScore
 from evals.core.judges import EmbeddingSimilarityJudge, ExactMatchJudge, LLMJudge
+from evals.extraction.fidelity import (
+    distortion_rate,
+    fabrication_rate,
+    faithful_recall,
+    severe_omission_count,
+)
 
 if TYPE_CHECKING:
     from evals.core import FixtureRun
@@ -180,6 +188,158 @@ class NarrativeCoverageScorer:
                 "raw": raw,
             },
         )
+
+
+DEFAULT_FIDELITY_PROMPT = """\
+You are a fidelity judge for a knowledge-extraction eval. Below is a CANDIDATE
+summary and a numbered list of GOLD reference points from the same source. For
+each gold point, decide how the candidate represents it. Use these definitions —
+they are calibrated against human rulings, so apply them literally rather than
+your own instinct for "strict" vs "lenient":
+
+- "faithful": the point's claim AND its meaning-bearing specifics are present.
+  STILL faithful when the candidate drops DERIVABLE scaffolding (a sub-value you
+  could reconstruct from what's kept — e.g. "3 posts and 8 votes" behind the
+  ratio 0.375), drops an ILLUSTRATIVE example while fully stating the claim it
+  illustrated, or compresses wording while the essence survives.
+- "distorted": what the candidate KEPT is corrupted — a wrong/flipped figure or
+  attribution; a number stripped of the context that carries its meaning (e.g.
+  "30/30 confirmed" without the denominator/precision that shows it's rare, not
+  universal); a specific vaguened into an abstraction (e.g. "row-level security"
+  → "security policies", or a "only one field required" point diluted into a
+  multi-field structure); or false completeness (a closed count when the source
+  listed more).
+- "absent": the point is missing, too vague to count, OR reduced to a generic
+  restatement that loses its distinctive specifics (e.g. a concrete step-by-step
+  walkthrough compressed to "navigates the files"). Test: is what remains still
+  THIS specific point, or has it collapsed into a restatement of a more general
+  claim? Collapsed → absent.
+
+If a gold point enumerates a LIST, its members ARE the information: a member the
+candidate simply left out lowers fidelity toward "absent" (an omission), NOT
+"distorted" — reserve "distorted" for a member that's vaguened, or a partial list
+the candidate implies is complete.
+
+CANDIDATE SUMMARY:
+{narrative}
+
+GOLD REFERENCE POINTS ({n}):
+{threads}
+
+Return a JSON object mapping each point's number (as a string) to exactly one of
+"faithful", "distorted", or "absent".
+"""
+
+
+DEFAULT_FABRICATION_PROMPT = """\
+You are a strict fabrication judge. Below is the SOURCE text and a numbered list
+of PRODUCED threads that an extractor claims are in it. For each produced thread,
+decide whether its specific content — a claim, figure, entity, or causal link —
+is actually supported by the SOURCE. Flag `true` only when the thread asserts
+something the source does not contain (an invention). Mild bridging that the
+source plainly implies is `false` (not fabricated).
+
+SOURCE:
+{source}
+
+PRODUCED THREADS ({n}):
+{threads}
+
+Return a JSON object mapping each thread's number (as a string) to a boolean:
+`true` if fabricated (not in the source), `false` if supported.
+"""
+
+
+class NarrativeFidelityScorer:
+    """Three-metric fidelity floor over `narrative_v2`'s threads.
+
+    Reads `gold_threads` + `critical_threads` and scores omission
+    (`faithful_recall`), corruption (`distortion_rate`), and invention
+    (`fabrication_rate`) via two injected judges — a fidelity judge (gold thread
+    → faithful/distorted/absent against the candidate) and a fabrication judge
+    (produced thread → invented-bool against the source). Both `chat_fn`s are
+    injected so the scorer carries no provider dependency (tests pass stubs).
+    """
+
+    name = "NarrativeFidelityScorer"
+
+    def __init__(
+        self,
+        *,
+        fidelity_chat_fn: Callable[[str], dict],
+        fabrication_chat_fn: Callable[[str], dict],
+        fidelity_prompt_template: str = DEFAULT_FIDELITY_PROMPT,
+        fabrication_prompt_template: str = DEFAULT_FABRICATION_PROMPT,
+    ) -> None:
+        self._fidelity_chat = fidelity_chat_fn
+        self._fabrication_chat = fabrication_chat_fn
+        self._fidelity_tmpl = fidelity_prompt_template
+        self._fabrication_tmpl = fabrication_prompt_template
+
+    def score(self, *, expected: dict[str, Any], actual: dict[str, Any]) -> FieldScore:
+        threads: list[str] = list(expected.get("gold_threads") or [])
+        narrative = actual.get("narrative_md", "") or ""
+        if not threads:
+            return FieldScore(value={"faithful_recall": 0.0}, metadata={"per_thread": {}})
+        numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(threads))
+        prompt = self._fidelity_tmpl.format(narrative=narrative, threads=numbered, n=len(threads))
+        raw = self._fidelity_chat(prompt)
+        verdicts = [_coerce_fidelity(raw.get(str(i), raw.get(i))) for i in range(len(threads))]
+        critical = list(expected.get("critical_threads") or [])
+        produced: list[str] = list(actual.get("threads") or [])
+        invented = self._judge_fabrication(
+            source=expected.get("source", "") or "", produced=produced
+        )
+        return FieldScore(
+            value={
+                "faithful_recall": faithful_recall(verdicts),
+                "distortion_rate": distortion_rate(verdicts),
+                "fabrication_rate": fabrication_rate(invented),
+                "severe_omissions": float(severe_omission_count(verdicts, critical)),
+            },
+            metadata={
+                "per_thread": {threads[i]: verdicts[i] for i in range(len(threads))},
+                "raw": raw,
+                "invented": {produced[i]: invented[i] for i in range(len(produced))},
+            },
+        )
+
+    def _judge_fabrication(self, *, source: str, produced: list[str]) -> list[bool]:
+        """Flag each produced thread as invented (True) if unsupported by source."""
+        if not produced:
+            return []
+        numbered = "\n".join(f"{i}. {t}" for i, t in enumerate(produced))
+        prompt = self._fabrication_tmpl.format(source=source, threads=numbered, n=len(produced))
+        raw = self._fabrication_chat(prompt)
+        return [_coerce_invented(raw.get(str(i), raw.get(i))) for i in range(len(produced))]
+
+
+def _coerce_fidelity(v: Any) -> str:
+    """Normalise a judge's per-thread verdict to faithful/distorted/absent.
+
+    Unknown or missing verdicts default to `absent` — a false-pass-averse floor
+    never credits fidelity the judge didn't clearly assert.
+    """
+    if isinstance(v, str):
+        s = v.strip().lower()
+        if s in ("faithful", "distorted", "absent"):
+            return s
+    return "absent"
+
+
+def _coerce_invented(v: Any) -> bool:
+    """Coerce a fabrication judge's per-thread verdict to an invented bool.
+
+    Unknown/missing defaults to `False` (not fabricated) — fabrication is judged
+    against the source, and absent evidence of invention isn't invention.
+    """
+    if isinstance(v, bool):
+        return v
+    if isinstance(v, (int, float)):
+        return v >= 0.5
+    if isinstance(v, str):
+        return v.strip().lower() in {"1", "true", "yes", "fabricated", "invented"}
+    return False
 
 
 def _is_present(v: Any) -> bool:

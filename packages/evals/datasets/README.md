@@ -175,6 +175,26 @@ when the narrative prompt changes enough that the gold's anchors no longer repre
 Re-run on any model bump (gpt-4.1-mini → next) as a regression floor — confirm the shipped prompt
 still scores ≥ the prior one per shape.
 
+## `narrative_fidelity_gold_seed.jsonl`
+
+Gold for the **narrative-fidelity** scorer (`evals.extraction.scorers.NarrativeFidelityScorer`,
+substrate in `evals.extraction.fidelity`) — scores `narrative_v2`'s `narrative_md` for omission
+(`faithful_recall`), corruption (`distortion_rate`), and invention (`fabrication_rate`) against
+gold threads, via two injected judges merged conservatively (false-pass-averse). Header-less;
+rows are `{content_id, content_type, content_shape_struct, slice, stress_axis, source_char_count,
+gold_threads, critical_threads, schema_version, gold_version, _meta}`. `critical_threads` (indices
+into `gold_threads`) are reader-anchored — main claim / actionable takeaway / understanding-shift
+— and drive `severe_omission_count`, the tripwire gate.
+
+### seed-2026-07-23 — bootstrap
+
+**11 fixtures, 298 gold threads (39 critical)**, split `representative` (5) vs `stress` (6). Stress
+fixtures carry a `stress_axis` tag: `opportunity_poor` (2), `multi_speaker` (2), `caveat_heavy` (2).
+Content types: article (5), youtube (4), arxiv (1), facebook (1).
+
+No CLI yet — this is substrate only (scorer + gold), not wired into a runner or `pyproject.toml`
+script.
+
 ## `extract_claims_eval.jsonl`
 
 Pinned cohort for the extract-claims producer eval (`evals.wiki.claims`).
