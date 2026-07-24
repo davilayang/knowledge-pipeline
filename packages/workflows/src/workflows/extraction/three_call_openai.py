@@ -57,6 +57,20 @@ _READER_THREADS_FOLD = (
 )
 
 
+def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
+    """Token-budget kwargs for the chat/parse calls, per model family.
+
+    gpt-5-family are reasoning models: they reject `max_tokens` and require
+    `max_completion_tokens`; `reasoning_effort="minimal"` keeps them from
+    spending the budget on hidden reasoning — extraction wants coverage of the
+    source, not deliberation. Non-reasoning models (gpt-4.1/4o) keep the classic
+    `max_tokens` and reject `reasoning_effort`.
+    """
+    if model.startswith("gpt-5"):
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": "minimal"}
+    return {"max_tokens": max_tokens}
+
+
 def _sha(text: str) -> str:
     return hashlib.sha256(text.encode()).hexdigest()
 
@@ -123,6 +137,7 @@ class ThreeCallOpenAIExtractor:
             shape: _expand(bundle) for shape, bundle in prompt_sets.items()
         }
         self._max_tokens = max_tokens
+        self._token_kwargs = _token_kwargs(model, max_tokens)
 
     @property
     def model(self) -> str:
@@ -246,7 +261,7 @@ class ThreeCallOpenAIExtractor:
         t0 = time.monotonic()
         resp = await self._client.chat.completions.create(
             model=self._model,
-            max_tokens=self._max_tokens,
+            **self._token_kwargs,
             messages=[
                 {"role": "system", "content": prompt_text},
                 {
@@ -293,7 +308,7 @@ class ThreeCallOpenAIExtractor:
         t0 = time.monotonic()
         resp = await self._client.beta.chat.completions.parse(
             model=self._model,
-            max_tokens=self._max_tokens,
+            **self._token_kwargs,
             messages=[
                 {"role": "system", "content": prompt_text},
                 {"role": "user", "content": user_content},

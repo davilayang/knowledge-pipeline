@@ -170,6 +170,53 @@ def test_extract_passes_content_type_tag_in_user_message(extractor):
     assert "raw content" in user_msg
 
 
+def _wire_client_anykwargs(topic_obj, followups_obj):
+    """Mock client whose create/parse accept ANY kwargs (return_value, no
+    fixed signature) — so a call can send either max_tokens or
+    max_completion_tokens without the mock rejecting the keyword."""
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_create_resp("body"))
+    client.close = AsyncMock()
+
+    async def _parse(**kwargs):
+        return _parse_resp(topic_obj if kwargs["response_format"] is TopicCard else followups_obj)
+
+    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    return client
+
+
+def test_gpt5_model_sends_reasoning_params_not_max_tokens():
+    """gpt-5-family are reasoning models: they reject `max_tokens` and need
+    `max_completion_tokens` + `reasoning_effort`. Extraction wants coverage,
+    not deliberation, so effort is pinned to `minimal`."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t", model="gpt-5-mini", prompt_sets={"unknown": _bundle()}, max_tokens=4096
+    )
+    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        ex.extract(content="raw", content_type="Article", content_shape="unknown")
+    narr = client.chat.completions.create.await_args.kwargs
+    assert narr["max_completion_tokens"] == 4096
+    assert narr["reasoning_effort"] == "minimal"
+    assert "max_tokens" not in narr
+    for parse_call in client.beta.chat.completions.parse.await_args_list:
+        assert parse_call.kwargs["max_completion_tokens"] == 4096
+        assert parse_call.kwargs["reasoning_effort"] == "minimal"
+        assert "max_tokens" not in parse_call.kwargs
+
+
+def test_non_reasoning_model_sends_max_tokens(extractor):
+    """gpt-4.1-family keep the classic `max_tokens` param (they reject
+    `reasoning_effort`)."""
+    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    with patch.object(extractor, "_client", client):
+        extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    narr = client.chat.completions.create.await_args.kwargs
+    assert narr["max_tokens"] == 2048  # fixture uses the constructor default
+    assert "max_completion_tokens" not in narr
+    assert "reasoning_effort" not in narr
+
+
 def test_extract_raises_when_topic_card_call_fails(extractor):
     """asyncio.gather(return_exceptions=True) catches the exception; wrapper
     re-raises so Dagster retries the asset (we don't ship partial extractions)."""
