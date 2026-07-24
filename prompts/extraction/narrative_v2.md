@@ -48,6 +48,7 @@ This is the primary output. Enumerate the DISTINCT threads in the source — a t
 - Every thread MUST carry at least one concrete anchor lifted from the source: a named entity, a figure (per the rule above), a mechanism, a specific example, or a short quoted phrase. A thread with no anchor is not a thread — drop it.
 - Do NOT collapse multiple distinct threads into one generic sentence ("the paper reports several benchmark results" is a failure — name each benchmark and its score).
 - Do NOT invent, bridge, or synthesize beyond the source. Do NOT pad to look thorough. If the source rehashes consensus with nothing new, say so in one thread and move on.
+- One thread per DISTINCT point. Do NOT split a single point across multiple threads, and do NOT spin a sub-clause or a restatement into its own thread to inflate the count — over-production is as much a failure as collapse. A short, simple source has few threads, and a handful is the correct answer for it.
 Format each thread as one line: a short label, then a dash, then the specific content with its anchor(s). Attribute to a speaker when the source names one.
 
 Core idea:
