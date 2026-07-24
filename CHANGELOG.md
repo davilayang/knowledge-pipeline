@@ -6,10 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.2] — 2026-07-24
+
 ### Changed
 
-- **Extraction now supports gpt-5-family reasoning models.** `ThreeCallOpenAIExtractor` sends `max_completion_tokens` + `reasoning_effort="minimal"` for `gpt-5*` models (they reject `max_tokens`) and keeps `max_tokens` for gpt-4.1/4o. Enables setting `EXTRACT_QUEUE_MODEL=gpt-5-mini`, which lifts narrative faithful_recall +0.09–0.12 over gpt-4.1-mini on the narrative-fidelity floor with no distortion cost. Implementation: `_token_kwargs` in `three_call_openai.py`.
-- **`narrative_v2` extraction prompt discourages over-splitting.** Added a "one thread per distinct point" rule so a short source yields few threads instead of one point inflated across many — curbs the over-production gpt-5-mini shows on simple content.
+- **Extraction supports gpt-5-family reasoning models.** `ThreeCallOpenAIExtractor` sends `max_completion_tokens` + `reasoning_effort="minimal"` for `gpt-5*` models (which reject `max_tokens`), keeping `max_tokens` for gpt-4.1/4o. Enables `EXTRACT_QUEUE_MODEL=gpt-5-mini`, which lifts narrative faithful_recall +0.09–0.12 on the narrative-fidelity floor. Implementation: `_token_kwargs` in `three_call_openai.py`.
+- **`narrative_v2` extraction prompt discourages over-splitting.** A "one thread per distinct point" rule so a short source yields few threads instead of one point inflated across many — curbs the over-production gpt-5-mini shows on simple content.
 
 ---
 
