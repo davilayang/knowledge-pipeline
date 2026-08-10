@@ -25,7 +25,17 @@ def step_failure_message(context: Any) -> str | None:
         description = getattr(getattr(data, "user_failure_data", None), "description", None)
         if description:
             return description
-        message = getattr(getattr(data, "error", None), "message", None)
+        # Dagster wraps op exceptions in DagsterExecutionStepExecutionError
+        # ("Error occurred while executing op ..."); the real exception is
+        # deeper in the `cause` chain. Take the innermost link that actually
+        # carries a message, so a bare/empty root doesn't hide its parent.
+        error = getattr(data, "error", None)
+        message = None
+        while error is not None:
+            candidate = (getattr(error, "message", None) or "").strip()
+            if candidate:
+                message = candidate
+            error = getattr(error, "cause", None)
         if message:
             return message
 

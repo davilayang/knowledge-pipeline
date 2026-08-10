@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Notion queue rows show the real failure, not Dagster's wrapper.** A failed row's Error field showed `DagsterExecutionStepExecutionError: Error occurred while executing op "..."`, hiding the actual exception. `step_failure_message` now walks the step error's `cause` chain and reports the innermost link that carries a message (e.g. `openai.BadRequestError: ...`); an explicit `dg.Failure(description=...)` still takes precedence.
+
 ---
 
 ## [0.36.2] — 2026-07-24
