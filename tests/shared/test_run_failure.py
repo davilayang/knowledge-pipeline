@@ -41,6 +41,39 @@ def test_step_failure_message_falls_back_to_error_message_when_no_user_failure_d
     assert step_failure_message(context) == "KeyError: 'content_type'"
 
 
+def test_step_failure_message_unwraps_dagster_wrapper_to_root_cause():
+    """Dagster wraps op exceptions in DagsterExecutionStepExecutionError; the
+    Notion row should show the underlying exception, not the wrapper."""
+    root = SimpleNamespace(message="openai.RateLimitError: quota exceeded\n", cause=None)
+    wrapper = SimpleNamespace(
+        message=(
+            "dagster._core.errors.DagsterExecutionStepExecutionError: "
+            'Error occurred while executing op "extract_reading_card"\n'
+        ),
+        cause=root,
+    )
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        SimpleNamespace(event_specific_data=SimpleNamespace(user_failure_data=None, error=wrapper))
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+    assert step_failure_message(context) == "openai.RateLimitError: quota exceeded"
+
+
+def test_step_failure_message_skips_message_less_root_cause():
+    """A root cause with no message (e.g. a bare httpx timeout serialized empty)
+    must not hide the informative link above it."""
+    root = SimpleNamespace(message="   ", cause=None)
+    middle = SimpleNamespace(message="httpx.ReadTimeout: fetching arxiv.org\n", cause=root)
+    wrapper = SimpleNamespace(message="DagsterExecutionStepExecutionError: ...", cause=middle)
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        SimpleNamespace(event_specific_data=SimpleNamespace(user_failure_data=None, error=wrapper))
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+    assert step_failure_message(context) == "httpx.ReadTimeout: fetching arxiv.org"
+
+
 def test_step_failure_message_falls_back_to_run_failure_when_no_step_events():
     context = MagicMock()
     context.get_step_failure_events.return_value = []

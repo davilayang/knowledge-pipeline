@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.3] — 2026-08-10
+
+### Changed
+
+- **Failed Notion queue rows now name the real exception.** The Error field was showing Dagster's `DagsterExecutionStepExecutionError` wrapper; `step_failure_message` (`defs/shared/run_failure.py`) now walks the step error's `cause` chain and reports the innermost link carrying a message. An explicit `dg.Failure(description=...)` still takes precedence.
+
+---
+
 ## [0.36.2] — 2026-07-24
 
 ### Changed
