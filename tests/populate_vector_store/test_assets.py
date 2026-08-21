@@ -39,7 +39,15 @@ class _StubCollection:
 
     def get(self, where=None, include=None):
         self.get_calls.append({"where": where, "include": include})
-        in_ids = (where or {}).get("content_id", {}).get("$in", [])
+        where = where or {}
+        if "source_ref" in where:
+            matched = [
+                cid
+                for cid in self._ids
+                if self._metas.get(cid, {}).get("source_ref") == where["source_ref"]
+            ]
+            return {"ids": matched}
+        in_ids = where.get("content_id", {}).get("$in", [])
         matched = [cid for cid in self._ids if any(cid.startswith(f"{i}::chunk-") for i in in_ids)]
         result = {"ids": matched}
         if include and "metadatas" in include:
@@ -249,6 +257,32 @@ def test_pending_reports_how_many_corpus_rows_were_skipped_as_unfetched():
     assert result.value["raw_store"] == ["real-1"]
     assert result.metadata["total_by_source"].data["raw_store"] == 3
     assert result.metadata["skipped_unfetched"].data["raw_store"] == 2
+
+
+def test_pending_relists_an_emptied_note_only_until_its_stale_chunks_are_gone():
+    """A local file's id hashes its content, so emptying an indexed note mints a
+    NEW id — and the chunks written under the OLD id are reachable only by
+    source_ref. The zero-chunk branch of the ingest step is the repo's only
+    purge path, so the emptied file must reach it at least once or `recall`
+    keeps serving text the user deleted. It must also stop being selected
+    afterwards, or the lane livelocks. So: listed while stale chunks remain
+    under its source_ref, dropped once they are gone."""
+    emptied = _item("note-emptied", text="")
+    collection = _StubCollection(
+        existing_ids=["note-old-hash::chunk-0"],
+        existing_metas={"note-old-hash::chunk-0": {"source_ref": emptied.source_ref}},
+    )
+    vector_store = _StubVectorStore({"notes": collection})
+    sources = _StubSources(notes=_StubSource([emptied]))
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+
+    with_stale = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+    assert with_stale.value["notes"] == ["note-emptied"]
+
+    # The ingest step's source_ref delete has now run; nothing is left to purge.
+    purged = _StubVectorStore({"notes": _StubCollection()})
+    after_purge = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=purged)
+    assert after_purge.value["notes"] == []
 
 
 def test_pending_in_batching_caps_at_500_ids():

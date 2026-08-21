@@ -24,17 +24,24 @@ class LocalFileSource:
             items.append(self._to_item(path))
         return items
 
-    def get_item_ids(self) -> list[str]:
-        # IDs derive from sha256(filename:content), so enumerating them still
-        # requires reading each file. Cheaper than building IngestItems but not
-        # cheap. Files with no body once frontmatter is stripped are skipped:
-        # they chunk to nothing, so the vector-store job writes no vector for
-        # them, and since presence in the vector store is that job's only
-        # "already done" signal it would re-select them every tick forever.
+    def get_item_ids(self, with_body: bool = False) -> list[str]:
+        """IDs of every markdown file in the inbox.
+
+        IDs derive from sha256(filename:content), so enumerating them still
+        requires reading each file. Cheaper than building IngestItems but not
+        cheap.
+
+        with_body=True drops files with no body once frontmatter is stripped.
+        Those chunk to nothing, so a consumer that treats "wrote a chunk" as
+        "done" will re-select them forever. It is opt-in rather than the
+        default because a body-less file still needs to be enumerable at least
+        once — that is how an emptied note reaches the code that purges the
+        chunks it wrote while it still had a body.
+        """
         if not self._inbox_dir.exists():
             return []
         items = (self._to_item(p) for p in sorted(self._inbox_dir.glob("*.md")))
-        return [i.item_id for i in items if i.text.strip()]
+        return [i.item_id for i in items if i.text.strip() or not with_body]
 
     def get_item(self, item_id: str) -> IngestItem | None:
         if not self._inbox_dir.exists():

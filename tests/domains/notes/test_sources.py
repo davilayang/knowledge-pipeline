@@ -80,28 +80,36 @@ class TestLocalFileSource:
         assert id1 == id2
 
 
-class TestGetItemIdsSkipsBodylessFiles:
-    """A markdown file whose body is empty once frontmatter is stripped chunks to
-    nothing, so the vector-store job writes no vector for it — and since presence
-    in the vector store is that job's only "already done" signal, it re-selects
-    the file every tick forever. One such note file was doing exactly that in
-    production, leaving the notes lane permanently one item short of complete."""
+class TestGetItemIdsBodyFilter:
+    """`with_body` mirrors RawStoreSource's parameter of the same name. It is
+    opt-in rather than the default because a body-less file still has to be
+    enumerable: emptying an indexed note must reach the ingest step at least
+    once, so the zero-chunk branch there can purge the chunks the file wrote
+    while it still had a body. The caller decides which it needs."""
 
-    def test_frontmatter_only_file_is_not_listed(self, tmp_path: Path):
+    def test_lists_bodyless_files_by_default(self, tmp_path: Path):
         inbox = tmp_path / "inbox"
         inbox.mkdir()
         (inbox / "real.md").write_text("---\ntitle: Real\n---\n\nActual body text.")
-        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\ndate: 2026-04-01\n---\n")
+        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\n---\n")
+
+        assert len(LocalFileSource(inbox_dir=inbox).get_item_ids()) == 2
+
+    def test_with_body_drops_frontmatter_only_file(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "real.md").write_text("---\ntitle: Real\n---\n\nActual body text.")
+        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\n---\n")
 
         source = LocalFileSource(inbox_dir=inbox)
-        ids = source.get_item_ids()
+        ids = source.get_item_ids(with_body=True)
 
         assert len(ids) == 1
         assert source.get_item(ids[0]).title == "Real"
 
-    def test_blank_file_is_not_listed(self, tmp_path: Path):
+    def test_with_body_drops_blank_file(self, tmp_path: Path):
         inbox = tmp_path / "inbox"
         inbox.mkdir()
         (inbox / "blank.md").write_text("   \n\n\t\n")
 
-        assert LocalFileSource(inbox_dir=inbox).get_item_ids() == []
+        assert LocalFileSource(inbox_dir=inbox).get_item_ids(with_body=True) == []
