@@ -39,7 +39,15 @@ class _StubCollection:
 
     def get(self, where=None, include=None):
         self.get_calls.append({"where": where, "include": include})
-        in_ids = (where or {}).get("content_id", {}).get("$in", [])
+        where = where or {}
+        if "source_ref" in where:
+            matched = [
+                cid
+                for cid in self._ids
+                if self._metas.get(cid, {}).get("source_ref") == where["source_ref"]
+            ]
+            return {"ids": matched}
+        in_ids = where.get("content_id", {}).get("$in", [])
         matched = [cid for cid in self._ids if any(cid.startswith(f"{i}::chunk-") for i in in_ids)]
         result = {"ids": matched}
         if include and "metadatas" in include:
@@ -128,8 +136,12 @@ class _StubSource:
         self._by_id = {i.item_id: i for i in self._items}
         self._resolve_index = resolve_index or {}
 
-    def get_item_ids(self) -> list[str]:
-        return [i.item_id for i in self._items]
+    def get_item_ids(self, with_body: bool = False) -> list[str]:
+        # `with_body` mirrors RawStoreSource, the only real source that takes it.
+        # An item with empty text stands for a corpus row whose body was never
+        # fetched (a listing stub).
+        items = [i for i in self._items if i.text] if with_body else self._items
+        return [i.item_id for i in items]
 
     def get_item(self, iid):
         return self._by_id.get(iid)
@@ -203,6 +215,74 @@ def test_pending_returns_only_unindexed_per_source():
     # Other sources are empty (their stubs returned no items).
     assert result.value["notes"] == []
     assert result.value["sessions"] == []
+
+
+def test_pending_skips_corpus_rows_whose_body_was_never_fetched():
+    """A corpus row with no body chunks to nothing, so the ingest step writes no
+    vector for it — which means the next tick's already-indexed check cannot see
+    it and picks it again. With enough body-less rows ahead of the real articles
+    the lane livelocks: in production 870 of 1,403 corpus rows were unfetched
+    listing stubs, all 50 of the first pending ids were stubs, and the contents
+    collection sat at 14 documents tick after tick while `recall` had 519
+    fetched articles it could not retrieve."""
+    items = [
+        _item("stub-1", text=""),
+        _item("stub-2", text=""),
+        _item("real-1"),
+        _item("stub-3", text=""),
+    ]
+    vector_store = _StubVectorStore({"contents": _StubCollection()})
+    sources = _StubSources(raw_store=_StubSource(items))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    with patch.object(pvs_assets, "MAX_PER_TICK_DEFAULT", 2):
+        result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+
+    assert result.value["raw_store"] == ["real-1"]
+
+
+def test_pending_reports_how_many_corpus_rows_were_skipped_as_unfetched():
+    """`total_by_source` must keep counting every corpus row, and the rows the
+    body filter skipped must be reported separately. Letting the total shrink to
+    only-fetched rows would erase the exact signal that diagnosed this incident:
+    a dashboard reading `raw_store=0/533` looks complete while hundreds of rows
+    sit unfetched behind it."""
+    items = [_item("real-1"), _item("stub-1", text=""), _item("stub-2", text="")]
+    vector_store = _StubVectorStore({"contents": _StubCollection()})
+    sources = _StubSources(raw_store=_StubSource(items))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+
+    assert result.value["raw_store"] == ["real-1"]
+    assert result.metadata["total_by_source"].data["raw_store"] == 3
+    assert result.metadata["skipped_unfetched"].data["raw_store"] == 2
+
+
+def test_pending_relists_an_emptied_note_only_until_its_stale_chunks_are_gone():
+    """A local file's id hashes its content, so emptying an indexed note mints a
+    NEW id — and the chunks written under the OLD id are reachable only by
+    source_ref. The zero-chunk branch of the ingest step is the repo's only
+    purge path, so the emptied file must reach it at least once or `recall`
+    keeps serving text the user deleted. It must also stop being selected
+    afterwards, or the lane livelocks. So: listed while stale chunks remain
+    under its source_ref, dropped once they are gone."""
+    emptied = _item("note-emptied", text="")
+    collection = _StubCollection(
+        existing_ids=["note-old-hash::chunk-0"],
+        existing_metas={"note-old-hash::chunk-0": {"source_ref": emptied.source_ref}},
+    )
+    vector_store = _StubVectorStore({"notes": collection})
+    sources = _StubSources(notes=_StubSource([emptied]))
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+
+    with_stale = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+    assert with_stale.value["notes"] == ["note-emptied"]
+
+    # The ingest step's source_ref delete has now run; nothing is left to purge.
+    purged = _StubVectorStore({"notes": _StubCollection()})
+    after_purge = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=purged)
+    assert after_purge.value["notes"] == []
 
 
 def test_pending_in_batching_caps_at_500_ids():
@@ -296,6 +376,35 @@ def _fake_embedder_class(dims: int = 1536):
             return embed_batch(texts)
 
     return _FakeEmbedder, embed_batch
+
+
+def test_zero_chunk_item_leaves_no_trace_in_the_collection():
+    """The causal half of the livelock, pinned: an item whose text chunks to
+    nothing is reported as successfully ingested but writes NO vector. Since
+    `pending` infers "already done" purely from presence in the collection, such
+    an item is invisible to that check and is re-selected on every subsequent
+    tick. The lanes avoid this today by excluding body-less items at discovery
+    (RawStoreSource's `with_body`, SessionsSource's dialogue predicate,
+    LocalFileSource's body check); this test fails if the no-trace behaviour
+    those filters compensate for ever changes."""
+    collection = _StubCollection()
+    vector_store = _StubVectorStore({"contents": collection})
+    sources = _StubSources(raw_store=_StubSource([_item("empty", text="")]))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    fake_embedder, embed_batch = _fake_embedder_class()
+    with patch.object(pvs_assets, "OpenAIEmbedder", fake_embedder):
+        result = contents.op.compute_fn.decorated_fn(
+            ctx, pending={"raw_store": ["empty"]}, sources=sources, vector_store=vector_store
+        )
+
+    assert collection.upsert_calls == []
+    assert embed_batch.call_count == 0
+    assert result.metadata["chunks_written"].value == 0
+    assert result.metadata["items_ingested"].value == 1
+    assert result.metadata["errors"].value == []
+    # Nothing landed, so the next tick's already-indexed lookup cannot see it.
+    assert collection.get(where={"content_id": {"$in": ["empty"]}}, include=[])["ids"] == []
 
 
 def test_ingest_short_circuits_on_empty_pending():

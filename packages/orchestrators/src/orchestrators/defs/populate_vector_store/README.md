@@ -21,14 +21,29 @@ schedule run_populate_vector_store   (cron */30 * * * *, RUNNING)
   ▼
 vector_store/pending   (30-min partition)
   │  for each of {raw_store, notes, sessions, wiki, briefs}:
-  │    - source.get_item_ids()
+  │    - source.get_item_ids(), filtered per-lane so an item that would chunk
+  │      to nothing never enters the queue — such an item never gets a vector
+  │      written, so the "already indexed" check below can never see it and
+  │      would otherwise re-pick it every tick forever:
+  │        raw_store    → get_item_ids(with_body=True); the unfiltered count
+  │                       is still tracked as "seen" so a stalled fetcher
+  │                       shows up as skipped_unfetched, not a shrinking queue
+  │        notes/briefs → keep files with a body, plus any body-less file
+  │                       whose old-hash chunks are still in the collection
+  │                       (so an emptied note can still purge its own stale
+  │                       chunks — see `_bodyless_awaiting_purge`)
+  │        sessions/wiki → get_item_ids() unfiltered here; SessionsSource
+  │                       itself already excludes sessions with no
+  │                       user_msg/assistant_msg event
   │    - collection.get(where={"content_id": {"$in": ...}}) in 500-id batches
   │      to find already-indexed content_ids
   │    - take the first MAX_PER_TICK_DEFAULT (=50) unindexed ids
   │  wiki only: an indexed entity is "done" only when its indexed page_hash
   │    matches the live one (resolve.json) — a rewritten page (same entity_id,
   │    new page_hash) re-lists so the stale vector is re-embedded (FM1b)
-  │  outputs dict[source_name, list[item_id]]
+  │  outputs dict[source_name, list[item_id]]; asset metadata also carries
+  │    total_by_source (every row seen, not just the eligible ones) and
+  │    skipped_unfetched (seen minus eligible) per source
   ▼
 vector_store/contents             vector_store/conversations
 vector_store/notes                vector_store/wiki

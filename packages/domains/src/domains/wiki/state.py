@@ -13,7 +13,7 @@ entity_type/slug/canonical_name — those are read back by joining `entities`.
 `EntityIndex` the resolver runs against.
 
 `connect()` opens a WAL connection with the standard pragmas (mirrors the
-sibling stores raw_store.db / queue.db); `create_schema()` applies wiki.sql.
+sibling stores corpus.db / queue.db); `create_schema()` applies wiki.sql.
 The schema lives in packages/domains/src/domains/wiki/schema/wiki.sql.
 """
 
@@ -34,7 +34,7 @@ _SCHEMA_PATH = Path(__file__).resolve().parent / "schema" / "wiki.sql"
 def _now_iso() -> str:
     """UTC timestamp as ISO-8601 (seconds precision), matching the sibling
     SQLite stores so timestamps compare/parse uniformly across wiki.db /
-    queue.db / raw_store.db."""
+    queue.db / corpus.db."""
     return datetime.now(UTC).isoformat(timespec="seconds")
 
 

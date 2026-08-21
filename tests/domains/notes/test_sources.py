@@ -78,3 +78,38 @@ class TestLocalFileSource:
         id2 = source.get_items()[0].item_id
 
         assert id1 == id2
+
+
+class TestGetItemIdsBodyFilter:
+    """`with_body` mirrors RawStoreSource's parameter of the same name. It is
+    opt-in rather than the default because a body-less file still has to be
+    enumerable: emptying an indexed note must reach the ingest step at least
+    once, so the zero-chunk branch there can purge the chunks the file wrote
+    while it still had a body. The caller decides which it needs."""
+
+    def test_lists_bodyless_files_by_default(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "real.md").write_text("---\ntitle: Real\n---\n\nActual body text.")
+        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\n---\n")
+
+        assert len(LocalFileSource(inbox_dir=inbox).get_item_ids()) == 2
+
+    def test_with_body_drops_frontmatter_only_file(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "real.md").write_text("---\ntitle: Real\n---\n\nActual body text.")
+        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\n---\n")
+
+        source = LocalFileSource(inbox_dir=inbox)
+        ids = source.get_item_ids(with_body=True)
+
+        assert len(ids) == 1
+        assert source.get_item(ids[0]).title == "Real"
+
+    def test_with_body_drops_blank_file(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "blank.md").write_text("   \n\n\t\n")
+
+        assert LocalFileSource(inbox_dir=inbox).get_item_ids(with_body=True) == []

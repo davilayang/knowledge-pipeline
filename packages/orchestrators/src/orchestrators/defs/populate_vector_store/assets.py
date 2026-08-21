@@ -41,6 +41,12 @@ SOURCE_TO_COLLECTION: list[tuple[str, str]] = [
 ]
 
 
+# Lanes backed by LocalFileSource. Their item_ids hash the file's content, so
+# editing a file mints a new id and the old id's chunks are reachable only via
+# source_ref.
+LOCAL_FILE_LANES = frozenset({"notes", "briefs"})
+
+
 def _chunked(seq, n: int):
     it = iter(seq)
     while batch := list(islice(it, n)):
@@ -149,6 +155,32 @@ def _process_item(
     return (len(chunks), tokens)
 
 
+def _bodyless_awaiting_purge(source, collection, bodyless_ids: list[str]) -> list[str]:
+    """Body-less local files whose stale chunks are still in the collection.
+
+    Emptying an indexed markdown file mints a new item_id (ids hash content),
+    so the chunks it wrote while it still had a body are only reachable by
+    source_ref. Listing the file routes it to _process_item's zero-chunk
+    branch, whose source_ref delete is the one purge path in this pipeline;
+    afterwards nothing matches and the file drops out of discovery for good.
+    Skipping body-less files outright would instead strand those chunks, and
+    recall would keep serving text the user deleted.
+
+    Ceiling: LocalFileSource.get_item rescans the inbox per call, so this is
+    O(files) per body-less file. Body-less files are a handful at most
+    (production had one). If that stops holding, have LocalFileSource hand back
+    (item_id, source_ref) pairs so no rescan is needed.
+    """
+    awaiting: list[str] = []
+    for iid in bodyless_ids:
+        item = source.get_item(iid)
+        if item is None or not item.source_ref:
+            continue
+        if collection.get(where={"source_ref": item.source_ref}, include=[]).get("ids"):
+            awaiting.append(iid)
+    return awaiting
+
+
 @dg.asset(
     key=["vector_store", "pending"],
     group_name="vector_store",
@@ -164,10 +196,36 @@ def pending(
 ) -> dg.Output[dict[str, list[str]]]:
     out: dict[str, list[str]] = {}
     totals: dict[str, int] = {}
+    skipped: dict[str, int] = {}
     for name, collection_name in SOURCE_TO_COLLECTION:
         source = getattr(sources, name)()
-        all_ids = source.get_item_ids()
         collection = vector_store.get_collection(collection_name)
+        # An item whose text chunks to nothing gets no vector written for it, so
+        # the already-indexed check below can never see it and re-picks it every
+        # tick. Production livelocked exactly that way on 870 unfetched corpus
+        # rows, which sort to the head of the queue and starved every real
+        # article behind them. Each lane keeps such items out of the queue in the
+        # way its own source allows.
+        if name == "raw_store":
+            all_ids = source.get_item_ids(with_body=True)
+            # Keep the unfiltered count: it is the only signal that rows are
+            # piling up unfetched. Without it a stalled fetcher reads as a
+            # complete lane.
+            eligible, seen = len(all_ids), len(source.get_item_ids())
+        elif name in LOCAL_FILE_LANES:
+            # Body-less files are listed only while they still have chunks to
+            # purge — see _bodyless_awaiting_purge.
+            every = source.get_item_ids()
+            bodied = set(source.get_item_ids(with_body=True))
+            keep = bodied | set(
+                _bodyless_awaiting_purge(source, collection, [i for i in every if i not in bodied])
+            )
+            all_ids = [i for i in every if i in keep]
+            eligible, seen = len(all_ids), len(every)
+        else:
+            all_ids = source.get_item_ids()
+            eligible = seen = len(all_ids)
+        skipped[name] = seen - eligible
         # Wiki pages are rewritten daily but keep their entity_id, so a bare
         # existence check would serve a stale vector forever (FM1b). For wiki
         # only, treat an entity as done just when its indexed page_hash matches
@@ -197,13 +255,15 @@ def pending(
                 existing.add(content_id)
         items = [i for i in all_ids if i not in existing][:MAX_PER_TICK_DEFAULT]
         out[name] = items
-        totals[name] = len(all_ids)
+        totals[name] = seen
         context.log.info(
-            "discovery %s: %d pending (total seen=%d, already indexed=%d)",
+            "discovery %s: %d pending (total seen=%d, already indexed=%d, "
+            "skipped as unfetched=%d)",
             name,
             len(items),
-            len(all_ids),
+            seen,
             len(existing),
+            skipped[name],
         )
     summary = " · ".join(f"{n}={len(out[n])}/{totals[n]}" for n, _ in SOURCE_TO_COLLECTION)
     return dg.Output(
@@ -212,6 +272,7 @@ def pending(
             "summary": dg.MetadataValue.md(f"**pending** — {summary}"),
             "pending_by_source": dg.MetadataValue.json({k: len(v) for k, v in out.items()}),
             "total_by_source": dg.MetadataValue.json(totals),
+            "skipped_unfetched": dg.MetadataValue.json(skipped),
         },
     )
 

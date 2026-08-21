@@ -15,7 +15,7 @@ Pure data adapters. Files or DBs → typed `IngestItem`s.
 ```
 src/domains/
 ├── types.py            # IngestItem + IngestSource Protocol — the shape every source yields
-├── raw_store/          # raw_store.db — newsletter-assistant ingest store
+├── raw_store/          # corpus.db — newsletter-assistant ingest store
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
 │   ├── sources.py      # LocalFileSource
@@ -90,23 +90,25 @@ def get_item(self, item_id: str) -> IngestItem | None: ...
 `get_item_ids` is the cheap discovery path used by the `populate_vector_store`
 `pending` asset to compute the indexable set; `get_item`
 is the per-item path used by the ingest assets. Sources that filter by
-completion state (e.g. only ended sessions) apply that filter inside
-`get_item_ids` — never index a row that the writer hasn't committed.
-`RawStoreSource` extends the base signature with an optional `with_body: bool =
-False` parameter; passing `True` additionally drops items whose `content_md` is
-NULL or blank, so synthesis is not fed an unfetched document that could be
-permanently marked processed before the fetcher fills it.
+completion state (e.g. only ended sessions that recorded dialogue) apply that
+filter inside `get_item_ids` — never index a row that the writer hasn't
+committed. `RawStoreSource` and `LocalFileSource` both extend the base
+signature with an optional `with_body: bool = False` parameter; passing `True`
+additionally drops items with no body — `content_md` NULL/blank for
+`RawStoreSource`, frontmatter-stripped text empty for `LocalFileSource` — so
+`populate_vector_store`'s `pending` asset doesn't re-select forever an item
+that chunks to nothing and so never shows up as "already indexed".
 
 | Source | DB / path | Completion gate | Notes |
 |---|---|---|---|
-| `RawStoreSource` | `raw_store.db` | none — immutable append | takes a `db_path`; pin or live |
-| `LocalFileSource` | a directory of `*.md` | none — caller filters mtime | YAML frontmatter respected |
-| `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` | concatenates `events` (user_msg/assistant_msg) into a marker-delimited body |
+| `RawStoreSource` | `corpus.db` | none — immutable append | takes a `db_path`; pin or live |
+| `LocalFileSource` | a directory of `*.md` | none by default; opt-in `with_body=True` drops files with no body after frontmatter is stripped | YAML frontmatter respected |
+| `SessionsSource` | `sessions.db` | `WHERE ended_at IS NOT NULL` and a `user_msg`/`assistant_msg` event exists | concatenates `events` (user_msg/assistant_msg) into a marker-delimited body |
 | `WikiSource` | a `data/wiki/` dir of `.md` pages | none — page on disk | one page → one item; `text` is the page **summary**, `num_sources` carried for the W3 sparsity gate; skips `_index/` sidecars |
 
 ## SQLite reads
 
-All upstream SQLite stores (`raw_store.db`, `sessions.db`) run
+All upstream SQLite stores (`corpus.db`, `sessions.db`) run
 in WAL mode — concurrent reads don't block writers. `SessionsSource`
 asserts `PRAGMA journal_mode == 'wal'` on connect and raises
 loudly if a future deploy flips it; otherwise we'd silently degrade to
