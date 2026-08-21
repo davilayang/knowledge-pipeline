@@ -61,6 +61,11 @@ def _make_db(tmp_path: Path, *, wal: bool = True) -> Path:
             None,
         ),
     )
+    # Ended, but nothing was ever said — only tool machinery was recorded.
+    conn.execute(
+        "INSERT INTO sessions VALUES (?, ?, ?, ?)",
+        ("s_silent", "2026-04-04T08:00:00+00:00", "2026-04-04T08:00:20+00:00", None),
+    )
     # turns mirrors newsletter-assistant's legacy dual-write, including a
     # tool_call row — the current unfiltered reader would index this machinery.
     conn.executescript(
@@ -88,7 +93,9 @@ def _make_db(tmp_path: Path, *, wal: bool = True) -> Path:
           ('s_done', 4, '2026-04-01T14:01:30+00:00', 'assistant_msg',
            'Retrieval-augmented generation.'),
           ('s_live', 1, '2026-04-02T09:00:30+00:00', 'user_msg', 'Hello?'),
-          ('s_no_summary', 1, '2026-04-03T08:01:00+00:00', 'user_msg', 'Hi');
+          ('s_no_summary', 1, '2026-04-03T08:01:00+00:00', 'user_msg', 'Hi'),
+          ('s_silent', 1, '2026-04-04T08:00:10+00:00', 'tool_call',
+           'TOOLCALL_MARKER fetch_subscription({})');
         """
     )
     conn.commit()
@@ -106,6 +113,16 @@ class TestGetItemIds:
     def test_ordered_oldest_first(self, tmp_path: Path):
         source = SessionsSource(_make_db(tmp_path))
         assert source.get_item_ids() == ["s_done", "s_no_summary"]
+
+    def test_excludes_sessions_with_no_dialogue(self, tmp_path: Path):
+        """A session that ended without a user_msg or assistant_msg event
+        serializes to empty text, which chunks to nothing, so the vector-store
+        job writes no vector for it — and then re-selects it every tick forever,
+        because presence in the vector store is the only signal it has for
+        "already done". Ten such sessions were doing exactly that in production.
+        Excluding them here is what lets the lane finish."""
+        source = SessionsSource(_make_db(tmp_path))
+        assert "s_silent" not in source.get_item_ids()
 
 
 class TestGetItem:

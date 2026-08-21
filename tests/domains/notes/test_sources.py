@@ -78,3 +78,30 @@ class TestLocalFileSource:
         id2 = source.get_items()[0].item_id
 
         assert id1 == id2
+
+
+class TestGetItemIdsSkipsBodylessFiles:
+    """A markdown file whose body is empty once frontmatter is stripped chunks to
+    nothing, so the vector-store job writes no vector for it — and since presence
+    in the vector store is that job's only "already done" signal, it re-selects
+    the file every tick forever. One such note file was doing exactly that in
+    production, leaving the notes lane permanently one item short of complete."""
+
+    def test_frontmatter_only_file_is_not_listed(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "real.md").write_text("---\ntitle: Real\n---\n\nActual body text.")
+        (inbox / "meta_only.md").write_text("---\ntitle: Placeholder\ndate: 2026-04-01\n---\n")
+
+        source = LocalFileSource(inbox_dir=inbox)
+        ids = source.get_item_ids()
+
+        assert len(ids) == 1
+        assert source.get_item(ids[0]).title == "Real"
+
+    def test_blank_file_is_not_listed(self, tmp_path: Path):
+        inbox = tmp_path / "inbox"
+        inbox.mkdir()
+        (inbox / "blank.md").write_text("   \n\n\t\n")
+
+        assert LocalFileSource(inbox_dir=inbox).get_item_ids() == []

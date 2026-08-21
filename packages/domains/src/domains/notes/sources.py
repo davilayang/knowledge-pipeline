@@ -27,10 +27,14 @@ class LocalFileSource:
     def get_item_ids(self) -> list[str]:
         # IDs derive from sha256(filename:content), so enumerating them still
         # requires reading each file. Cheaper than building IngestItems but not
-        # cheap.
+        # cheap. Files with no body once frontmatter is stripped are skipped:
+        # they chunk to nothing, so the vector-store job writes no vector for
+        # them, and since presence in the vector store is that job's only
+        # "already done" signal it would re-select them every tick forever.
         if not self._inbox_dir.exists():
             return []
-        return [self._to_item(p).item_id for p in sorted(self._inbox_dir.glob("*.md"))]
+        items = (self._to_item(p) for p in sorted(self._inbox_dir.glob("*.md")))
+        return [i.item_id for i in items if i.text.strip()]
 
     def get_item(self, item_id: str) -> IngestItem | None:
         if not self._inbox_dir.exists():

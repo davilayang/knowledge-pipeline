@@ -58,10 +58,21 @@ class SessionsSource:
         self._db_path = db_path
 
     def get_item_ids(self) -> list[str]:
-        """Session IDs of all ended sessions, oldest first."""
+        """Session IDs of all ended sessions that recorded dialogue, oldest first.
+
+        A session with no ``user_msg`` / ``assistant_msg`` event serializes to
+        empty text and chunks to nothing, so the vector-store job writes no
+        vector for it — and since presence in the vector store is that job's
+        only "already done" signal, it would re-select the session on every
+        tick forever. Excluding it here is what lets the lane drain.
+        """
         with self._connect() as conn:
             rows = conn.execute(
-                "SELECT session_id FROM sessions WHERE ended_at IS NOT NULL ORDER BY started_at"
+                "SELECT s.session_id FROM sessions s "
+                "WHERE s.ended_at IS NOT NULL AND EXISTS ("
+                "  SELECT 1 FROM events e WHERE e.session_id = s.session_id "
+                "  AND e.type IN ('user_msg', 'assistant_msg')"
+                ") ORDER BY s.started_at"
             ).fetchall()
         return [r["session_id"] for r in rows]
 

@@ -166,7 +166,15 @@ def pending(
     totals: dict[str, int] = {}
     for name, collection_name in SOURCE_TO_COLLECTION:
         source = getattr(sources, name)()
-        all_ids = source.get_item_ids()
+        # The corpus lane enumerates only rows whose body was fetched. A
+        # body-less row chunks to nothing, so no vector is written for it, so
+        # the already-indexed check below can never see it — it is re-picked
+        # every tick and blocks the real articles queued behind it. Production
+        # livelocked exactly this way on 870 unfetched listing stubs. Only
+        # RawStoreSource has that empty state, and only it takes `with_body`.
+        all_ids = (
+            source.get_item_ids(with_body=True) if name == "raw_store" else source.get_item_ids()
+        )
         collection = vector_store.get_collection(collection_name)
         # Wiki pages are rewritten daily but keep their entity_id, so a bare
         # existence check would serve a stale vector forever (FM1b). For wiki
