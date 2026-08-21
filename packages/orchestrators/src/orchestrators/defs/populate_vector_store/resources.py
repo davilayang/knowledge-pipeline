@@ -19,7 +19,10 @@ class SourcesResource(dg.ConfigurableResource):
     backup_source_dir: str
 
     def raw_store(self) -> RawStoreSource:
-        return RawStoreSource(Path(self.backup_source_dir) / "raw_store.db")
+        # File is corpus.db since newsletter-assistant's 0.46.0 three-DB topology
+        # rename; the lane keeps the name "raw_store" because it is written into
+        # every stored chunk's source_ref and is the delete key on re-embed.
+        return RawStoreSource(Path(self.backup_source_dir) / "corpus.db")
 
     def notes(self) -> LocalFileSource:
         return LocalFileSource(Path(self.backup_source_dir) / "notes")

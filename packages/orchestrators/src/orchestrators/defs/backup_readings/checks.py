@@ -73,12 +73,12 @@ def _verify_one(
     asset=dg.AssetKey(["snapshots", "raw_store"]),
     name="verify_snapshot_raw_store",
     blocking=True,
-    description="raw_store.db opens, integrity_check passes, has tables.",
+    description="corpus.db opens, integrity_check passes, has tables.",
 )
 def verify_snapshot_raw_store(
     context: dg.AssetCheckExecutionContext, backup: BackupResource
 ) -> dg.AssetCheckResult:
-    return _verify_one(context, backup, "raw_store.db")
+    return _verify_one(context, backup, "corpus.db")
 
 
 @dg.asset_check(

@@ -130,12 +130,14 @@ def _snapshot_one_dir(
     partitions_def=daily_partition_def,
     deps=[dg.AssetDep("raw_store")],
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    description="Consistent SQLite snapshot of raw_store.db for the partition's date.",
+    description="Consistent SQLite snapshot of corpus.db for the partition's date.",
 )
 def snapshot_raw_store(
     context: dg.AssetExecutionContext, backup: BackupResource
 ) -> dg.MaterializeResult:
-    return _snapshot_one_db(context, backup, backup.get_source_dir() / "raw_store.db")
+    # Asset key stays "raw_store" to preserve materialization history; the file
+    # newsletter-assistant owns is corpus.db since its 0.46.0 topology rename.
+    return _snapshot_one_db(context, backup, backup.get_source_dir() / "corpus.db")
 
 
 @dg.asset(

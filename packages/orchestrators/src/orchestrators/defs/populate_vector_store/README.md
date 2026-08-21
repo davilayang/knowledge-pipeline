@@ -6,13 +6,17 @@ pipeline writes pre-computed OpenAI embeddings
 (`text-embedding-3-small @ 1536` by default) and is the producer side of the
 RAG split — query-side cutover happens in Phase F.
 
-Lands **paused** (`default_status=STOPPED`). Manually launch for end-to-end
-smoke until Phase G turns the schedule on.
+Runs **armed** (`default_status=RUNNING`). It is the only writer of every
+ChromaDB collection newsletter-assistant's `recall` reads, so it must never sit
+disarmed: while it defaulted to STOPPED, a loss of persisted Dagster schedule
+state silently switched it off on 2026-05-16 and recall spent three months
+answering from a frozen index (14 of 533 articles, no session later than that
+date, zero briefs, no `wiki` collection at all) without raising an error.
 
 ## DAG (per scheduled tick)
 
 ```
-schedule run_populate_vector_store   (cron */30 * * * *, STOPPED)
+schedule run_populate_vector_store   (cron */30 * * * *, RUNNING)
   │  fires the current half-hour's partition (YYYY-MM-DD-HH:MM)
   ▼
 vector_store/pending   (30-min partition)
@@ -83,7 +87,7 @@ Every upserted chunk carries this metadata:
 
 | Var | Required | Purpose |
 |---|---|---|
-| `BACKUP_SRC_DIR` | yes | Root dir holding `raw_store.db`, `sessions.db`, `notes/`, and `briefs/` (the synced newsletter-assistant data). Bound to `SourcesResource.backup_source_dir`. The `wiki` source does **not** read here — it is kp-owned and roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`, `config.py`). |
+| `BACKUP_SRC_DIR` | yes | Root dir holding `corpus.db`, `sessions.db`, `notes/`, and `briefs/` (the synced newsletter-assistant data). Bound to `SourcesResource.backup_source_dir`. The `wiki` source does **not** read here — it is kp-owned and roots at `LOCAL_WIKI_DIR` (`DATA_DIR/wiki`, `config.py`). |
 | `OPENAI_API_KEY` | yes | OpenAI embeddings calls. |
 | `CHROMA_HOST` | yes | Chroma HTTP host — `chroma` in compose; `localhost` for local `poe dagster-dev` against an external `chroma run`. |
 | `CHROMA_PORT` | yes | Chroma HTTP port (8000 default). |
@@ -97,8 +101,9 @@ existing vectors and don't vary per deploy.
 ### Manual launch (deployed — Phase E onwards)
 
 Chroma runs as a sibling service in docker compose; dagster-code reaches it
-at `chroma:8000` via the compose network. The schedule is paused; trigger a
-single partition manually from the Dagster UI or via the CLI:
+at `chroma:8000` via the compose network. The schedule runs every 30 minutes;
+to force a single partition (backfill, smoke test) launch it from the Dagster UI
+or via the CLI:
 
 ```bash
 docker compose exec dagster-code \
@@ -187,7 +192,6 @@ c.delete_collection('contents')
 
 - Phase F: consumer-side cutover (HttpClient, query-side OpenAI EF on
   `VectorStoreResource`, 4-fan-out recall).
-- Phase G: drop POC volume, raised `MAX_PER_TICK` backfill, enable schedule.
 - Orphan GC for chunks whose upstream items were deleted — including **pruned
   wiki entities** (merged/renamed/removed): their old `entity_id` vectors linger
   in the `wiki` collection because discovery only iterates live pages. Accepted
