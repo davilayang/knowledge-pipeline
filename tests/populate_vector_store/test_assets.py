@@ -233,6 +233,24 @@ def test_pending_skips_corpus_rows_whose_body_was_never_fetched():
     assert result.value["raw_store"] == ["real-1"]
 
 
+def test_pending_reports_how_many_corpus_rows_were_skipped_as_unfetched():
+    """`total_by_source` must keep counting every corpus row, and the rows the
+    body filter skipped must be reported separately. Letting the total shrink to
+    only-fetched rows would erase the exact signal that diagnosed this incident:
+    a dashboard reading `raw_store=0/533` looks complete while hundreds of rows
+    sit unfetched behind it."""
+    items = [_item("real-1"), _item("stub-1", text=""), _item("stub-2", text="")]
+    vector_store = _StubVectorStore({"contents": _StubCollection()})
+    sources = _StubSources(raw_store=_StubSource(items))
+
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    result = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=vector_store)
+
+    assert result.value["raw_store"] == ["real-1"]
+    assert result.metadata["total_by_source"].data["raw_store"] == 3
+    assert result.metadata["skipped_unfetched"].data["raw_store"] == 2
+
+
 def test_pending_in_batching_caps_at_500_ids():
     """1200 ids across the raw_store source → ceil(1200/500) = 3 chroma .get() calls."""
     raw_items = [_item(f"raw-{i}") for i in range(1200)]

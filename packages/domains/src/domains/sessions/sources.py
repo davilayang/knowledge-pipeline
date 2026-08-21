@@ -158,5 +158,7 @@ def _serialize_turns(turns: list[sqlite3.Row]) -> str:
     parts: list[str] = []
     for t in turns:
         parts.append(f"{TURN_MARKER_PREFIX} role={t['role']} ts={t['timestamp']}>>>")
-        parts.append(t["content"].rstrip())
+        # events.content is nullable; a NULL row must not take the whole lane
+        # down with an AttributeError mid-serialization.
+        parts.append((t["content"] or "").rstrip())
     return "\n".join(parts)

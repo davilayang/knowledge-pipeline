@@ -181,3 +181,25 @@ class TestWalAssertion:
         source = SessionsSource(_make_db(tmp_path, wal=False))
         with pytest.raises(RuntimeError, match="not in WAL mode"):
             source.get_item_ids()
+
+
+class TestNullEventContent:
+    """`events.content` is nullable. A single NULL-content dialogue row used to
+    crash text serialization with `AttributeError: 'NoneType' has no attribute
+    'rstrip'`, which the vector-store job turns into a failed `conversations`
+    asset for that tick — so one malformed row stalls the whole lane."""
+
+    def test_session_with_a_null_content_event_still_serializes(self, tmp_path: Path):
+        db = _make_db(tmp_path)
+        conn = sqlite3.connect(db)
+        conn.execute(
+            "INSERT INTO events (session_id, seq, timestamp, type, content) "
+            "VALUES ('s_done', 5, '2026-04-01T14:02:00+00:00', 'user_msg', NULL)"
+        )
+        conn.commit()
+        conn.close()
+
+        item = SessionsSource(db).get_item("s_done")
+
+        assert item is not None
+        assert "Retrieval-augmented generation." in item.text

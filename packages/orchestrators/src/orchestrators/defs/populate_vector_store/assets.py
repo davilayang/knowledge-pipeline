@@ -164,6 +164,7 @@ def pending(
 ) -> dg.Output[dict[str, list[str]]]:
     out: dict[str, list[str]] = {}
     totals: dict[str, int] = {}
+    skipped: dict[str, int] = {}
     for name, collection_name in SOURCE_TO_COLLECTION:
         source = getattr(sources, name)()
         # The corpus lane enumerates only rows whose body was fetched. A
@@ -172,9 +173,16 @@ def pending(
         # every tick and blocks the real articles queued behind it. Production
         # livelocked exactly this way on 870 unfetched listing stubs. Only
         # RawStoreSource has that empty state, and only it takes `with_body`.
-        all_ids = (
-            source.get_item_ids(with_body=True) if name == "raw_store" else source.get_item_ids()
-        )
+        if name == "raw_store":
+            all_ids = source.get_item_ids(with_body=True)
+            # Keep the unfiltered count: it is the only signal that rows are
+            # piling up unfetched. Without it a stalled fetcher reads as a
+            # complete lane.
+            eligible, seen = len(all_ids), len(source.get_item_ids())
+        else:
+            all_ids = source.get_item_ids()
+            eligible = seen = len(all_ids)
+        skipped[name] = seen - eligible
         collection = vector_store.get_collection(collection_name)
         # Wiki pages are rewritten daily but keep their entity_id, so a bare
         # existence check would serve a stale vector forever (FM1b). For wiki
@@ -205,13 +213,15 @@ def pending(
                 existing.add(content_id)
         items = [i for i in all_ids if i not in existing][:MAX_PER_TICK_DEFAULT]
         out[name] = items
-        totals[name] = len(all_ids)
+        totals[name] = seen
         context.log.info(
-            "discovery %s: %d pending (total seen=%d, already indexed=%d)",
+            "discovery %s: %d pending (total seen=%d, already indexed=%d, "
+            "skipped as unfetched=%d)",
             name,
             len(items),
-            len(all_ids),
+            seen,
             len(existing),
+            skipped[name],
         )
     summary = " · ".join(f"{n}={len(out[n])}/{totals[n]}" for n, _ in SOURCE_TO_COLLECTION)
     return dg.Output(
@@ -220,6 +230,7 @@ def pending(
             "summary": dg.MetadataValue.md(f"**pending** — {summary}"),
             "pending_by_source": dg.MetadataValue.json({k: len(v) for k, v in out.items()}),
             "total_by_source": dg.MetadataValue.json(totals),
+            "skipped_unfetched": dg.MetadataValue.json(skipped),
         },
     )
 
