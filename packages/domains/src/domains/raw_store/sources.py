@@ -1,4 +1,8 @@
-"""Read-only SQLite access to raw_store.db.
+"""Read-only SQLite access to corpus.db, newsletter-assistant's articles store.
+
+The module keeps the name ``raw_store`` — it is the ingest lane name written
+into every stored chunk's ``source_ref`` — while the file it reads was renamed
+``raw_store.db`` -> ``corpus.db`` in NA's 0.46.0 three-DB topology change.
 
 Boundary rule: this module has no Dagster, LLM, or ML deps. Callers must
 pass `db_path` explicitly — the path is owned by the orchestrators package.
@@ -133,7 +137,7 @@ def count_contents(*, db_path: Path) -> int:
 
 
 class RawStoreSource:
-    """Yields IngestItems from raw_store.db."""
+    """Yields IngestItems from corpus.db."""
 
     def __init__(self, db_path: Path):
         self._db_path = db_path

@@ -8,6 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.5] — 2026-08-21
+
+### Changed
+
+- **`recall` finds recently-fetched articles again.** An item whose text chunks to nothing got no vector, so `pending` never saw it as done and re-picked it every tick; each source now excludes its own zero-chunk items at discovery. 870 unfetched corpus rows had held the `contents` lane at 14 documents.
+- **Discovery reports what it skipped.** `pending` emits `skipped_unfetched` alongside an unfiltered `total_by_source`, so a stalled fetcher no longer reads as a complete lane.
+- **Emptying a note's body no longer strands its old vectors.** Local-file ids hash content, so clearing a body mints a new id; `_bodyless_awaiting_purge` re-lists the file only until its stale `source_ref` chunks are deleted.
+- **A NULL dialogue message no longer fails the whole `conversations` sync for that tick.** `_serialize_turns` tolerates null `events.content` instead of raising `AttributeError`.
+
+---
+
 ## [0.36.4] — 2026-08-21
 
 ### Changed
