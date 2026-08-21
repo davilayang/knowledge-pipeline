@@ -1,5 +1,5 @@
 # populate_vector_store — embed pending items from each source into ChromaDB.
-# Lands paused (default_status=STOPPED). See README.md for the runbook.
+# Armed by default (default_status=RUNNING). See README.md for the runbook.
 
 import dagster as dg
 

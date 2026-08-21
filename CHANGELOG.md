@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.4] — 2026-08-21
+
+### Changed
+
+- **Nightly backups of newsletter-assistant's articles store work again**, after 41 straight failures caused by NA's `raw_store.db` → `corpus.db` rename (0.46.0). `snapshot_raw_store` and the vector-store contents lane now read `corpus.db`; snapshots taken before 2026-07-11 need manual rename from `raw_store.db` to `corpus.db` to restore.
+- **The vector index `recall` reads no longer goes silently stale.** `run_populate_vector_store`'s schedule now defaults to `RUNNING` (was `STOPPED`), so a lost persisted Dagster schedule state can't disarm it with no error surfaced.
+
+---
+
 ## [0.36.3] — 2026-08-10
 
 ### Changed

@@ -44,3 +44,16 @@ def test_expected_files_cover_wiki_db_and_pages():
     backup = BackupResource(source_data_dir="/tmp/src", backup_dir="/tmp/dst")
     assert "wiki.db" in backup.expected_files
     assert "wiki.tgz" in backup.expected_files
+
+
+def test_expected_files_track_the_renamed_articles_db():
+    """newsletter-assistant renamed its articles store raw_store.db -> corpus.db
+    in its 0.46.0 three-DB topology change (deployed 2026-07-11). The snapshot
+    the backup writes is named after that source file, so `expected_files` — the
+    set the Drive upload-completeness check is gated on — must name corpus.db.
+    Leaving raw_store.db here let 41 consecutive nightly backups fail with
+    "Source DB missing: /app/source/raw_store.db" while the schedule kept
+    reporting successful ticks."""
+    backup = BackupResource(source_data_dir="/tmp/src", backup_dir="/tmp/dst")
+    assert "corpus.db" in backup.expected_files
+    assert "raw_store.db" not in backup.expected_files

@@ -7,7 +7,7 @@ into a loud alert.
 
 Two owners, two source dirs:
 
-- **newsletter-assistant** (read from `BACKUP_SRC_DIR`): `raw_store.db`,
+- **newsletter-assistant** (read from `BACKUP_SRC_DIR`): `corpus.db`,
   `sessions.db`, and the `notes/` dir.
 - **knowledge-pipeline** (read from this repo's `data/` dir): `queue.db`,
   `wiki.db`, and the `wiki/` rendered-page dir. These are kp-owned and live
@@ -46,7 +46,7 @@ healthchecks alerts. Prune failures fail the run → same cascade.
 
 ```bash
 uv run poe backup
-# → dg launch -m orchestrators.defs.definitions --job backup_readings
+# → dg launch -m orchestrators.definitions --job backup_readings
 ```
 
 ### Backfill missing partitions
@@ -69,14 +69,14 @@ upload is gated. Recovery options:
 
 There are two flavours of `verify_snapshot_*` blocking checks:
 
-**SQLite snapshots** (`raw_store.db`, `sessions.db`, `queue.db`, `wiki.db`)
+**SQLite snapshots** (`corpus.db`, `sessions.db`, `queue.db`, `wiki.db`)
 — check trips when the file is suspiciously small,
 fails `PRAGMA integrity_check`, or has zero tables.
 Common causes: source DB was being written during snapshot (rare, SQLite
 backup API handles concurrent reads), disk full on local backup volume.
 
 ```bash
-sqlite3 backups/<date>/raw_store.db "PRAGMA integrity_check;"
+sqlite3 backups/<date>/corpus.db "PRAGMA integrity_check;"
 sqlite3 backups/<date>/wiki.db      "PRAGMA integrity_check;"
 ```
 
@@ -97,13 +97,18 @@ has fewer files than expected after `rclone copy`. The metadata records
 
 ### Restoring a snapshot
 
-Restore each file back to *its owner's* dir — NA-owned files (`raw_store.db`,
+Restore each file back to *its owner's* dir — NA-owned files (`corpus.db`,
 `sessions.db`, `notes.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
 files (`queue.db`, `wiki.db`, `wiki.tgz`) go to this repo's `data/` dir.
 
+Snapshots taken on or before 2026-07-11 hold newsletter-assistant's articles
+store under its old filename `raw_store.db` — rename it to `corpus.db` on
+restore. The schema inside is unchanged; only the file was renamed, in NA's
+0.46.0 three-DB topology change.
+
 Local (SQLite DBs):
 ```bash
-cp backups/<date>/raw_store.db <BACKUP_SRC_DIR>/raw_store.db   # NA-owned
+cp backups/<date>/corpus.db <BACKUP_SRC_DIR>/corpus.db      # NA-owned
 cp backups/<date>/wiki.db      <KP_DATA_DIR>/wiki.db           # kp-owned
 ```
 
@@ -115,7 +120,7 @@ tar -xzf backups/<date>/wiki.tgz  -C <KP_DATA_DIR>       # → wiki/  (kp-owned)
 
 From Drive:
 ```bash
-rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/raw_store.db <BACKUP_SRC_DIR>/
+rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/corpus.db <BACKUP_SRC_DIR>/
 rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/wiki.db <KP_DATA_DIR>/
 rclone copy gdrive:<DRIVE_BACKUP_ROOT>/<date>/wiki.tgz /tmp/ \
   && tar -xzf /tmp/wiki.tgz -C <KP_DATA_DIR>
