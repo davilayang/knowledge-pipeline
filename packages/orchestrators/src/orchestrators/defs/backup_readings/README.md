@@ -46,7 +46,7 @@ healthchecks alerts. Prune failures fail the run → same cascade.
 
 ```bash
 uv run poe backup
-# → dg launch -m orchestrators.defs.definitions --job backup_readings
+# → dg launch -m orchestrators.definitions --job backup_readings
 ```
 
 ### Backfill missing partitions

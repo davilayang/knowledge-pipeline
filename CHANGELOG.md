@@ -6,13 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- **Nightly backups of newsletter-assistant's articles store have been failing since 2026-07-13, and the vector index that `recall` reads has been frozen since 2026-05-16.** Two independent silent failures, both fixed here:
-  - **The articles DB was renamed and kp never followed.** newsletter-assistant renamed `raw_store.db` to `corpus.db` in its 0.46.0 three-DB topology change (deployed 2026-07-11). `snapshot_raw_store` kept reading `BACKUP_SRC_DIR/raw_store.db` and failed with `Source DB missing:` on all 41 nightly runs since — while `run_daily_backup`'s schedule ticks kept reporting SUCCESS, because a tick only records that the run was *submitted*. The other five snapshots (sessions, notes, queue, wiki, wiki pages) succeeded throughout, so only the articles store went unbacked-up. `populate_vector_store`'s contents lane read the same dead path. Both now read `corpus.db`; `DB_FILES` and `verify_snapshot_raw_store` name the new snapshot filename. The `snapshots/raw_store` asset key and the `raw_store` ingest-lane name are deliberately unchanged — the key preserves materialization history, and the lane name is written into every stored chunk's `source_ref`, which is the delete key on re-embed.
-  - **`run_populate_vector_store` now defaults to `RUNNING`.** It had `default_status=STOPPED` with a comment deferring activation to a long-finished "Phase G", so any loss of persisted Dagster schedule state disarmed it permanently and silently. That happened on 2026-05-16: the last eight runs all returned SUCCESS and then it simply stopped ticking. This job is the only writer of every ChromaDB collection newsletter-assistant's `recall` reads, and recall has no keyword fallback, so for three months it answered from a frozen index — 14 of 533 fetched articles, no conversation later than 2026-05-16, 53 of 300 notes, zero briefs, and no `wiki` collection at all. The wiki and brief recall lanes shipped after the stop and therefore never worked in production.
-  - `BACKUP_READINGS_DAG_VERSION` 7 → 8, `POPULATE_VECTOR_STORE_DAG_VERSION` 6 → 7.
-  - **Restoring a snapshot taken on or before 2026-07-11** gives a file named `raw_store.db`; rename it to `corpus.db`. The schema inside is identical — only the filename changed.
+## [0.36.4] — 2026-08-21
+
+### Changed
+
+- **Nightly backups of newsletter-assistant's articles store work again**, after 41 straight failures caused by NA's `raw_store.db` → `corpus.db` rename (0.46.0). `snapshot_raw_store` and the vector-store contents lane now read `corpus.db`; snapshots taken before 2026-07-11 need manual rename from `raw_store.db` to `corpus.db` to restore.
+- **The vector index `recall` reads no longer goes silently stale.** `run_populate_vector_store`'s schedule now defaults to `RUNNING` (was `STOPPED`), so a lost persisted Dagster schedule state can't disarm it with no error surfaced.
 
 ---
 
