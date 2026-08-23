@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The narrative-coverage gold can now measure the short end of the corpus.** Its 7 fixtures had a 15,449-character floor while 39% of fetched items sit below it, held no `facebook` items, and weighted `youtube` at 29% against a corpus that is 53% YouTube — so a passing score said nothing about the majority content type or the whole small-source band. Three fixtures added (10 total): a 1,574-character Traditional Chinese post carrying contested employment figures, a 3,777-character talk whose channel name differs from its speaker, and a 9,560-character talk with no title, author, or shape metadata.
+- **Gold labelling is reproducible rather than a one-off.** `packages/evals/datasets/narrative_coverage_codebook.md` records the thread definition, the grain test, mandatory-anchor rules, and the FN-heavy tie-breaks, alongside how the added fixtures were labelled — a blind cross-family jury given source plus codebook only, merged by union.
+- **Coverage scores over the widened set are not comparable to earlier ones.** Union merging lifts thread counts, so `narrative_v2` must be re-scored against the 10-fixture set before any delta against it is meaningful. The header carries `gold_version: 2` to make the boundary machine-detectable.
+
 ---
 
 ## [0.36.5] — 2026-08-21
