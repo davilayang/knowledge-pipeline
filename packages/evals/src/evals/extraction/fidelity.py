@@ -56,7 +56,7 @@ def fabrication_rate(invented: list[bool]) -> float:
 
 
 def severe_omission_count(verdicts: list[str], critical_indices: list[int]) -> int:
-    """Number of severe omissions (codebook §4) = critical threads that are absent.
+    """Number of severe omissions = critical threads that are absent.
 
     Only a *critical* thread going *absent* is severe. A non-critical absent
     thread is a minor omission; a critical thread that is *distorted* is a severe

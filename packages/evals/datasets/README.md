@@ -124,6 +124,30 @@ extractor's `narrative_md` cover the distinct follow-up threads a listener could
 reporting only** — the scorer does not route on it; it's how "no shape regresses" stays visible
 run-over-run.
 
+### v2 (2026-08-23) — widened for corpus coverage
+
+**10 sources, 206 gold threads.** Three fixtures were added because the v0 set could not measure
+most of the corpus it gates: its smallest source was 15,449 characters while 39% of fetched items
+sit below that, it held no `facebook` items, and it weighted `youtube` at 29% against a production
+corpus that is 53% YouTube.
+
+| fixture | content_type | content_shape | threads | chars |
+|---|---|---|---|---|
+| fb_1574 | facebook | argument | 31 | 1.6K |
+| talk_3add | youtube | prose | 13 | 3.8K |
+| talk_374 | youtube | listicle | 25 | 9.6K |
+
+The v0 fixtures below are carried byte-identical. Labelling method for the added three, and the
+reasons to distrust their absolute counts, are in
+[`narrative_coverage_codebook.md`](narrative_coverage_codebook.md) — in short, a blind
+cross-family jury whose grain disagreed by up to 3.4×, merged by union, so thread counts read as
+an upper bound rather than a consensus.
+
+**Two consequences for reading any score off this set.** Absolute coverage over 10 fixtures is not
+comparable to the v0 figures quoted below — comparing two prompts means running both arms in one
+pass so they share a model and a judge. And per-fixture scores were never comparable to each
+other: drafted density spans one thread per 51 characters to one per 13,173.
+
 ### v0 (2026-07-17) — bootstrap
 
 **7 sources, 137 gold threads**, spanning the shapes where coverage diverges most:
@@ -155,12 +179,13 @@ The scorer's present/absent verdict is an **LLM judge** (`gpt-4.1-mini`, one bat
 fixture). Its dangerous failure is the **false positive** — calling a thread "present" when the
 anchor is missing — which inflates coverage and masks regressions. **Per-thread manual gold is not
 yet frozen to disk** (only the aggregate blind-score verdict table is: `narrative_v1` 97/137 = 71%,
-`narrative_v2` 117/137 = 85% at gpt-4.1-mini). Until per-thread manual labels are captured, calibrate
-the judge against those aggregate totals (the runner prints the comparison) and treat the automated
+`narrative_v2` 117/137 = 85% at gpt-4.1-mini — **both measured against the v0 7-fixture set, so they
+are not valid calibration targets for v2's 206-thread denominator**). Until per-thread manual labels
+are captured, calibrate the judge against aggregate totals from the gold version actually in use (the runner prints the comparison) and treat the automated
 absolute as a few points lenient — the delta and per-shape ordering are the trustworthy signal, not
 the absolute level.
 
-**N-run averaging is required — a single run is noisy.** The 137-thread aggregate is tight
+**N-run averaging is required — a single run is noisy.** The v0 137-thread aggregate was tight
 *within* a batch (3 back-to-back re-runs held ±1pt), but a single run can still land as an unlucky
 draw: one matched-format run put the `v1→v2` delta at +1.3pt, while the 3-run mean put it at +12.6pt
 (0.794 → 0.919), reproducing the manual +14.6pt. Record the **mean of ≥3 full re-runs** (extraction +

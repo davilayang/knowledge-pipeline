@@ -89,7 +89,11 @@ From a 16,377-char listicle (11 threads — note one thread per list item):
 11: decision rules (freshness->pattern; logic-evolution->Kappa vs Lambda; discipline to pick)
 ```
 
-Match that density and that level of specificity.
+Match that level of specificity. Do **not** match that density — those two fixtures sit at roughly
+1,470 characters per thread, and the three fixtures labelled with *this* codebook came out far
+denser: 51, 291 and 382 characters per thread. Density is a property of the source, not a target,
+and the union merge that produces the final gold pushes it denser still. If your count feels high
+for a short source, check it against the grain test above rather than against these two examples.
 
 ## Tie-breaks
 
@@ -133,6 +137,7 @@ reading of each source.
   coverage scores computed over the 10-fixture set are **not comparable** to any score
   published against the 7-fixture set; re-baseline before quoting a delta.
 - Per-fixture scores are not comparable to each other either. Drafted density across the set
-  spans one thread per 454 characters to one per 13,173.
+  spans one thread per 51 characters to one per 13,173 — a 259x spread, and still 45x if the
+  Chinese fixture is excluded.
 - Character count is not a density guide across scripts. The facebook fixture is Traditional
   Chinese; a CJK character carries several times the content of a Latin one.

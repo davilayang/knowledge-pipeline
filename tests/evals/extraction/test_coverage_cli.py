@@ -17,6 +17,12 @@ def test_dry_run_reads_gold_and_estimates(capsys):
     fixtures = [r for r in rows if "gold_threads" in r]
     threads = sum(len(r["gold_threads"]) for r in fixtures)
 
+    # Floor, not a literal: deriving both sides from the same file means a
+    # dataset that silently SHRANK would still match. The floor is the
+    # committed size, so losing a fixture fails while adding one does not.
+    assert len(fixtures) >= 10
+    assert threads >= 206
+
     rc = main(["--dry-run"])
     assert rc == 0
     out = capsys.readouterr().out

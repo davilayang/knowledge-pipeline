@@ -82,6 +82,21 @@ def _make_judge(api_key: str, model: str):
     return judge
 
 
+def _gold_version(gold_path: Path) -> int:
+    """`gold_version` from the fixture header, defaulting to 1 for files
+    written before the field existed. Carried into the run manifest and the
+    printed row: two runs against different gold versions are otherwise
+    indistinguishable in `data/eval_runs/`, since both record the same
+    filename and schema."""
+    import json as _json
+
+    with gold_path.open() as fh:
+        for line in fh:
+            if line.strip():
+                return int(_json.loads(line).get("gold_version", 1))
+    return 1
+
+
 def _run_arm(
     *,
     narrative_file: str,
@@ -92,6 +107,7 @@ def _run_arm(
     max_tokens: int,
     runs: int,
     gold_rel: str,
+    gold_version: int,
 ):
     label = narrative_file.replace(".md", "")
     variant = make_three_call_variant(
@@ -112,7 +128,7 @@ def _run_arm(
     scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, model))
     manifest = RunManifest(
         dataset=Path(gold_rel).name,
-        dataset_schema=1,
+        dataset_schema=gold_version,
         subject=label,
         subject_model=model,
         judge_model=model,
@@ -136,12 +152,15 @@ def _run_arm(
         "hi": report.hi,
         "per_run": report.per_run,
         "by_shape": report.by_stratum.get("by_content_shape", {}),
+        "by_type": report.by_stratum.get("by_content_type", {}),
     }
 
 
 def _print_arm(a: dict, runs: int) -> None:
     print(f"\n===== {a['variant']} — mean of {runs} run(s) =====")
     print(f"aggregate coverage@present = {a['mean']:.3f}  (range {a['lo']:.3f}–{a['hi']:.3f})")
+    for ctype, v in sorted(a["by_type"].items()):
+        print(f"  by content_type  {ctype:12s} {v:.3f}")
     for shape, v in sorted(a["by_shape"].items()):
         print(f"  {shape:10s} {v:.3f}")
 
@@ -165,6 +184,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     gold_rel = str(args.fixtures) if args.fixtures else _DEFAULT_GOLD
     gold_path = args.fixtures if args.fixtures else root / _DEFAULT_GOLD
     fixtures = _fixtures(gold_path)
+    gold_version = _gold_version(gold_path)
     total_chars = sum(len(f.content) for f in fixtures)
     n_arms = 2 if args.baseline else 1
     print(
@@ -194,6 +214,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         max_tokens=args.max_tokens,
         runs=args.runs,
         gold_rel=gold_rel,
+        gold_version=gold_version,
     )
     arms = []
     if args.baseline:
@@ -206,20 +227,24 @@ def main(argv: Sequence[str] | None = None) -> int:
         base, cand = arms
         print(f"\n===== Δ ({cand['variant']} − {base['variant']}) =====")
         print(f"aggregate: {cand['mean'] - base['mean']:+.3f}")
-        for shape in sorted(set(base["by_shape"]) | set(cand["by_shape"])):
-            d = cand["by_shape"].get(shape, 0.0) - base["by_shape"].get(shape, 0.0)
-            flag = "" if d >= -1e-9 else "  ← REGRESSION"
-            print(f"  {shape:10s} {d:+.3f}{flag}")
+        for key, label_ in (("by_type", "content_type"), ("by_shape", "content_shape")):
+            print(f"  per {label_}:")
+            for stratum in sorted(set(base[key]) | set(cand[key])):
+                d = cand[key].get(stratum, 0.0) - base[key].get(stratum, 0.0)
+                flag = "" if d >= -1e-9 else "  ← REGRESSION"
+                print(f"    {stratum:12s} {d:+.3f}{flag}")
 
     print("\n===== Notion Eval Runs rows (log the mean; see packages/evals/README.md) =====")
     dataset = Path(gold_rel).name
     for a in arms:
         shape_str = ", ".join(f"{s}={v:.2f}" for s, v in sorted(a["by_shape"].items()))
+        type_str = ", ".join(f"{s}={v:.2f}" for s, v in sorted(a["by_type"].items()))
         value = f"{a['mean']:.3f} (range {a['lo']:.3f}-{a['hi']:.3f})"
         row = (
             f"Project=knowledge-pipeline | Benchmark=extraction-coverage | "
             f"Variant={a['variant']} | Metric=coverage@present | Value={value} | "
-            f"N={len(fixtures)} | Dataset={dataset} | Model={args.model} | per-shape: {shape_str}"
+            f"N={len(fixtures)} | Dataset={dataset}@v{gold_version} | Model={args.model} | "
+            f"per-type: {type_str} | per-shape: {shape_str}"
         )
         print(f"  {row}")
     return 0
