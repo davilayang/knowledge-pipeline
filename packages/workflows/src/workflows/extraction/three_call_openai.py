@@ -61,13 +61,24 @@ def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
     """Token-budget kwargs for the chat/parse calls, per model family.
 
     gpt-5-family are reasoning models: they reject `max_tokens` and require
-    `max_completion_tokens`; `reasoning_effort="minimal"` keeps them from
+    `max_completion_tokens`; the lowest reasoning effort keeps them from
     spending the budget on hidden reasoning — extraction wants coverage of the
     source, not deliberation. Non-reasoning models (gpt-4.1/4o) keep the classic
     `max_tokens` and reject `reasoning_effort`.
+
+    The name of that lowest setting changed at the first dotted release. The
+    original generation (`gpt-5`, `gpt-5-mini`, …) takes `minimal` and rejects
+    `none`; every dotted release from `gpt-5.4` on rejects `minimal` and takes
+    `none`. Both spellings share the `gpt-5` prefix, so they must be told apart
+    or one generation 400s on every call. Verified live against gpt-5,
+    gpt-5-mini, gpt-5.4-mini, gpt-5.4-nano and gpt-5.6-luna.
+
+    An unrecognised dotted id gets `none`, so a future release fails safe
+    rather than repeating the outage this branch exists to prevent.
     """
     if model.startswith("gpt-5"):
-        return {"max_completion_tokens": max_tokens, "reasoning_effort": "minimal"}
+        effort = "none" if model.startswith("gpt-5.") else "minimal"
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": effort}
     return {"max_tokens": max_tokens}
 
 

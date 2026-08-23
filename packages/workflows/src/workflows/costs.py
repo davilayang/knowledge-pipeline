@@ -1,13 +1,29 @@
 # Token-usage → USD pricing for LLM calls.
 #
-# Per-1M-token rates in USD. Sourced from https://openai.com/api/pricing/
-# on 2026-05-08. Update the dict when the prices page changes; historical
+# Per-1M-token rates in USD. Sourced from https://developers.openai.com/api/docs/pricing
+# on 2026-08-23. Update the dict when the prices page changes; historical
 # materializations keep their point-in-time numbers (metadata is immutable
 # once attached to a materialization).
+#
+# A model missing here costs $0.00 rather than raising, so a gap is silent —
+# every model the pipeline can be pointed at needs an entry. Matching is
+# exact-then-longest-PREFIX, so a key only covers ids that extend it: listing
+# `gpt-5.6-luna` does NOT cover `gpt-5.6-terra`. Keep this in step with
+# EXTRACT_QUEUE_MODEL, whose whole gpt-5.6 family the extractor now accepts.
+#
+# Input is priced at the uncached rate. Cached input is ~10x cheaper and the
+# call records carry `cached_tokens`, so a cache-aware rate would be a real
+# improvement — deliberately not done here, and it overstates rather than
+# understates cost.
 
 PRICING_PER_1M: dict[str, dict[str, float]] = {
     "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
     "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-5-mini": {"input": 0.25, "output": 2.00},
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
+    "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
+    "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
 }
 
 

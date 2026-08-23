@@ -46,3 +46,13 @@ def test_is_priced():
 
 def test_cost_usd_zero_tokens_zero_cost():
     assert cost_usd("gpt-4.1-mini", 0, 0) == 0.0
+
+
+def test_production_extraction_models_are_priced():
+    """A model missing from the table costs $0.00, which silently disables the
+    eval CostBudget guard rather than failing loudly — `is_priced` exists to
+    surface that gap but has no callers. Every model the pipeline actually runs
+    must therefore resolve to a real rate."""
+    for model in ("gpt-5-mini", "gpt-5.6-luna"):
+        assert is_priced(model), f"{model} is unpriced — cost_usd() returns 0.0"
+        assert cost_usd(model, 1_000_000, 1_000_000) > 0
