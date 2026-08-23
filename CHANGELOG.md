@@ -6,10 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+### Changed
 
-- **Any `gpt-5.6` model failed every extraction call.** `_token_kwargs` branches on a `gpt-5` prefix and sent `reasoning_effort="minimal"`, which `gpt-5.6` rejects with a 400 — it renamed that setting to `none`, while earlier `gpt-5` models reject `none`. The two generations are now told apart, leaving `gpt-5-mini`'s behaviour unchanged. (`packages/workflows/src/workflows/extraction/three_call_openai.py`)
-- **The pricing table knows the models the pipeline actually runs.** `gpt-5-mini` (in production) and `gpt-5.6-luna` were both absent from `PRICING_PER_1M`, and an unpriced model resolves to a zero rate rather than an error. Nothing on the extraction path reads these rates today — `cost_usd` has one caller, the wiki judge-cost print — so this fixes a latent gap rather than a live miscount, and any future cost estimator inherits correct rates instead of silent zeros. Rates re-sourced 2026-08-23. `is_priced` exists to surface exactly this gap and still has no callers. (`packages/workflows/src/workflows/costs.py`)
+- **Extraction can be pointed at a dotted `gpt-5` release.** It could not before: `_token_kwargs` branched on a `gpt-5` prefix and sent `reasoning_effort="minimal"`, which every release from `gpt-5.4` on rejects with a 400 — the setting was renamed to `none`, while the original `gpt-5` generation rejects `none`. Nothing was broken in production, which runs `gpt-5-mini`; the bug blocked moving off it. The generations are now told apart, `gpt-5-mini`'s behaviour is unchanged, and an unrecognised dotted id defaults to `none` so a future release fails safe. (`packages/workflows/src/workflows/extraction/three_call_openai.py`)
+- **The wiki judge's cost is no longer reported as $0.00.** `gpt-4.1` was missing from `PRICING_PER_1M`, and it is the model `evals.wiki.calibrate` prints a cost for — the only caller of `cost_usd` anywhere — so the one place a cost is displayed displayed nothing. Prefix matching does not rescue it: `gpt-4.1` extends neither `gpt-4.1-mini` nor `-nano`. Added, along with the two extraction models the pipeline is pointed at. `gpt-4o-mini` was deliberately *not* added: as a prefix key it would silently price `gpt-4o-mini-tts` and `-transcribe` at the text rate. Rates re-sourced 2026-08-23. (`packages/workflows/src/workflows/costs.py`)
 
 ---
 

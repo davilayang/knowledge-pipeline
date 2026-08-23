@@ -66,15 +66,19 @@ def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
     source, not deliberation. Non-reasoning models (gpt-4.1/4o) keep the classic
     `max_tokens` and reject `reasoning_effort`.
 
-    The name of that lowest setting changed at the first dotted release. The
-    original generation (`gpt-5`, `gpt-5-mini`, …) takes `minimal` and rejects
-    `none`; every dotted release from `gpt-5.4` on rejects `minimal` and takes
-    `none`. Both spellings share the `gpt-5` prefix, so they must be told apart
-    or one generation 400s on every call. Verified live against gpt-5,
-    gpt-5-mini, gpt-5.4-mini, gpt-5.4-nano and gpt-5.6-luna.
+    The name of that lowest setting changed somewhere between the original
+    generation and the dotted ones. Verified live: `gpt-5` and `gpt-5-mini`
+    take `minimal` and reject `none`; `gpt-5.4-mini`, `gpt-5.4-nano` and
+    `gpt-5.6-luna` reject `minimal` and take `none`. Both spellings share the
+    `gpt-5` prefix, so they must be told apart or a whole generation 400s on
+    every call.
 
-    An unrecognised dotted id gets `none`, so a future release fails safe
-    rather than repeating the outage this branch exists to prevent.
+    The rule below splits on the dot, which is wider than what was tested: the
+    5.0–5.3 band is untested and assumed to follow 5.4. That direction is the
+    deliberate one — an unrecognised dotted id gets the newer spelling, so a
+    future release fails safe rather than repeating the failure this branch
+    exists to prevent. A non-reasoning id sharing the prefix (`gpt-5-chat-*`)
+    would still be mis-routed here; none is in use.
     """
     if model.startswith("gpt-5"):
         effort = "none" if model.startswith("gpt-5.") else "minimal"

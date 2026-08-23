@@ -5,11 +5,16 @@
 # materializations keep their point-in-time numbers (metadata is immutable
 # once attached to a materialization).
 #
-# A model missing here costs $0.00 rather than raising, so a gap is silent —
-# every model the pipeline can be pointed at needs an entry. Matching is
-# exact-then-longest-PREFIX, so a key only covers ids that extend it: listing
-# `gpt-5.6-luna` does NOT cover `gpt-5.6-terra`. Keep this in step with
-# EXTRACT_QUEUE_MODEL, whose whole gpt-5.6 family the extractor now accepts.
+# A model missing here costs $0.00 rather than raising, so a gap is silent.
+# `gpt-4.1` is the one that matters today: it is the wiki judge, and
+# `evals.wiki.calibrate` is the only caller of `cost_usd` anywhere, so it is the
+# only model whose cost is ever displayed. The rest are listed because the
+# pipeline is pointed at them, not because anything costs them yet.
+#
+# Matching is exact-then-longest-PREFIX, so a key only covers ids that EXTEND
+# it, and a key with siblings on different economics is a trap: `gpt-4o-mini`
+# would silently price `gpt-4o-mini-tts` and `-transcribe` at the text rate.
+# Add a key only when its whole prefix subtree shares its rate.
 #
 # Input is priced at the uncached rate. Cached input is ~10x cheaper and the
 # call records carry `cached_tokens`, so a cache-aware rate would be a real
@@ -17,13 +22,11 @@
 # understates cost.
 
 PRICING_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-4.1": {"input": 2.00, "output": 8.00},
     "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
     "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
-    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
     "gpt-5-mini": {"input": 0.25, "output": 2.00},
     "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
-    "gpt-5.6-terra": {"input": 2.00, "output": 12.00},
-    "gpt-5.6-sol": {"input": 4.00, "output": 20.00},
 }
 
 
