@@ -20,6 +20,7 @@ Labels map to filenames as `<label>.md`. To bump a prompt, edit the file AND the
 
 | File | Notes |
 |---|---|
+| `narrative_v3.md` | **Candidate, not yet active.** Carries `narrative_v2`'s three sections plus four delivery-layer sections (speakers, structure, load-bearing subset, ordered beats) and an explicit output-language rule. Becomes active when `PROMPT_LABEL_NARRATIVE` is bumped, which waits on its coverage eval. |
 | `narrative_v1.md` | Superseded by `narrative_v2.md` (fixed-section basket, replaced by threads-first coverage) — kept as reference / eval baseline. |
 | `v5_article_kp_copy_2026_05_31.md` | Original single-shot v5 prompt (Article path) — kept as reference / future eval variant input. |
 | `v5_arxiv_kp_copy_2026_06_01.md` | Same, arXiv path. |
