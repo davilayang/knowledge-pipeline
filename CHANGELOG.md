@@ -6,11 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **A labelling codebook for the narrative-coverage gold**, so its labels are reproducible rather than a one-off. `packages/evals/datasets/narrative_coverage_codebook.md` records the thread definition, the grain test, the mandatory-anchor rules and the FN-heavy tie-breaks, alongside how the added fixtures were labelled: a blind cross-family jury (one Gemini agent and one Claude agent per fixture, source plus codebook only, no system output and no knowledge of the prompt under test), merged by union. It also records that two rounds of labelling did **not** converge — grain diverged by up to 3.4× — so union is a merge policy, not a consensus claim, and thread counts read as an upper bound.
+
 ### Changed
 
-- **The narrative-coverage gold can now measure the short end of the corpus.** Its 7 fixtures had a 15,449-character floor while 39% of fetched items sit below it, held no `facebook` items, and weighted `youtube` at 29% against a corpus that is 53% YouTube — so a passing score said nothing about the majority content type or the whole small-source band. Three fixtures added (10 total): a 1,574-character Traditional Chinese post carrying contested employment figures, a 3,777-character talk whose channel name differs from its speaker, and a 9,560-character talk with no title, author, or shape metadata.
-- **Gold labelling is reproducible rather than a one-off.** `packages/evals/datasets/narrative_coverage_codebook.md` records the thread definition, the grain test, mandatory-anchor rules, and the FN-heavy tie-breaks, alongside how the added fixtures were labelled — a blind cross-family jury given source plus codebook only, merged by union.
-- **Coverage scores over the widened set are not comparable to earlier ones.** Union merging lifts thread counts, so `narrative_v2` must be re-scored against the 10-fixture set before any delta against it is meaningful. The header carries `gold_version: 2` to make the boundary machine-detectable.
+- **The narrative-coverage gold can now measure the short end of the corpus.** Its 7 fixtures had a 15,449-character floor while 39% of fetched items sit below it, held no `facebook` items, and weighted `youtube` at 29% against a corpus that is 53% YouTube — so a passing score said nothing about the majority content type or about any source under 15k characters. Three fixtures added (10 total): a 1,574-character Traditional Chinese post carrying contested employment figures, a 3,777-character talk whose channel name differs from its speaker, and a 9,560-character talk with no title, author or shape metadata. Size floor drops to 1,574 characters and `youtube` rises from 29% to 40%.
+- **Coverage scores over the widened set are not comparable to earlier ones, in either direction.** Union merging lifts thread counts, so the published figure computed over 7 fixtures is not a valid reference for anything scored after this change — treat it as historical. Comparing two prompts now means running both arms in one pass (`--narrative … --baseline …`) so they share a model and a judge. The header carries `gold_version: 2` to make the boundary machine-detectable, and the original 7 fixtures are byte-identical.
+- **Per-fixture coverage scores were never comparable to each other.** Surfaced while widening, and pre-existing: drafted thread density across the set spans one thread per 454 characters to one per 13,173, a 29× range. The CLI's per-shape deltas should be read with that in mind.
 
 ---
 
