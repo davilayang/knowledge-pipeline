@@ -205,6 +205,28 @@ def test_gpt5_model_sends_reasoning_params_not_max_tokens():
         assert "max_tokens" not in parse_call.kwargs
 
 
+@pytest.mark.parametrize("model", ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.6-luna"])
+def test_dotted_gpt5_models_send_none_effort_not_minimal(model):
+    """The don't-deliberate setting was renamed at the first dotted release:
+    `gpt-5`/`gpt-5-mini` take `minimal` and reject `none`, while every dotted
+    release from 5.4 on does the reverse. Both share the `gpt-5` prefix, so a
+    branch that keys on the wrong boundary 400s a whole generation on every
+    call — parametrised across releases because pinning one id is what let
+    gpt-5.4 slip through."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t", model=model, prompt_sets={"unknown": _bundle()}, max_tokens=4096
+    )
+    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        ex.extract(content="raw", content_type="Article", content_shape="unknown")
+    narr = client.chat.completions.create.await_args.kwargs
+    assert narr["max_completion_tokens"] == 4096
+    assert narr["reasoning_effort"] == "none"
+    assert "max_tokens" not in narr
+    for parse_call in client.beta.chat.completions.parse.await_args_list:
+        assert parse_call.kwargs["reasoning_effort"] == "none"
+
+
 def test_non_reasoning_model_sends_max_tokens(extractor):
     """gpt-4.1-family keep the classic `max_tokens` param (they reject
     `reasoning_effort`)."""

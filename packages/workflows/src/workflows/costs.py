@@ -1,13 +1,27 @@
 # Token-usage → USD pricing for LLM calls.
 #
-# Per-1M-token rates in USD. Sourced from https://openai.com/api/pricing/
-# on 2026-05-08. Update the dict when the prices page changes; historical
-# materializations keep their point-in-time numbers (metadata is immutable
-# once attached to a materialization).
+# Per-1M text-token rates, Standard tier (Batch and Flex are cheaper, not
+# modelled). Source: https://developers.openai.com/api/docs/pricing — every
+# rate below re-verified 2026-08-24. Historical materializations keep their
+# point-in-time numbers, so updating here never rewrites past metadata.
+#
+# A missing model resolves to $0.00 rather than raising, so a gap is silent.
+# `gpt-4.1` is the one that matters today: `evals.wiki.calibrate` is the only
+# caller of `cost_usd` anywhere, and it prices the wiki judge.
+#
+# Matching is exact-then-longest-PREFIX, so a key silently covers every id that
+# extends it — `gpt-4o-mini` would price `gpt-4o-mini-tts` at the text rate.
+# Only add a key whose whole subtree shares its rate.
+#
+# Input uses the UNCACHED rate. Cached is 4x cheaper on gpt-4.1, 10x on
+# gpt-5-mini and luna, so no single blended discount is right; this overstates.
 
 PRICING_PER_1M: dict[str, dict[str, float]] = {
+    "gpt-4.1": {"input": 2.00, "output": 8.00},
     "gpt-4.1-nano": {"input": 0.10, "output": 0.40},
     "gpt-4.1-mini": {"input": 0.40, "output": 1.60},
+    "gpt-5-mini": {"input": 0.25, "output": 2.00},
+    "gpt-5.6-luna": {"input": 0.20, "output": 1.20},
 }
 
 

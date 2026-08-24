@@ -46,3 +46,26 @@ def test_is_priced():
 
 def test_cost_usd_zero_tokens_zero_cost():
     assert cost_usd("gpt-4.1-mini", 0, 0) == 0.0
+
+
+def test_models_whose_cost_is_actually_reported_are_priced():
+    """An unpriced model resolves to a zero rate rather than raising, so the gap
+    is silent. `gpt-4.1` matters most: it is the wiki judge (`evals.wiki.chat`)
+    and therefore the only model whose cost any caller prints today
+    (`evals.wiki.calibrate`). The extraction models are here because they are
+    what the pipeline is pointed at, not because anything costs them yet."""
+    for model in ("gpt-4.1", "gpt-5-mini", "gpt-5.6-luna"):
+        assert is_priced(model), f"{model} is unpriced — cost_usd() returns 0.0"
+        assert cost_usd(model, 1_000_000, 1_000_000) > 0
+
+
+def test_dated_ids_resolve_to_their_base_alias_rate():
+    """`workflows.llm` records `response.model`, which is the API's dated id, so
+    the rate a caller gets comes from prefix matching. Longest-prefix must win:
+    a `gpt-4.1-mini-*` id has to price as mini, not as the shorter `gpt-4.1`
+    key that also matches it."""
+    assert cost_usd("gpt-4.1-2025-04-14", 1_000_000, 0) == cost_usd("gpt-4.1", 1_000_000, 0)
+    assert cost_usd("gpt-4.1-mini-2025-04-14", 1_000_000, 0) == cost_usd(
+        "gpt-4.1-mini", 1_000_000, 0
+    )
+    assert cost_usd("gpt-4.1-mini", 1_000_000, 0) != cost_usd("gpt-4.1", 1_000_000, 0)

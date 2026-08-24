@@ -60,14 +60,20 @@ _READER_THREADS_FOLD = (
 def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
     """Token-budget kwargs for the chat/parse calls, per model family.
 
-    gpt-5-family are reasoning models: they reject `max_tokens` and require
-    `max_completion_tokens`; `reasoning_effort="minimal"` keeps them from
-    spending the budget on hidden reasoning — extraction wants coverage of the
-    source, not deliberation. Non-reasoning models (gpt-4.1/4o) keep the classic
-    `max_tokens` and reject `reasoning_effort`.
+    gpt-5-family are reasoning models: they reject `max_tokens` and need
+    `max_completion_tokens`, plus the lowest reasoning effort — extraction wants
+    coverage of the source, not deliberation. gpt-4.1/4o keep the classic
+    `max_tokens` and reject `reasoning_effort` entirely.
+
+    The two gpt-5 generations spell "lowest" differently and reject each other's
+    value, so one prefix would 400 a whole generation on every call. Verified
+    live: `gpt-5`/`gpt-5-mini` take `minimal`; `gpt-5.4-*` and `gpt-5.6-*` take
+    `none`. Splitting on the dot means an unknown dotted release gets the newer
+    spelling and fails safe. `gpt-5-chat-*` would be mis-routed; none is in use.
     """
     if model.startswith("gpt-5"):
-        return {"max_completion_tokens": max_tokens, "reasoning_effort": "minimal"}
+        effort = "none" if model.startswith("gpt-5.") else "minimal"
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": effort}
     return {"max_tokens": max_tokens}
 
 
