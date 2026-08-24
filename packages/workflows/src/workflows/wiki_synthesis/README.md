@@ -102,7 +102,7 @@ echoes accumulated metadata back into the body.
 |---|---|
 | `{slug}-{shortid}.md` — the rendered page (flat, no subdirs) | `entities` — identity record (entity_id PK, canonical_name, normalized_name, slug, entity_type) |
 | `index.md` — table of contents (regenerated) | `pages` — synthesised-artifact metadata (FK → entities); entity_type/slug/canonical_name read via join |
-| `_index/resolve.json` — alias→entity_id resolution + per-entity orientation (`name`, `type`, `file`, `num_sources`, `has_derived`, `page_hash`); newsletter-assistant bridge sidecar; written last so it never points past an `.md` file already on disk | |
+| `_index/resolve.json` — alias→entity_id resolution + per-entity orientation (`name`, `type`, `file`, `num_sources`, `has_user_claims` + its legacy alias `has_derived`, `page_hash`); newsletter-assistant bridge sidecar; written last so it never points past an `.md` file already on disk | |
 | | `aliases` — entity name → id mapping (normalized_alias PK) |
 | | `processed_items` — per (item_id, source_type) completion markers |
 

@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.8] — 2026-08-24
+
+### Changed
+
+- **The wiki sidecar names its user-notes flag for what it means.** `_index/resolve.json` carries `has_user_claims` beside the legacy `has_derived` — same value, both written — computed by `has_user_claims_for_entity` (renamed from `has_derived_for_entity`). The old name described how the flag was derived, not what it says.
+
+- **`_SCHEMA_VERSION` deliberately stays 1.** Adding a key is additive, so no consumer breaks; bumping while both keys exist would only make a consumer pinned to schema 1 reject the whole file. The bump belongs with the later removal of `has_derived`.
+
+- **`SYNTHESIZE_WIKI_DAG_VERSION` 2 → 3.** The sidecar's shape changed, so prior materializations no longer match what the asset now emits.
+
+---
+
 ## [0.36.7] — 2026-08-24
 
 ### Changed

@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
-from domains.wiki.attributed import count_sources_for_entity, has_derived_for_entity
+from domains.wiki.attributed import count_sources_for_entity, has_user_claims_for_entity
 from domains.wiki.state import connection, get_all_aliases, get_all_pages
 
 _SCHEMA_VERSION = 1
@@ -52,17 +52,26 @@ def build_wiki_index(*, wiki_db_path: Path | str, wiki_dir: Path | str) -> Build
     with connection(wiki_db_path) as conn:
         pages = get_all_pages(conn)
         aliases = get_all_aliases(conn)
-        entities = {
-            p.entity_id: {
+        entities = {}
+        for p in pages:
+            # `has_user_claims` names what the flag means; `has_derived` is the
+            # legacy name, written alongside it for one release so a consumer
+            # rollback still finds the key. Purely additive, which is why
+            # `_SCHEMA_VERSION` deliberately stays 1: bumping it while both keys
+            # exist buys nothing, and a consumer pinned to schema 1 rejects the
+            # WHOLE file on an unrecognised version. The bump belongs with the
+            # removal of `has_derived` — the change that truly breaks an old
+            # reader.
+            has_user = has_user_claims_for_entity(conn, p.entity_id)
+            entities[p.entity_id] = {
                 "name": p.canonical_name,
                 "type": p.entity_type,
                 "file": p.file_path,
                 "num_sources": count_sources_for_entity(conn, p.entity_id),
-                "has_derived": has_derived_for_entity(conn, p.entity_id),
+                "has_user_claims": has_user,
+                "has_derived": has_user,
                 "page_hash": _sha256((wiki_dir / p.file_path).read_bytes()),
             }
-            for p in pages
-        }
 
     alias_map = _build_alias_map(pages, aliases)
     # snapshot_id fingerprints the WHOLE resolve payload (aliases + every entity
