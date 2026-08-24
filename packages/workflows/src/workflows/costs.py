@@ -1,9 +1,13 @@
 # Token-usage → USD pricing for LLM calls.
 #
-# Per-1M-token rates in USD. Sourced from https://developers.openai.com/api/docs/pricing
-# on 2026-08-23. Update the dict when the prices page changes; historical
-# materializations keep their point-in-time numbers (metadata is immutable
-# once attached to a materialization).
+# Per-1M-token rates in USD, for TEXT tokens on the Standard tier.
+#
+#   Source: https://developers.openai.com/api/docs/pricing
+#   Every rate below re-checked against that page on 2026-08-24.
+#
+# Update the dict when the prices page changes; historical materializations
+# keep their point-in-time numbers (metadata is immutable once attached to a
+# materialization). Batch and Flex tiers are cheaper and are not modelled.
 #
 # A model missing here costs $0.00 rather than raising, so a gap is silent.
 # `gpt-4.1` is the one that matters today: it is the wiki judge, and
@@ -16,10 +20,12 @@
 # would silently price `gpt-4o-mini-tts` and `-transcribe` at the text rate.
 # Add a key only when its whole prefix subtree shares its rate.
 #
-# Input is priced at the uncached rate. Cached input is ~10x cheaper and the
-# call records carry `cached_tokens`, so a cache-aware rate would be a real
-# improvement — deliberately not done here, and it overstates rather than
-# understates cost.
+# Input is priced at the UNCACHED rate. Cached input is cheaper by a factor
+# that varies by family — 4x on gpt-4.1 ($2.00 -> $0.50) and gpt-4.1-mini,
+# 10x on gpt-5-mini ($0.25 -> $0.025) and gpt-5.6-luna ($0.20 -> $0.02) — so a
+# single blended discount would be wrong. The call records already carry
+# `cached_tokens`, so a cache-aware rate is a real improvement waiting to be
+# made; until then this overstates cost rather than understating it.
 
 PRICING_PER_1M: dict[str, dict[str, float]] = {
     "gpt-4.1": {"input": 2.00, "output": 8.00},
