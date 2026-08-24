@@ -31,11 +31,17 @@ change. Measured on a 50%-Chinese source: gpt-5-mini returned a narrative at 0.0
 gpt-5.6-luna returned 55.4%, writing in the source's language. `narrative_md` is read aloud by an
 English TTS voice, so on the corpus's non-English items that is unspeakable output.
 
-**Latin script throughout, not just English prose.** An earlier cut of this rule asked for
-original-script terms preserved inline with a gloss, on the reasoning that a quoted phrase is a
-stronger memory hook than a paraphrase. That is true on a page and wrong here: the consuming
-agent reads `narrative_md` aloud through an English speech synthesiser that cannot pronounce
-Chinese, so a preserved phrase is not a vivid detail — it is garbled audio.
+**Latin script throughout, not just English prose — and this rule belongs to THIS artefact
+only.** An earlier cut asked for original-script terms preserved inline with a gloss, reasoning
+that a quoted phrase is a stronger memory hook than a paraphrase. That is true on a page and
+wrong here, because of what consumes this particular output: `narrative_md` is read aloud through
+an English speech synthesiser that cannot pronounce Chinese, so a preserved phrase is not a vivid
+detail — it is garbled audio.
+
+**Do not copy this rule into a read artefact.** Wiki pages and notes are read on screen by a
+reader who speaks the source language; flattening the original phrasing there loses the hook and
+buys nothing, since nothing speaks it. The constraint is a property of the consumer, not of
+extraction. Apply it where the output is spoken; leave it out where the output is displayed.
 
 It is not only quotes. Four items in the corpus carry CJK author names (`工程師米奇`,
 `耳鼻喉科徐英碩醫師`, …) and twelve carry CJK titles, and those land in `Speakers and author:` —
