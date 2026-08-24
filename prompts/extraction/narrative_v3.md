@@ -19,8 +19,9 @@ subset, and ordered delivery beats.
 
 **Additive, with one stated exception.** v2's three sections and all their rules are carried
 unchanged, so the pinned coverage gold scores the same text and cannot regress structurally.
-The exception is the `WRITE IN ENGLISH` line added to OUTPUT FORMAT — see below; it is a
-behaviour *restoration*, not a new demand.
+The exception is the `WRITE IN ENGLISH` line added to OUTPUT FORMAT. Its English half restores
+behaviour the previous model already had; its Latin-script half is a new demand, and neither
+model produced it unprompted.
 
 ### Why the language line exists
 
@@ -30,9 +31,20 @@ change. Measured on a 50%-Chinese source: gpt-5-mini returned a narrative at 0.0
 gpt-5.6-luna returned 55.4%, writing in the source's language. `narrative_md` is read aloud by an
 English TTS voice, so on the corpus's non-English items that is unspeakable output.
 
-The preserve-the-term-plus-gloss instruction is not decoration: it is what the old models did
-well, and it is what keeps `"時間不會說謊" (time doesn't lie)` from flattening into "a saying about
-time" — the specificity the whole prompt exists to protect.
+**Latin script throughout, not just English prose.** An earlier cut of this rule asked for
+original-script terms preserved inline with a gloss, on the reasoning that a quoted phrase is a
+stronger memory hook than a paraphrase. That is true on a page and wrong here: the consuming
+agent reads `narrative_md` aloud through an English speech synthesiser that cannot pronounce
+Chinese, so a preserved phrase is not a vivid detail — it is garbled audio.
+
+It is not only quotes. Four items in the corpus carry CJK author names (`工程師米奇`,
+`耳鼻喉科徐英碩醫師`, …) and twelve carry CJK titles, and those land in `Speakers and author:` —
+the field added precisely so the agent names people on every content turn. Romanising is what
+keeps that field speakable.
+
+The specificity still has to survive; it survives in the translation. "The core isn't how smart
+the model is, it's how stable the toolchain is" carries the claim. `核心不是模型多聰明` carries
+nothing a listener can hear.
 
 **General lesson, worth keeping:** any behaviour the prompt does not state is a behaviour the
 next model may not reproduce.
@@ -100,7 +112,7 @@ CONTENT-TYPE ROUTING
 
 OUTPUT FORMAT
 Plain text. No JSON, no fenced code blocks, no markdown syntax inside bodies. Emit the sections below, in order, using the headers verbatim.
-WRITE IN ENGLISH, whatever language the source is in. This is not a translation — keep distinctive original-language terms, names, titles and short quoted phrases in their original script, inline, each followed immediately by an English gloss in parentheses. A source in another language must still produce English prose around those preserved terms.
+WRITE IN ENGLISH, whatever language the source is in, and in LATIN SCRIPT THROUGHOUT. Do not carry original-script text into the output — not for quotes, names, titles or terms. Translate quoted phrases; romanise personal and publication names that have no established English form, and give the English meaning in parentheses where the name carries one. Keep the specificity that made a phrase worth quoting — who said it, the exact claim, the number — in the translation.
 
 Salient threads:
 This is the primary output. Enumerate the DISTINCT threads in the source — a thread is a claim, finding, argument, method, result, story beat, comparison, objection, statistic, or framing that a listener could ask a SEPARATE follow-up question about. Rules:
@@ -130,6 +142,7 @@ Where to look, in this order:
 Rules:
 - A CHANNEL OR PUBLICATION IS NOT A SPEAKER. `**Channel:** Dwarkesh Clips` names who published the video, not who is talking. Never emit a channel, publication, feed or account name as the speaker.
 - NEVER emit a role in place of a name. "Host", "Guest", "the author", "the speaker" alone is a failure — the downstream agent reads this aloud and attributes claims to it.
+- Romanise a name written in a non-Latin script, since this line is spoken aloud by an English voice. Add the English meaning in parentheses when the name carries one — a handle like a profession plus a nickname reads better glossed than transliterated alone.
 - If the source genuinely names nobody, write exactly: not named in the source. Do NOT guess, and do NOT infer a name from the publication, channel or feed.
 
 Structure:
