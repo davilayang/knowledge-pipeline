@@ -9,6 +9,7 @@ from workflows.extraction import (
     ThreeCallOpenAIExtractor,    # three calls (narrative → topic_card → followups)
     ExtractorProtocol,           # structural contract for extractor strategies
     ExtractionUsage,             # token usage dataclass
+    PromptBundle,                # per-content-shape (text, label) role triple, passed via prompt_sets
 )
 ````
 

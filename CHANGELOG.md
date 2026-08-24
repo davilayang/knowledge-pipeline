@@ -6,10 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.6] — 2026-08-24
+
 ### Added
 
 - **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler, so it carries no prior labels or outcomes. Why the counts are union-merged upper bounds is recorded in the dataset section instead.
-- **`narrative_v3` extraction prompt adds a delivery layer** the voice agent can walk one turn at a time: speakers, structure, load-bearing claims, and 4-6 entity-chained beats. Carries `narrative_v2`'s sections unchanged. Not active until `PROMPT_LABEL_NARRATIVE` bumps.
+- **`narrative_v3` extraction prompt adds a voice-agent delivery layer** — speakers, structure, load-bearing claims, and 4-6 entity-chained beats the agent can walk one turn at a time, carrying `narrative_v2`'s sections unchanged. Output is pinned to English in Latin script, since raw non-Latin text isn't speakable by TTS. Not active until `PROMPT_LABEL_NARRATIVE` bumps.
 
 ### Changed
 
@@ -18,7 +22,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **The dataset README documents each dataset as a contract rather than its contents.** Five headings per dataset; derivable counts and fixture tables dropped after the coverage section claimed 7 sources / 137 threads against a file holding 10 / 206.
 - **Extraction can be pointed at a dotted `gpt-5` release.** `_token_kwargs` sent `reasoning_effort="minimal"`, which every release from `gpt-5.4` on rejects with a 400, while the original generation rejects `none`. Now split on the dot; `gpt-5-mini` is unchanged.
 - **The wiki judge's cost is no longer reported as $0.00.** `gpt-4.1` was absent from `PRICING_PER_1M` and is the only model any caller costs. Added with the two extraction models; `gpt-4o-mini` deliberately omitted, since as a prefix key it would misprice `-tts` and `-transcribe`.
-- **`narrative_v3` pins its output to English in Latin script.** No prompt stated a language, so it was emergent: on a 50%-Chinese source `gpt-5-mini` returned 0.0% CJK and `gpt-5.6-luna` 55.4%. Narrative call only — `topic_card_v1` and `followups_v1` still state none, and the card is voiced.
 
 ---
 

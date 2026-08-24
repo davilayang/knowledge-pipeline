@@ -12,7 +12,7 @@ Pure-function substrate for the eval / workbench layer. Consumed by per-pipeline
 - Judge skeletons (exact, embedding, LLM) with **injected** callables — no provider deps here.
 - Per-field diff renderer (text + HTML).
 - `harness.py` — the shared variant → `FixtureRun` → score → stratified-aggregate → persist runner (`run_and_report`), plus `run_repeated` / `RepeatedReport` for N-run mean+range over a noisy judge. Only harnesses whose shape is `variant.run(fixture) -> FixtureRun` run through it (extraction, narrative coverage); retrieval and extract-claims keep their own run models.
-- `manifest.py` — `RunManifest` (dataset/subject/model/judge/code-rev/mode/runs provenance envelope), `code_rev()` (git short sha), `format_manifest_line()`. Every eval entrypoint attaches one, whether or not it runs through `harness.py`.
+- `manifest.py` — `RunManifest` (dataset/dataset_schema/dataset_version/subject/model/judge/code-rev/mode/runs provenance envelope), `code_rev()` (git short sha), `format_manifest_line()`. `dataset_schema` is the fixture header's `schema_version`; `dataset_version` (default `1`) is the DATA revision — it changes when fixtures are added/removed without the schema changing. Every eval entrypoint attaches one, whether or not it runs through `harness.py`.
 
 ## Not in scope
 

@@ -21,8 +21,9 @@ set -a && source .env && set +a && \
 
 - `--narrative <label>` — candidate prompt (default `narrative_v2`); `--baseline <label>` — optional prior prompt to diff against in the same pass (prints the per-content-type and per-shape Δ and flags any `← REGRESSION`).
 - `--runs N` (default 3) — the LLM judge is noisy at n=7; the CLI reports the **mean + observed range** over N full re-runs. `--dry-run` estimates cost first.
-- Both prompts are loaded with design-notes headers stripped (`strip_design_notes`, matches prod). Output ends with **Notion-ready rows** — log the mean to the Eval Runs DB (see [`../../README.md`](../../README.md) → "Results are two-tier"). Detailed per-run JSON persists under `data/eval_runs/` (gitignored).
-- The gold lives at [`datasets/narrative_coverage_gold.jsonl`](../../datasets/README.md#narrative_coverage_goldjsonl); the single-fixture hit/miss inspector is the `ab_narrative_coverage__content` workbench notebook.
+- Both prompts are loaded with design-notes headers stripped (`strip_design_notes`, matches prod). Output ends with **Notion-ready rows** — log the mean to the Eval Runs DB (see [`../../../README.md`](../../../README.md) → "Results are two-tier"). Detailed per-run JSON persists under `data/eval_runs/` (gitignored).
+- The gold lives at [`datasets/narrative_coverage_gold.jsonl`](../../../datasets/README.md#narrative_coverage_goldjsonl); the single-fixture hit/miss inspector is the `ab_narrative_coverage__content` workbench notebook.
+- The gold header's `gold_version` (the data revision) rides along the whole way: `_fixtures()` reads it off `FixtureHeader.extra` and returns `(fixtures, gold_version)`, it lands in the run's `RunManifest.dataset_version`, and the printed per-arm row shows it as `Dataset=<gold filename>@v<gold_version>`.
 
 ### Narrative fidelity (seed, no CLI yet)
 
@@ -35,7 +36,7 @@ also carries `merge_fidelity_verdicts` / `merge_invented` — conservative (fals
 two-juror aggregation for scoring the same axis with two backends — but the scorer doesn't call
 them; only the metric functions (`faithful_recall`, `distortion_rate`, `fabrication_rate`,
 `severe_omission_count`) are wired in today. The gold lives at
-[`datasets/narrative_fidelity_gold_seed.jsonl`](../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
+[`datasets/narrative_fidelity_gold_seed.jsonl`](../../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
 (11 fixtures). This is substrate only — no `eval-*` CLI entry point and not yet re-exported from
 `evals.extraction.__init__` — until a runner lands.
 
