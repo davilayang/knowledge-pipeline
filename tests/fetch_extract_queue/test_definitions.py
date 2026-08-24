@@ -34,3 +34,10 @@ def test_pipeline_registers_notion_lifecycle_check():
     for c in defs.asset_checks:
         spec_names.extend(s.name for s in c.check_specs)
     assert "notion_lifecycle_in_sync" in spec_names
+
+
+def test_pipeline_registers_claim_citation_check():
+    spec_names = []
+    for c in defs.asset_checks:
+        spec_names.extend(s.name for s in c.check_specs)
+    assert "claim_citations_hold_up" in spec_names
