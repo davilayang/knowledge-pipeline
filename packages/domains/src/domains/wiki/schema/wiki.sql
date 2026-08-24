@@ -143,6 +143,17 @@ CREATE TABLE IF NOT EXISTS claims (
     provenance  TEXT NOT NULL CHECK (provenance IN ('source', 'user', 'derived')),
     stance      TEXT          CHECK (stance     IN ('reported', 'opinion')),
     created_at  TEXT NOT NULL,                      -- ISO-8601 UTC
+    -- Cross-axis invariant: only a source has a stance. The per-column CHECKs
+    -- above each pass for ('user','reported') and for ('source', NULL); this
+    -- one rejects both. Without it a ('user','reported') row renders the SAME
+    -- claim twice — once as a `## From my notes` block, once as a `## Reported`
+    -- bullet reading "source unknown" — and yields an empty page summary,
+    -- because `_summary` matches neither ('source','reported') nor ('user',None).
+    -- The old single-column claim_kind made that state unrepresentable; the
+    -- split reintroduced it, so the constraint closes it. Must stay identical
+    -- to the one in scripts/migrations/2026-08-24_claims_provenance_stance.sql,
+    -- or a migrated db and a from-empty rebuild diverge.
+    CHECK ((provenance = 'source') = (stance IS NOT NULL)),
     UNIQUE (source_id, text_hash)
 ) STRICT;
 

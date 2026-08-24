@@ -34,7 +34,7 @@ promoted note — see `promote_notes.py` below), as a verbatim block captioned
 by the note's title and date, followed by `## Reported` / `## Opinion`
 sections for the source-attributed claims. Frontmatter carries a deterministic
 `summary:` field (the lead claim's first line, preferring reported over
-opinion over derived) — the text `WikiSource` embeds for the vector lane.
+opinion; a user note last, and never a pipeline-`derived` claim) — the text `WikiSource` embeds for the vector lane.
 
 ## Semantic model
 

@@ -30,7 +30,7 @@ promote_notes  (attach user-promoted notes (data/notes/*.md, promote: true) to c
         │       REPLACES its claim, an unpromoted/deleted note's claim is removed. Returns the
         │       dirty count (changed + removed). Serialized on WIKI_WRITE_POOL.)
         ▼  (passes both attribute_claims' persisted count and promote_notes' dirty count)
-render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1 derived note
+render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1 user note
         │      claim) from wiki.db to data/wiki/{slug}-{shortid}.md. SKIPS entirely when BOTH
         │      upstream signals are zero — a no-op render would rewrite every page's updated_at
         │      and churn the downstream curation push. Serialized on WIKI_WRITE_POOL.)

@@ -806,4 +806,4 @@ def test_pipeline_derived_claim_is_excluded_loudly_not_silently(caplog):
             entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-08-24"
         )
     assert "Merged: GraphRAG adoption" not in md
-    assert "e_x" in caplog.text and "derived" in caplog.text
+    assert "dropped 1 derived claim" in caplog.text and "e_x" in caplog.text

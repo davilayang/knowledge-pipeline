@@ -180,7 +180,7 @@ def get_source_keys_by_origin(conn: sqlite3.Connection, origin_type: str) -> lis
 
     The note→wiki reconcile diffs the stored note-origin keys against the live
     `promote: true` note ids to discover which promoted notes were unpromoted or
-    deleted (their derived claims + source rows must go)."""
+    deleted (their user claims + source rows must go)."""
     rows = conn.execute(
         "SELECT content_key FROM sources WHERE origin_type = ? ORDER BY content_key",
         (origin_type,),
@@ -293,7 +293,7 @@ class AttributedClaim:
     publication: str | None
     published_at: str | None
     url: str | None
-    title: str | None = None  # source/note title — the attributor for a derived (note) claim
+    title: str | None = None  # source/note title — the attributor for a user (note) claim
     fetched_at: str | None = (
         None  # when the source was fetched — a distinct recency signal from published_at
     )
@@ -338,7 +338,7 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
 
 
 def has_derived_for_entity(conn: sqlite3.Connection, entity_id: str) -> bool:
-    """Whether `entity_id` carries any `derived` claim (a promoted note) — the
+    """Whether `entity_id` carries any `user` claim (a promoted note) — the
     signal a page holds the user's own synthesis, surfaced in resolve.json."""
     row = conn.execute(
         """
@@ -413,9 +413,9 @@ def _summary(claims: list[AttributedClaim]) -> str:
 
 
 def _note_caption(claim: AttributedClaim) -> str:
-    """The caption for a derived (promoted-note) block: `<note title> — my note,
+    """The caption for a user (promoted-note) block: `<note title> — my note,
     <date>`. The title names the user's own note and, when a note-file backlink is
-    present, links to it — so a derived claim traces back to its origin note rather
+    present, links to it — so a user claim traces back to its origin note rather
     than reading as an unsourced assertion. Missing parts drop out."""
     title = claim.title or "Untitled note"
     label = f"[{title}]({claim.url})" if claim.url else title
@@ -457,9 +457,9 @@ def render_attributed_markdown(
     # structured artifact rendered as a verbatim block (not a one-line bullet),
     # each captioned with the note it came from (title + date) so the block reads
     # as attributed to the user's note, never "source unknown".
-    derived_blocks = [f"*{_note_caption(c)}*\n\n{c.text}" for c in claims if c.provenance == "user"]
-    if derived_blocks:
-        sections.append("## From my notes\n\n" + "\n\n".join(derived_blocks))
+    user_blocks = [f"*{_note_caption(c)}*\n\n{c.text}" for c in claims if c.provenance == "user"]
+    if user_blocks:
+        sections.append("## From my notes\n\n" + "\n\n".join(user_blocks))
     for stance, heading in (("reported", "Reported"), ("opinion", "Opinion")):
         bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.stance == stance]
         if bullets:

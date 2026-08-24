@@ -9,7 +9,7 @@ writes to the same single-writer wiki.db:
   (by the synthesized_at watermark) are synthesised into wiki.db; unchanged ones
   skip. Replaces the old per-page_id partitioned persist.
 - promote_notes — attaches user-promoted notes (data/notes/*.md, promote: true)
-  as `derived` claims on the entities their hints resolve to. Runs after
+  as `user` claims on the entities their hints resolve to. Runs after
   attribute_claims so hints resolve against the freshest entities.
 - render_pages — re-renders every page-worthy entity from wiki.db to data/wiki/.
   Depends on both writers and skips entirely when neither changed anything
@@ -106,9 +106,9 @@ def attribute_claims(
     description=_oneline(
         """
         Attach user-promoted notes (data/notes/*.md with promote: true) to canonical
-        wiki entities as `derived` claims: resolve each note's relevance-ordered
+        wiki entities as `user` claims: resolve each note's relevance-ordered
         `entities` hints (exact-name + alias, alias-aware; a miss mints a `concept`
-        entity), drop denylisted hints, then write one derived claim per note linked
+        entity), drop denylisted hints, then write one user claim per note linked
         to every resolved entity. Idempotent + reconciling — an edited note replaces
         its claim, an unpromoted/deleted one is removed. Runs after attribute_claims
         so hints resolve against the freshest entities. Serialized on the wiki-write
