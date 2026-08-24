@@ -160,7 +160,7 @@ def promote_notes(
     description=_oneline(
         """
         Sweep: re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1
-        derived note claim) from wiki.db to data/wiki/{slug}-{shortid}.md. Skips
+        user note claim) from wiki.db to data/wiki/{slug}-{shortid}.md. Skips
         entirely when neither the attribute_claims sweep nor promote_notes changed
         anything — a no-op render would rewrite every page's updated_at and churn the
         downstream curation push. Serialized on the shared wiki-write pool.

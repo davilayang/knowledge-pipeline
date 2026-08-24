@@ -106,7 +106,7 @@ Table claims {
     (source_id, text_hash) [unique, name: 'uq_claim_idempotency']
     source_id [name: 'idx_claims_source']
   }
-  Note: 'Atomic attributed claim. UNIQUE(source_id, text_hash) = idempotent re-run.'
+  Note: 'Atomic attributed claim. UNIQUE(source_id, text_hash) = idempotent re-run. Table CHECK not expressible in DBML: (provenance = \'source\') = (stance IS NOT NULL) — only a source has a stance, so (user, reported) and (source, NULL) are both rejected.'
 }
 
 Table claim_entities {
