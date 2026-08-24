@@ -6,9 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.6] — 2026-08-24
+
 ### Added
 
 - **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler, so it carries no prior labels or outcomes. Why the counts are union-merged upper bounds is recorded in the dataset section instead.
+- **`narrative_v3` extraction prompt adds a voice-agent delivery layer** — speakers, structure, load-bearing claims, and 4-6 entity-chained beats the agent can walk one turn at a time, carrying `narrative_v2`'s sections unchanged. Output is pinned to English in Latin script, since raw non-Latin text isn't speakable by TTS. Not active until `PROMPT_LABEL_NARRATIVE` bumps.
 
 ### Changed
 

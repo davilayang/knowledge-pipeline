@@ -58,7 +58,9 @@ packages/evals/
 │           ├── dataset.py        # load_source_fixtures (extract_claims_eval.jsonl)
 │           ├── faithfulness.py   # grounded_fraction scorer (per-claim faithfulness)
 │           ├── calibration.py    # TaggingJudge calibration against human gold
-│           └── benchmark.py      # eval-extract-claims CLI entry point
+│           ├── benchmark.py      # eval-extract-claims CLI entry point
+│           ├── assignment_report.py # entity-assignment coverage diagnostic over the full corpus
+│           └── gate_report.py    # confidence-lane gate diagnostic over the full corpus
 └── pyproject.toml
 ```
 
