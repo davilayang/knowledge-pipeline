@@ -44,6 +44,11 @@ _CAP_STOP = frozenset(
     "Both Some All One First Second Third Its His Her Our When While If As For".split()
 )
 
+# The ceiling the claims prompt sets on how many units one claim may cite. Not
+# enforced — the parser records what the model emitted — but a claim above it is
+# counted, because a wide citation inflates the anchor rate without pointing better.
+MAX_CITED_UNITS = 3
+
 CitationStatus = Literal["grounded", "unchecked", "uncited", "dangling", "unsupported"]
 
 # The verdicts that are an objection. "unchecked" is not one: the claim carried
@@ -62,19 +67,29 @@ class ClaimCheck:
     noun, so there was nothing to match; it passes vacuously and must not be
     read as evidence the check found it sound.
 
-    `localised` asks the narrower question of whether those specifics are in the
-    units the claim actually cited; `localisable` is false when the claim carried
-    nothing to be precise about, which keeps it out of the rate entirely.
+    `anchored` asks the narrower question of whether those specifics appear
+    somewhere in the union of the units the claim cited; `anchorable` is false
+    when the claim carried nothing to look for, which keeps it out of the rate.
+    `over_cap` flags a claim citing more units than the prompt allows.
 
     The two axes are separated because a source that says "we" forces a
     self-contained claim to name its subject from elsewhere in the document: the
     pointer is imprecise, the claim is not false. Measured over six real sources,
-    80% of span misses were of exactly that kind."""
+    80% of span misses were of exactly that kind.
+
+    `anchored` is NOT citation precision, and must not be reported as it. It asks
+    only whether the anchors occur anywhere in the union of cited units, so it
+    rises monotonically as a claim cites more of them — a claim citing the whole
+    document scores a perfect one. It is interpretable only alongside `over_cap`:
+    while claims routinely cite far more units than the cap allows (observed mean
+    7.5, one claim citing 33 against a cap of 3), the rate reflects how wide the
+    citations are as much as how well they point."""
 
     claim: SourceClaim
     status: CitationStatus
-    localised: bool
-    localisable: bool
+    anchored: bool
+    anchorable: bool
+    over_cap: bool
 
 
 def _hard_tokens(text: str) -> list[str]:
@@ -132,23 +147,23 @@ def _present(text: str, hard: list[str], entities: list[str]) -> bool:
 
 def _verdict(claim: SourceClaim, units: list[str], body: str) -> dict:
     if not claim.cited_units:
-        return {"status": "uncited", "localised": False, "localisable": False}
+        return {"status": "uncited", "anchored": False, "anchorable": False, "over_cap": False}
     if any(i < 0 or i >= len(units) for i in claim.cited_units):
-        return {"status": "dangling", "localised": False, "localisable": False}
+        return {"status": "dangling", "anchored": False, "anchorable": False, "over_cap": False}
     hard = _hard_tokens(claim.text)
     entities = _entity_words(claim.text)
     cited = _normalise(" ".join(units[i] for i in claim.cited_units))
-    localisable = bool(hard or entities)
-    localised = localisable and _present(cited, hard, entities)
+    anchorable = bool(hard or entities)
+    verdict = {
+        "anchored": anchorable and _present(cited, hard, entities),
+        "anchorable": anchorable,
+        "over_cap": len(claim.cited_units) > MAX_CITED_UNITS,
+    }
     if not hard:
         # Nothing this tier can judge — capitalised words are not evidence of a
         # name, so a claim without a figure or a quote passes vacuously.
-        return {"status": "unchecked", "localised": localised, "localisable": localisable}
-    return {
-        "status": "grounded" if _present(body, hard, []) else "unsupported",
-        "localised": localised,
-        "localisable": localisable,
-    }
+        return {"status": "unchecked", **verdict}
+    return {"status": "grounded" if _present(body, hard, []) else "unsupported", **verdict}
 
 
 @dataclass(frozen=True)
@@ -159,15 +174,17 @@ class CitationSummary:
     carried nothing matchable, so counting them as grounded would report a
     confidence the check never earned.
 
-    `localised` counts the claims whose specifics were found in the units they
-    cited rather than elsewhere in the source, out of the `localisable` ones that
-    carried any specifics at all. It is a pointer-quality metric to improve, not
-    a fault to alarm on — see ClaimCheck."""
+    `anchored` counts the claims whose specifics were found in the units they
+    cited rather than elsewhere in the source, out of the `anchorable` ones that
+    carried any specifics at all. Read it only next to `over_cap`, the number of
+    claims citing more units than the prompt allows: both are pointer-quality
+    metrics to improve, never faults to alarm on — see ClaimCheck."""
 
     total: int
     grounded: int
-    localisable: int
-    localised: int
+    anchorable: int
+    anchored: int
+    over_cap: int
     unchecked: int
     uncited: int
     dangling: int
@@ -192,8 +209,9 @@ def summarise_citations(claims_doc: str, body: str, *, max_examples: int = 3) ->
     return CitationSummary(
         total=len(checks),
         grounded=counts["grounded"],
-        localisable=sum(1 for c in checks if c.localisable),
-        localised=sum(1 for c in checks if c.localised),
+        anchorable=sum(1 for c in checks if c.anchorable),
+        anchored=sum(1 for c in checks if c.anchored),
+        over_cap=sum(1 for c in checks if c.over_cap),
         unchecked=counts["unchecked"],
         uncited=counts["uncited"],
         dangling=counts["dangling"],

@@ -47,12 +47,16 @@ def notion_lifecycle_in_sync(
     name="claim_citations_hold_up",
     blocking=False,
     description=(
-        "Fails when an extracted claim carries a figure or a name the source "
-        "never contains — the fabrication the wiki must not accumulate. Also "
-        "reports how many claims found their specifics in the units they cited "
-        "rather than elsewhere in the source, which measures pointer quality "
-        "and is not a fault. Lexical and free — no LLM call. WARN, so a bad "
-        "extraction is visible without holding up ingestion."
+        "Fails when a claim cites nothing, cites a unit that does not exist, or "
+        "carries a figure the source never contains. Names are NOT judged — "
+        "capitalisation cannot tell a name from a capitalised common noun, so a "
+        "swapped subject is the entailment tier's job. Also reports how many "
+        "claims found their specifics in the units they cited rather than "
+        "elsewhere in the source, and how many cite more units than the prompt "
+        "allows: pointer quality, not a fault, and readable only together. "
+        "Lexical and "
+        "free — no LLM call. WARN, so a bad extraction is visible without "
+        "holding up ingestion."
     ),
 )
 def claim_citations_hold_up(
@@ -74,8 +78,9 @@ def claim_citations_hold_up(
         metadata={
             "claims": dg.MetadataValue.int(summary.total),
             "grounded": dg.MetadataValue.int(summary.grounded),
-            "localised": dg.MetadataValue.int(summary.localised),
-            "localisable": dg.MetadataValue.int(summary.localisable),
+            "anchored": dg.MetadataValue.int(summary.anchored),
+            "anchorable": dg.MetadataValue.int(summary.anchorable),
+            "over_cap": dg.MetadataValue.int(summary.over_cap),
             "unchecked": dg.MetadataValue.int(summary.unchecked),
             "uncited": dg.MetadataValue.int(summary.uncited),
             "dangling": dg.MetadataValue.int(summary.dangling),
@@ -85,8 +90,8 @@ def claim_citations_hold_up(
                 f"**{summary.unsupported} unsupported** of {summary.total} claims "
                 f"({summary.uncited} uncited, {summary.dangling} dangling, "
                 f"{summary.unchecked} carried no figure to check) — "
-                f"{summary.localised}/{summary.localisable} cite a unit that "
-                f"contains their specifics"
+                f"{summary.anchored}/{summary.anchorable} cite a unit holding "
+                f"their specifics, {summary.over_cap} cite more units than allowed"
             ),
         },
     )

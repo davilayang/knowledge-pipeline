@@ -52,7 +52,7 @@ def test_a_wrong_subject_carrying_no_figure_is_beyond_this_check():
 
     (result,) = check_citations([_claim("Google shipped subagents.", (0,))], units)
 
-    assert (result.status, result.localised) == ("unchecked", False)
+    assert (result.status, result.anchored) == ("unchecked", False)
 
 
 def test_claim_citing_nothing_cannot_be_checked_and_is_uncited():
@@ -77,14 +77,14 @@ def test_claim_with_no_figure_or_proper_noun_is_reported_as_unchecked():
     assert result.status == "unchecked"
 
 
-def test_a_sentence_initial_capital_does_not_cost_a_claim_its_localisation():
+def test_a_sentence_initial_capital_does_not_cost_a_claim_its_anchoring():
     # "Trained" is capitalised only because it starts the claim; requiring it in
     # the source would reject an honest paraphrase.
     units = ["The team trained the model on 8 GPUs."]
 
     (result,) = check_citations([_claim("Trained on 8 GPUs.", (0,))], units)
 
-    assert (result.status, result.localised) == ("grounded", True)
+    assert (result.status, result.anchored) == ("grounded", True)
 
 
 def test_a_claim_spanning_two_units_is_checked_against_both():
@@ -123,7 +123,7 @@ def test_an_unchecked_claim_is_not_reported_as_a_failing_example():
     assert (summary.unchecked, summary.failing, summary.failing_examples) == (1, 0, [])
 
 
-def test_a_name_the_source_uses_elsewhere_is_supported_but_not_localised():
+def test_a_name_the_source_uses_elsewhere_is_supported_but_not_anchored():
     # Spoken sources say "we"; a self-contained claim names the subject, so the
     # name legitimately sits outside the span the claim cites. That is an
     # imprecise pointer, not a fabricated claim.
@@ -134,17 +134,17 @@ def test_a_name_the_source_uses_elsewhere_is_supported_but_not_localised():
 
     (result,) = check_citations([_claim("Bright Data has 150 million IPs.", (1,))], units)
 
-    assert (result.status, result.localised) == ("grounded", False)
+    assert (result.status, result.anchored) == ("grounded", False)
 
 
-def test_a_name_absent_from_the_cited_span_still_costs_the_claim_its_localisation():
+def test_a_name_absent_from_the_cited_span_still_costs_the_claim_its_anchoring():
     units = ["Anthropic shipped subagents.", "The rollout took 2 weeks."]
 
     claim = _claim("The team at Google shipped subagents in 2 weeks.", (1,))
 
     (result,) = check_citations([claim], units)
 
-    assert result.localised is False
+    assert result.anchored is False
 
 
 def test_summary_counts_imprecise_pointers_separately_from_fabrications():
@@ -156,7 +156,7 @@ def test_summary_counts_imprecise_pointers_separately_from_fabrications():
 
     summary = summarise_citations(claims_doc, body)
 
-    assert (summary.grounded, summary.localisable, summary.localised, summary.failing) == (
+    assert (summary.grounded, summary.anchorable, summary.anchored, summary.failing) == (
         1,
         1,
         0,
@@ -164,7 +164,7 @@ def test_summary_counts_imprecise_pointers_separately_from_fabrications():
     )
 
 
-def test_a_claim_with_nothing_to_localise_is_left_out_of_the_localisation_rate():
+def test_a_claim_with_nothing_to_look_for_is_left_out_of_the_anchor_rate():
     # No figure and no capitalised word, so there is no pointer to be precise
     # about. Counting it as a miss would report the citations as worse than they
     # are; counting it as a hit would report them as better.
@@ -176,4 +176,19 @@ def test_a_claim_with_nothing_to_localise_is_left_out_of_the_localisation_rate()
 
     summary = summarise_citations(claims_doc, body)
 
-    assert (summary.localisable, summary.localised) == (0, 0)
+    assert (summary.anchorable, summary.anchored) == (0, 0)
+
+
+def test_a_claim_citing_more_units_than_the_prompt_allows_is_flagged():
+    # Not an error — the parser records what the model emitted. But a claim
+    # citing half the document passes the anchor check by width rather than by
+    # pointing well, so the rate is only readable next to this count.
+    body = "One. Two. Three. Four. Anthropic shipped subagents in 2026."
+    claims_doc = (
+        "---\nitem_id: medium::https://x.com/a\ncontent_date: null\n---\n\n"
+        "- [reported|0,1,2,3,4] Anthropic shipped subagents in 2026.\n"
+    )
+
+    summary = summarise_citations(claims_doc, body)
+
+    assert (summary.over_cap, summary.anchored, summary.failing) == (1, 1, 0)

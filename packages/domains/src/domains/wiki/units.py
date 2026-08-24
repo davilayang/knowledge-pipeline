@@ -2,9 +2,23 @@
 
 An extracted claim carries the indices of the units it came from, so a verifier
 can check the claim text against those spans instead of re-reading the article
-with a judge. Units are DERIVED, never stored: a queue row's `raw_content` is
-written once and never re-fetched, so the same body always yields the same
-units. Pure — no LLM, no I/O.
+with a judge. Pure — no LLM, no I/O.
+
+Units are DERIVED on demand, never stored, which is only sound while a stored
+citation and a fresh split agree. Two things break that agreement, and both
+silently reindex every citation already stored rather than failing:
+
+- **The body changing under a stored citation.** `fetch_content` returns early
+  when `raw_content` is already set, but that is an asset-level guard, not a
+  store invariant — `queue_store.upsert_fetched` overwrites `raw_content` on
+  conflict, so a row whose body is cleared and re-fetched gets a new one.
+- **This function changing.** Any edit to the split moves the indices under
+  citations extracted by the previous version.
+
+Neither matters while a citation is checked in the same run that produced it,
+which is how the extract-time check uses it. A consumer reading citations
+recorded earlier needs to pin the body hash and a version for this splitter
+first.
 """
 
 import re
