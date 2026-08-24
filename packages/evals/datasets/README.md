@@ -118,6 +118,12 @@ Refresh when:
 
 > Written to the five-heading dataset contract. The other sections in this file predate it and
 > are being migrated — see the tracking issue.
+>
+> **Two documents cover this dataset and the split is deliberate.** This section records what was
+> produced and how to read a number off it. [`narrative_coverage_codebook.md`](narrative_coverage_codebook.md)
+> holds the labelling instructions and *only* those — it is handed verbatim to a labeler, so it
+> carries no prior labels, no scores and no record of earlier rounds, any of which would anchor
+> the next labeler. Facts about outcomes belong here; instructions belong there.
 
 ### What it decides
 
@@ -150,9 +156,19 @@ Two labelling generations, and they were not produced the same way.
 - **The three added later** were drafted by a blind cross-family jury — one Gemini-backed and one
   Claude-backed labeler per fixture, given the source and
   [`narrative_coverage_codebook.md`](narrative_coverage_codebook.md) only, with no system output
-  and no knowledge of the prompt under test. Two rounds **failed to converge**: grain diverged by
-  up to 3.4× on the same source. They are merged by **union**, so their counts are an upper-bound
-  reading rather than a consensus.
+  and no knowledge of the prompt under test. A same-family labeler was excluded deliberately: the
+  extraction model under test is an OpenAI model, and a same-vendor judge self-prefers.
+
+  **Two rounds were run and neither converged.** Round 1 used a count-and-split grain rule; round
+  2 replaced it with the functional "a point plus its supporting reason is one thread" test the
+  codebook now carries. Round 2 did **not** improve agreement — on the shortest fixture the two
+  labelers moved from 24-vs-23 threads to 8-vs-27, and divergence across all four labelings
+  reached 3.4×. A third round was judged unlikely to help.
+
+  They are therefore merged by **union across all four labelings**, mechanically deduped with
+  nothing dropped, following the FN-heavy loss: a gold that under-lists threads cannot score a
+  genuine omission *as* an omission, so it flatters every system it measures. Union is a merge
+  policy, not a consensus claim — read the counts as an upper-bound reading of each source.
 
 **Blind-scored, partial = absent (FN-heavy loss).** A thread counts as covered only if the
 narrative surfaces its **specific anchor** — a name, number, mechanism, or concrete example. A

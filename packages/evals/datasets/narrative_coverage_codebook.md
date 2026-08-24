@@ -1,5 +1,11 @@
 # Codebook — drafting `gold_threads` for narrative-coverage fixtures
 
+**This document is handed to a labeler, so it contains instructions only.** No prior labels, no
+resulting scores, no record of how earlier rounds went — any of that would anchor the next
+labeler and cost the blindness the gold depends on. What was actually produced, and how to read
+a number off it, lives in the `narrative_coverage_gold.jsonl` section of
+[`README.md`](README.md), which is never given to a labeler.
+
 You are labelling a **gold dataset**. Your output is the reference answer that systems will
 later be scored against. You have NOT been shown any system's output and you must not guess at
 one — write what the source contains, independently.
@@ -89,11 +95,10 @@ From a 16,377-char listicle (11 threads — note one thread per list item):
 11: decision rules (freshness->pattern; logic-evolution->Kappa vs Lambda; discipline to pick)
 ```
 
-Match that level of specificity. Do **not** match that density — those two fixtures sit at roughly
-1,470 characters per thread, and the three fixtures labelled with *this* codebook came out far
-denser: 51, 291 and 382 characters per thread. Density is a property of the source, not a target,
-and the union merge that produces the final gold pushes it denser still. If your count feels high
-for a short source, check it against the grain test above rather than against these two examples.
+These are examples of the **specificity** to aim for — how much named detail each line carries.
+They are **not** a density target. Do not count their threads-per-character and try to match it:
+density is a property of the source, and these two happen to be long prose. If your count feels
+high or low for your source, check it against the grain test above, which is the arbiter.
 
 ## Tie-breaks
 
@@ -108,36 +113,3 @@ for a short source, check it against the grain test above rather than against th
 
 Return ONLY the thread list, one per line, in the format above. No preamble, no commentary, no
 count summary.
-
----
-
-## Provenance — how this codebook was applied to `gold_version` 2
-
-The three fixtures added at `gold_version` 2 (`fb_1574`, `talk_3add`, `talk_374`) were labelled
-by a **blind cross-family jury**: one Gemini-backed agent and one Claude-backed agent per
-fixture, each given only this codebook and the source text — no system output, no knowledge of
-the prompt under test. A same-family labeler was deliberately excluded, since the extraction
-model under test is an OpenAI model and a same-vendor judge self-prefers.
-
-**Two rounds were run, with different grain formulations.** Round 1 used a count-and-split
-formulation; round 2 used the functional "a point plus its supporting reason is one thread" test
-now written above. Round 2 did **not** improve agreement — on the shortest fixture the two
-labelers moved from 24-vs-23 threads to 8-vs-27. Grain divergence across the four labelings
-reached 3.4×.
-
-**Merge policy is therefore UNION across all four labelings, with mechanical dedup and no
-dropping**, following the dataset's FN-heavy asymmetric loss: a gold that under-lists threads
-cannot score a genuine omission as an omission, so it flatters every system it measures. Union
-is a merge policy, not a consensus claim — read the resulting thread counts as an upper-bound
-reading of each source.
-
-**Consequences for anyone re-running or extending this gold:**
-
-- Thread counts at `gold_version` 2 are systematically higher than at version 1. Absolute
-  coverage scores computed over the 10-fixture set are **not comparable** to any score
-  published against the 7-fixture set; re-baseline before quoting a delta.
-- Per-fixture scores are not comparable to each other either. Drafted density across the set
-  spans one thread per 51 characters to one per 13,173 — a 259x spread, and still 45x if the
-  Chinese fixture is excluded.
-- Character count is not a density guide across scripts. The facebook fixture is Traditional
-  Chinese; a CJK character carries several times the content of a Latin one.
