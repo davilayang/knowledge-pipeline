@@ -21,7 +21,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Extraction output language is pinned to English.** No prompt ever stated one, so it was emergent: on a 50%-Chinese source `gpt-5-mini` returned a narrative at 0.0% CJK and `gpt-5.6-luna` at 55.4%. Original-language terms stay inline with a gloss.
 ---
 
 ## [0.36.5] — 2026-08-21
