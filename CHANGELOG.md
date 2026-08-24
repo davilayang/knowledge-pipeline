@@ -9,7 +9,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler, so it carries no prior labels or outcomes. Why the counts are union-merged upper bounds is recorded in the dataset section instead.
-- **`narrative_v3` extraction prompt — a delivery layer over v2's coverage, plus a pinned output language.** The voice agent reads the narrative aloud but v2 gives it undifferentiated prose with nothing to stop at, so it speaks about a minute uninterrupted. v3 appends four sections it can walk one turn at a time: `Speakers and author:` (with an explicit rule that a channel or publication is not a speaker — the case where an item's stored author is the YouTube channel rather than the person talking), `Structure:` (which may report "N independent threads" rather than invent a throughline), `Load-bearing claims:`, and 4-6 ordered `Delivery beats:` chained by a shared entity. v2's three sections and all their rules carry over unchanged, so the pinned coverage gold scores the same text.
+- **`narrative_v3` extraction prompt adds a delivery layer** the voice agent can walk one turn at a time: speakers, structure, load-bearing claims, and 4-6 entity-chained beats. Carries `narrative_v2`'s sections unchanged. Not active until `PROMPT_LABEL_NARRATIVE` bumps.
 
 ### Changed
 - **The narrative-coverage gold now reaches the short end of the corpus.** Three fixtures added (10 total): the size floor drops 15,449 → 1,574 characters and `youtube` rises 29% → 40%, against a corpus that is 53% YouTube. Scores are not comparable across `gold_version`.
@@ -17,8 +17,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **The dataset README documents each dataset as a contract rather than its contents.** Five headings per dataset; derivable counts and fixture tables dropped after the coverage section claimed 7 sources / 137 threads against a file holding 10 / 206.
 - **Extraction can be pointed at a dotted `gpt-5` release.** `_token_kwargs` sent `reasoning_effort="minimal"`, which every release from `gpt-5.4` on rejects with a 400, while the original generation rejects `none`. Now split on the dot; `gpt-5-mini` is unchanged.
 - **The wiki judge's cost is no longer reported as $0.00.** `gpt-4.1` was absent from `PRICING_PER_1M` and is the only model any caller costs. Added with the two extraction models; `gpt-4o-mini` deliberately omitted, since as a prefix key it would misprice `-tts` and `-transcribe`.
-- **Extraction output language is now stated rather than assumed.** No prompt ever specified one; English output was an emergent property of the model in use. On a 50%-Chinese source `gpt-5-mini` returned a narrative at 0.0% CJK while `gpt-5.6-luna` returned 55.4%, writing in the source's language — unspeakable output for an English voice. v3 pins English while keeping original-language terms inline with a gloss, so `"時間不會說謊" (time doesn't lie)` survives instead of flattening. Verified end-to-end: the same source and model now return 0.0%. Not yet active — `PROMPT_LABEL_NARRATIVE` still resolves to `narrative_v2` until the coverage eval runs.
+- **Extraction output is pinned to English in Latin script.** No prompt stated a language, so it was emergent: on a 50%-Chinese source `gpt-5-mini` returned 0.0% CJK and `gpt-5.6-luna` 55.4%. The narrative is spoken by a voice that cannot pronounce CJK, so quotes are translated and names romanised.
 
+### Changed
+
+- **Extraction output language is pinned to English.** No prompt ever stated one, so it was emergent: on a 50%-Chinese source `gpt-5-mini` returned a narrative at 0.0% CJK and `gpt-5.6-luna` at 55.4%. Original-language terms stay inline with a gloss.
 ---
 
 ## [0.36.5] — 2026-08-21
