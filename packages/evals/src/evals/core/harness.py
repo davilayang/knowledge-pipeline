@@ -153,8 +153,18 @@ def run_repeated(
     by_stratum: dict[str, dict[str, float]] = {}
     for dim in strata_keys:
         buckets = set().union(*(r.scores[0].stratifications.get(dim, {}) for r in records))
+        # Average over the runs that HAVE the bucket. A stratum vanishes from a
+        # run when its only fixture errored there, and defaulting the absence to
+        # 0.0 would turn one transient failure into a fabricated regression —
+        # visibly so for a stratum carried by a single fixture.
         by_stratum[dim] = {
-            b: _mean([r.scores[0].stratifications.get(dim, {}).get(b, 0.0) for r in records])
+            b: _mean(
+                [
+                    v
+                    for r in records
+                    if (v := r.scores[0].stratifications.get(dim, {}).get(b)) is not None
+                ]
+            )
             for b in buckets
         }
     return RepeatedReport(

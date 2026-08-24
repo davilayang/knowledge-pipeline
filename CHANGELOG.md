@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler, so it carries no prior labels or outcomes. Why the counts are union-merged upper bounds is recorded in the dataset section instead.
+
+### Changed
+
+- **The narrative-coverage gold now reaches the short end of the corpus.** Three fixtures added (10 total): the size floor drops 15,449 → 1,574 characters and `youtube` rises 29% → 40%, against a corpus that is 53% YouTube. Scores are not comparable across `gold_version`.
+- **`eval-narrative-coverage` reports coverage per `content_type`.** The harness computed it and the CLI discarded it, so a `facebook`-specific regression had nowhere to appear. Prints alongside `content_shape` in the per-arm block, the delta block and the Notion row.
+- **The dataset README documents each dataset as a contract rather than its contents.** Five headings per dataset; derivable counts and fixture tables dropped after the coverage section claimed 7 sources / 137 threads against a file holding 10 / 206.
 ---
 
 ## [0.36.5] — 2026-08-21

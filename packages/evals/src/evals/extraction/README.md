@@ -8,7 +8,7 @@ First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.
 |---|---|---|
 | **Topic Card** field quality vs a v5 baseline | `TopicCardScorer` | workbench notebooks (`run_variants`) / `run_benchmark` — no CLI |
 | **Narrative coverage** — does `narrative_md` cover the gold follow-up threads? | `NarrativeCoverageScorer` | `eval-narrative-coverage` CLI |
-| **Narrative fidelity** — omission / corruption / invention vs gold threads | `NarrativeFidelityScorer` (substrate in `evals.extraction.fidelity`) | seed stage — scorer + gold exist, not wired into a CLI or `evals.extraction.__init__` exports yet |
+| **Narrative fidelity** — omission / corruption / invention vs gold threads | `NarrativeFidelityScorer` (`evals/extraction/scorers.py`; metric substrate in `evals.extraction.fidelity`) | seed stage — scorer + gold exist, not wired into a CLI or `evals.extraction.__init__` exports yet |
 
 ### Re-running narrative coverage
 
@@ -19,7 +19,7 @@ set -a && source .env && set +a && \
   uv run eval-narrative-coverage --narrative narrative_v2 --baseline narrative_v1 --runs 3
 ```
 
-- `--narrative <label>` — candidate prompt (default `narrative_v2`); `--baseline <label>` — optional prior prompt to diff against in the same pass (prints the per-shape Δ and flags any `← REGRESSION`).
+- `--narrative <label>` — candidate prompt (default `narrative_v2`); `--baseline <label>` — optional prior prompt to diff against in the same pass (prints the per-content-type and per-shape Δ and flags any `← REGRESSION`).
 - `--runs N` (default 3) — the LLM judge is noisy at n=7; the CLI reports the **mean + observed range** over N full re-runs. `--dry-run` estimates cost first.
 - Both prompts are loaded with design-notes headers stripped (`strip_design_notes`, matches prod). Output ends with **Notion-ready rows** — log the mean to the Eval Runs DB (see [`../../README.md`](../../README.md) → "Results are two-tier"). Detailed per-run JSON persists under `data/eval_runs/` (gitignored).
 - The gold lives at [`datasets/narrative_coverage_gold.jsonl`](../../datasets/README.md#narrative_coverage_goldjsonl); the single-fixture hit/miss inspector is the `ab_narrative_coverage__content` workbench notebook.
@@ -28,9 +28,13 @@ set -a && source .env && set +a && \
 
 `NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores `narrative_v2`'s `narrative_md`
 against gold threads for omission (`faithful_recall`), corruption (`distortion_rate`), and
-invention (`fabrication_rate`), via two injected judges (`DEFAULT_FIDELITY_PROMPT` /
-`DEFAULT_FABRICATION_PROMPT`) merged conservatively (false-pass-averse) by
-`evals.extraction.fidelity.merge_fidelity_verdicts` / `merge_invented`. The gold lives at
+invention (`fabrication_rate`), via two single-purpose injected judges — a fidelity judge
+(`DEFAULT_FIDELITY_PROMPT`, per-gold-thread faithful/distorted/absent) and a fabrication judge
+(`DEFAULT_FABRICATION_PROMPT`, per-produced-thread invented bool). `evals.extraction.fidelity`
+also carries `merge_fidelity_verdicts` / `merge_invented` — conservative (false-pass-averse)
+two-juror aggregation for scoring the same axis with two backends — but the scorer doesn't call
+them; only the metric functions (`faithful_recall`, `distortion_rate`, `fabrication_rate`,
+`severe_omission_count`) are wired in today. The gold lives at
 [`datasets/narrative_fidelity_gold_seed.jsonl`](../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
 (11 fixtures). This is substrate only — no `eval-*` CLI entry point and not yet re-exported from
 `evals.extraction.__init__` — until a runner lands.

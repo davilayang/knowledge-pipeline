@@ -31,6 +31,12 @@ class RunManifest:
     code_rev: str  # git short sha
     mode: Literal["gate", "report"]  # gate asserts a committed floor; report only emits
     runs: int  # N for noisy-judge averaging
+    # Revision of the DATA, distinct from the header's schema_version above:
+    # adding fixtures changes the scoring population without changing the
+    # schema, so a score is only traceable to the rows that produced it if
+    # both are recorded. Defaulted so harnesses that don't version data are
+    # unaffected.
+    dataset_version: int = 1
 
 
 def format_manifest_line(m: RunManifest) -> str:
