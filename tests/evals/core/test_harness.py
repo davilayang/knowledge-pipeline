@@ -175,3 +175,83 @@ def test_run_repeated_carries_mean_and_observed_range(tmp_path):
     assert report.hi == pytest.approx(1.0)
     # stratification means averaged across runs
     assert report.by_stratum["by_content_type"]["Article"] == pytest.approx(0.75)
+
+
+def _flaky_variant(name: str, *, fails_on_run: int, fixture_id: str) -> Variant:
+    """Succeeds everywhere except one fixture on one run — the transient
+    extraction or judge failure that drops a fixture from that run."""
+    state = {"run": 0, "seen": 0, "n": 0}
+
+    def _run(f):
+        if state["n"] and state["seen"] % state["n"] == 0 and state["seen"]:
+            state["run"] += 1
+        state["seen"] += 1
+        failed = state["run"] == fails_on_run and f.fixture_id == fixture_id
+        return FixtureRun(
+            fixture_id=f.fixture_id,
+            status=RunStatus.ERROR if failed else RunStatus.SUCCESS,
+            output=None if failed else {"topic_card": {"extracted_title": "T"}},
+            stages=[],
+            tokens_in=0 if failed else 100,
+            tokens_out=0 if failed else 200,
+            cost_usd=0.0,
+            duration_ms=1,
+        )
+
+    v = Variant(
+        name=name,
+        config={},
+        run=_run,
+        provenance=VariantProvenance(
+            prompt_versions={},
+            model_versions={},
+            code_revision="x",
+            corpus_anchor=None,
+            output_schema_version=1,
+        ),
+    )
+    state["n"] = 2
+    return v
+
+
+def test_absent_stratum_is_skipped_not_counted_as_zero(tmp_path):
+    """A content type missing from one run must average over the runs that HAVE
+    it. Counting the absence as 0.0 turns one transient failure into a
+    fabricated regression — and with several content types carried by a single
+    fixture, that number is printed per-type and copied into the logged row."""
+    fixtures = [
+        ExtractionFixture(
+            fixture_id="yt",
+            content_type="youtube",
+            content="c",
+            expected_topic_card={"extracted_title": "T"},
+        ),
+        ExtractionFixture(
+            fixture_id="fb",
+            content_type="facebook",
+            content="c",
+            expected_topic_card={"extracted_title": "T"},
+        ),
+    ]
+    manifest = RunManifest(
+        dataset="fx.jsonl",
+        dataset_schema=1,
+        subject="v5",
+        subject_model="gpt-4.1-mini",
+        judge_model="gpt-4.1-mini",
+        code_rev="abc123",
+        mode="report",
+        runs=2,
+    )
+    report = run_repeated(
+        variant=_flaky_variant("v5", fails_on_run=1, fixture_id="fb"),
+        fixtures=fixtures,
+        scorer=_PerfectScorer(),
+        manifest=manifest,
+        runs=2,
+        target="extraction",
+        data_root=tmp_path,
+        persist=False,
+    )
+    # facebook scored 1.0 on the run it survived and was absent on the other.
+    assert report.by_stratum["by_content_type"]["facebook"] == pytest.approx(1.0)

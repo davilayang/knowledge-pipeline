@@ -1,8 +1,10 @@
 # Codebook — drafting `gold_threads` for narrative-coverage fixtures
 
-**This document is handed to a labeler, so it contains instructions only.** No prior labels, no
-resulting scores, no record of how earlier rounds went — any of that would anchor the next
-labeler and cost the blindness the gold depends on. What was actually produced, and how to read
+**This document is handed to a labeler, so it contains instructions only.** No labels for the
+fixture being labelled, no resulting scores, no record of how earlier rounds went — any of that
+would anchor the labeler and cost the blindness the gold depends on. The calibration section
+below does quote threads from two *other* fixtures; that is deliberate and is what calibrates
+specificity. What was actually produced, and how to read
 a number off it, lives in the `narrative_coverage_gold.jsonl` section of
 [`README.md`](README.md), which is never given to a labeler.
 

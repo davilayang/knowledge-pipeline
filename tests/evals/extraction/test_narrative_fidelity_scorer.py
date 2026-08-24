@@ -48,7 +48,7 @@ def test_fabrication_rate_over_produced_threads():
 
 
 def test_severe_omission_counts_absent_critical_threads_only():
-    """Severe omission (codebook §4) = a *critical* thread that is *absent*.
+    """Severe omission (the severe-omission rule) = a *critical* thread that is *absent*.
 
     A non-critical absent thread is a minor omission; a critical thread that is
     *distorted* is a severe distortion, not an omission — so neither counts here.

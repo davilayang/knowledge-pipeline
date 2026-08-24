@@ -47,8 +47,11 @@ def _repo_root() -> Path:
     return Path.cwd()
 
 
-def _fixtures(gold_path: Path) -> list[ExtractionFixture]:
-    _h, rows = load_fixtures(gold_path, expected_schema_version=1)
+def _fixtures(gold_path: Path) -> tuple[list[ExtractionFixture], int]:
+    """Fixtures plus the gold's `gold_version` — the data revision, which
+    `load_fixtures` parks in `FixtureHeader.extra` and which is distinct from
+    the schema version it validates."""
+    header, rows = load_fixtures(gold_path, expected_schema_version=1)
     return [
         ExtractionFixture(
             fixture_id=r["fixture_id"],
@@ -59,7 +62,7 @@ def _fixtures(gold_path: Path) -> list[ExtractionFixture]:
             gold_threads=r["gold_threads"],
         )
         for r in rows
-    ]
+    ], int(header.extra.get("gold_version", 1))
 
 
 def _make_judge(api_key: str, model: str):
@@ -80,21 +83,6 @@ def _make_judge(api_key: str, model: str):
             return {}
 
     return judge
-
-
-def _gold_version(gold_path: Path) -> int:
-    """`gold_version` from the fixture header, defaulting to 1 for files
-    written before the field existed. Carried into the run manifest and the
-    printed row: two runs against different gold versions are otherwise
-    indistinguishable in `data/eval_runs/`, since both record the same
-    filename and schema."""
-    import json as _json
-
-    with gold_path.open() as fh:
-        for line in fh:
-            if line.strip():
-                return int(_json.loads(line).get("gold_version", 1))
-    return 1
 
 
 def _run_arm(
@@ -128,7 +116,8 @@ def _run_arm(
     scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, model))
     manifest = RunManifest(
         dataset=Path(gold_rel).name,
-        dataset_schema=gold_version,
+        dataset_schema=1,
+        dataset_version=gold_version,
         subject=label,
         subject_model=model,
         judge_model=model,
@@ -159,10 +148,10 @@ def _run_arm(
 def _print_arm(a: dict, runs: int) -> None:
     print(f"\n===== {a['variant']} — mean of {runs} run(s) =====")
     print(f"aggregate coverage@present = {a['mean']:.3f}  (range {a['lo']:.3f}–{a['hi']:.3f})")
-    for ctype, v in sorted(a["by_type"].items()):
-        print(f"  by content_type  {ctype:12s} {v:.3f}")
-    for shape, v in sorted(a["by_shape"].items()):
-        print(f"  {shape:10s} {v:.3f}")
+    for label, cells in (("content_type", a["by_type"]), ("content_shape", a["by_shape"])):
+        print(f"  per {label}:")
+        for stratum, v in sorted(cells.items()):
+            print(f"    {stratum:12s} {v:.3f}")
 
 
 def main(argv: Sequence[str] | None = None) -> int:
@@ -183,8 +172,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     root = _repo_root()
     gold_rel = str(args.fixtures) if args.fixtures else _DEFAULT_GOLD
     gold_path = args.fixtures if args.fixtures else root / _DEFAULT_GOLD
-    fixtures = _fixtures(gold_path)
-    gold_version = _gold_version(gold_path)
+    fixtures, gold_version = _fixtures(gold_path)
     total_chars = sum(len(f.content) for f in fixtures)
     n_arms = 2 if args.baseline else 1
     print(

@@ -10,9 +10,12 @@ header. Check the dataset's own section before assuming a loader applies.
 
 ## What a dataset section records
 
-Each section documents a **contract**, not the file's contents. Anything derivable from the JSONL
-— counts, fixture tables, per-fixture stats — is deliberately absent: it is duplication that goes
-stale, and it is what has gone stale here before. Five headings:
+Each section should document a **contract**, not the file's contents. Anything derivable from the
+JSONL — counts, fixture tables, per-fixture stats — belongs out of the prose: it is duplication
+that goes stale, and it is what has gone stale here before. Five headings:
+
+**Only the `narrative_coverage_gold.jsonl` section follows this yet.** The other six predate it and
+still carry derivable counts; migrating them is tracked in issue #236.
 
 | heading | records |
 |---|---|
@@ -153,8 +156,8 @@ Refresh when:
 
 ## `narrative_coverage_gold.jsonl`
 
-> Written to the five-heading dataset contract. The other sections in this file predate it and
-> are being migrated — see the tracking issue.
+> Written to the five-heading dataset contract described above. The other sections predate it and
+> are being migrated (issue #236).
 >
 > **Two documents cover this dataset and the split is deliberate.** This section records what was
 > produced and how to read a number off it. [`narrative_coverage_codebook.md`](narrative_coverage_codebook.md)
@@ -219,8 +222,9 @@ rewards near-misses hides exactly the regressions this eval exists to catch.
    by running both arms in a single pass (`--narrative … --baseline …`) so they share a model and
    a judge.
 2. **Not comparable across fixtures.** Drafted density spans one thread per 51 characters to one
-   per 13,173 — a fixture's absolute rate says more about how finely it was labelled than about
-   the prompt.
+   per 13,173 — a 259× spread, though 45× among the Latin-script fixtures alone; a character
+   count is not a density guide across scripts. Either way a fixture's absolute rate says more
+   about how finely it was labelled than about the prompt.
 3. **The judge is the measurement floor.** Present/absent is an LLM verdict, one batched call per
    fixture. Its dangerous direction is the **false positive** — calling a thread present when the
    anchor is missing — which inflates coverage and masks regressions. Treat the automated absolute

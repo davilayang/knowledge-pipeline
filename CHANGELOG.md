@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler. Records that two blind rounds diverged 3.4×, so counts are union-merged upper bounds.
+- **Labelling codebook for the narrative-coverage gold** (`packages/evals/datasets/narrative_coverage_codebook.md`) — thread definition, grain test and tie-breaks, handed verbatim to a labeler, so it carries no prior labels or outcomes. Why the counts are union-merged upper bounds is recorded in the dataset section instead.
 
 ### Changed
 
