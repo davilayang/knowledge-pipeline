@@ -2,7 +2,44 @@
 
 Pinned eval inputs for the per-pipeline harnesses (`evals.retrieval`, `evals.extraction`, future `evals.workflows`). Lives alongside the package source — each dataset is part of its harness's contract, not an unrelated top-level artefact.
 
-Every JSONL carries a `schema_version` header line; `evals.core.load_fixtures` validates it and rejects unknown versions. Add a new dataset section below when adding a new file.
+**Header convention is not uniform.** The extraction-family datasets open with a header line
+carrying `schema_version`, which `evals.core.load_fixtures` validates and rejects on mismatch.
+`retrieval_eval.jsonl` and both `wiki_eval_*.jsonl` carry no header at all, and
+`narrative_fidelity_gold_seed.jsonl` carries `schema_version` on **every row** rather than in a
+header. Check the dataset's own section before assuming a loader applies.
+
+## What a dataset section records
+
+Each section documents a **contract**, not the file's contents. Anything derivable from the JSONL
+— counts, fixture tables, per-fixture stats — is deliberately absent: it is duplication that goes
+stale, and it is what has gone stale here before. Five headings:
+
+| heading | records |
+|---|---|
+| **What it decides** | the question this set answers, and explicitly the ones it does not; whether it is a gate or a report; the metric, its denominator, and the entry-point command |
+| **Provenance** | who or what produced the labels, blind or not, cross-family or not, and what disagreement was observed — the trust basis for every number it yields |
+| **How to read a number off it** | what silently invalidates a comparison |
+| **Identity and safe changes** | what bumps the revision, what is immutable, and the command that validates a change |
+| **Refresh policy** | cadence, and what triggers a rebuild rather than a top-up |
+
+**Scores do not belong here.** Headline results go to the Notion Eval Runs database and detailed
+run JSON stays local and gitignored — see [`../README.md`](../README.md). A score written into
+this file is a number nothing will ever update.
+
+## README section vs. sibling codebook
+
+A dataset whose labels are drafted by judgement — rather than derived mechanically — also gets a
+codebook, e.g. [`narrative_coverage_codebook.md`](narrative_coverage_codebook.md). The split is by
+**audience**, not by level of detail:
+
+- **The codebook is handed to a labeler, verbatim, as their only instruction.** It therefore holds
+  instructions and nothing else: no prior labels, no scores, no record of how earlier rounds went.
+  Any of that anchors the next labeler and costs the blindness the gold depends on.
+- **The README section is never handed to a labeler**, so outcomes live here.
+
+The test for where a new fact goes: *would handing this to a labeler bias them?* → README.
+*Does a labeler need it to do the job?* → codebook. A dataset with mechanically-derived rows needs
+no codebook; adding one only creates a second place to go stale.
 
 ## `retrieval_eval.jsonl`
 
