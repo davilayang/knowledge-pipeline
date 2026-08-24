@@ -257,9 +257,11 @@ generations is what produced the density spread in point 2 above.
 ## `narrative_fidelity_gold_seed.jsonl`
 
 Gold for the **narrative-fidelity** scorer (`evals.extraction.scorers.NarrativeFidelityScorer`,
-substrate in `evals.extraction.fidelity`) — scores `narrative_v2`'s `narrative_md` for omission
-(`faithful_recall`), corruption (`distortion_rate`), and invention (`fabrication_rate`) against
-gold threads, via two injected judges merged conservatively (false-pass-averse). Header-less;
+metric substrate in `evals.extraction.fidelity`) — scores `narrative_v2`'s `narrative_md` for
+omission (`faithful_recall`), corruption (`distortion_rate`), and invention (`fabrication_rate`)
+against gold threads, via two single-purpose injected judges (one fidelity, one fabrication —
+not merged; `evals.extraction.fidelity`'s conservative false-pass-averse merge helpers are for
+future two-juror-per-axis scoring and aren't called by the scorer yet). Header-less;
 rows are `{content_id, content_type, content_shape_struct, slice, stress_axis, source_char_count,
 gold_threads, critical_threads, schema_version, gold_version, _meta}`. `critical_threads` (indices
 into `gold_threads`) are reader-anchored — main claim / actionable takeaway / understanding-shift
