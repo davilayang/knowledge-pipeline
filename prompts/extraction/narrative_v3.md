@@ -18,7 +18,17 @@ characters. So v3 appends four delivery-layer sections: speakers, structure, the
 subset, and ordered delivery beats.
 
 **Additive, with one stated exception.** v2's three sections and all their rules are carried
-unchanged, so the pinned coverage gold scores the same text and cannot regress structurally.
+unchanged, so the pinned coverage gold scores the same text.
+
+**But "cannot regress" is too strong, and the reason is the token budget.** The four new sections
+share one completion budget with the threads they follow — `ExtractorRegistry.max_tokens` is
+4096, a ceiling raised once already because threads-first v2 blew through 2048. Measured on
+gpt-5.6-luna: a 71k-character podcast used **4,057 of 4,096** output tokens, a 70k arxiv paper
+3,751. `Delivery beats:` is the LAST section, so it is what disappears first — and
+`_narrative_call` stores `message.content` without checking `finish_reason`, so a truncated
+response is indistinguishable from a model that chose to emit fewer beats. Raise the ceiling
+before bumping `PROMPT_LABEL_NARRATIVE`, and check `finish_reason` before trusting a short
+output.
 The exception is the `WRITE IN ENGLISH` line added to OUTPUT FORMAT. Its English half restores
 behaviour the previous model already had; its Latin-script half is a new demand, and neither
 model produced it unprompted.
@@ -140,7 +150,7 @@ Named concepts and entities:
 Comma-separated. Named individuals (creator / host / guest / author) first, then companies, products, techniques. The named guest in an interview outranks all side-mentions — never drop a named human to fit a company name.
 
 Speakers and author:
-Who produced this, by name. For an interview, podcast or talk: the named speaker or guest and their affiliation first, then the host — e.g. "Nick Nisi (WorkOS), with the show's host". For an article or paper: the author(s) and affiliation.
+Who produced this, by name. For an interview, podcast or talk: the named speaker or guest and their affiliation first, then the host — e.g. "Nick Nisi (WorkOS), interviewed by Amal Hussein". Name the host too when the source names them; fall back to "the host" only when it does not. For an article or paper: the author(s) and affiliation.
 Where to look, in this order:
 - the H1 title line and any byline beside it ("By Guillermo Quiros"), which often names a talk's speaker after a dash
 - an explicit `**Authors:**` line
@@ -152,7 +162,7 @@ Rules:
 - If the source genuinely names nobody, write exactly: not named in the source. Do NOT guess, and do NOT infer a name from the publication, channel or feed.
 
 Structure:
-The shape of the source, so the agent knows whether it is walking one argument or a set. Emit ONE of these three labels verbatim, then a dash, then one sentence describing the shape:
+The shape of the source, so the agent knows whether it is walking one argument or a set. Emit ONE of these three labels, then a dash, then one sentence describing the shape. Use the first two verbatim; for the third, replace N with the count:
 - one throughline — a single argument or claim the whole piece builds toward
 - a sequence — ordered stages, steps, or a chronology
 - N independent threads — N separate points with no argument connecting them (give the number)
@@ -161,7 +171,7 @@ Rules:
 - Describe shape ONLY. Do NOT put instructions for the agent in this field — no "name the set first", no "open with X". Instructions here are ignored downstream and waste the field.
 
 Load-bearing claims:
-The set of claims the piece stops working without. Ask "which claims does this piece collapse without?" — NOT "what is the main point". This is a SET; most sources have between 5 and 15.
+The set of claims the piece stops working without. Ask "which claims does this piece collapse without?" — NOT "what is the main point". This is a SET. Measured across real sources it runs 9-28, median 15 — so expect to name more of these than you will have beats for.
 - Number them. One claim per line, each carrying its own anchor (figure, named entity, mechanism, or short quote) exactly as in Salient threads.
 - Attribute each to a named speaker when the source names one.
 - Everything in Salient threads that is NOT listed here is second-tier by definition. Do not restate the second tier.
@@ -179,4 +189,4 @@ Delivery beats:
 Format each beat as:
   N. <the idea, one or two sentences>
      Anchor: <the specific detail>
-     bridge_to: <what the next beat covers>
+     bridge_to: <what the next beat covers>      <- omit on the LAST beat
