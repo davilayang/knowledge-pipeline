@@ -8,9 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Extraction can be pointed at a dotted `gpt-5` release.** It could not before: `_token_kwargs` branched on a `gpt-5` prefix and sent `reasoning_effort="minimal"`, which every release from `gpt-5.4` on rejects with a 400 — the setting was renamed to `none`, while the original `gpt-5` generation rejects `none`. Nothing was broken in production, which runs `gpt-5-mini`; the bug blocked moving off it. The generations are now told apart, `gpt-5-mini`'s behaviour is unchanged, and an unrecognised dotted id defaults to `none` so a future release fails safe. (`packages/workflows/src/workflows/extraction/three_call_openai.py`)
-- **The wiki judge's cost is no longer reported as $0.00.** `gpt-4.1` was missing from `PRICING_PER_1M`, and it is the model `evals.wiki.calibrate` prints a cost for — the only caller of `cost_usd` anywhere — so the one place a cost is displayed displayed nothing. Prefix matching does not rescue it: `gpt-4.1` extends neither `gpt-4.1-mini` nor `-nano`. Added, along with the two extraction models the pipeline is pointed at. `gpt-4o-mini` was deliberately *not* added: as a prefix key it would silently price `gpt-4o-mini-tts` and `-transcribe` at the text rate. Rates re-sourced 2026-08-23. (`packages/workflows/src/workflows/costs.py`)
-
+- **Extraction can be pointed at a dotted `gpt-5` release.** `_token_kwargs` sent `reasoning_effort="minimal"`, which every release from `gpt-5.4` on rejects with a 400, while the original generation rejects `none`. Now split on the dot; `gpt-5-mini` is unchanged.
+- **The wiki judge's cost is no longer reported as $0.00.** `gpt-4.1` was absent from `PRICING_PER_1M` and is the only model any caller costs. Added with the two extraction models; `gpt-4o-mini` deliberately omitted, since as a prefix key it would misprice `-tts` and `-transcribe`.
 ---
 
 ## [0.36.5] — 2026-08-21
