@@ -271,3 +271,25 @@ def test_resolve_entities_carry_has_user_claims(tmp_path, wiki_db_path):
     entities = _read_resolve(wiki_dir)["entities"]
     assert entities[gr.entity_id]["has_user_claims"] is True
     assert entities[ms.entity_id]["has_user_claims"] is False
+
+
+def test_both_sidecar_key_spellings_always_agree(tmp_path, wiki_db_path):
+    # `has_derived` is written alongside `has_user_claims` purely so a consumer
+    # rollback still finds the key — they are the SAME fact under two names, and
+    # the release only stays additive while they agree. The sibling tests assert
+    # each spelling separately, which would not catch the two drifting apart.
+    _seed(wiki_db_path)
+    wiki_dir = tmp_path / "wiki"
+    render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+    with connection(wiki_db_path) as conn:
+        by_name = {e.canonical_name: e for e in get_all_entities(conn)}
+        gr = by_name["GraphRAG"]
+    _add_derived_claim(wiki_db_path, gr.entity_id, note_title="My note", body="A harness body.")
+
+    build_wiki_index(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    entities = _read_resolve(wiki_dir)["entities"]
+    # covers both a true and a false entity — GraphRAG carries the note, the rest do not
+    assert {e["has_user_claims"] for e in entities.values()} == {True, False}
+    for eid, e in entities.items():
+        assert e["has_user_claims"] == e["has_derived"], f"{eid} disagrees across spellings"

@@ -52,26 +52,26 @@ def build_wiki_index(*, wiki_db_path: Path | str, wiki_dir: Path | str) -> Build
     with connection(wiki_db_path) as conn:
         pages = get_all_pages(conn)
         aliases = get_all_aliases(conn)
-        entities = {
-            p.entity_id: {
+        entities = {}
+        for p in pages:
+            # `has_user_claims` names what the flag means; `has_derived` is the
+            # legacy name, written alongside it for one release so a consumer
+            # rollback still finds the key. Purely additive, which is why
+            # `_SCHEMA_VERSION` deliberately stays 1: bumping it while both keys
+            # exist buys nothing, and a consumer pinned to schema 1 rejects the
+            # WHOLE file on an unrecognised version. The bump belongs with the
+            # removal of `has_derived` — the change that truly breaks an old
+            # reader.
+            has_user = has_user_claims_for_entity(conn, p.entity_id)
+            entities[p.entity_id] = {
                 "name": p.canonical_name,
                 "type": p.entity_type,
                 "file": p.file_path,
                 "num_sources": count_sources_for_entity(conn, p.entity_id),
-                # Written under BOTH names for one release. `has_user_claims`
-                # is the name that says what the flag means; `has_derived` is
-                # kept so a consumer rollback still finds it. Purely additive,
-                # so `_SCHEMA_VERSION` deliberately stays 1 — bumping it while
-                # both keys exist would buy nothing and would make a consumer
-                # pinned to schema 1 reject the whole file. The bump belongs
-                # with the removal of `has_derived`, which is the change that
-                # actually breaks an old reader.
-                "has_user_claims": _has_user,
-                "has_derived": _has_user,
+                "has_user_claims": has_user,
+                "has_derived": has_user,
                 "page_hash": _sha256((wiki_dir / p.file_path).read_bytes()),
             }
-            for p, _has_user in ((p, has_user_claims_for_entity(conn, p.entity_id)) for p in pages)
-        }
 
     alias_map = _build_alias_map(pages, aliases)
     # snapshot_id fingerprints the WHOLE resolve payload (aliases + every entity
