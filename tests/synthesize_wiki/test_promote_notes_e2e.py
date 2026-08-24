@@ -83,6 +83,7 @@ def _seed_source_claim(conn, entity_id, *, content_key, publication, text):
             mint_source_id(content_key),
             text,
             th,
+            "source",
             "reported",
             NOW,
         ),
@@ -91,9 +92,7 @@ def _seed_source_claim(conn, entity_id, *, content_key, publication, text):
 
 
 def _derived_texts(conn, entity_id):
-    return [
-        c.text for c in attributed_claims_for_entity(conn, entity_id) if c.claim_kind == "derived"
-    ]
+    return [c.text for c in attributed_claims_for_entity(conn, entity_id) if c.provenance == "user"]
 
 
 def test_promote_notes_asset_lands_and_survives_merge(tmp_path):

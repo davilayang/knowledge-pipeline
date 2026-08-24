@@ -41,14 +41,15 @@ def _source(content_key, origin_type):
     )
 
 
-def _claim(source_id, text, kind):
+def _claim(source_id, text, provenance, stance):
     th = claim_text_hash(text)
     return ClaimRecord(
         claim_id=mint_claim_id(source_id, th),
         source_id=source_id,
         text=text,
         text_hash=th,
-        claim_kind=kind,
+        provenance=provenance,
+        stance=stance,
         created_at=NOW,
     )
 
@@ -75,13 +76,13 @@ def test_derived_claim_flows_through_render_without_leaking(tmp_path):
             # A normal article source with a reported claim (earns page-worthiness).
             article = _source("medium::https://ex.com/a", "queue")
             upsert_source(conn, article)
-            rc = _claim(article.source_id, reported_text, "reported")
+            rc = _claim(article.source_id, reported_text, "source", "reported")
             insert_claim(conn, rc)
             insert_claim_entity(conn, claim_id=rc.claim_id, entity_id=entity.entity_id)
             # A promoted note, stored as a note-origin source with a derived claim.
             note = _source("local:2026-07-08_agent-harness-a1b2c3", "note")
             upsert_source(conn, note)
-            dc = _claim(note.source_id, derived_text, "derived")
+            dc = _claim(note.source_id, derived_text, "user", None)
             insert_claim(conn, dc)
             insert_claim_entity(conn, claim_id=dc.claim_id, entity_id=entity.entity_id)
 

@@ -62,7 +62,7 @@ def _seed_source(conn, source_id="src_0000000000000001") -> str:
     )
 
 
-def _seed_claim(conn, source_id, text, *, kind="reported") -> str:
+def _seed_claim(conn, source_id, text, *, provenance="source", stance="reported") -> str:
     th = claim_text_hash(text)
     return insert_claim(
         conn,
@@ -71,7 +71,8 @@ def _seed_claim(conn, source_id, text, *, kind="reported") -> str:
             source_id=source_id,
             text=text,
             text_hash=th,
-            claim_kind=kind,
+            provenance=provenance,
+            stance=stance,
             created_at=NOW,
         ),
     )

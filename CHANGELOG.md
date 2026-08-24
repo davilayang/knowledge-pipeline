@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Your own promoted notes are no longer stored as pipeline-generated text.** `claims.claim_kind` squashed two independent axes into one enum, and because it had no value meaning "the user wrote this", `promote_notes` filed every promoted note under `derived` — the value meaning *produced by the pipeline*. Split into `provenance` (`source` / `user` / `derived`) and `stance` (`reported` / `opinion`, NULL when not source-authored). Notes now carry `provenance='user'`; the page-worthiness floor exemption follows the user axis, and a pipeline-`derived` claim is explicitly NOT exempt, since merging existing claims is no evidence the user cares about an entity. (`packages/domains/src/domains/wiki/schema/wiki.sql`, `attributed.py`, `workflows/wiki_synthesis/`)
+
+- **A claim that renders in no page section now says so.** `provenance='derived'` reaches neither `## From my notes` (keyed on `user`) nor `## Reported` / `## Opinion` (keyed on stance), so such a claim would sit in the DB and appear nowhere. Nothing emits `derived` yet, so rather than invent a section for a shape with no producer, `render_attributed_markdown` drops them and logs a warning naming the entity and count. (`packages/domains/src/domains/wiki/attributed.py`)
+
+- **Existing databases need a one-off migration; editing the schema file does nothing.** `wiki.sql` is `CREATE TABLE IF NOT EXISTS`, so a deployed `wiki.db` is untouched by the change above. `scripts/migrations/2026-08-24_claims_provenance_stance.sql` rebuilds the table (STRICT + CHECK cannot be ALTERed) and maps `reported`/`opinion` to `source` plus their stance, and `derived` rows to `user` or `derived` by their source's `origin_type`. It runs with `PRAGMA foreign_keys = OFF` — verified necessary: `claim_entities` cascades on `claims`, so dropping the old table with enforcement on deletes every claim→entity link (4 of 4 in a reproduction). (`scripts/migrations/2026-08-24_claims_provenance_stance.sql`)
+
 ---
 
 ## [0.36.6] — 2026-08-24

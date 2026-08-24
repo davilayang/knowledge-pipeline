@@ -160,7 +160,8 @@ def _write_note_claim(conn, note: PromotedNote, entity_ids: list[str], now: str)
             source_id=source_id,
             text=note.body,
             text_hash=text_hash,
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             created_at=now,
         ),
     )

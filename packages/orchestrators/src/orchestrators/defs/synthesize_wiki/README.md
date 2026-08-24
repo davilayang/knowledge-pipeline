@@ -24,7 +24,7 @@ attribute_claims  (sweep over every queue.db source with both an extract_claims 
         │          persisted count. Serialized on WIKI_WRITE_POOL.)
         ▼  (deps ordering only — hints resolve against the freshest entities)
 promote_notes  (attach user-promoted notes (data/notes/*.md, promote: true) to canonical wiki
-        │       entities as one `derived` claim per note, linked to every entity its
+        │       entities as one `user` claim per note, linked to every entity its
         │       relevance-ordered `entities` hints resolve to (exact-name + alias, alias-aware;
         │       a miss mints a `concept` entity). Idempotent + reconciling — an edited note
         │       REPLACES its claim, an unpromoted/deleted note's claim is removed. Returns the

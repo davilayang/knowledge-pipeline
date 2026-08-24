@@ -91,7 +91,8 @@ def _seed(conn, wiki_dir, entity_id, name, file_name, claim_text):
             source_id=src,
             text=claim_text,
             text_hash=th,
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             created_at=NOW,
         ),
     )

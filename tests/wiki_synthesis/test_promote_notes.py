@@ -47,9 +47,7 @@ def _write_note(notes_dir: Path, note_id: str, *, entities, body="My synthesis."
 
 
 def _derived_texts(conn, entity_id) -> list[str]:
-    return [
-        c.text for c in attributed_claims_for_entity(conn, entity_id) if c.claim_kind == "derived"
-    ]
+    return [c.text for c in attributed_claims_for_entity(conn, entity_id) if c.provenance == "user"]
 
 
 def test_promoted_note_lands_derived_claim_on_existing_entity(wiki_db, wiki_db_path, tmp_path):

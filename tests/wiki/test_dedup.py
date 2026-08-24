@@ -45,7 +45,8 @@ def _seed_claim(conn, source_id, entity_id, text):
             source_id=source_id,
             text=text,
             text_hash=th,
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             created_at=NOW,
         ),
     )
