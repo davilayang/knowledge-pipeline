@@ -150,3 +150,34 @@ def test_round_trips_a_source_with_no_content_date():
     text = render_claims(summary)
 
     assert parse_claims_doc(text) == summary
+
+
+def test_parses_the_cited_unit_indices_a_claim_carries():
+    body = "- [reported|12,13] Claude Code shipped subagents in March 2026.\n"
+
+    claims = parse_claims(body, source_id="medium::https://x.com/a")
+
+    assert claims == [
+        SourceClaim(
+            text="Claude Code shipped subagents in March 2026.",
+            source_id="medium::https://x.com/a",
+            speculative=False,
+            cited_units=(12, 13),
+        )
+    ]
+
+
+def test_renders_cited_units_so_the_stored_doc_round_trips():
+    summary = ClaimSet(
+        item_id="medium::https://x.com/a",
+        content_date="2026-03-15",
+        claims=[
+            SourceClaim(
+                text="Claude Code shipped subagents in March 2026.",
+                source_id="medium::https://x.com/a",
+                cited_units=(12, 13),
+            )
+        ],
+    )
+
+    assert parse_claims_doc(render_claims(summary)) == summary
