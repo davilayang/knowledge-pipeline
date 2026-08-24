@@ -37,7 +37,7 @@ render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, 
         ▼  (deps ordering only)
 build_index  (rebuild the whole-wiki index sidecars from wiki.db: data/wiki/_index/resolve.json
               — alias→entity_id resolution + per-entity orientation {name,type,file,num_sources,
-              has_derived,page_hash} for the newsletter-assistant bridge — and data/wiki/index.md — human TOC
+              has_user_claims,has_derived,page_hash} for the newsletter-assistant bridge — and data/wiki/index.md — human TOC
               grouped by live entity_type. Writes each file only when its content changed
               (snapshot_id for resolve.json, byte-equality for index.md) and self-heals a missing
               file, so it always runs (no empty-sweep gate). Serialized on WIKI_WRITE_POOL.)

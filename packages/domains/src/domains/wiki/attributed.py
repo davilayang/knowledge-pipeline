@@ -337,7 +337,7 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
     return int(row[0]) if row and row[0] is not None else 0
 
 
-def has_derived_for_entity(conn: sqlite3.Connection, entity_id: str) -> bool:
+def has_user_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> bool:
     """Whether `entity_id` carries any `user` claim (a promoted note) — the
     signal a page holds the user's own synthesis, surfaced in resolve.json."""
     row = conn.execute(

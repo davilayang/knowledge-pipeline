@@ -251,3 +251,23 @@ def test_skip_when_unchanged_and_self_heal(tmp_path, wiki_db_path):
     r3 = build_wiki_index(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
     assert r3.index_written and not r3.resolve_written
     assert (wiki_dir / "index.md").exists()
+
+
+def test_resolve_entities_carry_has_user_claims(tmp_path, wiki_db_path):
+    # `has_user_claims` is the name that says what the flag MEANS — the consumer
+    # already speaks it as "Includes your own notes on this." The old
+    # `has_derived` name described how it used to be computed, back when a
+    # promoted note was stored under the value meaning "the pipeline made this".
+    _seed(wiki_db_path)
+    wiki_dir = tmp_path / "wiki"
+    render_entity_pages(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+    with connection(wiki_db_path) as conn:
+        by_name = {e.canonical_name: e for e in get_all_entities(conn)}
+        gr, ms = by_name["GraphRAG"], by_name["Microsoft"]
+    _add_derived_claim(wiki_db_path, gr.entity_id, note_title="My note", body="A harness body.")
+
+    build_wiki_index(wiki_db_path=wiki_db_path, wiki_dir=wiki_dir)
+
+    entities = _read_resolve(wiki_dir)["entities"]
+    assert entities[gr.entity_id]["has_user_claims"] is True
+    assert entities[ms.entity_id]["has_user_claims"] is False

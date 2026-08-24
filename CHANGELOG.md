@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The wiki sidecar now names its user-notes flag for what it means.** `_index/resolve.json` carries `has_user_claims` alongside the legacy `has_derived`; both hold the same value, computed by `has_user_claims_for_entity` (renamed from `has_derived_for_entity`). The old name described how the flag used to be derived, not what it says.
+- **`_SCHEMA_VERSION` deliberately stays 1.** Adding a key is additive, so no consumer breaks; bumping while both keys exist would only make a consumer pinned to schema 1 reject the whole file. The bump belongs with the later removal of `has_derived`.
+
 ---
 
 ## [0.36.7] — 2026-08-24
