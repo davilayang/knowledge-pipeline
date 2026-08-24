@@ -74,7 +74,8 @@ def persist_source_assignment(
                 source_id=source_id,
                 text=ca.claim.text,
                 text_hash=text_hash,
-                claim_kind="opinion" if ca.claim.speculative else "reported",
+                provenance="source",
+                stance="opinion" if ca.claim.speculative else "reported",
                 created_at=created_at,
             ),
         )

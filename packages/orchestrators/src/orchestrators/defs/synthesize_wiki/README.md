@@ -24,13 +24,13 @@ attribute_claims  (sweep over every queue.db source with both an extract_claims 
         │          persisted count. Serialized on WIKI_WRITE_POOL.)
         ▼  (deps ordering only — hints resolve against the freshest entities)
 promote_notes  (attach user-promoted notes (data/notes/*.md, promote: true) to canonical wiki
-        │       entities as one `derived` claim per note, linked to every entity its
+        │       entities as one `user` claim per note, linked to every entity its
         │       relevance-ordered `entities` hints resolve to (exact-name + alias, alias-aware;
         │       a miss mints a `concept` entity). Idempotent + reconciling — an edited note
         │       REPLACES its claim, an unpromoted/deleted note's claim is removed. Returns the
         │       dirty count (changed + removed). Serialized on WIKI_WRITE_POOL.)
         ▼  (passes both attribute_claims' persisted count and promote_notes' dirty count)
-render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1 derived note
+render_pages  (re-render every page-worthy entity (≥2 claims OR ≥2 sources, or ≥1 user note
         │      claim) from wiki.db to data/wiki/{slug}-{shortid}.md. SKIPS entirely when BOTH
         │      upstream signals are zero — a no-op render would rewrite every page's updated_at
         │      and churn the downstream curation push. Serialized on WIKI_WRITE_POOL.)

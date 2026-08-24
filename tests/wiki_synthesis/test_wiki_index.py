@@ -122,7 +122,9 @@ def _add_derived_claim(wiki_db_path, entity_id, *, note_title, body):
                 sid, ck, "note", note_title, None, None, None, "2026-07-08", None, None, NOW
             ),
         )
-        cid = insert_claim(conn, ClaimRecord(mint_claim_id(sid, th), sid, body, th, "derived", NOW))
+        cid = insert_claim(
+            conn, ClaimRecord(mint_claim_id(sid, th), sid, body, th, "user", None, NOW)
+        )
         insert_claim_entity(conn, claim_id=cid, entity_id=entity_id)
 
 

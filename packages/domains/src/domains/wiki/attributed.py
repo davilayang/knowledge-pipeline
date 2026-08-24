@@ -13,6 +13,7 @@ matching `domains.wiki.state`. Open connections with `state.connect` /
 """
 
 import hashlib
+import logging
 import sqlite3
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -22,12 +23,14 @@ import yaml
 
 from domains.wiki.identity import EntityRecord
 
+logger = logging.getLogger(__name__)
+
 _SOURCE_COLS = (
     "source_id, content_key, origin_type, title, author, publication, "
     "url, published_at, content_hash, fetched_at, added_at"
 )
 
-_CLAIM_COLS = "claim_id, source_id, text, text_hash, claim_kind, created_at"
+_CLAIM_COLS = "claim_id, source_id, text, text_hash, provenance, stance, created_at"
 
 
 def mint_source_id(content_key: str) -> str:
@@ -177,7 +180,7 @@ def get_source_keys_by_origin(conn: sqlite3.Connection, origin_type: str) -> lis
 
     The note→wiki reconcile diffs the stored note-origin keys against the live
     `promote: true` note ids to discover which promoted notes were unpromoted or
-    deleted (their derived claims + source rows must go)."""
+    deleted (their user claims + source rows must go)."""
     rows = conn.execute(
         "SELECT content_key FROM sources WHERE origin_type = ? ORDER BY content_key",
         (origin_type,),
@@ -192,18 +195,25 @@ def delete_source(conn: sqlite3.Connection, source_id: str) -> None:
 
 @dataclass(frozen=True)
 class ClaimRecord:
-    """One atomic claim as asserted by ONE source. `text_hash` is
-    `claim_text_hash(text)` — the per-source idempotency key. `claim_kind` is
-    'reported' (the source presents it as fact), 'opinion' (prediction /
-    opinion / unverified) — both carrying the extractor's `[reported]`/`[opinion]`
-    tag — or 'derived' (the user's own synthesis, e.g. a promoted note).
+    """One atomic claim, carrying two independent axes. `text_hash` is
+    `claim_text_hash(text)` — the per-source idempotency key.
+
+    `provenance` is who authored the claim: 'source' (the content asserted it),
+    'user' (the user wrote it, e.g. a promoted note), or 'derived' (the pipeline
+    produced it by merging or refining other claims).
+
+    `stance` is how a SOURCE presented it — 'reported' (as established fact) or
+    'opinion' (prediction / opinion / unverified), carrying the extractor's
+    `[reported]`/`[opinion]` tag. It is None for anything not source-authored,
+    because only a source has a stance.
     """
 
     claim_id: str
     source_id: str
     text: str
     text_hash: str
-    claim_kind: str
+    provenance: str
+    stance: str | None
     created_at: str
 
 
@@ -218,14 +228,15 @@ def insert_claim(conn: sqlite3.Connection, claim: ClaimRecord) -> str:
     id it passed in — a pre-existing row for this (source_id, text_hash) can't
     then leave the link pointing at a non-existent id (FK break)."""
     conn.execute(
-        f"INSERT INTO claims ({_CLAIM_COLS}) VALUES (?, ?, ?, ?, ?, ?) "
+        f"INSERT INTO claims ({_CLAIM_COLS}) VALUES (?, ?, ?, ?, ?, ?, ?) "
         "ON CONFLICT (source_id, text_hash) DO NOTHING",
         (
             claim.claim_id,
             claim.source_id,
             claim.text,
             claim.text_hash,
-            claim.claim_kind,
+            claim.provenance,
+            claim.stance,
             claim.created_at,
         ),
     )
@@ -267,7 +278,8 @@ def insert_claim_entity(conn: sqlite3.Connection, *, claim_id: str, entity_id: s
 
 @dataclass(frozen=True)
 class AttributedClaim:
-    """One claim as it renders on an entity's page: the claim text + kind, plus
+    """One claim as it renders on an entity's page: the claim text + its two
+    provenance/stance axes, plus
     the source attribution (author / publication / published_at / url) that makes
     it an ATTRIBUTED statement ("Jane Doe on medium.com (2026-03) claimed …")
     rather than an unsourced assertion. `author` is the primary attributor for
@@ -275,12 +287,13 @@ class AttributedClaim:
     reserved for origins that supply it."""
 
     text: str
-    claim_kind: str
+    provenance: str
+    stance: str | None
     author: str | None
     publication: str | None
     published_at: str | None
     url: str | None
-    title: str | None = None  # source/note title — the attributor for a derived (note) claim
+    title: str | None = None  # source/note title — the attributor for a user (note) claim
     fetched_at: str | None = (
         None  # when the source was fetched — a distinct recency signal from published_at
     )
@@ -294,7 +307,7 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
     else undated rows float to the top), then by claim_id for a stable read."""
     rows = conn.execute(
         """
-        SELECT c.text, c.claim_kind, s.author, s.publication, s.published_at,
+        SELECT c.text, c.provenance, c.stance, s.author, s.publication, s.published_at,
                s.url, s.title, s.fetched_at
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
@@ -325,14 +338,14 @@ def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
 
 
 def has_derived_for_entity(conn: sqlite3.Connection, entity_id: str) -> bool:
-    """Whether `entity_id` carries any `derived` claim (a promoted note) — the
+    """Whether `entity_id` carries any `user` claim (a promoted note) — the
     signal a page holds the user's own synthesis, surfaced in resolve.json."""
     row = conn.execute(
         """
         SELECT 1
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
-        WHERE ce.entity_id = ? AND c.claim_kind = 'derived'
+        WHERE ce.entity_id = ? AND c.provenance = 'user'
         LIMIT 1
         """,
         (entity_id,),
@@ -389,9 +402,9 @@ def _summary(claims: list[AttributedClaim]) -> str:
     promoted note (markdown header markers stripped). Serves both the display
     line and the vector-lane embed text; a crude heuristic, an LLM summary is the
     deferred upgrade. Empty only if the page has no claims at all."""
-    for kind in ("reported", "opinion", "derived"):
+    for provenance, stance in (("source", "reported"), ("source", "opinion"), ("user", None)):
         for c in claims:
-            if c.claim_kind != kind:
+            if (c.provenance, c.stance) != (provenance, stance):
                 continue
             lines = c.text.strip().splitlines()  # empty for blank/whitespace-only text
             if lines and (first_line := lines[0].lstrip("#").strip()):
@@ -400,9 +413,9 @@ def _summary(claims: list[AttributedClaim]) -> str:
 
 
 def _note_caption(claim: AttributedClaim) -> str:
-    """The caption for a derived (promoted-note) block: `<note title> — my note,
+    """The caption for a user (promoted-note) block: `<note title> — my note,
     <date>`. The title names the user's own note and, when a note-file backlink is
-    present, links to it — so a derived claim traces back to its origin note rather
+    present, links to it — so a user claim traces back to its origin note rather
     than reading as an unsourced assertion. Missing parts drop out."""
     title = claim.title or "Untitled note"
     label = f"[{title}]({claim.url})" if claim.url else title
@@ -444,14 +457,25 @@ def render_attributed_markdown(
     # structured artifact rendered as a verbatim block (not a one-line bullet),
     # each captioned with the note it came from (title + date) so the block reads
     # as attributed to the user's note, never "source unknown".
-    derived_blocks = [
-        f"*{_note_caption(c)}*\n\n{c.text}" for c in claims if c.claim_kind == "derived"
-    ]
-    if derived_blocks:
-        sections.append("## From my notes\n\n" + "\n\n".join(derived_blocks))
-    for kind, heading in (("reported", "Reported"), ("opinion", "Opinion")):
-        bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.claim_kind == kind]
+    user_blocks = [f"*{_note_caption(c)}*\n\n{c.text}" for c in claims if c.provenance == "user"]
+    if user_blocks:
+        sections.append("## From my notes\n\n" + "\n\n".join(user_blocks))
+    for stance, heading in (("reported", "Reported"), ("opinion", "Opinion")):
+        bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.stance == stance]
         if bullets:
             sections.append(f"## {heading}\n\n" + "\n".join(bullets))
+    # A pipeline-`derived` claim reaches no section: "From my notes" is keyed on
+    # provenance='user', and Reported/Opinion key on `stance`, which a derived
+    # claim does not carry. Nothing emits these yet, so rather than invent a
+    # section for a shape with no producer they are dropped — but a claim that
+    # is in the DB and on no page is silent data loss, so say so.
+    dropped = sum(1 for c in claims if c.provenance == "derived")
+    if dropped:
+        logger.warning(
+            "render_attributed_markdown: dropped %d derived claim(s) for entity %s — "
+            "provenance='derived' has no render section yet",
+            dropped,
+            entity.entity_id,
+        )
     body = f"# {entity.canonical_name}\n\n" + "\n\n".join(sections)
     return "\n".join(frontmatter) + "\n\n" + body + "\n"

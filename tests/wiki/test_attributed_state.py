@@ -165,7 +165,8 @@ def _claim(**over) -> ClaimRecord:
         source_id="src_0000000000000001",
         text=text,
         text_hash=claim_text_hash(text),
-        claim_kind="reported",
+        provenance="source",
+        stance="reported",
         created_at=NOW,
     )
     base.update(over)
@@ -192,24 +193,33 @@ def test_insert_claim_idempotent_on_source_and_text_hash(wiki_db):
     assert [c.claim_id for c in claims] == ["clm_first"]
 
 
-def test_insert_derived_claim_roundtrips(wiki_db):
-    # A promoted note is stored as a `derived` claim (the user's own synthesis),
-    # a third kind alongside reported/opinion. The claim_kind CHECK is the only
-    # guard, so it must admit 'derived'.
+def test_insert_pipeline_derived_claim_roundtrips(wiki_db):
+    # `derived` is reserved for claims the PIPELINE produced by merging or
+    # refining other claims — distinct from `user` (a promoted note). Nothing
+    # emits these yet; the round-trip locks the third provenance value so the
+    # first producer has a place to write to.
     upsert_source(wiki_db, _source())
-    clm = _claim(claim_kind="derived")
+    clm = _claim(provenance="derived", stance=None)
     insert_claim(wiki_db, clm)
     wiki_db.commit()
     assert get_claims_for_source(wiki_db, "src_0000000000000001") == [clm]
 
 
-def test_insert_claim_rejects_unknown_kind(wiki_db):
-    # The claim_kind CHECK is the sole guard (insert_claim does no Python-side
-    # validation), so a kind outside the enum must be rejected — this locks the
-    # constraint so a future edit that drops the CHECK can't silently pass.
+def test_insert_claim_rejects_unknown_provenance(wiki_db):
+    # The CHECK is the sole guard (insert_claim does no Python-side validation),
+    # so a provenance outside the enum must be rejected — this locks the
+    # constraint so a future edit that drops it can't silently pass.
     upsert_source(wiki_db, _source())
     with pytest.raises(sqlite3.IntegrityError):
-        insert_claim(wiki_db, _claim(claim_kind="bogus"))
+        insert_claim(wiki_db, _claim(provenance="bogus", stance=None))
+
+
+def test_insert_claim_rejects_unknown_stance(wiki_db):
+    # Same guard on the second axis. Without it, a typo'd stance would persist
+    # and quietly drop the claim out of the Reported/Opinion render sections.
+    upsert_source(wiki_db, _source())
+    with pytest.raises(sqlite3.IntegrityError):
+        insert_claim(wiki_db, _claim(provenance="source", stance="bogus"))
 
 
 def test_delete_claims_for_source_removes_all_and_cascades(wiki_db):
@@ -279,7 +289,8 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
             claim_id="clm_dated",
             source_id="src_dated",
             text="Dated claim about GraphRAG.",
-            claim_kind="opinion",
+            provenance="source",
+            stance="opinion",
         ),
     )
     insert_claim_entity(wiki_db, claim_id="clm_undated", entity_id="e_x")
@@ -289,7 +300,8 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
     assert attributed_claims_for_entity(wiki_db, "e_x") == [
         AttributedClaim(
             text="Dated claim about GraphRAG.",
-            claim_kind="opinion",
+            provenance="source",
+            stance="opinion",
             author="Jane Doe",
             publication="Codrift",
             published_at="2026-03-01",
@@ -299,7 +311,8 @@ def test_attributed_claims_for_entity_dated_first_undated_last(wiki_db):
         ),
         AttributedClaim(
             text="Undated claim about GraphRAG.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="Jane Doe",
             publication="Voidmag",
             published_at=None,
@@ -417,7 +430,8 @@ def test_render_attributed_markdown_includes_related():
         claims=[
             AttributedClaim(
                 text="c",
-                claim_kind="reported",
+                provenance="source",
+                stance="reported",
                 author=None,
                 publication=None,
                 published_at="2026-03-01",
@@ -440,7 +454,8 @@ def test_render_attributed_markdown_shape():
     claims = [
         AttributedClaim(
             text="GraphRAG combines vector search with a knowledge graph.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="Jane Doe",
             publication=None,
             published_at="2026-03-01",
@@ -448,7 +463,8 @@ def test_render_attributed_markdown_shape():
         ),
         AttributedClaim(
             text="GraphRAG will replace naive RAG.",
-            claim_kind="opinion",
+            provenance="source",
+            stance="opinion",
             author=None,
             publication=None,
             published_at=None,
@@ -494,7 +510,8 @@ def test_render_attributed_markdown_renders_domain_as_backlink():
     claims = [
         AttributedClaim(
             text="GraphRAG combines vector search with a knowledge graph.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="Jane Doe",
             publication=None,
             published_at="2026-03-01",
@@ -514,7 +531,8 @@ def test_render_attributed_markdown_shows_both_dates_labelled():
     claims = [
         AttributedClaim(
             text="GraphRAG combines vector search with a knowledge graph.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="Jane Doe",
             publication=None,
             published_at="2026-03-01",
@@ -535,7 +553,8 @@ def test_render_attributed_markdown_no_publish_date_shows_only_fetched():
     claims = [
         AttributedClaim(
             text="GraphRAG will replace naive RAG.",
-            claim_kind="opinion",
+            provenance="source",
+            stance="opinion",
             author=None,
             publication=None,
             published_at=None,
@@ -558,7 +577,8 @@ def test_render_attributed_markdown_renders_derived_as_from_my_notes():
     claims = [
         AttributedClaim(
             text="An agent harness wraps guardrails around a raw model.",
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             author=None,
             publication=None,
             published_at="2026-07-08",
@@ -580,7 +600,8 @@ def test_render_attributed_markdown_derived_backlinks_to_note_file():
     claims = [
         AttributedClaim(
             text="An agent harness wraps guardrails around a raw model.",
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             author=None,
             publication=None,
             published_at="2026-07-08",
@@ -604,7 +625,8 @@ def test_render_attributed_markdown_derived_keeps_block_structure():
     claims = [
         AttributedClaim(
             text=note,
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             author=None,
             publication=None,
             published_at="2026-07-08",
@@ -625,7 +647,8 @@ def test_render_attributed_markdown_derived_attributes_note_title():
     claims = [
         AttributedClaim(
             text="An agent harness wraps guardrails around a raw model.",
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             author=None,
             publication=None,
             published_at="2026-07-08",
@@ -648,7 +671,8 @@ def test_render_attributed_markdown_emits_deterministic_summary():
     claims = [
         AttributedClaim(
             text="GraphRAG combines vector search with a knowledge graph.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="Jane Doe",
             publication=None,
             published_at="2026-03-01",
@@ -656,7 +680,8 @@ def test_render_attributed_markdown_emits_deterministic_summary():
         ),
         AttributedClaim(
             text="GraphRAG will replace naive RAG.",
-            claim_kind="opinion",
+            provenance="source",
+            stance="opinion",
             author=None,
             publication=None,
             published_at=None,
@@ -677,7 +702,8 @@ def test_render_attributed_markdown_summary_falls_back_to_note_when_derived_only
     claims = [
         AttributedClaim(
             text="### Rubric\n\n1. Control mechanisms\n2. Context management",
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             author=None,
             publication=None,
             published_at="2026-07-08",
@@ -699,7 +725,8 @@ def test_render_attributed_markdown_summary_skips_blank_claim_text():
     claims = [
         AttributedClaim(
             text="   \n  ",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="A",
             publication=None,
             published_at="2026-01-01",
@@ -707,7 +734,8 @@ def test_render_attributed_markdown_summary_skips_blank_claim_text():
         ),
         AttributedClaim(
             text="GraphRAG combines vector search with a knowledge graph.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="B",
             publication=None,
             published_at="2026-02-01",
@@ -727,7 +755,8 @@ def test_render_attributed_markdown_omits_empty_section():
     claims = [
         AttributedClaim(
             text="RAG retrieves before generating.",
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             author="A",
             publication=None,
             published_at="2026-01-01",
@@ -739,3 +768,42 @@ def test_render_attributed_markdown_omits_empty_section():
     )
     assert "## Reported" in md
     assert "## Opinion" not in md
+
+
+def test_user_claim_roundtrips_with_provenance_and_no_stance(wiki_db):
+    # A promoted note is authored BY THE USER, not produced by the pipeline.
+    # `provenance` records who authored it; `stance` records how a SOURCE
+    # presented it and is therefore meaningless here, so it stays NULL.
+    upsert_source(wiki_db, _source())
+    clm = _claim(text="I think harnesses matter more than models.", provenance="user", stance=None)
+    insert_claim(wiki_db, clm)
+    wiki_db.commit()
+    stored = get_claims_for_source(wiki_db, "src_0000000000000001")[0]
+    assert (stored.provenance, stored.stance) == ("user", None)
+
+
+def test_pipeline_derived_claim_is_excluded_loudly_not_silently(caplog):
+    # `provenance='derived'` (a pipeline merge of other claims) has no render
+    # section: "From my notes" is for the user's own writing, and Reported /
+    # Opinion select on `stance`, which a derived claim does not have. Nothing
+    # emits these yet, so rather than invent a section for a shape with no
+    # producer, they are excluded — but a claim that is in the DB and on no page
+    # is silent data loss, so the exclusion must announce itself.
+    entity = _entity_record("e_x", "GraphRAG")
+    claims = [
+        AttributedClaim(
+            text="Merged: GraphRAG adoption is rising across both papers.",
+            provenance="derived",
+            stance=None,
+            author=None,
+            publication=None,
+            published_at=None,
+            url=None,
+        ),
+    ]
+    with caplog.at_level("WARNING"):
+        md = render_attributed_markdown(
+            entity=entity, claims=claims, aliases=[], num_sources=1, updated_at="2026-08-24"
+        )
+    assert "Merged: GraphRAG adoption" not in md
+    assert "dropped 1 derived claim" in caplog.text and "e_x" in caplog.text

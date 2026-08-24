@@ -92,7 +92,7 @@ def test_persist_writes_source_claims_and_entity_links(wiki_db):
     assert x_texts == {"GraphRAG uses a knowledge graph.", "Microsoft ships GraphRAG."}
 
     y_claims = attributed_claims_for_entity(wiki_db, "e_y")
-    assert [(c.text, c.claim_kind) for c in y_claims] == [("Microsoft ships GraphRAG.", "opinion")]
+    assert [(c.text, c.stance) for c in y_claims] == [("Microsoft ships GraphRAG.", "opinion")]
 
 
 def test_persist_is_idempotent_across_reruns(wiki_db):
@@ -186,7 +186,9 @@ def test_persist_links_to_preexisting_claim_row(wiki_db):
     upsert_source(wiki_db, src)
     insert_claim(
         wiki_db,
-        ClaimRecord("clm_rogue", src.source_id, text, claim_text_hash(text), "reported", NOW),
+        ClaimRecord(
+            "clm_rogue", src.source_id, text, claim_text_hash(text), "source", "reported", NOW
+        ),
     )
     wiki_db.commit()
 

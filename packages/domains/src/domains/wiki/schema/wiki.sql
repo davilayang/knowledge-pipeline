@@ -122,10 +122,15 @@ CREATE TABLE IF NOT EXISTS sources (
 ) STRICT;
 
 -- ---------------------------------------------------------------------------
--- claims — one atomic statement as asserted by ONE source, tagged `reported`
--- (the source presents it as fact), `opinion` (prediction / opinion /
--- unverified), or `derived` (the user's own synthesis, e.g. a promoted note —
--- typed-separate from source-side claims). text_hash is sha256 of the normalized claim text; the
+-- claims — one atomic statement, carrying TWO independent axes. `provenance`
+-- is who authored it: `source` (the content said it), `user` (the user wrote
+-- it, e.g. a promoted note), `derived` (the pipeline produced it by merging or
+-- refining other claims). `stance` is how a SOURCE presented it — `reported`
+-- (as established fact) or `opinion` (prediction / opinion / unverified) — and
+-- is NULL for anything not source-authored, since only a source has a stance.
+-- Splitting these keeps user-authored material distinguishable from
+-- pipeline-generated text, which a single column could not express.
+-- text_hash is sha256 of the normalized claim text; the
 -- UNIQUE(source_id, text_hash) key makes a re-run idempotent — re-extracting a
 -- source's claims re-inserts the same rows without duplicating. ON DELETE
 -- CASCADE so dropping a source removes its claims.
@@ -135,8 +140,20 @@ CREATE TABLE IF NOT EXISTS claims (
     source_id   TEXT NOT NULL REFERENCES sources (source_id) ON DELETE CASCADE,
     text        TEXT NOT NULL,
     text_hash   TEXT NOT NULL,                      -- sha256(normalized text) — idempotency
-    claim_kind  TEXT NOT NULL CHECK (claim_kind IN ('reported', 'opinion', 'derived')),
+    provenance  TEXT NOT NULL CHECK (provenance IN ('source', 'user', 'derived')),
+    stance      TEXT          CHECK (stance     IN ('reported', 'opinion')),
     created_at  TEXT NOT NULL,                      -- ISO-8601 UTC
+    -- Cross-axis invariant: only a source has a stance. The per-column CHECKs
+    -- above each pass for ('user','reported') and for ('source', NULL); this
+    -- one rejects both. Without it a ('user','reported') row renders the SAME
+    -- claim twice — once as a `## From my notes` block, once as a `## Reported`
+    -- bullet reading "source unknown" — and yields an empty page summary,
+    -- because `_summary` matches neither ('source','reported') nor ('user',None).
+    -- The old single-column claim_kind made that state unrepresentable; the
+    -- split reintroduced it, so the constraint closes it. Must stay identical
+    -- to the one in scripts/migrations/2026-08-24_claims_provenance_stance.sql,
+    -- or a migrated db and a from-empty rebuild diverge.
+    CHECK ((provenance = 'source') = (stance IS NOT NULL)),
     UNIQUE (source_id, text_hash)
 ) STRICT;
 

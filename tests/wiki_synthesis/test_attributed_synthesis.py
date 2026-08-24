@@ -263,7 +263,8 @@ def _seed_lone_derived(conn, *, entity_id, name, note_title, body):
             source_id=sid,
             text=body,
             text_hash=th,
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             created_at=NOW,
         ),
     )

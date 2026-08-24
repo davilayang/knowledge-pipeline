@@ -82,7 +82,8 @@ def _seed(conn, entity_id, canonical, claim_text):
             source_id=src,
             text=claim_text,
             text_hash=th,
-            claim_kind="reported",
+            provenance="source",
+            stance="reported",
             created_at=NOW,
         ),
     )

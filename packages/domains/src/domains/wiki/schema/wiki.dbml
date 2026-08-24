@@ -14,10 +14,15 @@ Enum processed_status {
   skipped
 }
 
-Enum claim_kind {
+Enum provenance {
+  source
+  user
+  derived
+}
+
+Enum stance {
   reported
   opinion
-  derived
 }
 
 // ---- identity + page shell ----
@@ -94,13 +99,14 @@ Table claims {
   source_id  text [not null, ref: > sources.source_id, note: 'ON DELETE CASCADE']
   text       text [not null]
   text_hash  text [not null, note: 'sha256(normalized text)']
-  claim_kind claim_kind [not null]
+  provenance provenance [not null]
+  stance     stance [note: 'NULL unless provenance = source — only a source has a stance']
   created_at text [not null]
   indexes {
     (source_id, text_hash) [unique, name: 'uq_claim_idempotency']
     source_id [name: 'idx_claims_source']
   }
-  Note: 'Atomic attributed claim. UNIQUE(source_id, text_hash) = idempotent re-run.'
+  Note: 'Atomic attributed claim. UNIQUE(source_id, text_hash) = idempotent re-run. Table CHECK not expressible in DBML: (provenance = \'source\') = (stance IS NOT NULL) — only a source has a stance, so (user, reported) and (source, NULL) are both rejected.'
 }
 
 Table claim_entities {

@@ -1,7 +1,7 @@
 """promote_notes — attach user-promoted notes to canonical wiki entities as
-`derived` claims (KP-2).
+`user` claims (KP-2).
 
-Each `promote: true` note becomes ONE `derived` claim on a note-origin source
+Each `promote: true` note becomes ONE `user` claim on a note-origin source
 (`content_key = local:{note_id}`), linked to every entity its `entities` hints
 resolve to. Resolution reuses the wiki resolver (`resolve_or_mint_batch`):
 exact-name + alias gates are authoritative (alias-aware, so a merged-away hint
@@ -92,7 +92,7 @@ def promote_notes(*, db_path: Path | str, notes_dir: Path | str) -> PromoteResul
                 changed += _write_note_claim(conn, note, note_entity_ids[note.note_id], now)
             # Reconcile removals: a note-origin source whose note is no longer
             # promoted (toggle off or file deleted) is stale — drop it (CASCADE
-            # prunes its derived claim + claim_entities). Keyed by content_key, so a
+            # prunes its user claim + claim_entities). Keyed by content_key, so a
             # note that flips back on re-mints the same deterministic rows.
             for content_key in get_source_keys_by_origin(conn, "note"):
                 if content_key not in live_keys:
@@ -105,13 +105,13 @@ def promote_notes(*, db_path: Path | str, notes_dir: Path | str) -> PromoteResul
 
 
 def _write_note_claim(conn, note: PromotedNote, entity_ids: list[str], now: str) -> int:
-    """Write a note as a note-origin source + one derived claim linked to each
+    """Write a note as a note-origin source + one user claim linked to each
     resolved entity. REPLACE semantics: the source's prior claim is deleted first,
     so a re-promote of an edited note reflects only the current body (and an
     unchanged body re-inserts the same deterministic rows — idempotent).
 
     Returns 1 if this note changed wiki.db (new, edited body, OR relinked to
-    different entities), 0 if the stored derived claim + its links are identical
+    different entities), 0 if the stored user claim + its links are identical
     (no render churn). The link set is part of the check because a hint-only edit
     (same body, different entities) shifts page-worthiness counts on both entities
     and so must trigger a re-render."""
@@ -160,7 +160,8 @@ def _write_note_claim(conn, note: PromotedNote, entity_ids: list[str], now: str)
             source_id=source_id,
             text=note.body,
             text_hash=text_hash,
-            claim_kind="derived",
+            provenance="user",
+            stance=None,
             created_at=now,
         ),
     )

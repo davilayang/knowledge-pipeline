@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.7] — 2026-08-24
+
+### Changed
+
+- **A promoted note is no longer stored as pipeline-generated text.** `claims.claim_kind` split into two axes: `provenance` (`source` / `user` / `derived`) and `stance` (`reported` / `opinion`, NULL otherwise). Notes now carry `provenance='user'` instead of `derived`, which meant "the pipeline produced this."
+
+- **A claim that renders on no page section now logs why.** Nothing yet emits `provenance='derived'` claims (pipeline-merged, no page section exists for them); `render_attributed_markdown` drops them and logs a warning naming the entity and count instead of losing them silently.
+
+- **Deployed wiki databases need a manual migration, run before this release deploys.** `wiki.sql` only creates the table if missing, so the schema change alone doesn't reach a live db, and the assets fail against an unmigrated one. Run `scripts/migrations/2026-08-24_claims_provenance_stance.sql` by hand; it is covered by a new automated test.
+
+---
+
 ## [0.36.6] — 2026-08-24
 
 ### Added

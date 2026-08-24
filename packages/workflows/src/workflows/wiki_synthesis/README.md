@@ -5,7 +5,7 @@ updates. Extract-time Dagster assets in `fetch_extract_queue` call
 `extract_claims` and `extract_entities` per item; `attributed_synthesis.synthesize_source`
 resolves candidates against the live wiki and persists per-source attributed
 claims; `promote_notes` (below) separately folds user-promoted notes in as
-`derived` claims; `render_entity_pages` sweeps all entities and renders each
+`user`-provenance claims; `render_entity_pages` sweeps all entities and renders each
 page from its accumulated attributed claims.
 
 For operations (how to launch, retry, debug), see the attributed-lane runbook:
@@ -29,12 +29,12 @@ mentioned by many documents over time; `render_entity_pages` re-renders the
 page from ALL attributed claims accumulated across sources.
 
 A page's body (`domains.wiki.attributed.render_attributed_markdown`) renders
-`## From my notes` first when the entity carries any `derived` claim (a
+`## From my notes` first when the entity carries any `user` claim (a
 promoted note — see `promote_notes.py` below), as a verbatim block captioned
 by the note's title and date, followed by `## Reported` / `## Opinion`
 sections for the source-attributed claims. Frontmatter carries a deterministic
 `summary:` field (the lead claim's first line, preferring reported over
-opinion over derived) — the text `WikiSource` embeds for the vector lane.
+opinion; a user note last, and never a pipeline-`derived` claim) — the text `WikiSource` embeds for the vector lane.
 
 ## Semantic model
 
@@ -46,6 +46,23 @@ opinion over derived) — the text `WikiSource` embeds for the vector lane.
 | Source contribution | attributed lane's `sources` / `claims` / `claim_entities` tables | `num_sources` derived on read via `attributed.count_sources_for_entity` |
 | Co-occurrence link | none — derived from `claim_entities` at read time | drives the rendered `related` list (`co_count` = distinct shared sources) |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
+| Claim provenance | `claims.provenance` — `source` / `user` / `derived` | who authored the claim |
+| Claim stance | `claims.stance` — `reported` / `opinion`, NULL otherwise | how a SOURCE presented it |
+
+**Provenance and stance are independent axes.** `provenance` answers *who
+asserted this* — the content (`source`), the user in a promoted note (`user`),
+or the pipeline merging other claims (`derived`). `stance` answers *how a source
+presented it* — `reported` (as established fact) or `opinion` (prediction,
+forecast, recommendation) — and is NULL whenever provenance is not `source`,
+because only a source has a stance. They were one column (`claim_kind`) until
+2026-08-24, which had no value meaning "the user wrote this" and so filed
+promoted notes under `derived`; keeping user-authored material distinguishable
+from pipeline-generated text is the reason for the split.
+
+A `derived` claim currently renders in **no** page section — `## From my notes`
+is keyed on `user`, and `## Reported` / `## Opinion` key on stance. Nothing emits
+`derived` yet; `render_attributed_markdown` logs a warning naming the entity if
+it ever drops one, so the gap cannot go unnoticed.
 
 **Aliases** prevent duplicates. Before extraction, the workflow snapshots the
 existing alias table (plus all entity canonical names) and hands it to the LLM
@@ -174,5 +191,5 @@ name or a descriptive phrase.
 | `prompts.py` | Prompt loader — resolves versioned `.md` files under `prompts/wiki/` via `KP_PROMPTS_ROOT`; exposes `EXTRACT_SHARED_SYSTEM`, `EXTRACT_ARTICLE_ENVELOPE`, `EXTRACT_CLAIMS_TASK`, `EXTRACT_ENTITIES_TASK`, `SUBJECT_ATTRIBUTION_SYSTEM`, `SUBJECT_ATTRIBUTION_USER` |
 | `parsing.py` | Parse LLM page output, slug helpers, H2 preservation check |
 | `attributed_persist.py` | `persist_source_assignment` — writes one source's attributed claims into wiki.db in the caller's transaction: upserts the source row, inserts minted entities, inserts each claim and its claim→entity links. Idempotent (ON CONFLICT DO NOTHING). Returns the surviving source_id |
-| `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor; an entity with a `derived` claim is exempt from the floor) |
-| `promote_notes.py` | `promote_notes` — reads every `promote: true` note (`domains.notes.promoted.read_promoted_notes`), resolves its `entities` hints against the live wiki in one batch (`resolve_or_mint_batch`; curator-denylisted hints dropped first), and writes each note as a note-origin source (`content_key = local:{note_id}`) with ONE `derived` claim linked to its resolved entities — REPLACE semantics per note (prior claim deleted before re-insert) and reconciling (a note-origin source whose note is no longer promoted is deleted, cascading its claim). Returns a `PromoteResult` (`written` / `changed` / `removed` / `fuzzy_hints`); `.dirty` (`changed + removed`) is the render-trigger signal so an unchanged standing note doesn't force a re-render |
+| `attributed_synthesis.py` | Orchestration layer the Dagster assets call: `build_source_record` (queue_items row → `SourceRecord`), `synthesize_source` (runs `assign_from_stored` then `persist_source_assignment` in one transaction; returns source_id), `render_entity_pages` (unpartitioned sweep — renders every entity's attributed page from ALL its `wiki.db` attributed claims, skipping those below the ≥2 claims OR ≥2 sources floor; an entity with a `user` claim is exempt from the floor — a pipeline-`derived` claim is not, since merging existing claims is not evidence the user cares about the entity) |
+| `promote_notes.py` | `promote_notes` — reads every `promote: true` note (`domains.notes.promoted.read_promoted_notes`), resolves its `entities` hints against the live wiki in one batch (`resolve_or_mint_batch`; curator-denylisted hints dropped first), and writes each note as a note-origin source (`content_key = local:{note_id}`) with ONE `user`-provenance claim linked to its resolved entities — REPLACE semantics per note (prior claim deleted before re-insert) and reconciling (a note-origin source whose note is no longer promoted is deleted, cascading its claim). Returns a `PromoteResult` (`written` / `changed` / `removed` / `fuzzy_hints`); `.dirty` (`changed + removed`) is the render-trigger signal so an unchanged standing note doesn't force a re-render |
