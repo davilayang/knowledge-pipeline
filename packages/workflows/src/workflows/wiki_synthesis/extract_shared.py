@@ -13,16 +13,24 @@ prefix stays valid across calls and across ticks.
 """
 
 from domains.types import IngestItem
+from domains.wiki.units import build_citable_units, number_units
 
 from workflows.wiki_synthesis.prompts import EXTRACT_ARTICLE_ENVELOPE, EXTRACT_SHARED_SYSTEM
 
 
 def article_envelope(item: IngestItem) -> str:
     """The shared, cacheable article block — identical across the claims and
-    entities calls for the same item."""
+    entities calls for the same item.
+
+    The body is split into citable units and numbered, so an extracted claim can
+    cite the unit indices it came from and a verifier can check the claim text
+    against those spans. Numbering is deterministic in the body, so the block
+    stays cacheable."""
     author_line = f"Author: {item.author}\n" if item.author else ""
     return EXTRACT_ARTICLE_ENVELOPE.format(
-        title=item.title, author_line=author_line, article_text=item.text
+        title=item.title,
+        author_line=author_line,
+        article_text=number_units(build_citable_units(item.text)),
     )
 
 
