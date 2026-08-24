@@ -6,12 +6,19 @@ specifics — its numbers, its quoted spans, its proper nouns — actually appea
 those units. That catches the fabrication class worth catching: an invented
 figure or a name attached to the wrong subject.
 
-Ported from newsletter-assistant's verifier lexical baseline, whose heuristics
-were tuned against real content to drive false rejections to roughly zero. The
-tuning is what the odd-looking rules below are for: sentence-initial capitals
-are not proper nouns, a claim's plural must match the source's singular, and a
-figure must match on boundaries so a claimed "4" never grounds against a source
-"64". Pure — no LLM, no I/O.
+Only figures and quoted spans decide whether a claim is supported. Capitalised
+words do not: measured over 66 real claims, requiring a claim's capitalised words
+to appear in the source rejected acronym expansions ("Large Language Models"
+against a transcript that only ever says "LLM") and inflected verbs ("Executing"
+against a body saying "execute"), producing two false alarms and catching
+nothing. Capitalisation cannot separate a name from a capitalised common noun, so
+a swapped subject is left to the entailment tier. Capitalised words still count
+toward localisation, where a miss costs precision rather than accusing the claim.
+
+The matching rules are ported from newsletter-assistant's verifier lexical
+baseline, tuned against real content to drive false rejections to roughly zero: a
+claim's plural matches the source's singular, and a figure matches on boundaries
+so a claimed "4" never grounds against a source "64". Pure — no LLM, no I/O.
 """
 
 import re
@@ -47,39 +54,45 @@ FAILING_STATUSES = frozenset({"uncited", "dangling", "unsupported"})
 
 @dataclass(frozen=True)
 class ClaimCheck:
-    """One claim's citation verdict. `unchecked` means the claim carried no
-    number and no proper noun, so there was nothing to match — it passes
-    vacuously and must not be counted as evidence the check found it sound."""
+    """One claim's verdict on two independent axes.
+
+    `status` asks whether the claim's specifics exist in the SOURCE at all —
+    `unsupported` means a figure or name the source never contains, which is
+    fabrication. `unchecked` means the claim carried no number and no proper
+    noun, so there was nothing to match; it passes vacuously and must not be
+    read as evidence the check found it sound.
+
+    `localised` asks the narrower question of whether those specifics are in the
+    units the claim actually cited; `localisable` is false when the claim carried
+    nothing to be precise about, which keeps it out of the rate entirely.
+
+    The two axes are separated because a source that says "we" forces a
+    self-contained claim to name its subject from elsewhere in the document: the
+    pointer is imprecise, the claim is not false. Measured over six real sources,
+    80% of span misses were of exactly that kind."""
 
     claim: SourceClaim
     status: CitationStatus
+    localised: bool
+    localisable: bool
 
 
 def _hard_tokens(text: str) -> list[str]:
     return [t.strip('"').strip() for t in _HARD_RE.findall(text)]
 
 
-def _entity_words(text: str, body: str) -> list[str]:
-    """The proper nouns a claim must find in the units it cites.
-
-    A claim's OPENING word is capitalised whether it is a name or not, and
-    extracted claims are written subject-first, so the opening word is both the
-    most valuable token to check and the most ambiguous one. The source settles
-    it: if the body ever uses the word lowercase, the capital was sentence
-    position ("Trained on 8 GPUs" against a body saying "the team trained"), so
-    skip it. If the body only ever capitalises it — or never contains it at
-    all — it is a name, and the claim must find it."""
+def _entity_words(text: str) -> list[str]:
+    """The capitalised words a claim carries, minus the ones capitalised only by
+    sentence position. Used for localisation only, never to judge a claim: see
+    the module docstring on why capitalisation cannot identify a name."""
     words = text.split()
     initial = words[0].strip(".,;:") if words else ""
-    out: list[str] = []
-    for run in _ENTITY_RE.findall(text):
-        for word in run.split():
-            if word in _CAP_STOP:
-                continue
-            if word == initial and re.search(rf"\b{re.escape(word.lower())}\b", body):
-                continue
-            out.append(word)
-    return out
+    return [
+        word
+        for run in _ENTITY_RE.findall(text)
+        for word in run.split()
+        if word not in _CAP_STOP and word != initial
+    ]
 
 
 def _hard_present(cited: str, token: str) -> bool:
@@ -97,32 +110,45 @@ def _word_present(cited: str, word: str) -> bool:
     return re.search(rf"\b{re.escape(stem)}s?\b", cited) is not None
 
 
+def _normalise(text: str) -> str:
+    """Lowercase and strip markdown emphasis before matching. Source bodies wrap
+    identifiers and versions in italics ("_LLMSchemaCompareOperator_"), and an
+    underscore glued to a token defeats the word boundary — a real false
+    rejection observed upstream."""
+    return re.sub(r"[_*]", " ", text).lower()
+
+
 def check_citations(claims: list[SourceClaim], units: list[str]) -> list[ClaimCheck]:
-    """Check each claim against the units it cites, in order."""
-    results: list[ClaimCheck] = []
-    for claim in claims:
-        results.append(ClaimCheck(claim=claim, status=_status(claim, units)))
-    return results
+    """Check each claim against the source and against the units it cites."""
+    body = _normalise("\n".join(units))
+    return [ClaimCheck(claim=claim, **_verdict(claim, units, body)) for claim in claims]
 
 
-def _status(claim: SourceClaim, units: list[str]) -> CitationStatus:
+def _present(text: str, hard: list[str], entities: list[str]) -> bool:
+    return all(_hard_present(text, t.lower()) for t in hard) and all(
+        _word_present(text, w.lower()) for w in entities
+    )
+
+
+def _verdict(claim: SourceClaim, units: list[str], body: str) -> dict:
     if not claim.cited_units:
-        return "uncited"
+        return {"status": "uncited", "localised": False, "localisable": False}
     if any(i < 0 or i >= len(units) for i in claim.cited_units):
-        return "dangling"
-    # Strip markdown emphasis before matching: source bodies wrap identifiers and
-    # versions in italics ("_LLMSchemaCompareOperator_"), and an underscore glued
-    # to a token defeats the word boundary — a real false rejection upstream.
-    cited = re.sub(r"[_*]", " ", " ".join(units[i] for i in claim.cited_units)).lower()
+        return {"status": "dangling", "localised": False, "localisable": False}
     hard = _hard_tokens(claim.text)
-    entities = _entity_words(claim.text, "\n".join(units))
-    if not hard and not entities:
-        return "unchecked"
-    if all(_hard_present(cited, t.lower()) for t in hard) and all(
-        _word_present(cited, w.lower()) for w in entities
-    ):
-        return "grounded"
-    return "unsupported"
+    entities = _entity_words(claim.text)
+    cited = _normalise(" ".join(units[i] for i in claim.cited_units))
+    localisable = bool(hard or entities)
+    localised = localisable and _present(cited, hard, entities)
+    if not hard:
+        # Nothing this tier can judge — capitalised words are not evidence of a
+        # name, so a claim without a figure or a quote passes vacuously.
+        return {"status": "unchecked", "localised": localised, "localisable": localisable}
+    return {
+        "status": "grounded" if _present(body, hard, []) else "unsupported",
+        "localised": localised,
+        "localisable": localisable,
+    }
 
 
 @dataclass(frozen=True)
@@ -131,10 +157,17 @@ class CitationSummary:
 
     `unchecked` is reported separately from `grounded` on purpose: those claims
     carried nothing matchable, so counting them as grounded would report a
-    confidence the check never earned."""
+    confidence the check never earned.
+
+    `localised` counts the claims whose specifics were found in the units they
+    cited rather than elsewhere in the source, out of the `localisable` ones that
+    carried any specifics at all. It is a pointer-quality metric to improve, not
+    a fault to alarm on — see ClaimCheck."""
 
     total: int
     grounded: int
+    localisable: int
+    localised: int
     unchecked: int
     uncited: int
     dangling: int
@@ -159,6 +192,8 @@ def summarise_citations(claims_doc: str, body: str, *, max_examples: int = 3) ->
     return CitationSummary(
         total=len(checks),
         grounded=counts["grounded"],
+        localisable=sum(1 for c in checks if c.localisable),
+        localised=sum(1 for c in checks if c.localised),
         unchecked=counts["unchecked"],
         uncited=counts["uncited"],
         dangling=counts["dangling"],
