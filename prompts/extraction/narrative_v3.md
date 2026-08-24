@@ -1,119 +1,73 @@
 # narrative_v3 — threads-first extraction plus a delivery layer (call 1 of 3)
 
-Same role as `narrative_v1` / `narrative_v2` — produces the *narrative* output the live voice
-agent reads for "tell me about this content." Topic Card and follow-ups are still separate
-calls (`topic_card_v1.md`, `followups_v1.md`).
+Produces the *narrative* the live voice agent reads for "tell me about this content". Topic Card
+and follow-ups remain separate calls (`topic_card_v1.md`, `followups_v1.md`).
 
-## What changed from narrative_v2 (and why)
+## What changed from narrative_v2, and why
 
-`narrative_v2` optimised *coverage*: enumerate every follow-up thread, carry every figure, cover
-the whole source. It succeeded (71%→85% on the pinned gold at the time) and this file keeps its
-three sections.
+v2 optimised coverage and succeeded at it. What it does not give the agent is anything to
+**deliver incrementally** — prose offers nothing to stop at, so the agent speaks ~943 characters
+after a fetch against a listener whose median reply is ~43. v3 appends four sections it can walk
+one turn at a time: speakers, structure, the load-bearing subset, and ordered beats.
 
-What v2 does not do is give the voice agent anything to **deliver incrementally**. Prose gives a
-model nothing to stop at, so the agent speaks ~943 characters after a fetch — about a minute
-uninterrupted — against a listener whose median reply is ~43 characters. Measured probe runs on
-the consuming repo showed that structure the agent can ration cuts the opening to ~300
-characters. So v3 appends four delivery-layer sections: speakers, structure, the load-bearing
-subset, and ordered delivery beats.
+v2's three sections and every one of their rules are carried unchanged, so the pinned coverage
+gold scores the same text.
 
-**Additive, with one stated exception.** v2's three sections and all their rules are carried
-unchanged, so the pinned coverage gold scores the same text.
+### Before activating: raise the token ceiling
 
-**But "cannot regress" is too strong, and the reason is the token budget.** The four new sections
-share one completion budget with the threads they follow — `ExtractorRegistry.max_tokens` is
-4096, a ceiling raised once already because threads-first v2 blew through 2048. Measured on
-gpt-5.6-luna: a 71k-character podcast used **4,057 of 4,096** output tokens, a 70k arxiv paper
-3,751. `Delivery beats:` is the LAST section, so it is what disappears first — and
-`_narrative_call` stores `message.content` without checking `finish_reason`, so a truncated
-response is indistinguishable from a model that chose to emit fewer beats. Raise the ceiling
-before bumping `PROMPT_LABEL_NARRATIVE`, and check `finish_reason` before trusting a short
-output.
-The exception is the `WRITE IN ENGLISH` line added to OUTPUT FORMAT. Its English half restores
-behaviour the previous model already had; its Latin-script half is a new demand, and neither
-model produced it unprompted.
+The four new sections share one completion budget with the threads they follow, and
+`ExtractorRegistry.max_tokens` is 4096 — already raised once because threads-first v2 blew
+through 2048. Measured on gpt-5.6-luna: a 71k-character podcast used **4,057 of 4,096** output
+tokens. `Delivery beats:` is the last section, so truncation removes it first, and
+`_narrative_call` stores `message.content` without checking `finish_reason` — a truncated
+response is indistinguishable from a model that emitted fewer beats. Raise the ceiling and check
+`finish_reason` before bumping `PROMPT_LABEL_NARRATIVE`.
 
-### Why the language line exists
+This is also why "the gold cannot regress structurally" is too strong: threads and the delivery
+layer now compete for the same output tokens.
 
-Neither `narrative_v2` nor `topic_card_v1` ever stated an output language. English output was an
-emergent property of gpt-4.1-mini and gpt-5-mini, not a contract — and it did not survive a model
-change. Measured on a 50%-Chinese source: gpt-5-mini returned a narrative at 0.0% CJK, while
-gpt-5.6-luna returned 55.4%, writing in the source's language. `narrative_md` is read aloud by an
-English TTS voice, so on the corpus's non-English items that is unspeakable output.
+### Why the language line exists, and where it does NOT apply
 
-**Latin script throughout, not just English prose — and this rule belongs to THIS artefact
-only.** An earlier cut asked for original-script terms preserved inline with a gloss, reasoning
-that a quoted phrase is a stronger memory hook than a paraphrase. That is true on a page and
-wrong here, because of what consumes this particular output: `narrative_md` is read aloud through
-an English speech synthesiser that cannot pronounce Chinese, so a preserved phrase is not a vivid
-detail — it is garbled audio.
+No prompt here ever stated an output language, so English was an emergent property of whichever
+model was running — and it did not survive a model change. On a 50%-Chinese source `gpt-5-mini`
+returned a narrative at 0.0% CJK and `gpt-5.6-luna` at 55.4%.
 
-**Do not copy this rule into a read artefact.** Wiki pages and notes are read on screen by a
-reader who speaks the source language; flattening the original phrasing there loses the hook and
-buys nothing, since nothing speaks it. The constraint is a property of the consumer, not of
-extraction. Apply it where the output is spoken; leave it out where the output is displayed.
+The rule is Latin script, not merely English, because this artefact is **spoken** through a
+synthesiser that cannot pronounce Chinese — a preserved phrase is garbled audio, not a vivid
+detail. It reaches names too: four corpus items carry CJK author names that land in
+`Speakers and author:`.
 
-It is not only quotes. Four items in the corpus carry CJK author names (`工程師米奇`,
-`耳鼻喉科徐英碩醫師`, …) and twelve carry CJK titles, and those land in `Speakers and author:` —
-the field added precisely so the agent names people on every content turn. Romanising is what
-keeps that field speakable.
-
-The specificity still has to survive; it survives in the translation. "The core isn't how smart
-the model is, it's how stable the toolchain is" carries the claim. `核心不是模型多聰明` carries
-nothing a listener can hear.
-
-**General lesson, worth keeping:** any behaviour the prompt does not state is a behaviour the
-next model may not reproduce.
-
-### The delivery sections, and what was measured for each
-
-- **`Speakers and author:`** — the agent said "the host and guest" in every probe run because
-  v2 carries only roles. The fetcher already writes the attribution into the markdown the model
-  reads (an H1 byline, `**Authors:**`, `**Channel:**`, in-transcript `**Speaker:**` labels), so
-  this asks the model to look where the answer already is. The channel-is-not-a-speaker rule is
-  load-bearing: on YouTube, `**Channel:**` names a publisher ("Dwarkesh Clips") while the actual
-  speaker is in the title or introduces themselves on-mic.
-- **`Structure:`** — exists for the ambiguous middle. Upstream triage already classifies genre
-  (`conference_talk`, `tutorial`, …), which resolves the easy cases; what it cannot tell you is
-  whether a given talk builds one argument or enumerates five unrelated points, and
-  `conference_talk` is the largest cohort in the corpus.
-- **`Load-bearing claims:`** — a filter, not a duplicate of the beats. Measured across 11 real
-  sources, pieces carry 9–28 load-bearing claims (min 9, median 15) essentially independently of
-  length, while the thread list can carry far more. Naming the load-bearing subset is what stops
-  the beats inheriting whatever padding reached the thread list.
-- **`Delivery beats:`** — 4–6. Because every measured source carries at least 9 load-bearing
-  claims, this budget *always* binds; there is permanent surplus, so a beat never has to be
-  invented to fill the range. An earlier draft scaled the count down for "single-idea sources" —
-  no such source exists in this corpus, so that rule was dropped and only the never-invent floor
-  kept.
+**Do not copy this rule into a read artefact.** Wiki pages and notes are read on screen by
+someone who speaks the source language; flattening the original phrasing there loses the hook
+and buys nothing. The constraint belongs to the consumer, not to extraction.
 
 ### Deliberately NOT added
 
-- **A `Supporting detail:` section.** `Load-bearing claims:` names the top tier; everything else
-  already in `Salient threads:` is second tier by definition.
-- **A `Remainder:` section** ("what was deliberately not covered"). This prompt is mandated to
-  cover everything, so the field is empty if answered honestly and invented if not. What the
-  consumer actually needs is what is still undelivered *in a given conversation* — session state
-  this extractor cannot see. This file owns the inventory; the consumer owns the subtraction.
-- **A length cap on `Salient threads:`.** Proposed after short sources appeared to inflate, then
-  withdrawn: the evidence was an output-to-source character ratio, and character ratios are not
-  comparable across scripts. Blind labellers found ~23 genuine threads in a 1,574-character
-  Chinese post, so a cap at source length would have deleted two-thirds of real content.
-- **An `Assumed background:` section.** Glossing on first use is a delivery-time judgement made
-  from the listener's own vocabulary, not something decidable from the source.
+- **`Supporting detail:`** — `Load-bearing claims:` names the top tier; the rest of
+  `Salient threads:` is second tier by definition.
+- **`Remainder:`** — empty if answered honestly, since this prompt is mandated to cover
+  everything. What the consumer needs is what is undelivered *in a conversation*, which is
+  session state this extractor cannot see.
+- **A length cap on `Salient threads:`** — proposed, then withdrawn: the evidence was a
+  character ratio, and those are not comparable across scripts. Blind labellers found ~23 genuine
+  threads in a 1,574-character Chinese post.
+- **`Assumed background:`** — glossing on first use is a delivery-time judgement made from the
+  listener's vocabulary, not decidable from the source.
 
 ### Scars — do not re-introduce
 
-- **No instructions inside `Structure:`.** A probe put a delivery instruction there and it was
-  ignored in every session at every reasoning effort. A structure field describes shape;
-  anything the agent must *do* has to be a beat or a rule with a trigger.
+- **No instructions inside `Structure:`.** A probe put one there and it was ignored in every
+  session at every reasoning effort. That field describes shape; anything the agent must *do* is
+  a beat or a rule with a trigger.
 - **Thread padding is a shape, not a length.** The observed failure was threads *about* the piece
-  — tone, target audience, emotional underpinning, implicit outcome, the source link — rather
-  than things the piece says. That is what the rule below names, and it is script-independent.
+  — tone, target audience, emotional underpinning, the source link — not things it says.
+- **4-6 beats is a measured budget, not a guess.** Sources carry 9-28 load-bearing claims
+  (median 15), so the cap always binds and a beat never has to be invented. Changing it needs new
+  measurement, not intuition.
 
 Everything below the horizontal rule is the prompt body (model-facing). Everything above it is
-design notes and is stripped at load (`domains.extraction.strip_design_notes`) — it never
-reaches the model.
+design notes, stripped at load by `domains.extraction.strip_design_notes` — it never reaches the
+model.
 
 ---
 
