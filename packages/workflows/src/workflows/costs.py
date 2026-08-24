@@ -1,31 +1,20 @@
 # Token-usage → USD pricing for LLM calls.
 #
-# Per-1M-token rates in USD, for TEXT tokens on the Standard tier.
+# Per-1M text-token rates, Standard tier (Batch and Flex are cheaper, not
+# modelled). Source: https://developers.openai.com/api/docs/pricing — every
+# rate below re-verified 2026-08-24. Historical materializations keep their
+# point-in-time numbers, so updating here never rewrites past metadata.
 #
-#   Source: https://developers.openai.com/api/docs/pricing
-#   Every rate below re-checked against that page on 2026-08-24.
+# A missing model resolves to $0.00 rather than raising, so a gap is silent.
+# `gpt-4.1` is the one that matters today: `evals.wiki.calibrate` is the only
+# caller of `cost_usd` anywhere, and it prices the wiki judge.
 #
-# Update the dict when the prices page changes; historical materializations
-# keep their point-in-time numbers (metadata is immutable once attached to a
-# materialization). Batch and Flex tiers are cheaper and are not modelled.
+# Matching is exact-then-longest-PREFIX, so a key silently covers every id that
+# extends it — `gpt-4o-mini` would price `gpt-4o-mini-tts` at the text rate.
+# Only add a key whose whole subtree shares its rate.
 #
-# A model missing here costs $0.00 rather than raising, so a gap is silent.
-# `gpt-4.1` is the one that matters today: it is the wiki judge, and
-# `evals.wiki.calibrate` is the only caller of `cost_usd` anywhere, so it is the
-# only model whose cost is ever displayed. The rest are listed because the
-# pipeline is pointed at them, not because anything costs them yet.
-#
-# Matching is exact-then-longest-PREFIX, so a key only covers ids that EXTEND
-# it, and a key with siblings on different economics is a trap: `gpt-4o-mini`
-# would silently price `gpt-4o-mini-tts` and `-transcribe` at the text rate.
-# Add a key only when its whole prefix subtree shares its rate.
-#
-# Input is priced at the UNCACHED rate. Cached input is cheaper by a factor
-# that varies by family — 4x on gpt-4.1 ($2.00 -> $0.50) and gpt-4.1-mini,
-# 10x on gpt-5-mini ($0.25 -> $0.025) and gpt-5.6-luna ($0.20 -> $0.02) — so a
-# single blended discount would be wrong. The call records already carry
-# `cached_tokens`, so a cache-aware rate is a real improvement waiting to be
-# made; until then this overstates cost rather than understating it.
+# Input uses the UNCACHED rate. Cached is 4x cheaper on gpt-4.1, 10x on
+# gpt-5-mini and luna, so no single blended discount is right; this overstates.
 
 PRICING_PER_1M: dict[str, dict[str, float]] = {
     "gpt-4.1": {"input": 2.00, "output": 8.00},
