@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
+- **A new `claim_citations_hold_up` check on `extract_claims`** flags claims carrying a figure the source never contains, and reports what share of claims cite a unit that actually holds their specifics. Lexical, no LLM call, WARN-only. Measured on 63 claims from an article, a talk and a paper: no fabrications, 63% of claims cite precisely.
+
 ---
 
 ## [0.36.8] — 2026-08-24
