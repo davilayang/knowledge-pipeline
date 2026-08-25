@@ -34,7 +34,6 @@ src/domains/
 │   ├── dedup.py        # merge-candidate data (EntityText/CandidatePair) + wiki.db reader (load_entity_texts) + lexical name-only search (find_name_candidates); the numeric embedding search lives in evals.wiki_dedup
 │   ├── claims.py # parse/render per-source [reported]/[opinion] claim files (Layer 1.5)
 │   ├── units.py        # build_citable_units/number_units — split a source body into numbered citable units a claim can cite
-│   ├── citations.py    # check_citations/summarise_citations — flag a claim asserting a figure the source lacks; report how often a claim's cited units hold its specifics
 │   ├── CURATION.md     # operator runbook: reject noise entities
 │   └── schema/wiki.sql # SQLite schema
 ├── sessions/           # Voice-session SQLite (newsletter-assistant)
