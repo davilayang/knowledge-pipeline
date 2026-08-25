@@ -181,3 +181,19 @@ def test_renders_cited_units_so_the_stored_doc_round_trips():
     )
 
     assert parse_claims_doc(render_claims(summary)) == summary
+
+
+def test_a_space_separated_index_list_parses_instead_of_crashing():
+    # The prompt asks for "comma-separated, no spaces"; a model that writes
+    # "12 13" must not take down the extraction asset.
+    claims = parse_claims("- [reported|12 13] X.\n", source_id="s")
+
+    assert claims[0].cited_units == (12, 13)
+
+
+def test_a_malformed_citation_suffix_keeps_the_claim():
+    # Dropping the line loses the claim entirely, and the only alarm upstream
+    # fires when EVERY claim is lost — so a handful of stray spaces would
+    # silently shrink a source's claim set with nothing to show for it.
+    for line in ("- [reported | 4] X.", "- [reported|4-6] X.", "- [reported|] X."):
+        assert parse_claims(f"{line}\n", source_id="s"), line

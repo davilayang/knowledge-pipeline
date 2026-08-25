@@ -18,8 +18,14 @@ import yaml
 # suffix lists the source units the claim came from (see domains.wiki.units) and
 # is OPTIONAL, so claim docs extracted before citations existed still parse.
 # Untagged lines (headings, prose, blanks) carry no claim and are skipped.
+#
+# The suffix body is `[^\]]*` — anything up to the closing bracket — rather than
+# a strict index list, so a claim survives a model that spaces or hyphenates its
+# indices. A stricter pattern silently DROPS the whole claim on such a line, and
+# the only upstream alarm fires when every claim is lost, so a handful of
+# malformed suffixes would shrink a source's claim set invisibly.
 _CLAIM_LINE = re.compile(
-    r"^\s*[-*]\s*\[(?P<tag>reported|opinion)(?:\|(?P<units>[\d,\s]*))?\]\s*(?P<text>.+?)\s*$"
+    r"^\s*[-*]\s*\[(?P<tag>reported|opinion)\s*(?:\|(?P<units>[^\]]*))?\]\s*(?P<text>.+?)\s*$"
 )
 
 
@@ -50,8 +56,13 @@ class ClaimSet:
 
 
 def _parse_units(raw: str | None) -> tuple[int, ...]:
-    """Parse the `|12,13` suffix into unit indices; empty when absent or blank."""
-    return tuple(int(part) for part in raw.split(",") if part.strip()) if raw else ()
+    """Pull the unit indices out of the `|12,13` suffix; empty when absent.
+
+    Reads every run of digits rather than splitting on a delimiter. The prompt
+    asks for "comma-separated, no spaces", and a model that writes `12 13` or
+    `4-6` instead must not crash the extraction asset or lose the claim — the
+    suffix is the model's, and this parser exists to absorb its variation."""
+    return tuple(int(m) for m in re.findall(r"\d+", raw)) if raw else ()
 
 
 def parse_claims(body: str, *, source_id: str) -> list[SourceClaim]:

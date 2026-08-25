@@ -28,7 +28,12 @@ _WINDOW_CHARS = 320
 
 
 def _windows(text: str, size: int = _WINDOW_CHARS) -> list[str]:
-    """Break `text` into ~`size`-char chunks on word boundaries."""
+    """Break `text` into ~`size`-char chunks on word boundaries.
+
+    Rebuilding from `split()` collapses runs of whitespace, so a re-cut unit is
+    not a verbatim substring of the body while a sentence-path unit is. Nothing
+    reads units by offset today; anything that starts to would need to match on
+    the unit text rather than seek it in the body."""
     out: list[str] = []
     cur = ""
     for word in text.split():
@@ -41,9 +46,50 @@ def _windows(text: str, size: int = _WINDOW_CHARS) -> list[str]:
     return out
 
 
+_STRUCTURAL = re.compile(r"^\s*(?:[-*+]\s|#{1,6}\s|>|\||\d+[.)]\s|```|---+\s*$|\$\$)")
+
+
+def _blocks(content_md: str) -> list[str]:
+    """Group the body into pieces that a sentence split can safely run over.
+
+    A STRUCTURAL line — heading, list item, table row, quote, fence, rule,
+    display equation — is its own block, because it carries no terminal
+    punctuation and would otherwise glue onto whatever follows, putting a whole
+    section behind one index. Consecutive prose lines are rejoined into one
+    block: caption tracks and hard-wrapped paragraphs break mid-sentence, and
+    treating every newline as a boundary cut 1,104 sentences in half across the
+    transcripts alone."""
+    out: list[str] = []
+    prose: list[str] = []
+    for line in content_md.splitlines():
+        if not line.strip():
+            structural = True
+        else:
+            structural = bool(_STRUCTURAL.match(line))
+        if structural:
+            if prose:
+                out.append(" ".join(prose))
+                prose = []
+            if line.strip():
+                out.append(line.strip())
+        else:
+            prose.append(line.strip())
+    if prose:
+        out.append(" ".join(prose))
+    return out
+
+
 def build_citable_units(content_md: str) -> list[str]:
-    """Split a source body into citation targets — one per sentence, except that
-    a sentence over 500 chars is re-cut into word-boundary windows.
+    """Split a source body into citation targets — one per structural line, one
+    per sentence of prose, and any sentence over 500 chars re-cut into
+    word-boundary windows.
+
+    Structure is a boundary because the numbered body tells the model each line
+    starts with its index, and sentence punctuation alone cannot honour that:
+    headings, list items and table rows carry no terminal punctuation, so they
+    glue onto whatever follows and a citation lands on a whole section rather
+    than a line. Prose lines are rejoined first, so a wrapped sentence is not
+    cut in half. Either way a unit carries no embedded newline.
 
     The re-cut is what makes this survive auto-captioned transcripts, which can
     run tens of KB with almost no sentence-ending punctuation: without it a
@@ -51,11 +97,12 @@ def build_citable_units(content_md: str) -> list[str]:
     500 is a target, not a hard cap: a single unbroken token (a long URL) has
     no whitespace to cut on and rides through at full length."""
     units: list[str] = []
-    for sentence in re.split(r"(?<=[.!?])\s+", content_md):
-        sentence = sentence.strip()
-        if not sentence:
-            continue
-        units.extend(_windows(sentence) if len(sentence) > _MAX_UNIT_CHARS else [sentence])
+    for block in _blocks(content_md):
+        for sentence in re.split(r"(?<=[.!?])\s+", block):
+            sentence = sentence.strip()
+            if not sentence:
+                continue
+            units.extend(_windows(sentence) if len(sentence) > _MAX_UNIT_CHARS else [sentence])
     return units
 
 
