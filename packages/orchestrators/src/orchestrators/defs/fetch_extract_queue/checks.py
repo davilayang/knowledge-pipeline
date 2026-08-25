@@ -63,7 +63,15 @@ def claim_citations_hold_up(
     context: dg.AssetCheckExecutionContext,
     store: QueueStoreResource,
 ) -> dg.AssetCheckResult:
-    page_id = context.partition_key
+    return check_claim_citations(context.partition_key, store)
+
+
+def check_claim_citations(page_id: str, store: QueueStoreResource) -> dg.AssetCheckResult:
+    """The check's body, callable without a Dagster context.
+
+    Split out because a partitioned check cannot be invoked directly in a test —
+    `dg.build_asset_check_context` takes no partition key, and the partition key
+    is the only thing the wrapper above contributes."""
     row = store.get_row(page_id)
     claims_doc = store.get_claims(page_id)
     if not row or not row.get("raw_content") or not claims_doc:
