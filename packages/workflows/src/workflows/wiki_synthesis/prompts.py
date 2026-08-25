@@ -22,9 +22,9 @@ def _load(label: str) -> str:
 # Extract-time shared-prefix trio: both the claims call and the entities call send
 # EXTRACT_SHARED_SYSTEM + the EXTRACT_ARTICLE_ENVELOPE (byte-identical, so the
 # article prompt-caches across the two calls); only the task tail differs.
-EXTRACT_SHARED_SYSTEM = _load("extract_shared_system_v1")
+EXTRACT_SHARED_SYSTEM = _load("extract_shared_system_v2")
 EXTRACT_ARTICLE_ENVELOPE = _load("extract_article_envelope_v1")
-EXTRACT_CLAIMS_TASK = _load("extract_claims_task_v1")
+EXTRACT_CLAIMS_TASK = _load("extract_claims_task_v2")
 EXTRACT_ENTITIES_TASK = _load("extract_entities_task_v1")
 SUBJECT_ATTRIBUTION_SYSTEM = _load("subject_attribution_system_v1")
 SUBJECT_ATTRIBUTION_USER = _load("subject_attribution_user_v1")

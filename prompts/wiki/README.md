@@ -9,9 +9,9 @@ Prompt assets for the wiki-synthesis attributed lane, loaded by
 
 | Constant (`prompts.py`) | File | Role |
 |---|---|---|
-| `EXTRACT_SHARED_SYSTEM` | `extract_shared_system_v1.md` | Shared system prompt for both extract-time calls |
+| `EXTRACT_SHARED_SYSTEM` | `extract_shared_system_v2.md` | Shared system prompt for both extract-time calls |
 | `EXTRACT_ARTICLE_ENVELOPE` | `extract_article_envelope_v1.md` | Article envelope — shared byte-identically by claims + entities calls so the article prompt-caches across them |
-| `EXTRACT_CLAIMS_TASK` | `extract_claims_task_v1.md` | Task tail for the claims extraction call |
+| `EXTRACT_CLAIMS_TASK` | `extract_claims_task_v2.md` | Task tail for the claims extraction call |
 | `EXTRACT_ENTITIES_TASK` | `extract_entities_task_v1.md` | Task tail for the entity candidate extraction call |
 | `SUBJECT_ATTRIBUTION_SYSTEM` | `subject_attribution_system_v1.md` | System prompt for the closed subject-attribution call |
 | `SUBJECT_ATTRIBUTION_USER` | `subject_attribution_user_v1.md` | User template for the subject-attribution call |

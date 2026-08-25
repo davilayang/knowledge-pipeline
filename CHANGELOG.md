@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
+
+### Changed
+
+- **Claims and entities extractions now record a `_v2` prompt label.** Both read the shared system prompt, which moved to `extract_shared_system_v2.md`, so rows before and after came from different prompts and are not comparable by label.
+
 ---
 
 ## [0.36.8] — 2026-08-24

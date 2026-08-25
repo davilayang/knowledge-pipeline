@@ -14,20 +14,31 @@ from dataclasses import dataclass
 import yaml
 
 # A claim line is a markdown list bullet, a tag in square brackets, then the
-# claim text: `- [reported] Claude Code shipped subagents.`. Untagged lines
-# (headings, prose, blanks) carry no claim and are skipped.
-_CLAIM_LINE = re.compile(r"^\s*[-*]\s*\[(?P<tag>reported|opinion)\]\s*(?P<text>.+?)\s*$")
+# claim text: `- [reported|12,13] Claude Code shipped subagents.`. The `|...`
+# suffix lists the source units the claim came from (see domains.wiki.units) and
+# is OPTIONAL, so claim docs extracted before citations existed still parse.
+# Untagged lines (headings, prose, blanks) carry no claim and are skipped.
+#
+# The suffix body is `[^\]]*` rather than a strict index list: a stricter pattern
+# fails the whole line, and a dropped claim is invisible — the only upstream alarm
+# fires when EVERY claim is lost.
+_CLAIM_LINE = re.compile(
+    r"^\s*[-*]\s*\[(?P<tag>reported|opinion)\s*(?:\|(?P<units>[^\]]*))?\]\s*(?P<text>.+?)\s*$"
+)
 
 
 @dataclass(frozen=True)
 class SourceClaim:
     """One atomic claim as asserted by ONE source. `source_id` is the
     item_id of the source the claim came from; `speculative` carries the source
-    writer's `[opinion]` tag (prediction / opinion / unverified)."""
+    writer's `[opinion]` tag (prediction / opinion / unverified); `cited_units`
+    are the indices of the source units the claim came from (see
+    domains.wiki.units), empty for a claim extracted before citations existed."""
 
     text: str
     source_id: str
     speculative: bool = False
+    cited_units: tuple[int, ...] = ()
 
 
 @dataclass(frozen=True)
@@ -42,12 +53,23 @@ class ClaimSet:
     claims: list[SourceClaim]
 
 
+def _parse_units(raw: str | None) -> tuple[int, ...]:
+    """Pull the unit indices out of the `|12,13` suffix; empty when absent.
+
+    Reads every run of digits rather than splitting on a delimiter. The prompt
+    asks for "comma-separated, no spaces", and a model that writes `12 13` or
+    `4-6` instead must not crash the extraction asset or lose the claim — the
+    suffix is the model's, and this parser exists to absorb its variation."""
+    return tuple(int(m) for m in re.findall(r"\d+", raw)) if raw else ()
+
+
 def parse_claims(body: str, *, source_id: str) -> list[SourceClaim]:
     """Parse a extract_claims claim body into SourceClaim records.
 
     Each `[reported]`/`[opinion]`-tagged markdown list item becomes one claim:
-    the tag sets `speculative`, the trailing text is the claim, and `source_id`
-    is stamped on every claim. Lines without a recognised tag are ignored."""
+    the tag sets `speculative`, the optional `|12,13` suffix sets `cited_units`,
+    the trailing text is the claim, and `source_id` is stamped on every claim.
+    Lines without a recognised tag are ignored."""
     claims: list[SourceClaim] = []
     for line in body.splitlines():
         match = _CLAIM_LINE.match(line)
@@ -58,6 +80,7 @@ def parse_claims(body: str, *, source_id: str) -> list[SourceClaim]:
                 text=match["text"],
                 source_id=source_id,
                 speculative=match["tag"] == "opinion",
+                cited_units=_parse_units(match["units"]),
             )
         )
     return claims
@@ -76,7 +99,8 @@ def source_file_slug(item_id: str) -> str:
 def render_claims(summary: ClaimSet) -> str:
     """Render a ClaimSet to the on-disk `wiki/sources/<slug>.md` format —
     YAML frontmatter (`item_id`, `content_date`) above a `[reported]`/`[opinion]`
-    tagged bullet per claim. Inverse of `parse_claims_doc`.
+    tagged bullet per claim, each carrying its cited unit indices when it has
+    any. Inverse of `parse_claims_doc`.
 
     Every claim must belong to this source: render drops per-claim `source_id`
     and the doc parser re-stamps it from the frontmatter `item_id`, so a claim
@@ -93,7 +117,9 @@ def render_claims(summary: ClaimSet) -> str:
         sort_keys=False,
     ).rstrip()
     bullets = "\n".join(
-        f"- [{'opinion' if c.speculative else 'reported'}] {c.text}" for c in summary.claims
+        f"- [{'opinion' if c.speculative else 'reported'}"
+        f"{'|' + ','.join(str(u) for u in c.cited_units) if c.cited_units else ''}] {c.text}"
+        for c in summary.claims
     )
     return f"---\n{frontmatter}\n---\n\n{bullets}\n"
 

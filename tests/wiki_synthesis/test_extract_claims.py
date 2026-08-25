@@ -144,3 +144,18 @@ def test_malformed_response_with_no_tags_logs_a_warning(caplog):
         r.levelname == "WARNING" and "medium::https://x.com/a" in r.getMessage()
         for r in caplog.records
     )
+
+
+def test_drops_a_cited_unit_that_does_not_exist_but_keeps_the_claim():
+    # The body splits into 2 units, so |9 addresses nothing. Storing it would
+    # persist an invented pointer indistinguishable from a real one; dropping
+    # the claim would lose a statement whose text may be perfectly faithful.
+    llm_output = "- [reported|0,9] Claude Code shipped subagents.\n"
+
+    with patch(
+        "workflows.wiki_synthesis.extract_claims.generate_messages_with_usage",
+        return_value=_call(llm_output),
+    ):
+        summary, _ = extract_claims(_item(text="First sentence. Second sentence."))
+
+    assert summary.claims[0].cited_units == (0,)

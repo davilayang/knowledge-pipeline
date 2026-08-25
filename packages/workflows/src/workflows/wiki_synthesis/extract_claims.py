@@ -9,9 +9,11 @@ while the wiring below (item_id / date stamping, claim parsing) is unit-tested.
 """
 
 import logging
+from dataclasses import replace
 
 from domains.types import IngestItem
-from domains.wiki.claims import ClaimSet, parse_claims
+from domains.wiki.claims import ClaimSet, SourceClaim, parse_claims
+from domains.wiki.units import build_citable_units
 
 from workflows.llm import LLMCall, generate_messages_with_usage
 from workflows.wiki_synthesis.extract_shared import shared_prefix_messages
@@ -45,6 +47,29 @@ def _shape_prime(content_shape: str | None) -> str:
     )
 
 
+def _drop_unresolvable_citations(claims: list[SourceClaim], *, n_units: int) -> list[SourceClaim]:
+    """Strip cited indices that address no unit, keeping the claim.
+
+    The model writes the indices as free text, so it can name a unit that does
+    not exist. Such an index is indistinguishable from a real one once stored,
+    and nothing downstream holds the body to tell them apart — so drop it at the
+    only point where the unit count is still known. The claim itself is kept: its
+    text may be perfectly faithful, and losing a statement is the worse error."""
+    out: list[SourceClaim] = []
+    for claim in claims:
+        resolvable = tuple(i for i in claim.cited_units if 0 <= i < n_units)
+        if len(resolvable) != len(claim.cited_units):
+            logger.warning(
+                "extract_claims dropped %d unresolvable citation(s) for %s (units=%d): %r",
+                len(claim.cited_units) - len(resolvable),
+                claim.source_id,
+                n_units,
+                claim.text[:120],
+            )
+        out.append(replace(claim, cited_units=resolvable))
+    return out
+
+
 def extract_claims(
     item: IngestItem, *, content_shape: str | None = None
 ) -> tuple[ClaimSet, LLMCall]:
@@ -66,6 +91,7 @@ def extract_claims(
     # API is not bit-deterministic even at 0 — claim counts still drift a little.)
     call = generate_messages_with_usage(messages, model=EXTRACT_CLAIMS_MODEL, temperature=0)
     claims = parse_claims(call.content, source_id=item.item_id)
+    claims = _drop_unresolvable_citations(claims, n_units=len(build_citable_units(item.text)))
     if not claims and "NONE" not in call.content:
         # Zero claims with no honest NONE — the model ignored the tagged-bullet
         # format. A silent empty summary would look identical to "no claims";
