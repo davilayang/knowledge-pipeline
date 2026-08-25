@@ -19,11 +19,9 @@ import yaml
 # is OPTIONAL, so claim docs extracted before citations existed still parse.
 # Untagged lines (headings, prose, blanks) carry no claim and are skipped.
 #
-# The suffix body is `[^\]]*` — anything up to the closing bracket — rather than
-# a strict index list, so a claim survives a model that spaces or hyphenates its
-# indices. A stricter pattern silently DROPS the whole claim on such a line, and
-# the only upstream alarm fires when every claim is lost, so a handful of
-# malformed suffixes would shrink a source's claim set invisibly.
+# The suffix body is `[^\]]*` rather than a strict index list: a stricter pattern
+# fails the whole line, and a dropped claim is invisible — the only upstream alarm
+# fires when EVERY claim is lost.
 _CLAIM_LINE = re.compile(
     r"^\s*[-*]\s*\[(?P<tag>reported|opinion)\s*(?:\|(?P<units>[^\]]*))?\]\s*(?P<text>.+?)\s*$"
 )

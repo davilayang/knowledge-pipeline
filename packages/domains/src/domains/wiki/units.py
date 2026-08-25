@@ -1,24 +1,14 @@
 """Split a source body into numbered citable units — the addresses a claim cites.
 
-An extracted claim carries the indices of the units it came from, so a verifier
-can check the claim text against those spans instead of re-reading the article
-with a judge. Pure — no LLM, no I/O.
+An extracted claim records the indices of the units it came from, so its text can
+be checked against those spans rather than against the whole article. Pure — no
+LLM, no I/O.
 
-Units are DERIVED on demand, never stored, which is only sound while a stored
-citation and a fresh split agree. Two things break that agreement, and both
-silently reindex every citation already stored rather than failing:
-
-- **The body changing under a stored citation.** `fetch_content` returns early
-  when `raw_content` is already set, but that is an asset-level guard, not a
-  store invariant — `queue_store.upsert_fetched` overwrites `raw_content` on
-  conflict, so a row whose body is cleared and re-fetched gets a new one.
-- **This function changing.** Any edit to the split moves the indices under
-  citations extracted by the previous version.
-
-Neither matters while a citation is checked in the same run that produced it,
-which is how the extract-time check uses it. A consumer reading citations
-recorded earlier needs to pin the body hash and a version for this splitter
-first.
+Units are derived on demand, never stored. That holds because a body is written
+once: `fetch_content` skips a row that already has one, and re-triage clears the
+body and deletes the page's `extraction_calls` rows together, so a claim never
+outlives the text it was extracted from. Editing THIS function is the one thing
+that moves the indices under citations already stored.
 """
 
 import re
@@ -30,10 +20,8 @@ _WINDOW_CHARS = 320
 def _windows(text: str, size: int = _WINDOW_CHARS) -> list[str]:
     """Break `text` into ~`size`-char chunks on word boundaries.
 
-    Rebuilding from `split()` collapses runs of whitespace, so a re-cut unit is
-    not a verbatim substring of the body while a sentence-path unit is. Nothing
-    reads units by offset today; anything that starts to would need to match on
-    the unit text rather than seek it in the body."""
+    Rebuilding from `split()` collapses whitespace, so a re-cut unit is not a
+    verbatim substring of the body while a sentence-path unit is."""
     out: list[str] = []
     cur = ""
     for word in text.split():
@@ -53,12 +41,11 @@ def _blocks(content_md: str) -> list[str]:
     """Group the body into pieces that a sentence split can safely run over.
 
     A STRUCTURAL line — heading, list item, table row, quote, fence, rule,
-    display equation — is its own block, because it carries no terminal
-    punctuation and would otherwise glue onto whatever follows, putting a whole
-    section behind one index. Consecutive prose lines are rejoined into one
-    block: caption tracks and hard-wrapped paragraphs break mid-sentence, and
-    treating every newline as a boundary cut 1,104 sentences in half across the
-    transcripts alone."""
+    display equation — is its own block: it carries no terminal punctuation, so a
+    sentence split would glue it onto what follows and put a whole section behind
+    one index. Prose lines are rejoined, because captions and wrapped paragraphs
+    break mid-sentence — treating every newline as a boundary cut 1,104 sentences
+    in half across the transcripts alone."""
     out: list[str] = []
     prose: list[str] = []
     for line in content_md.splitlines():
