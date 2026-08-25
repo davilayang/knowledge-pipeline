@@ -506,7 +506,7 @@ def extract_claims(
     store.record_claims(
         notion_page_id=page_id,
         output=render_claims(summary),
-        prompt_label="extract_claims_v1",
+        prompt_label="extract_claims_v2",
         prompt_sha256=_EXTRACT_CLAIMS_PROMPT_SHA,
         model=call.model,
         tokens_in=call.input_tokens,
@@ -567,7 +567,7 @@ def extract_entities(
     store.record_candidates(
         notion_page_id=page_id,
         output=render_candidates(candidates),
-        prompt_label="extract_entities_v1",
+        prompt_label="extract_entities_v2",
         prompt_sha256=_EXTRACT_ENTITIES_PROMPT_SHA,
         model=call.model,
         tokens_in=call.input_tokens,

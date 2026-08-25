@@ -15,15 +15,24 @@ Output ONLY a flat markdown bullet list. One claim per bullet, each bullet on a
 single line, starting at the left margin (no indentation, no sub-bullets, no
 numbering). Use this exact form:
 
-- [reported] <the claim, stated concretely>
-- [opinion] <the claim, stated concretely>
+- [reported|4] <the claim, stated concretely>
+- [opinion|17,18] <the claim, stated concretely>
+
+Citing units:
+After the tag, write `|` and the indices of the numbered source units the claim
+came from, comma-separated, no spaces. Every claim must carry at least one index.
+Cite the units that actually carry the claim — the ones someone checking you would
+need to read to confirm it. Usually one or two; never more than three. When a claim
+draws on more than three, cite the three that carry the most of it: the named
+subject, the number, and the assertion itself. Never cite a unit that does not
+contain what the claim says.
 
 Tagging:
-- [reported] — the source presents it as established, reported, or having actually
+- `[reported]` — the source presents it as established, reported, or having actually
   happened: a named event, a release, a number, a measured result, an attributed
   quote. Reported *results* stay [reported] even from one source ("the paper reports
   34% on benchmark Y") — corroboration is judged later, not here.
-- [opinion] — the source presents it as a prediction, forecast, opinion,
+- `[opinion]` — the source presents it as a prediction, forecast, opinion,
   recommendation, marketing pitch, or otherwise unverified ("will", "could", "we
   believe", "the future of X is..."). When genuinely unsure, use [opinion].
 
