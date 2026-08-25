@@ -9,8 +9,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
-- **A new `claim_citations_hold_up` check on `extract_claims`** flags claims that cite nothing, cite a unit that does not exist, or carry a figure the source never contains. Names are not judged. Lexical, no LLM call, WARN-only.
-- **The same check reports two pointer-quality counts** — how many claims cite a unit holding their specifics, and how many cite more units than the prompt allows. The first rises as a claim cites more units, so it is readable only next to the second; measured on 63 real claims, 63% against a mean of 7.5 units cited per claim.
 
 ---
 

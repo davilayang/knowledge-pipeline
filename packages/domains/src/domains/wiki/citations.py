@@ -29,10 +29,14 @@ from typing import Literal
 from domains.wiki.claims import SourceClaim, parse_claims_doc
 from domains.wiki.units import build_citable_units
 
-# Numbers and quoted spans — matched exactly. The `(?<![A-Za-z.])` guard drops a
-# digit run glued to a letter or a decimal point, so an identifier ("v0.1",
-# "GPT-4", "IPv6") yields no token at all rather than a misleading fragment.
-_HARD_RE = re.compile(r'"[^"]+"|(?<![A-Za-z.])\b\d[\d,.]*\b')
+# Numbers and quoted spans — matched exactly. The left guard drops a digit run
+# glued to a letter or a decimal point, so "v0.1" and "IPv6" yield no token
+# rather than a misleading fragment; a hyphenated name like "GPT-4" still yields
+# the bare "4", which is weak but permissive, never falsely rejecting.
+# A token must END on a digit: without that, "$8.7B" tokenised to "8." (the
+# period swallowed, the "B" cutting the run short) and could never match the
+# very unit it was copied from.
+_HARD_RE = re.compile(r'"[^"]+"|(?<![A-Za-z.])\b(?:\d[\d,.]*\d|\d)')
 _ENTITY_RE = re.compile(r"\b[A-Z][a-zA-Z]+(?:\s+[A-Z][a-zA-Z]+)*")
 
 # Capitalised function words that are not proper nouns — they are capitalised
@@ -112,9 +116,14 @@ def _entity_words(text: str) -> list[str]:
 
 def _hard_present(cited: str, token: str) -> bool:
     """Boundary-aware match, not a substring: a claimed "4" must not ground
-    against source "64" or "0.45". The right guard still allows a trailing
-    sentence period or list comma, so a figure ending a clause matches."""
-    return re.search(rf"(?<![\w.,]){re.escape(token)}(?![\w])(?![.,]\d)", cited) is not None
+    against source "64" (left guard) or "45" (right guard) or "8.5" (the decimal
+    guard). A trailing sentence period or list comma is still allowed, so a
+    figure ending a clause matches.
+
+    The right guard rejects a following DIGIT, not any word character: letters
+    after a figure are a unit, not more figure, and "$8.7B" must ground against
+    "$8.7B"."""
+    return re.search(rf"(?<![\w.,]){re.escape(token)}(?!\d)(?![.,]\d)", cited) is not None
 
 
 def _word_present(cited: str, word: str) -> bool:

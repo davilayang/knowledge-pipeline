@@ -192,3 +192,22 @@ def test_a_claim_citing_more_units_than_the_prompt_allows_is_flagged():
     summary = summarise_citations(claims_doc, body)
 
     assert (summary.over_cap, summary.anchored, summary.failing) == (1, 1, 0)
+
+
+def test_a_money_figure_grounds_against_the_unit_it_was_copied_from():
+    # $8.7B tokenised to "8." — the trailing period swallowed, the B cutting it
+    # short — and the matcher then refused any figure glued to a letter, so a
+    # claim copied verbatim from its cited unit was reported as unsupported.
+    units = ["Microsoft reported $8.7B in cloud revenue."]
+
+    (result,) = check_citations([_claim("Microsoft reported $8.7B in cloud revenue.", (0,))], units)
+
+    assert (result.status, result.anchored) == ("grounded", True)
+
+
+def test_a_hyphenated_model_name_grounds_against_the_source():
+    units = ["The team evaluated GPT-4 on the benchmark."]
+
+    (result,) = check_citations([_claim("They evaluated GPT-4.", (0,))], units)
+
+    assert result.status == "grounded"
