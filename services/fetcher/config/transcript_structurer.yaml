@@ -1,15 +1,28 @@
 # Transcript structurer chain config — drives the cloud LLM tier for
-# YouTube auto-caption + (later) podcast Whisper transcripts.
+# YouTube auto-caption + podcast Whisper transcripts.
 #
 # Entries are tried in order. The first entry whose API key is configured
 # (and which doesn't fail) wins. attempt_timeout is per-entry wall-clock
 # seconds — transcripts are longer than article bodies, so timeouts are
 # higher than `structurer.yaml`.
+#
+# Two fallbacks, not one, because neither wins everywhere: on three
+# transcripts the primary could not structure, gpt-5.6-luna beat gpt-4.1-mini
+# on two but collapsed on the third (50.2% recall, 46 gaps vs gpt-4.1-mini's
+# 61.1%, 16 gaps). Ordering luna first buys the common case; an entry is only
+# reached when the previous output failed the retention guard, so the
+# fallback costs nothing when luna succeeds.
+#
+# luna is a gpt-5-family reasoning model: it takes `reasoning_effort` and rejects
+# `temperature`. See `_model_params` in `_cloud_chain`.
 
 chain:
   - model: gemma4:31b
     provider: ollama
     base_url: https://ollama.com/v1
+    attempt_timeout: 600.0
+  - model: gpt-5.6-luna
+    provider: openai
     attempt_timeout: 600.0
   - model: gpt-4.1-mini
     provider: openai

@@ -8,6 +8,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.10] — 2026-08-26
+
+### Added
+
+- **Two new eval fixtures pin the rewriting failure mode.** The structure-fidelity dataset now covers cases where a model paraphrases at full volume instead of collapsing, which trigram recall alone can score as faithful.
+
+### Changed
+
+- **The structurer's collapse guard now measures surviving wording, not output length.** A model that paraphrases at constant volume passed any length check; `call_cloud_chain` now scores trigram recall via `fetcher.fidelity`, shared with the eval harness.
+
+- **A second guard rejects rewriting that recall alone misses.** `fidelity.long_gaps_per_10k` flags contiguous-gap density — removing filler scatters many short gaps, rewriting leaves few long ones — applied only to the transcript lane.
+
+- **Transcripts now chunk at 12,000 characters, down from 25,000.** Fidelity degrades continuously with input length rather than at a cliff.
+
+- **The transcript structurer tries `gpt-5.6-luna` before `gpt-4.1-mini`.** On rows the Ollama primary could not structure, `gpt-4.1-mini` scored below it.
+
+- **The fetcher can now call gpt-5-family reasoning models.** They reject `temperature`, which `call_cloud_chain` hardcoded, so none could run in this lane.
+
+---
+
 ## [0.36.9] — 2026-08-26
 
 ### Added

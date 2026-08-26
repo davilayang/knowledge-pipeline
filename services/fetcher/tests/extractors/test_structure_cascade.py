@@ -276,21 +276,23 @@ async def test_call_cloud_chain_rejects_a_collapsed_completion() -> None:
 
 async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None:
     """The two lanes have different legitimate floors, so one number cannot serve
-    both. A chrome-heavy article can honestly retain ~57% after its navigation
-    is stripped, while the transcript prompt asks for 85-115% — and a transcript
-    collapse has been observed landing at 41%, which the default floor accepts.
+    both. An article legitimately loses wording to boilerplate removal, which
+    counts against the whole-source denominator; a transcript is punctuated
+    rather than edited, so healthy rows keep 70-99% of their wording where
+    collapsed ones kept 5-54%.
     """
+    lines = [f"the speaker made point number {n} about the system" for n in range(100)]
+    source = " ".join(lines)
+    half = " ".join(lines[:50])  # roughly half the source's wording survives
+
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_mock_openai_response("x" * 410)  # 41% of a 1000-char input
-    )
-    source = "y" * 1000
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(half))
 
     with patch("openai.AsyncOpenAI", return_value=client):
         markdown, _tier, _usage = await structure.call_cloud_chain(
             source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
         )
-        assert len(markdown) == 410  # default floor accepts it
+        assert markdown == half  # the article-lane default accepts it
 
         with pytest.raises(structure.StructurerChainFailed):
             await structure.call_cloud_chain(
@@ -301,3 +303,92 @@ async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None
                 ollama_key=None,
                 min_retention=0.6,
             )
+
+
+async def test_guard_rejects_a_rewrite_that_preserves_length() -> None:
+    """A length check cannot see rewriting. One production transcript kept 92.5%
+    of its length while preserving only 54.8% of the source's wording — the
+    model paraphrased rather than punctuated, and a length-ratio guard passed it.
+    """
+    source = " ".join(f"the speaker said point number {n} in detail" for n in range(200))
+    rewrite = " ".join(f"a summary of item {n} appears here instead" for n in range(200))
+    assert abs(len(rewrite) - len(source)) / len(source) < 0.10  # same length, different words
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(rewrite))
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
+            )
+
+    assert "collapsed" in str(excinfo.value)
+
+
+async def test_gpt5_family_gets_reasoning_params_not_temperature() -> None:
+    """gpt-5-family are reasoning models: they reject `temperature` outright with
+    a 400, and take `reasoning_effort` instead — spelled `none` on the dotted
+    generations and `minimal` on the originals. Mirrors the extraction path's
+    `_model_params`, so the two stay consistent.
+    """
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("# structured\n\nbody text here")
+    )
+    entry = ChainEntry(model="gpt-5.6-luna", provider="openai", attempt_timeout=60.0)
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        await structure.call_cloud_chain(
+            "some source text",
+            "SYS",
+            chain=[entry],
+            openai_key="sk",
+            ollama_key=None,
+            min_retention=0.0,
+        )
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert "temperature" not in kwargs
+    assert "seed" not in kwargs
+    assert kwargs["reasoning_effort"] == "none"
+
+
+async def test_guard_rejects_contiguous_gaps_even_when_recall_passes() -> None:
+    """Recall alone conflates two different failures. A heavily disfluent talk
+    legitimately scores low because filler was removed, while a rewritten one
+    loses whole passages — and one healthy transcript scored 59.5% while the
+    best available output for it. What separates them is the shape of the loss:
+    scattered short gaps are filler, long contiguous ones are passages gone.
+    """
+    lines = [f"word{n}a word{n}b word{n}c word{n}d word{n}e word{n}f" for n in range(20)]
+    source = "\n".join(lines)
+    # Drop two contiguous blocks: recall stays 0.6, but two long gaps appear.
+    kept = [ln for i, ln in enumerate(lines) if i not in {2, 3, 4, 5, 10, 11, 12, 13}]
+    gappy = "\n".join(kept)
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(gappy))
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        markdown, _t, _u = await structure.call_cloud_chain(
+            source,
+            "SYS",
+            chain=[_openai_entry()],
+            openai_key="sk",
+            ollama_key=None,
+            min_retention=0.5,
+        )
+        assert markdown == gappy  # recall alone accepts it
+
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                source,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk",
+                ollama_key=None,
+                min_retention=0.5,
+                max_gaps_per_10k=5.0,
+            )
+    assert "contiguous" in str(excinfo.value)

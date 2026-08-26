@@ -50,18 +50,21 @@ _CHAIN: list[ChainEntry] = _load_chain(
 )
 
 
-# The transcript prompt asks for output within 10-15% of the input, so anything
-# near the shared default is already a collapse. One production input reproduces
-# at 19-41% on every attempt, which the shared default would accept at the top
-# of that range.
-_MIN_RETENTION = 0.6
+# Recall catches wholesale loss; the gap ceiling catches rewriting that recall
+# alone can't see (see `fidelity.long_gaps_per_10k` for why raising the gap
+# threshold doesn't mean "stricter"). Thresholds set from the transcript
+# corpus: faithful outputs sit under 3.3 gaps per 10k characters, the two known
+# rewrites sit at 8.7 and 22.6, and a 59.5%-recall talk was still the most
+# faithful output produced for it -- so a recall floor alone can't catch this.
+_MIN_RETENTION = 0.5
+_MAX_GAPS_PER_10K = 5.0
 
 
-# Above roughly 50k characters the model summarises instead of structuring --
-# length triggers it, not content: one production transcript retains 19-41%
-# whole and 98% as a quarter, same model, same prompt. 25k keeps every segment
-# inside the range that measured 98% on the hardest content in the corpus.
-_MAX_CHUNK_CHARS = 25_000
+# Fidelity falls off continuously with input length rather than at a cliff, so
+# the limit is set by what recovers, not by where collapse starts. The two
+# hardest transcripts in the corpus score 70-80% trigram recall unsplit, 86-91%
+# at this limit, and 93% at 8,000 -- not worth doubling the call count for.
+_MAX_CHUNK_CHARS = 12_000
 
 
 # Without this, each segment comes back with its own title, opening, and
@@ -175,6 +178,7 @@ async def structure_transcript(
             content_date=content_date,
             author_name=author,
             min_retention=_MIN_RETENTION,
+            max_gaps_per_10k=_MAX_GAPS_PER_10K,
         )
         structured.append(markdown)
         usages.append(usage)

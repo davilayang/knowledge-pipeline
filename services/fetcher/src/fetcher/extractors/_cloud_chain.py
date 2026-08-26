@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+from fetcher.fidelity import long_gaps_per_10k, trigram_recall
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +32,12 @@ logger = logging.getLogger(__name__)
 _KNOWN_PROVIDERS = {"openai", "ollama"}
 
 
-# Both structurers clean text without rewriting it, so output far shorter than
-# input means the model summarised. The default sits below the article lane's
-# legitimate floor -- a chrome-heavy article can honestly retain ~57% once its
-# navigation is stripped. Transcript callers pass a tighter value: that prompt
-# asks for 85-115%, and one input has been seen collapsing to 19-41% on every
-# attempt, which this default would accept at the top of its range.
-_MIN_RETENTION = 0.35
+# Floor on trigram recall, not on length: a model that paraphrases at constant
+# volume passes any length check. The default leaves room for the article lane's
+# boilerplate removal, which counts as loss against the whole-source denominator
+# -- a chrome-heavy article legitimately scores near 57%. Transcript callers pass
+# a tighter value; see `transcript_structurer`.
+_MIN_RETENTION = 0.40
 
 
 @dataclass(frozen=True)
@@ -112,6 +113,19 @@ def _build_user_message(
     return raw_content
 
 
+def _model_params(model: str) -> dict[str, Any]:
+    """Per-model completion parameters.
+
+    gpt-5-family are reasoning models: they reject `temperature` with a 400 and
+    take `reasoning_effort` instead. The two generations spell "lowest"
+    differently — `gpt-5`/`gpt-5-mini` take `minimal`, the dotted `gpt-5.x`
+    take `none`. Everything else takes the deterministic pair.
+    """
+    if model.startswith("gpt-5"):
+        return {"reasoning_effort": "none" if model.startswith("gpt-5.") else "minimal"}
+    return {"temperature": 0, "seed": 42}
+
+
 def _key_for(provider: str, openai_key: str | None, ollama_key: str | None) -> str | None:
     if provider == "openai":
         return openai_key
@@ -127,12 +141,10 @@ def _usage_payload(
 
     `finish_reason` separates a model that chose to stop ("stop") from one cut
     off at its output cap ("length") -- a truncated structuring silently loses
-    the article's tail, and no prompt wording fixes that, so the two need
-    telling apart when output comes back shorter than the input.
+    the tail, and no prompt wording fixes that.
 
     `prompt_tokens_details.cached_tokens` may be absent on older response
-    shapes or non-cached models; returns None for missing fields rather than
-    guessing.
+    shapes or non-cached models; returns None rather than guessing.
     """
     prompt_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
     completion_tokens = getattr(usage, "completion_tokens", None) if usage is not None else None
@@ -172,6 +184,7 @@ async def call_cloud_chain(
     content_date: str | None = None,
     author_name: str | None = None,
     min_retention: float = _MIN_RETENTION,
+    max_gaps_per_10k: float | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Try each chain entry in order.
 
@@ -215,8 +228,7 @@ async def call_cloud_chain(
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": user_message},
                     ],
-                    temperature=0,
-                    seed=42,
+                    **_model_params(entry.model),
                 ),
                 timeout=entry.attempt_timeout,
             )
@@ -225,15 +237,24 @@ async def call_cloud_chain(
             if not markdown:
                 raise RuntimeError("empty completion")
             # A collapsed generation is fluent and passes every other check --
-            # without this it would be written to the content-keyed cache and
-            # re-served for the whole TTL, making one bad draw permanent.
-            # Raising falls through to the next chain entry and marks the
-            # failure retryable, so the caller gets another draw.
-            if len(markdown) < min_retention * len(content):
+            # without this it would be cached and re-served for the whole TTL.
+            # Raising falls through to the next chain entry for another draw.
+            # Only the transcript lane sets `max_gaps_per_10k`; see
+            # `fidelity.long_gaps_per_10k` for why it's not meaningful on the
+            # article lane, where dropping a nav block or footer is correct.
+            if max_gaps_per_10k is not None:
+                gaps = long_gaps_per_10k(content, markdown)
+                if gaps > max_gaps_per_10k:
+                    raise RuntimeError(
+                        f"rewritten completion: {gaps:.1f} contiguous gaps per 10k chars, "
+                        f"ceiling {max_gaps_per_10k:.1f}"
+                    )
+            recall = trigram_recall(content, markdown)
+            if recall < min_retention:
                 raise RuntimeError(
-                    f"collapsed completion: {len(markdown)} chars from {len(content)} "
-                    f"({100 * len(markdown) / len(content):.0f}% retained, "
-                    f"floor {100 * min_retention:.0f}%)"
+                    f"collapsed completion: {100 * recall:.0f}% of the source's wording "
+                    f"survived, floor {100 * min_retention:.0f}% "
+                    f"({len(content)} chars in, {len(markdown)} out)"
                 )
             usage = _usage_payload(
                 getattr(response, "usage", None),
