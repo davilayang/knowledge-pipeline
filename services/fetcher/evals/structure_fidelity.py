@@ -237,6 +237,8 @@ async def _run_transcript_guard(args: argparse.Namespace, fixture: dict) -> str:
     mean = _mean_recall(results)
     floor = fixture["recall_floor"]
     verdict = "ok" if mean >= floor else f"!! BELOW FLOOR {100 * floor:.1f}%"
+    if known := fixture.get("known_failing"):
+        verdict += f"  [known: {known}]"
     line = (
         f"{fixture['source_chars']:>7,} chars  [transcript guard] "
         f"{_summarise(results)} vs floor {100 * floor:.1f}%  {verdict}"

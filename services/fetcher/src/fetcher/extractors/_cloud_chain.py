@@ -33,9 +33,11 @@ _KNOWN_PROVIDERS = {"openai", "ollama"}
 
 
 # Both structurers clean text without rewriting it, so output far shorter than
-# input means the model summarised. Set well below legitimate cleanup: the
-# chrome-heaviest article seen retains ~57% and transcripts retain 90-100%,
-# while an observed collapse returned 15-18%.
+# input means the model summarised. The default sits below the article lane's
+# legitimate floor -- a chrome-heavy article can honestly retain ~57% once its
+# navigation is stripped. Transcript callers pass a tighter value: that prompt
+# asks for 85-115%, and one input has been seen collapsing to 19-41% on every
+# attempt, which this default would accept at the top of its range.
 _MIN_RETENTION = 0.35
 
 
@@ -172,6 +174,7 @@ async def call_cloud_chain(
     title: str | None = None,
     content_date: str | None = None,
     author_name: str | None = None,
+    min_retention: float = _MIN_RETENTION,
 ) -> tuple[str, str, dict[str, Any]]:
     """Try each chain entry in order.
 
@@ -229,11 +232,11 @@ async def call_cloud_chain(
             # re-served for the whole TTL — one bad draw becoming permanent for
             # that content. Raising falls through to the next chain entry and
             # marks the failure retryable, so the caller gets another draw.
-            if len(markdown) < _MIN_RETENTION * len(content):
+            if len(markdown) < min_retention * len(content):
                 raise RuntimeError(
                     f"collapsed completion: {len(markdown)} chars from {len(content)} "
                     f"({100 * len(markdown) / len(content):.0f}% retained, "
-                    f"floor {100 * _MIN_RETENTION:.0f}%)"
+                    f"floor {100 * min_retention:.0f}%)"
                 )
             usage = _usage_payload(
                 getattr(response, "usage", None),

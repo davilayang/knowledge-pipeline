@@ -51,6 +51,13 @@ _CHAIN: list[ChainEntry] = _load_chain(
 )
 
 
+# The transcript prompt asks for output within 10-15% of the input, so anything
+# near the shared default is already a collapse. One production input reproduces
+# at 19-41% on every attempt, which the shared default would accept at the top
+# of that range.
+_MIN_RETENTION = 0.6
+
+
 _PROMPT_PATH: Path = Path(
     os.environ.get(
         "FETCHER_TRANSCRIPT_STRUCTURER_PROMPT_PATH",
@@ -104,4 +111,5 @@ async def structure_transcript(
         title=title,
         content_date=content_date,
         author_name=author,
+        min_retention=_MIN_RETENTION,
     )

@@ -272,3 +272,32 @@ async def test_call_cloud_chain_rejects_a_collapsed_completion() -> None:
             )
 
     assert "collapsed" in str(excinfo.value)
+
+
+async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None:
+    """The two lanes have different legitimate floors, so one number cannot serve
+    both. A chrome-heavy article can honestly retain ~57% after its navigation
+    is stripped, while the transcript prompt asks for 85-115% — and a transcript
+    collapse has been observed landing at 41%, which the default floor accepts.
+    """
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("x" * 410)  # 41% of a 1000-char input
+    )
+    source = "y" * 1000
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        markdown, _tier, _usage = await structure.call_cloud_chain(
+            source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
+        )
+        assert len(markdown) == 410  # default floor accepts it
+
+        with pytest.raises(structure.StructurerChainFailed):
+            await structure.call_cloud_chain(
+                source,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk",
+                ollama_key=None,
+                min_retention=0.6,
+            )
