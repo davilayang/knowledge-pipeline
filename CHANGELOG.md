@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **The transcript structurer falls back to `gpt-5.6-luna` instead of `gpt-4.1-mini`.** On the transcripts that needed a fallback at all, `gpt-4.1-mini` scored *below* the Ollama primary — it summarised where the job is to punctuate. Measured as the share of source wording surviving: luna 69.4% and 59.5% against 46.7% and 56.5%, leaving 1 and 3 contiguous gaps of 15+ words where `gpt-4.1-mini` left 9 and 10.
+- **The transcript structurer tries `gpt-5.6-luna` before `gpt-4.1-mini`.** Neither wins everywhere: across three transcripts the Ollama primary could not structure, luna preserved more of the source wording on two (69.4% and 59.5% against 46.7% and 56.5%) and much less on the third (50.2% against 61.1%). Ordering luna first buys the common case; keeping `gpt-4.1-mini` behind it preserves a recovery path, and it is only reached when the retention guard rejects luna's output.
 
 - **The fetcher can now call gpt-5-family models at all.** `call_cloud_chain` hardcoded `temperature=0, seed=42`, which reasoning models reject with a 400; `_model_params` now sends `reasoning_effort` for them instead, mirroring the extraction path.
 

@@ -6,13 +6,23 @@
 # seconds — transcripts are longer than article bodies, so timeouts are
 # higher than `structurer.yaml`.
 #
-# The fallback is gpt-5.6-luna rather than gpt-4.1-mini, which scored *below*
-# the primary on the transcripts that needed a fallback at all — it summarised
-# where the job is to punctuate. On two such transcripts, measured as the share
-# of source wording surviving: luna 69.4% and 59.5% against gpt-4.1-mini's 46.7%
-# and 56.5%, and luna left 1 and 3 contiguous gaps of 15+ words where
-# gpt-4.1-mini left 9 and 10. Being a gpt-5-family reasoning model, it takes
-# `reasoning_effort` and rejects `temperature`; see `_model_params`.
+# Two fallbacks, not one, because neither wins everywhere. Measured on three
+# transcripts the primary could not structure, as the share of source wording
+# surviving and the number of contiguous 15+ word gaps (many short gaps mean
+# disfluency removed, which is the job; long ones mean passages rewritten away):
+#
+#   input    gpt-5.6-luna     gpt-4.1-mini
+#   15.9k    69.4%  1 gap     46.7%   9 gaps
+#   28.7k    59.5%  3 gaps    56.5%  10 gaps
+#   49.5k    50.2% 46 gaps    61.1%  16 gaps
+#
+# luna is better on the first two and worse on the third, so ordering it first
+# buys the common case while keeping a recovery path for the case where it
+# collapses. An entry is only reached when the previous output was rejected by
+# the retention guard, so the third entry costs nothing when luna succeeds.
+#
+# luna is a gpt-5-family reasoning model: it takes `reasoning_effort` and rejects
+# `temperature`. See `_model_params` in `_cloud_chain`.
 
 chain:
   - model: gemma4:31b
@@ -20,5 +30,8 @@ chain:
     base_url: https://ollama.com/v1
     attempt_timeout: 600.0
   - model: gpt-5.6-luna
+    provider: openai
+    attempt_timeout: 600.0
+  - model: gpt-4.1-mini
     provider: openai
     attempt_timeout: 600.0
