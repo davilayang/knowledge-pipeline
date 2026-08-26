@@ -54,7 +54,7 @@ _CHAIN: list[ChainEntry] = _load_chain(
 
 
 _PROMPT_PATH: Path = Path(
-    os.environ.get("FETCHER_STRUCTURER_PROMPT_PATH", "prompts/structure_v1.md")
+    os.environ.get("FETCHER_STRUCTURER_PROMPT_PATH", "prompts/structure_v2.md")
 )
 
 

@@ -124,11 +124,12 @@ def _ollama_entry() -> ChainEntry:
     )
 
 
-def _mock_openai_response(content: str) -> MagicMock:
+def _mock_openai_response(content: str, finish_reason: str = "stop") -> MagicMock:
     msg = MagicMock()
     msg.content = content
     choice = MagicMock()
     choice.message = msg
+    choice.finish_reason = finish_reason
     response = MagicMock()
     response.choices = [choice]
     return response
@@ -157,6 +158,10 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
     assert usage["provider"] == "openai"
     assert usage["model"] == "gpt-4.1-mini"
     assert "duration_ms" in usage
+    # Distinguishes a model that chose to stop from one cut off at its output
+    # cap: a truncated structuring silently loses the tail of the article, and
+    # no prompt wording can fix that.
+    assert usage["finish_reason"] == "stop"
 
 
 async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:
@@ -241,3 +246,58 @@ async def test_call_cloud_chain_threads_hint_kwargs_into_user_message() -> None:
     assert "raw paste" in user_msg["content"]
     system_msg = next(m for m in messages if m["role"] == "system")
     assert system_msg["content"] == "SYS"
+
+
+async def test_call_cloud_chain_rejects_a_collapsed_completion() -> None:
+    """A structurer that summarises instead of cleaning must not be returned.
+
+    Its output is fluent and passes every other gate, so it would be written to
+    the content-keyed cache and re-served for the whole TTL — turning one bad
+    generation into permanent damage for that URL. Raising instead lets the
+    chain fall through to the next entry and marks the failure retryable.
+    """
+    collapsing_client = MagicMock()
+    collapsing_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("A short summary of the whole article.")
+    )
+
+    with patch("openai.AsyncOpenAI", return_value=collapsing_client):
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                "the author's actual sentences " * 200,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk-openai",
+                ollama_key=None,
+            )
+
+    assert "collapsed" in str(excinfo.value)
+
+
+async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None:
+    """The two lanes have different legitimate floors, so one number cannot serve
+    both. A chrome-heavy article can honestly retain ~57% after its navigation
+    is stripped, while the transcript prompt asks for 85-115% — and a transcript
+    collapse has been observed landing at 41%, which the default floor accepts.
+    """
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("x" * 410)  # 41% of a 1000-char input
+    )
+    source = "y" * 1000
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        markdown, _tier, _usage = await structure.call_cloud_chain(
+            source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
+        )
+        assert len(markdown) == 410  # default floor accepts it
+
+        with pytest.raises(structure.StructurerChainFailed):
+            await structure.call_cloud_chain(
+                source,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk",
+                ollama_key=None,
+                min_retention=0.6,
+            )

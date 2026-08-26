@@ -3,7 +3,7 @@
 PR 1 (Phase A) of the structurer-platform plan. These helpers will be reused by
 both /v1/structure (article) and the upcoming /v1/structure-transcript endpoint,
 and they fix a latent under-keyed cache bug in /v1/structure: today's key omits
-prompt content + chain config + hint context, so editing prompts/structure_v1.md
+prompt content + chain config + hint context, so editing the active structurer prompt
 silently fails to invalidate cache.
 """
 

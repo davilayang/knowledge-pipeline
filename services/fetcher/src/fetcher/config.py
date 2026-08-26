@@ -114,8 +114,12 @@ class Settings(BaseSettings):
         description="Path to the YAML file declaring the structurer cloud chain.",
     )
     structurer_prompt_path: str = Field(
-        default="prompts/structure_v1.md",
-        description="Path to the active /v1/structure system prompt.",
+        default="prompts/structure_v2.md",
+        description=(
+            "Path to the active /v1/structure system prompt. Superseded versions stay "
+            "on disk so the fidelity eval can A/B against them without recovering old "
+            "copies from git history."
+        ),
     )
     transcript_structurer_config_path: str = Field(
         default="config/transcript_structurer.yaml",

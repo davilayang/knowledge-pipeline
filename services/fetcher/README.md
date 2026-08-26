@@ -31,7 +31,8 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 
 - **`POST /v1/fetch`** — sync single-URL fetch; returns markdown + provenance with ETag / `If-None-Match` → 304 support.
 - **`POST /v1/fetches`** — async batch; per-item job_id, `GET /v1/fetches/{job_id}` for status, `DELETE` for real in-process cancellation.
-- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v1.md` (server-side `_PROMPT_VERSION` — bumping is a service change, not a client header).
+- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v2.md`, selected server-side by `FETCHER_STRUCTURER_PROMPT_PATH` — swapping it is a service change, not a client header. Superseded versions stay on disk as eval baselines. Note the response metadata carries no prompt identifier, so a stored row does not record which prompt produced it.
+- **Structurer fidelity eval** (`evals/`) — scores how much of a pasted body survives `/v1/structure` and A/Bs two prompts. Dev-only; not in the image.
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
 - **Handlers:**
   - `arxiv` — pymupdf (50MB cap) → LlamaParse agentic_plus (strict paid).
@@ -45,6 +46,13 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **Preference-ordered tier cascade** per handler: walk tiers in each handler's declared order (free-first for most; a quality-first handler like `arxiv` may list its paid tier first), stopping at the first to clear the quality floor. Paid tiers are gated on `allow_paid=true` wherever they sit in the order.
 - **SQLite cache** with three tables: `cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
 - **Container** in this repo's docker-compose stack, attached to `dagster_network` and `kos-network` with the alias `kp-fetcher`.
+
+## Structurer fidelity eval
+
+`/v1/structure`'s one hard requirement is that it strips boilerplate without
+rewriting the article, and it fails by quietly summarising instead. The harness
+that measures this — plus what its score does and does not cover — is documented
+in [`evals/README.md`](evals/README.md).
 
 ## Live API reference
 

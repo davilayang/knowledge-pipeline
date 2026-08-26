@@ -11,7 +11,7 @@ Lifted out of `extractors/structure.py` so the second endpoint can reuse the
 runner without duplication, and so cache-key construction has a single
 correct shape — fixes a latent under-keyed cache bug in `/v1/structure`:
 today's key omits prompt content + chain config + hint context, so editing
-`prompts/structure_v1.md` silently fails to invalidate cache.
+`the active structurer prompt` silently fails to invalidate cache.
 """
 
 import asyncio
@@ -30,6 +30,15 @@ logger = logging.getLogger(__name__)
 
 
 _KNOWN_PROVIDERS = {"openai", "ollama"}
+
+
+# Both structurers clean text without rewriting it, so output far shorter than
+# input means the model summarised. The default sits below the article lane's
+# legitimate floor -- a chrome-heavy article can honestly retain ~57% once its
+# navigation is stripped. Transcript callers pass a tighter value: that prompt
+# asks for 85-115%, and one input has been seen collapsing to 19-41% on every
+# attempt, which this default would accept at the top of its range.
+_MIN_RETENTION = 0.35
 
 
 @dataclass(frozen=True)
@@ -114,8 +123,15 @@ def _key_for(provider: str, openai_key: str | None, ollama_key: str | None) -> s
     return None
 
 
-def _usage_payload(usage: Any, model: str, provider: str, duration_ms: float) -> dict[str, Any]:
+def _usage_payload(
+    usage: Any, model: str, provider: str, duration_ms: float, finish_reason: str | None = None
+) -> dict[str, Any]:
     """Capture per-call usage in the orchestrator's shape (tokens_in/out/cached).
+
+    `finish_reason` separates a model that chose to stop ("stop") from one cut
+    off at its output cap ("length"). A truncated structuring silently loses the
+    tail of the article, and no prompt wording can fix that -- so the two need
+    telling apart when output comes back shorter than the input.
 
     OpenAI's `prompt_tokens_details.cached_tokens` may be absent on older
     response shapes or non-cached models. Returns None for missing fields
@@ -129,6 +145,7 @@ def _usage_payload(usage: Any, model: str, provider: str, duration_ms: float) ->
         if details is not None:
             cached_tokens = getattr(details, "cached_tokens", None)
     return {
+        "finish_reason": finish_reason,
         "provider": provider,
         "model": model,
         "tokens_in": prompt_tokens,
@@ -157,6 +174,7 @@ async def call_cloud_chain(
     title: str | None = None,
     content_date: str | None = None,
     author_name: str | None = None,
+    min_retention: float = _MIN_RETENTION,
 ) -> tuple[str, str, dict[str, Any]]:
     """Try each chain entry in order.
 
@@ -209,8 +227,23 @@ async def call_cloud_chain(
             markdown = (response.choices[0].message.content or "").strip()
             if not markdown:
                 raise RuntimeError("empty completion")
+            # A collapsed generation is fluent and passes every other check, so
+            # without this it would be written to the content-keyed cache and
+            # re-served for the whole TTL — one bad draw becoming permanent for
+            # that content. Raising falls through to the next chain entry and
+            # marks the failure retryable, so the caller gets another draw.
+            if len(markdown) < min_retention * len(content):
+                raise RuntimeError(
+                    f"collapsed completion: {len(markdown)} chars from {len(content)} "
+                    f"({100 * len(markdown) / len(content):.0f}% retained, "
+                    f"floor {100 * min_retention:.0f}%)"
+                )
             usage = _usage_payload(
-                getattr(response, "usage", None), entry.model, entry.provider, duration_ms
+                getattr(response, "usage", None),
+                entry.model,
+                entry.provider,
+                duration_ms,
+                finish_reason=getattr(response.choices[0], "finish_reason", None),
             )
             logger.info(
                 "structurer chain ok: provider=%s model=%s "

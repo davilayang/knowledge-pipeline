@@ -367,7 +367,7 @@ def test_structure_endpoint_cache_invalidates_when_prompt_changes(
 ) -> None:
     """Regression for the latent /v1/structure cache bug PR 1 (Phase A) fixes.
 
-    Editing prompts/structure_v1.md must produce a cache miss on the next request
+    Editing the active structurer prompt must produce a cache miss on the next request
     with otherwise-identical inputs. Today's key omits prompt content, so the bug
     surfaces as a silent cache hit returning markdown structured under the OLD
     prompt — invisible to operators editing prompts.

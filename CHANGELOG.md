@@ -6,7 +6,27 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **A collapsed structuring is no longer cached and re-served.** Both structurers clean text without rewriting it, so a completion far shorter than its input means the model summarised — but the only check was that the output was non-empty (`validated` in the tier log means `chars > 0`, nothing more), so a collapse passed every gate, got written to the content-keyed cache, and was returned on every later request for the whole 365-day TTL. Re-running the pipeline could not clear it: it re-served the stored collapse instead of retrying the model. `call_cloud_chain` now rejects a completion below 35% of its input, which falls through to the next chain entry and surfaces as a retryable failure, so the caller gets another draw. An audit of all 112 structured rows in production found three below that floor — the worst being a transcript cut from 111,640 to 20,757 characters (18.6%) — and none above it that looked like legitimate cleanup.
+
+  Transcript callers pass a tighter floor of 60%: their prompt asks for output within 10-15% of the input, so anything near the shared default is already a collapse, and one production input reproduces at 19-41% across four attempts — the top of that range would pass the default.
+
+  This guards against catastrophic collapse, not the subtler degradation the prompt change below addresses; a document losing its code blocks while keeping 70% of its length passes this floor. The two are complementary. It does not fix the underlying transcript collapse either, which is length-driven: the worst input retains 19-41% whole, 56% as a half, and 98% as a quarter, on the same model with the same prompt. Chunking is the indicated fix and is not attempted here.
+
+- **`POST /v1/structure` no longer summarises long pasted articles.** It cleans user-pasted article bodies through a cloud LLM; its prompt said "do not summarise" but also told the model to delete boilerplate, and past the first fifth of a long document the model took that as licence to merge sentences and drop code blocks. The active prompt is now `prompts/structure_v2.md`, carrying the same preservation contract the transcript structurer already had — code blocks reproduced verbatim, no merging of the author's sentences, body text does not shrink once boilerplate is gone. `structure_v1.md` stays on disk unchanged as the eval baseline, matching how superseded extraction prompts are kept. Cache keys hash the prompt, so previously structured rows are not reused.
+
+  Measured by `services/fetcher/evals/structure_fidelity.py` over 8 pasted-article fixtures, 3 runs per prompt, same model serving both arms. **The gain is narrow:** the two documents over 20k chars went 86.6% → 97.9% trigram recall, but the median per-fixture delta is +0.1pp and five of the eight fixtures move by 0.2pp or less. One shorter fixture, a listicle, gains 4.5pp. Read per-fixture deltas rather than any cross-fixture average — each source's floor is set by how much boilerplate it carries.
+
+  **The old prompt's instability is the sharper symptom.** On the worst fixture it returned three different outputs scoring 67.1–91.2% across three runs of the same input; the new prompt returned one output three times. Every run finished with `finish_reason: stop`, which rules out the output cap being hit. It does **not** establish that the model chose to condense: one condensing because it cannot attend to the whole input returns `stop` too. So the contract is shown to help, not shown to be sufficient.
+
+  **Scoped to the article lane.** The sibling transcript structurer (`/v1/structure-transcript`, its own prompt and chain) is unchanged and is not covered by this claim: it already carried a length contract, yet a review from `newsletter-assistant` recorded it collapsing a ~90k-char transcript to 15-18% of its length twice in a row. That is filed separately. Read this entry as fixing one endpoint, not the class of bug.
+
+  Two limits of the metric, both load-bearing. It measures recall only, so a prompt can raise its score by keeping more boilerplate rather than preserving more article — part of the listicle's gain is a restored promotional sign-off. And it cannot verify the verbatim-code-block rule, since it skips short lines and strips punctuation; that check remains manual.
+
 ### Added
+
+- **A fidelity eval for the article structurer** (`services/fetcher/evals/structure_fidelity.py`). Scores how much of a pasted article body survives `POST /v1/structure` as trigram recall — the share of the raw input's three-word sequences still present in the output — and A/Bs two prompts over the same fixtures with `--baseline`. Fixtures are pinned in `evals/datasets/structure_fidelity_fixtures.jsonl` by `notion_page_id` and body SHA-256, with the bodies themselves read from `queue.db` at run time rather than committed (they are verbatim third-party articles and this repo is public). This stage had no coverage: the `packages/evals` harnesses score extraction against `queue_items.raw_content`, which is already the structurer's output, so anything the structurer drops is invisible to them.
 
 - **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
 
