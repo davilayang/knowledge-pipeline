@@ -77,6 +77,11 @@ Four limits, all load-bearing when reading a result:
   and indentation — so this cannot verify that fenced code, tables, or config
   snippets came through verbatim. That check is still by hand.
 
-It also scores the **cloud stage in isolation**, not the endpoint: it skips the
-trafilatura first stage of the cascade, and does not pass the title / author /
-date hints that `POST /v1/structure` forwards in production.
+**Article fixtures score the cloud stage in isolation**, not the endpoint: they
+skip the trafilatura first stage of the cascade and do not pass the title /
+author / date hints that `POST /v1/structure` forwards in production.
+
+**Transcript fixtures go through `structure_transcript` itself**, because
+chunking and that lane's tighter retention floor live in that function. Calling
+the chain directly would score a path production never takes — and would
+silently fail to exercise the behaviour the transcript fixtures exist to check.

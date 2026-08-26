@@ -191,6 +191,38 @@ async def _score_arm(prompt: str, body: str, runs: int, chain: list[ChainEntry])
     return results
 
 
+class _KeyCtx:
+    """The two attributes `structure_transcript` reads off a FetchContext."""
+
+    def __init__(self) -> None:
+        self.openai_api_key = os.environ.get("OPENAI_API_KEY")
+        self.ollama_api_key = os.environ.get("OLLAMA_API_KEY")
+
+
+async def _score_transcript_arm(body: str, runs: int) -> list[RunResult]:
+    """Score through `structure_transcript`, not the bare chain call.
+
+    Chunking and the transcript lane's tighter retention floor both live in that
+    function, so calling the chain directly would score a code path production
+    never takes — and would silently not exercise the thing this fixture exists
+    to check.
+    """
+    results = []
+    for _ in range(runs):
+        structured, tier, usage = await transcript_structurer.structure_transcript(
+            _KeyCtx(), body, title=None, author=None
+        )
+        results.append(
+            RunResult(
+                recall=trigram_recall(body, structured),
+                digest=hashlib.sha256(structured.encode()).hexdigest()[:12],
+                tier=tier,
+                finish_reason=usage.get("finish_reason"),
+            )
+        )
+    return results
+
+
 def _mean_recall(results: list[RunResult]) -> float:
     return sum(r.recall for r in results) / len(results)
 
@@ -231,9 +263,7 @@ async def _run_transcript_guard(args: argparse.Namespace, fixture: dict) -> str:
     floor alarm on one known-good input, not as evidence that length is safe.
     """
     body = _load_transcript_body(args.fetches_db, fixture)
-    results = await _score_arm(
-        transcript_structurer.get_prompt(), body, args.runs, transcript_structurer.get_chain()
-    )
+    results = await _score_transcript_arm(body, args.runs)
     mean = _mean_recall(results)
     floor = fixture["recall_floor"]
     verdict = "ok" if mean >= floor else f"!! BELOW FLOOR {100 * floor:.1f}%"
