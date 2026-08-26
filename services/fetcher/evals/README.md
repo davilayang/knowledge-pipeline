@@ -59,7 +59,11 @@ Four limits, all load-bearing when reading a result:
   carries. A score is only meaningful against the **same fixture under a
   different prompt** — never against a different fixture.
 - **Position-blind.** Membership is checked against the whole output, so text
-  that survived but moved scores clean.
+  that survived but moved scores clean. There is deliberately no positional
+  breakdown: the earlier one bucketed by source line, which is meaningless on
+  line-sparse input like a caption blob, where a single 100k-char line swallows
+  a whole bucket. If a future regression needs shape analysis, bucket by
+  character position.
 - **Blind to short lines and to punctuation.** Lines under three normalised
   tokens contribute nothing, and normalisation strips Markdown syntax, operators,
   and indentation — so this cannot verify that fenced code, tables, or config

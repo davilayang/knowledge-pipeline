@@ -75,32 +75,12 @@ def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
 
 
 def trigram_recall(source: str, structured: str) -> float:
-    """Share of the source's word-trigrams that survive into the structured text.
-
-    The aggregate of `positional_recall` over the whole document — both read the
-    same tallies, so the overall score and the curve can never disagree.
-    """
+    """Share of the source's word-trigrams that survive into the structured text."""
     tallies = _line_tallies(source, structured)
     total = sum(n for _, n in tallies)
     if not total:
         return 1.0
     return sum(hits for hits, _ in tallies) / total
-
-
-def positional_recall(source: str, structured: str, *, buckets: int = 10) -> list[float]:
-    """Trigram recall per equal-sized slice of the source, in document order.
-
-    A flat curve means faithful structuring. A curve that falls as it advances
-    means the model started condensing partway through — the failure a single
-    overall score averages away.
-    """
-    tallies = _line_tallies(source, structured)
-    sums = [[0, 0] for _ in range(buckets)]
-    for i, (hits, total) in enumerate(tallies):
-        slot = min(buckets - 1, buckets * i // len(tallies))
-        sums[slot][0] += hits
-        sums[slot][1] += total
-    return [hits / total if total else 1.0 for hits, total in sums]
 
 
 # ---------------------------------------------------------------------------
