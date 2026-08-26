@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
   Segments cut at the last whitespace before the limit, because auto-caption transcripts have no sentence punctuation and often no newlines at all, so there is no sentence boundary to cut on. Chunked calls carry an added instruction not to emit a title, introduction or conclusion, without which each segment returns its own and the joined document has several. The article lane is deliberately not chunked: its largest production input is 31,209 characters, inside the range that measures 98%, and its boilerplate removal depends on knowing where the head and tail of the document are.
 
+  Measured on the two transcripts over 100k chars in the corpus. The one that reproduced the collapse went from 19-41% retained across four unchunked runs to **93.0%**; the one that already structured faithfully held at 94.4%, so chunking does not damage what worked. Both are pinned as eval fixtures with an 80% floor.
+
   Known limitation: speaker attribution restarts per segment, so the same person may be labelled by name in one and by role in another.
 
 ### Fixed

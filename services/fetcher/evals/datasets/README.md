@@ -27,6 +27,12 @@ reads the body from the `--queue-db` given at run time.
 | `notion_page_id` | article | Primary key into `queue_items`; the row whose `raw_content_override` is the body. Needs `--queue-db`. |
 | `url_hash` | transcript | Primary key into `fetches.db`'s `cache`; the body is rebuilt from that row's caption chunks. Needs `--fetches-db`. |
 | `recall_floor` | transcript | Minimum acceptable trigram recall. Below it, the run reports `!! BELOW FLOOR`. |
+| `known_failing` | any | Optional note shown beside a red verdict, marking a fixture that reproduces an open bug rather than a regression. Remove it in the commit that makes the fixture pass. |
+
+**The two transcript fixtures.** `EnsZazeC1h4` (109,064 chars) structures faithfully
+whether chunked or not, and guards against regression. `Ybrl4FYM57c` (111,640 chars)
+was pinned while it reproduced the transcript collapse — 19-41% retained across four
+runs — and is the acceptance case for chunking, which took it to 93%.
 
 **Why a transcript fixture is here at all.** Nothing in this repo changes the
 transcript structurer. It is pinned because it is the **control case** for the
