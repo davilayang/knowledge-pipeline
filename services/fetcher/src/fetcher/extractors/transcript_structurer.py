@@ -55,7 +55,8 @@ _CHAIN: list[ChainEntry] = _load_chain(
 # 59.5% recall while being the most faithful output produced for it, so a floor
 # tight enough to catch rewriting on its own would reject good work. Across the
 # transcript corpus, faithful outputs sit under 3.3 contiguous gaps per 10k
-# characters and the two known rewrites sit at 8.7 and 22.6.
+# characters and the two known rewrites sit at 8.7 and 22.6. A gap is 15+
+# consecutive missing trigrams, which is about 13 deleted words.
 _MIN_RETENTION = 0.5
 _MAX_GAPS_PER_10K = 5.0
 

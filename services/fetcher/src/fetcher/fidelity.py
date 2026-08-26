@@ -51,8 +51,13 @@ def trigram_recall(source: str, produced: str) -> float:
     return hits / total
 
 
-def long_gaps_per_10k(source: str, produced: str, *, gap_words: int = 15) -> float:
+def long_gaps_per_10k(source: str, produced: str, *, gap_trigrams: int = 15) -> float:
     """Contiguous runs of lost wording, per 10,000 source characters.
+
+    `gap_trigrams` counts consecutive missing **trigrams**, not words. Trigrams
+    overlap, so deleting K consecutive words breaks K+2 of them: the K starting
+    inside the deleted span plus the 2 that straddled its edges. The default of
+    15 therefore fires on roughly 13 deleted words.
 
     Distinguishes the two ways a structurer loses text, which recall alone
     conflates. Removing disfluency scatters many one- and two-word gaps; a
@@ -64,7 +69,7 @@ def long_gaps_per_10k(source: str, produced: str, *, gap_words: int = 15) -> flo
     Not meaningful for the article lane, where removing a nav block or a footer
     is a long contiguous gap and is the job.
 
-    `gap_words` has a working window of roughly 8 to 15, over which faithful and
+    `gap_trigrams` has a working window of roughly 8 to 15, over which faithful and
     rewritten outputs stay separated by 2.4-2.8x. Raising it does NOT make the
     check stricter: at 20 the separation falls to 1.1x, and by 30 it inverts —
     rewritten outputs score *lower* than faithful ones, because their gaps are
@@ -84,11 +89,11 @@ def long_gaps_per_10k(source: str, produced: str, *, gap_words: int = 15) -> flo
         for trigram in _trigrams(line):
             if remaining[trigram] > 0:
                 remaining[trigram] -= 1
-                if run >= gap_words:
+                if run >= gap_trigrams:
                     gaps += 1
                 run = 0
             else:
                 run += 1
-    if run >= gap_words:
+    if run >= gap_trigrams:
         gaps += 1
     return 10_000 * gaps / max(len(source), 1)

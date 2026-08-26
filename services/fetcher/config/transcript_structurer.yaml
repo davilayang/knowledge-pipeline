@@ -8,7 +8,7 @@
 #
 # Two fallbacks, not one, because neither wins everywhere. Measured on three
 # transcripts the primary could not structure, as the share of source wording
-# surviving and the number of contiguous 15+ word gaps (many short gaps mean
+# surviving and the number of long contiguous gaps (many short gaps mean
 # disfluency removed, which is the job; long ones mean passages rewritten away):
 #
 #   input    gpt-5.6-luna     gpt-4.1-mini
