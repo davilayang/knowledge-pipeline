@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
+- **A fidelity eval for the article structurer** (`services/fetcher/evals/structure_fidelity.py`). Scores how much of a pasted article body survives `POST /v1/structure` as trigram recall — the share of the raw input's three-word sequences still present in the output — and A/Bs two prompts over the same fixtures with `--baseline`. Fixtures are pinned in `evals/datasets/structure_fidelity_fixtures.jsonl` by `notion_page_id` and body SHA-256, with the bodies themselves read from `queue.db` at run time rather than committed (they are verbatim third-party articles and this repo is public). This stage had no coverage: the `packages/evals` harnesses score extraction against `queue_items.raw_content`, which is already the structurer's output, so anything the structurer drops is invisible to them.
+
 - **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
 
 ### Changed
