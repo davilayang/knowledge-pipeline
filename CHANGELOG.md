@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **The fetcher can now call gpt-5-family models at all.** `call_cloud_chain` hardcoded `temperature=0, seed=42`, which reasoning models reject with a 400; `_model_params` now sends `reasoning_effort` for them instead, mirroring the extraction path.
 
+- **The transcript guard also rejects rewriting that recall cannot see.** Removing disfluency scatters many short gaps; rewriting a passage leaves one long contiguous gap, and a heavily filler-laden talk can score 60% recall while being faithful. `fidelity.long_gaps_per_10k` counts contiguous losses of 15+ words per 10k characters, with a ceiling of 5.0 on the transcript lane — faithful outputs across the corpus sit under 3.3 and the two known rewrites at 8.7 and 22.6. Not applied to articles, where removing a nav block is a long gap and is correct. The recall floor drops to 0.5 in exchange, so the two signals catch different failures instead of one over-tight number catching neither well.
+
 - **The structurer's collapse guard now measures wording, not length.** A model that paraphrases at constant volume passed any length check: one production transcript kept 92.5% of its length while preserving 54.8% of its source wording. `call_cloud_chain` scores trigram recall via the new `fetcher.fidelity`, shared with the eval harness so one implementation defines the number both report. Floors are 0.40 by default, 0.60 for transcripts.
 
 - **Transcripts now chunk at 12,000 characters, down from 25,000.** Fidelity falls off continuously with input length rather than at a cliff; the two hardest transcripts in the corpus score 70-80% trigram recall unsplit and 86-91% at this limit.

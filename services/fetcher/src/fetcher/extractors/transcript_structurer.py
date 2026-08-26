@@ -50,10 +50,14 @@ _CHAIN: list[ChainEntry] = _load_chain(
 )
 
 
-# Transcripts are punctuated, not edited, so most of the speaker's wording should
-# survive: healthy rows score 70-99% trigram recall while collapsed ones scored
-# 5-54%. A floor of 0.6 sits in that gap.
-_MIN_RETENTION = 0.6
+# Recall catches wholesale loss; the gap ceiling catches rewriting that recall
+# cannot see. They are set apart deliberately: a heavily disfluent talk scored
+# 59.5% recall while being the most faithful output produced for it, so a floor
+# tight enough to catch rewriting on its own would reject good work. Across the
+# transcript corpus, faithful outputs sit under 3.3 contiguous gaps per 10k
+# characters and the two known rewrites sit at 8.7 and 22.6.
+_MIN_RETENTION = 0.5
+_MAX_GAPS_PER_10K = 5.0
 
 
 # Fidelity falls off continuously with input length rather than at a cliff, so
@@ -175,6 +179,7 @@ async def structure_transcript(
             content_date=content_date,
             author_name=author,
             min_retention=_MIN_RETENTION,
+            max_gaps_per_10k=_MAX_GAPS_PER_10K,
         )
         structured.append(markdown)
         usages.append(usage)

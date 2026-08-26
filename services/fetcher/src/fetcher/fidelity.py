@@ -49,3 +49,33 @@ def trigram_recall(source: str, produced: str) -> float:
     if not total:
         return 1.0
     return hits / total
+
+
+def long_gaps_per_10k(source: str, produced: str, *, gap_words: int = 15) -> float:
+    """Contiguous runs of lost wording, per 10,000 source characters.
+
+    Distinguishes the two ways a structurer loses text, which recall alone
+    conflates. Removing disfluency scatters many one- and two-word gaps; a
+    heavily filler-laden talk can score 60% recall and still be faithful.
+    Rewriting a passage leaves one long contiguous gap. Across the transcript
+    corpus, faithful outputs sit under 3.3 per 10k and the two known rewrites
+    sit at 8.7 and 22.6.
+
+    Not meaningful for the article lane, where removing a nav block or a footer
+    is a long contiguous gap and is the job.
+    """
+    remaining = Counter(_trigrams(produced))
+    gaps = 0
+    run = 0
+    for line in source.split("\n"):
+        for trigram in _trigrams(line):
+            if remaining[trigram] > 0:
+                remaining[trigram] -= 1
+                if run >= gap_words:
+                    gaps += 1
+                run = 0
+            else:
+                run += 1
+    if run >= gap_words:
+        gaps += 1
+    return 10_000 * gaps / max(len(source), 1)

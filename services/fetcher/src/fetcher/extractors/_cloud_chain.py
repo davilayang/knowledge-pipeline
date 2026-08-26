@@ -23,7 +23,7 @@ from typing import Any
 
 import yaml
 
-from fetcher.fidelity import trigram_recall
+from fetcher.fidelity import long_gaps_per_10k, trigram_recall
 
 
 logger = logging.getLogger(__name__)
@@ -188,6 +188,7 @@ async def call_cloud_chain(
     content_date: str | None = None,
     author_name: str | None = None,
     min_retention: float = _MIN_RETENTION,
+    max_gaps_per_10k: float | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
     """Try each chain entry in order.
 
@@ -244,6 +245,17 @@ async def call_cloud_chain(
             # re-served for the whole TTL, making one bad draw permanent.
             # Raising falls through to the next chain entry and marks the
             # failure retryable, so the caller gets another draw.
+            # Long contiguous gaps mean passages were rewritten away; scattered
+            # short ones mean disfluency was removed, which is the job. Only the
+            # transcript lane sets this — dropping a nav block or a footer is a
+            # long gap and is correct on the article lane.
+            if max_gaps_per_10k is not None:
+                gaps = long_gaps_per_10k(content, markdown)
+                if gaps > max_gaps_per_10k:
+                    raise RuntimeError(
+                        f"rewritten completion: {gaps:.1f} contiguous gaps per 10k chars, "
+                        f"ceiling {max_gaps_per_10k:.1f}"
+                    )
             recall = trigram_recall(content, markdown)
             if recall < min_retention:
                 raise RuntimeError(

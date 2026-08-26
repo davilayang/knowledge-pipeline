@@ -348,3 +348,34 @@ async def test_gpt5_family_gets_reasoning_params_not_temperature() -> None:
     assert "temperature" not in kwargs
     assert "seed" not in kwargs
     assert kwargs["reasoning_effort"] == "none"
+
+
+async def test_guard_rejects_contiguous_gaps_even_when_recall_passes() -> None:
+    """Recall alone conflates two different failures. A heavily disfluent talk
+    legitimately scores low because filler was removed, while a rewritten one
+    loses whole passages — and one healthy transcript scored 59.5% while the
+    best available output for it. What separates them is the shape of the loss:
+    scattered short gaps are filler, long contiguous ones are passages gone.
+    """
+    lines = [f"word{n}a word{n}b word{n}c word{n}d word{n}e word{n}f" for n in range(20)]
+    source = "\n".join(lines)
+    # Drop two contiguous blocks: recall stays 0.6, but two long gaps appear.
+    kept = [ln for i, ln in enumerate(lines) if i not in {2, 3, 4, 5, 10, 11, 12, 13}]
+    gappy = "\n".join(kept)
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(gappy))
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        markdown, _t, _u = await structure.call_cloud_chain(
+            source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None,
+            min_retention=0.5,
+        )
+        assert markdown == gappy  # recall alone accepts it
+
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None,
+                min_retention=0.5, max_gaps_per_10k=5.0,
+            )
+    assert "contiguous" in str(excinfo.value)
