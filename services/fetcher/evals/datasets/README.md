@@ -29,7 +29,14 @@ reads the body from the `--queue-db` given at run time.
 | `recall_floor` | transcript | Minimum acceptable trigram recall. Below it, the run reports `!! BELOW FLOOR`. |
 | `known_failing` | any | Optional note shown beside a red verdict, marking a fixture that reproduces an open bug rather than a regression. Remove it in the commit that makes the fixture pass. |
 
-**The two transcript fixtures.** `EnsZazeC1h4` (109,064 chars) structures faithfully
+**Floors are per fixture, and set below what the lane actually achieves on that
+input — not to a single corpus-wide number.** Two of the four transcripts are
+documents the structurer finds hard: they carry 0.60 where the other two carry
+0.80, because the best output any available model produces for them is around
+69%. A uniform floor would either wave through a collapse on the easy rows or
+fail the hard ones permanently.
+
+**The four transcript fixtures.** `EnsZazeC1h4` (109,064 chars) structures faithfully
 whether chunked or not — the regression guard. `Ybrl4FYM57c` (111,640 chars)
 reproduced the transcript collapse (19-41% retained) and is the acceptance case
 for chunking, which recovered it to 93%.
