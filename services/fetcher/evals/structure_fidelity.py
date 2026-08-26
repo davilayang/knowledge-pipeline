@@ -30,11 +30,14 @@ import os
 import re
 import sqlite3
 from collections import Counter
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
-from fetcher.extractors._cloud_chain import call_cloud_chain
+from fetcher.extractors import transcript_structurer
+from fetcher.extractors._cloud_chain import ChainEntry, call_cloud_chain
 from fetcher.extractors.structure import get_chain
+from fetcher.extractors.youtube_transcript import chunks_to_markdown
 
 
 def _tokens(text: str) -> list[str]:
@@ -92,22 +95,7 @@ def _load_fixtures(path: Path) -> list[dict]:
     return [json.loads(ln) for ln in path.read_text().splitlines() if ln.strip()]
 
 
-def _load_body(queue_db: Path, fixture: dict) -> str:
-    """Read one fixture's pasted article body out of queue.db.
-
-    Bodies are not committed: they are verbatim third-party articles and this
-    repo is public. The manifest pins each one by `notion_page_id` and by the
-    SHA-256 of the body it was measured against, so a row that has been deleted
-    or edited since fails loudly instead of silently changing the score.
-    """
-    with sqlite3.connect(f"file:{queue_db}?mode=ro", uri=True) as conn:
-        row = conn.execute(
-            "SELECT raw_content_override FROM queue_items WHERE notion_page_id = ?",
-            (fixture["notion_page_id"],),
-        ).fetchone()
-    if row is None or not row[0]:
-        raise SystemExit(f"fixture {fixture['url']} has no raw_content_override in {queue_db}")
-    body = row[0]
+def _verify_pin(body: str, fixture: dict) -> str:
     digest = hashlib.sha256(body.encode()).hexdigest()
     if digest != fixture["source_sha256"]:
         raise SystemExit(
@@ -115,6 +103,52 @@ def _load_body(queue_db: Path, fixture: dict) -> str:
             f"(expected {fixture['source_sha256'][:12]}, found {digest[:12]})"
         )
     return body
+
+
+def _load_article_body(queue_db: Path, fixture: dict) -> str:
+    """Read a pasted article body out of queue.db.
+
+    Bodies are not committed: they are verbatim third-party articles and this
+    repo is public. The manifest pins each one by `notion_page_id` and by the
+    SHA-256 of the body it was measured against, so a row that has been deleted
+    or edited since fails loudly instead of silently changing the score.
+    """
+    with closing(sqlite3.connect(f"file:{queue_db}?mode=ro", uri=True)) as conn:
+        row = conn.execute(
+            "SELECT raw_content_override FROM queue_items WHERE notion_page_id = ?",
+            (fixture["notion_page_id"],),
+        ).fetchone()
+    if row is None or not row[0]:
+        raise SystemExit(f"fixture {fixture['url']} has no raw_content_override in {queue_db}")
+    return _verify_pin(row[0], fixture)
+
+
+def _load_transcript_body(fetches_db: Path | None, fixture: dict) -> str:
+    """Rebuild a transcript structurer input from the caption chunks in fetches.db.
+
+    The handler feeds `chunks_to_markdown(chunks)` to the structurer and stores
+    only the structured result, so the input is reconstructed the same way here
+    rather than read back. Note this fixture is less durable than the article
+    ones: cache rows carry a TTL and are deleted on the first lookup after they
+    expire, where `queue_items` rows never expire.
+    """
+    if fetches_db is None:
+        raise SystemExit(
+            f"fixture {fixture['url']} is a transcript fixture; pass --fetches-db to load it"
+        )
+    with closing(sqlite3.connect(f"file:{fetches_db}?mode=ro", uri=True)) as conn:
+        row = conn.execute(
+            "SELECT metadata_json FROM cache WHERE url_hash = ?", (fixture["url_hash"],)
+        ).fetchone()
+    if row is None:
+        raise SystemExit(
+            f"fixture {fixture['url']} is not in {fetches_db} — the cache row has expired "
+            f"or been evicted, so this fixture can no longer be run"
+        )
+    chunks = json.loads(row[0]).get("chunks")
+    if not chunks:
+        raise SystemExit(f"fixture {fixture['url']} cache row carries no caption chunks")
+    return _verify_pin(chunks_to_markdown(chunks), fixture)
 
 
 @dataclass(frozen=True)
@@ -136,13 +170,13 @@ class RunResult:
     finish_reason: str | None
 
 
-async def _score_arm(prompt: str, body: str, runs: int) -> list[RunResult]:
+async def _score_arm(prompt: str, body: str, runs: int, chain: list[ChainEntry]) -> list[RunResult]:
     results = []
     for _ in range(runs):
         structured, tier, usage = await call_cloud_chain(
             body,
             prompt,
-            chain=get_chain(),
+            chain=chain,
             openai_key=os.environ.get("OPENAI_API_KEY"),
             ollama_key=os.environ.get("OLLAMA_API_KEY"),
         )
@@ -178,27 +212,63 @@ async def _run(args: argparse.Namespace) -> None:
     baseline = args.baseline.read_text() if args.baseline else None
     print(f"chain: {[(e.provider, e.model) for e in get_chain()]}  runs: {args.runs}")
     for fixture in fixtures:
-        body = _load_body(args.queue_db, fixture)
-        cand = await _score_arm(candidate, body, args.runs)
-        base: list[RunResult] = []
-        line = f"{fixture['source_chars']:>7,} chars  {args.prompt.name} {_summarise(cand)}"
-        served = {r.tier for r in cand}
-        if baseline is not None:
-            base = await _score_arm(baseline, body, args.runs)
-            delta = 100 * (_mean_recall(cand) - _mean_recall(base))
-            line += f"  vs {args.baseline.name} {_summarise(base)}  ({delta:+.1f}pp)"
-            served |= {r.tier for r in base}
-        # More than one chain entry served this fixture, so the arms differ by
-        # model as well as by prompt and the delta does not isolate the prompt.
-        if len(served) > 1:
-            line += f"  !! MIXED TIERS {sorted(served)}"
-        # "length" means the model hit its output cap, so the tail of the
-        # article was cut off rather than condensed by choice. No prompt wording
-        # fixes that -- it calls for chunking the input instead.
-        truncated = [r for r in cand + base if r.finish_reason == "length"]
-        if truncated:
-            line += f"  !! TRUNCATED {len(truncated)} run(s) hit the output cap"
-        print(f"{line}  {fixture['url'][:60]}", flush=True)
+        if fixture.get("lane") == "transcript":
+            print(await _run_transcript_guard(args, fixture), flush=True)
+            continue
+        print(await _run_article_ab(args, fixture, candidate, baseline), flush=True)
+
+
+async def _run_transcript_guard(args: argparse.Namespace, fixture: dict) -> str:
+    """Regression guard for the transcript structurer, which this repo does not
+    change but which is the control case for the article result: it holds
+    fidelity on a single call at 100k+ characters, which is why the article
+    lane's loss is read as a prompt problem rather than a length problem. If
+    this ever drops below its floor, that reading — and the decision not to
+    chunk long inputs — needs revisiting.
+    """
+    body = _load_transcript_body(args.fetches_db, fixture)
+    results = await _score_arm(
+        transcript_structurer.get_prompt(), body, args.runs, transcript_structurer.get_chain()
+    )
+    mean = _mean_recall(results)
+    floor = fixture["recall_floor"]
+    verdict = "ok" if mean >= floor else f"!! BELOW FLOOR {100 * floor:.1f}%"
+    line = (
+        f"{fixture['source_chars']:>7,} chars  [transcript guard] "
+        f"{_summarise(results)} vs floor {100 * floor:.1f}%  {verdict}"
+    )
+    return _annotate(line, results) + f"  {fixture['url'][:60]}"
+
+
+async def _run_article_ab(
+    args: argparse.Namespace, fixture: dict, candidate: str, baseline: str | None
+) -> str:
+    body = _load_article_body(args.queue_db, fixture)
+    chain = get_chain()
+    cand = await _score_arm(candidate, body, args.runs, chain)
+    base: list[RunResult] = []
+    line = f"{fixture['source_chars']:>7,} chars  {args.prompt.name} {_summarise(cand)}"
+    if baseline is not None:
+        base = await _score_arm(baseline, body, args.runs, chain)
+        delta = 100 * (_mean_recall(cand) - _mean_recall(base))
+        line += f"  vs {args.baseline.name} {_summarise(base)}  ({delta:+.1f}pp)"
+    return _annotate(line, cand + base) + f"  {fixture['url'][:60]}"
+
+
+def _annotate(line: str, results: list[RunResult]) -> str:
+    """Append the two flags that decide whether a number can be trusted."""
+    served = {r.tier for r in results}
+    # More than one chain entry served this fixture, so the arms differ by model
+    # as well as by prompt and the delta does not isolate the prompt.
+    if len(served) > 1:
+        line += f"  !! MIXED TIERS {sorted(served)}"
+    # "length" means the model hit its output cap, so the tail was cut off
+    # rather than condensed by choice. No prompt wording fixes that -- it calls
+    # for chunking the input instead.
+    truncated = sum(1 for r in results if r.finish_reason == "length")
+    if truncated:
+        line += f"  !! TRUNCATED {truncated} run(s) hit the output cap"
+    return line
 
 
 def main() -> None:
@@ -226,6 +296,15 @@ def main() -> None:
         type=int,
         default=3,
         help="Runs per prompt per fixture. Report the mean of at least 3, never a single run.",
+    )
+    parser.add_argument(
+        "--fetches-db",
+        type=Path,
+        default=None,
+        help=(
+            "Path to a fetches.db, needed only for transcript-lane fixtures, whose "
+            "input is rebuilt from the caption chunks in the cache row."
+        ),
     )
     parser.add_argument(
         "--fixtures", type=Path, default=Path("evals/datasets/structure_fidelity_fixtures.jsonl")

@@ -39,9 +39,16 @@ low even when the prose reads well and every heading survives.
 ```bash
 set -a && source .env && set +a && \
   uv run python evals/structure_fidelity.py \
-    --queue-db /path/to/queue.db \
+    --queue-db /path/to/queue.db --fetches-db /path/to/fetches.db \
     --prompt prompts/structure_v2.md --baseline prompts/structure_v1.md --runs 3
 ```
+
+Article fixtures run as an A/B between the two prompts. The one transcript
+fixture runs as a **regression guard** against a floor instead: nothing here
+changes the transcript structurer, but it is the control case showing the same
+model holds fidelity on a single call at over 100,000 characters — which is why
+the article lane's loss is read as a prompt problem rather than a length
+problem. `--fetches-db` is only needed for that fixture.
 
 Report the mean of at least 3 runs with its observed range, never a single run.
 The headline goes to the Knowledge OS — Eval Runs Notion database; detailed
