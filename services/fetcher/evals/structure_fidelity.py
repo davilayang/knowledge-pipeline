@@ -177,7 +177,7 @@ def main() -> None:
         help="Path to a queue.db holding the pinned fixtures' raw_content_override bodies.",
     )
     parser.add_argument(
-        "--prompt", type=Path, default=Path("prompts/structure_v1.md"), help="Prompt to score."
+        "--prompt", type=Path, default=Path("prompts/structure_v2.md"), help="Prompt to score."
     )
     parser.add_argument(
         "--baseline", type=Path, default=None, help="Second prompt to score against, for an A/B."

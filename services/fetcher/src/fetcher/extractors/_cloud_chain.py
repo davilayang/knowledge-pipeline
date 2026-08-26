@@ -11,7 +11,7 @@ Lifted out of `extractors/structure.py` so the second endpoint can reuse the
 runner without duplication, and so cache-key construction has a single
 correct shape — fixes a latent under-keyed cache bug in `/v1/structure`:
 today's key omits prompt content + chain config + hint context, so editing
-`prompts/structure_v1.md` silently fails to invalidate cache.
+`the active structurer prompt` silently fails to invalidate cache.
 """
 
 import asyncio
