@@ -113,6 +113,21 @@ def _build_user_message(
     return raw_content
 
 
+def _model_params(model: str) -> dict[str, Any]:
+    """Per-model completion parameters.
+
+    gpt-5-family are reasoning models: they reject `temperature` with a 400 and
+    take `reasoning_effort` instead. The two generations spell "lowest"
+    differently and reject each other's spelling — `gpt-5`/`gpt-5-mini` take
+    `minimal`, the dotted `gpt-5.x` take `none`. Everything else takes the
+    deterministic pair. Mirrors `workflows.extraction.three_call_openai`, which
+    solved the same problem for the extraction path.
+    """
+    if model.startswith("gpt-5"):
+        return {"reasoning_effort": "none" if model.startswith("gpt-5.") else "minimal"}
+    return {"temperature": 0, "seed": 42}
+
+
 def _key_for(provider: str, openai_key: str | None, ollama_key: str | None) -> str | None:
     if provider == "openai":
         return openai_key
@@ -216,8 +231,7 @@ async def call_cloud_chain(
                         {"role": "system", "content": prompt},
                         {"role": "user", "content": user_message},
                     ],
-                    temperature=0,
-                    seed=42,
+                    **_model_params(entry.model),
                 ),
                 timeout=entry.attempt_timeout,
             )

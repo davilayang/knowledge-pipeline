@@ -324,3 +324,27 @@ async def test_guard_rejects_a_rewrite_that_preserves_length() -> None:
             )
 
     assert "collapsed" in str(excinfo.value)
+
+
+async def test_gpt5_family_gets_reasoning_params_not_temperature() -> None:
+    """gpt-5-family are reasoning models: they reject `temperature` outright with
+    a 400, and take `reasoning_effort` instead — spelled `none` on the dotted
+    generations and `minimal` on the originals. Mirrors the extraction path's
+    `_model_params`, so the two stay consistent.
+    """
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("# structured\n\nbody text here")
+    )
+    entry = ChainEntry(model="gpt-5.6-luna", provider="openai", attempt_timeout=60.0)
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        await structure.call_cloud_chain(
+            "some source text", "SYS", chain=[entry], openai_key="sk", ollama_key=None,
+            min_retention=0.0,
+        )
+
+    kwargs = client.chat.completions.create.call_args.kwargs
+    assert "temperature" not in kwargs
+    assert "seed" not in kwargs
+    assert kwargs["reasoning_effort"] == "none"
