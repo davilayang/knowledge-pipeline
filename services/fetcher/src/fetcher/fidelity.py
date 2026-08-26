@@ -63,6 +63,19 @@ def long_gaps_per_10k(source: str, produced: str, *, gap_words: int = 15) -> flo
 
     Not meaningful for the article lane, where removing a nav block or a footer
     is a long contiguous gap and is the job.
+
+    `gap_words` has a working window of roughly 8 to 15, over which faithful and
+    rewritten outputs stay separated by 2.4-2.8x. Raising it does NOT make the
+    check stricter: at 20 the separation falls to 1.1x, and by 30 it inverts —
+    rewritten outputs score *lower* than faithful ones, because their gaps are
+    mostly 15-30 words and stop qualifying at all. A well-meant tightening
+    silently disables the guard, so change this only alongside re-measuring the
+    corpus, and re-derive the ceiling with it: the scale moves, and at 12 the
+    same corpus separates 5.98 from 16.74 rather than 3.22 from 8.72.
+
+    The separation is measured against only two documents confirmed as rewritten
+    by reading their lost passages, so it is a thin basis for the exact numbers
+    even though the effect itself is unambiguous.
     """
     remaining = Counter(_trigrams(produced))
     gaps = 0
