@@ -30,18 +30,16 @@ reads the body from the `--queue-db` given at run time.
 | `known_failing` | any | Optional note shown beside a red verdict, marking a fixture that reproduces an open bug rather than a regression. Remove it in the commit that makes the fixture pass. |
 
 **The two transcript fixtures.** `EnsZazeC1h4` (109,064 chars) structures faithfully
-whether chunked or not, and guards against regression. `Ybrl4FYM57c` (111,640 chars)
-was pinned while it reproduced the transcript collapse — 19-41% retained across four
-runs — and is the acceptance case for chunking, which took it to 93%.
+whether chunked or not — the regression guard. `Ybrl4FYM57c` (111,640 chars)
+reproduced the transcript collapse (19-41% retained) and is the acceptance case
+for chunking, which recovered it to 93%.
 
 **Why a transcript fixture is here at all.** Nothing in this repo changes the
-transcript structurer. It is pinned because it is the **control case** for the
-article result: the same model, on one call, holds fidelity at over 100,000
-characters. That is the evidence for reading the article lane's loss as a prompt
-problem rather than a length problem, and for not chunking long inputs. If this
-fixture ever falls below its floor, both of those conclusions need revisiting —
-so it is a regression guard, not an A/B arm, and it is scored against a floor
-rather than against a second prompt.
+transcript structurer — it's pinned as the **control case** for the article
+result: the same model, on one call, holds fidelity above 100,000 characters.
+That's the evidence for reading the article lane's loss as a prompt problem
+rather than a length problem, and for not chunking long article inputs. If this
+fixture ever falls below its floor, both conclusions need revisiting.
 
 **Article rows are more durable than transcript rows.** `queue_items` rows never
 expire. Cache rows carry a TTL and are deleted on the first lookup after they

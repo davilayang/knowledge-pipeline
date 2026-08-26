@@ -2,24 +2,16 @@
 
 `POST /v1/structure` cleans a user-pasted article body through a cloud LLM. Its
 one hard requirement is that it removes boilerplate without rewriting the
-article, and the way it fails is by quietly summarising instead — merging the
-author's sentences and dropping code blocks partway through a long document.
+article; the way it fails is by quietly summarising instead.
 
-The scorer measures that as **trigram recall**: the share of the raw input's
-three-word sequences that still appear somewhere in the structured output.
-Paraphrasing destroys trigrams, so a rewrite scores low even when the output
-reads well and keeps every heading.
+Scored as **trigram recall**: the share of the raw input's three-word sequences
+still present in the structured output. Paraphrasing destroys trigrams, so a
+rewrite scores low even when the output reads well and keeps every heading. See
+`evals/README.md` for what this score does and does not measure.
 
-Two things the score is *not*. It counts correctly-deleted boilerplate as loss,
-because the denominator is the whole raw input — so every source has its own
-floor set by how much navigation chrome it carries, and a score is only
-meaningful against the same fixture under a different prompt, never against a
-different fixture. And membership is position-blind: it asks whether wording
-survived, not whether it stayed in place.
-
-Nothing in `packages/evals` covers this. Those harnesses score extraction
-against `queue_items.raw_content`, which is already the structurer's output --
-so text this stage drops is invisible to them.
+Nothing in `packages/evals` covers this: those harnesses score extraction
+against `queue_items.raw_content`, which is already the structurer's output, so
+text this stage drops is invisible to them.
 """
 
 import argparse
@@ -52,10 +44,10 @@ def _trigrams(text: str) -> list[tuple[str, str, str]]:
 def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
     """Per source line, (surviving trigrams, total trigrams), in document order.
 
-    Counting per line rather than across the whole text keeps trigrams that
-    straddle a line break out of the denominator: the structurer reflows
-    paragraphs, so those would miss on every run and add a constant noise floor.
-    Lines too short to form a trigram contribute nothing.
+    Per-line counting keeps trigrams straddling a line break out of the
+    denominator — the structurer reflows paragraphs, so those would miss on
+    every run and add a constant noise floor. Lines too short for a trigram
+    contribute nothing.
     """
     remaining = Counter(_trigrams(structured))
     tallies = []
@@ -66,10 +58,9 @@ def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
         hits = 0
         for trigram in trigrams:
             # Each output occurrence is consumed by at most one source
-            # occurrence. Without this, an output keeping one of five identical
-            # code blocks would satisfy all five and score a perfect 1.0 --
-            # blind to the "kept the first of several, dropped the rest"
-            # failure the structurer prompt exists to prevent.
+            # occurrence, so keeping one of five identical code blocks can't
+            # score a perfect 1.0 -- it stays blind to "kept the first,
+            # dropped the rest" otherwise.
             if remaining[trigram] > 0:
                 remaining[trigram] -= 1
                 hits += 1
@@ -108,10 +99,10 @@ def _verify_pin(body: str, fixture: dict) -> str:
 def _load_article_body(queue_db: Path, fixture: dict) -> str:
     """Read a pasted article body out of queue.db.
 
-    Bodies are not committed: they are verbatim third-party articles and this
-    repo is public. The manifest pins each one by `notion_page_id` and by the
-    SHA-256 of the body it was measured against, so a row that has been deleted
-    or edited since fails loudly instead of silently changing the score.
+    Bodies aren't committed -- they're verbatim third-party articles and this
+    repo is public. Pinned by `notion_page_id` and by the SHA-256 of the body
+    measured against, so a deleted or edited row fails loudly instead of
+    silently changing the score.
     """
     with closing(sqlite3.connect(f"file:{queue_db}?mode=ro", uri=True)) as conn:
         row = conn.execute(
@@ -127,10 +118,10 @@ def _load_transcript_body(fetches_db: Path | None, fixture: dict) -> str:
     """Rebuild a transcript structurer input from the caption chunks in fetches.db.
 
     The handler feeds `chunks_to_markdown(chunks)` to the structurer and stores
-    only the structured result, so the input is reconstructed the same way here
-    rather than read back. Note this fixture is less durable than the article
-    ones: cache rows carry a TTL and are deleted on the first lookup after they
-    expire, where `queue_items` rows never expire.
+    only the result, so the input is reconstructed the same way here rather
+    than read back. Less durable than article fixtures: cache rows carry a TTL
+    and are deleted on first lookup after expiry, where `queue_items` rows
+    never expire.
     """
     if fetches_db is None:
         raise SystemExit(
@@ -156,12 +147,10 @@ class RunResult:
     """One structuring run: its score, a digest of the exact output, and which
     chain entry served it.
 
-    The digest and the tier are what let a stability claim be checked. Equal
-    scores do not imply equal outputs — trigram recall is position-blind set
-    membership, so reordered or re-emphasised text scores the same. And an
-    Ollama timeout falling through to the OpenAI entry would otherwise be
-    invisible, silently making the two arms a model comparison rather than a
-    prompt comparison.
+    Digest and tier let a stability claim be checked: equal scores don't imply
+    equal outputs (trigram recall is position-blind), and an Ollama timeout
+    falling through to OpenAI would otherwise silently turn a prompt A/B into
+    a model comparison.
     """
 
     recall: float
@@ -254,13 +243,11 @@ async def _run_transcript_guard(args: argparse.Namespace, fixture: dict) -> str:
     """Regression guard for the transcript structurer, which this repo does not
     change.
 
-    It shows a single call *can* hold fidelity at 100k+ characters. It does not
-    show that one reliably does: a review from `newsletter-assistant` recorded
-    the same endpoint collapsing a ~90k transcript to 15-18% of its length
-    twice, and chunking that same input to ~12k windows recovered 98%. Four
-    fresh runs here at 91k and 99k retained 87-96%, so the behaviour is
-    bimodal and the trigger is not yet identified. Treat this fixture as a
-    floor alarm on one known-good input, not as evidence that length is safe.
+    Shows a single call *can* hold fidelity above 100k characters -- not that
+    one reliably does. The same endpoint has also been observed collapsing a
+    transcript to under 20% of its length, so the behaviour is bimodal and the
+    trigger is unidentified. Treat this as a floor alarm on one known-good
+    input, not as evidence that length is safe.
     """
     body = _load_transcript_body(args.fetches_db, fixture)
     results = await _score_transcript_arm(body, args.runs)
@@ -294,13 +281,13 @@ async def _run_article_ab(
 def _annotate(line: str, results: list[RunResult]) -> str:
     """Append the two flags that decide whether a number can be trusted."""
     served = {r.tier for r in results}
-    # More than one chain entry served this fixture, so the arms differ by model
-    # as well as by prompt and the delta does not isolate the prompt.
+    # More than one chain entry served this fixture -- arms differ by model as
+    # well as by prompt, so the delta doesn't isolate the prompt.
     if len(served) > 1:
         line += f"  !! MIXED TIERS {sorted(served)}"
-    # "length" means the model hit its output cap, so the tail was cut off
-    # rather than condensed by choice. No prompt wording fixes that -- it calls
-    # for chunking the input instead.
+    # "length" means the model hit its output cap: the tail was cut off, not
+    # condensed by choice. No prompt wording fixes that -- it calls for
+    # chunking the input instead.
     truncated = sum(1 for r in results if r.finish_reason == "length")
     if truncated:
         line += f"  !! TRUNCATED {truncated} run(s) hit the output cap"

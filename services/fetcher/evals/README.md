@@ -5,19 +5,17 @@ copies `src/`, `config/`, and `prompts/`, so nothing here ships in the service.
 
 ## Why these live here and not in `packages/evals`
 
-`services/fetcher` is not a uv workspace member — it has its own `pyproject.toml`,
-lock file, and venv — so `knowledge-evals` cannot import it. And A/B'ing two
-prompts needs one passed *into* the chain call, which `POST /v1/structure` does
-not expose; the endpoint only ever runs the prompt the service booted with.
-Living here lets the harness import the production
-`fetcher.extractors._cloud_chain.call_cloud_chain`, so there is a single copy of
-the call path rather than a re-implementation that can drift.
+`services/fetcher` is not a uv workspace member (own `pyproject.toml`/lock/venv),
+so `knowledge-evals` cannot import it. A/B'ing two prompts also needs passing one
+*into* the chain call, which `POST /v1/structure` doesn't expose — it only ever
+runs the prompt the service booted with. Living here lets the harness import the
+production `fetcher.extractors._cloud_chain.call_cloud_chain` directly, so there
+is one copy of the call path instead of a drift-prone reimplementation.
 
-The cost is that these evals do not share `evals.core`'s substrate (typed
-Variants, `RunManifest` provenance, snapshot/diff). They should adopt the shared
-runner when the run-layer consolidation across the `eval-*` CLIs lands. Until
-then there is deliberately **no console script** here — a fourth entrypoint
-would add to the problem that consolidation exists to fix.
+Tradeoff: these evals don't share `evals.core`'s substrate (typed Variants,
+`RunManifest` provenance, snapshot/diff) — they should adopt it once the
+`eval-*` CLIs get a shared run-layer. No console script here in the meantime,
+to avoid adding a fourth entrypoint ahead of that consolidation.
 
 ## What is here
 
@@ -44,12 +42,11 @@ set -a && source .env && set +a && \
 ```
 
 Article fixtures run as an A/B between the two prompts. The one transcript
-fixture runs as a **regression guard** against a floor instead: nothing here
-changes the transcript structurer. It shows a single call *can* hold fidelity at
-over 100,000 characters — not that one reliably does. The same endpoint has been
-observed collapsing a ~90k transcript to 15-18% of its length, where chunking
-the identical input to ~12k windows recovered 98%, so the behaviour is bimodal
-and the trigger is unidentified. `--fetches-db` is only needed for that fixture.
+fixture is a **regression guard** instead — nothing here changes the transcript
+structurer. It shows a single call *can* hold fidelity above 100,000 characters,
+not that one reliably does: the same endpoint has been observed collapsing an
+input to under 20% of its length, and the trigger is unidentified. `--fetches-db`
+is only needed for that fixture.
 
 Report the mean of at least 3 runs with its observed range, never a single run.
 The headline goes to the Knowledge OS — Eval Runs Notion database; detailed
@@ -59,23 +56,22 @@ output stays local.
 
 Four limits, all load-bearing when reading a result:
 
-- **Recall only, no precision.** It never penalises text the output *added* or
-  boilerplate it *kept*. A prompt can raise its score by retaining more chrome
-  rather than by preserving more article, and this metric cannot tell those apart.
-- **Correctly-deleted boilerplate counts as loss**, because the denominator is
-  the entire raw input. Every source has its own floor set by how much chrome it
-  carries. A score is only meaningful against the **same fixture under a
-  different prompt** — never against a different fixture.
+- **Recall only, no precision.** It never penalises added text or kept
+  boilerplate — a prompt can raise its score by retaining more chrome, not more
+  article, and this metric can't tell the two apart.
+- **Correctly-deleted boilerplate counts as loss**, since the denominator is the
+  entire raw input — every source has its own floor set by how much chrome it
+  carries. Only meaningful against the **same fixture under a different
+  prompt**, never across fixtures.
 - **Position-blind.** Membership is checked against the whole output, so text
-  that survived but moved scores clean. There is deliberately no positional
-  breakdown: the earlier one bucketed by source line, which is meaningless on
-  line-sparse input like a caption blob, where a single 100k-char line swallows
-  a whole bucket. If a future regression needs shape analysis, bucket by
-  character position.
-- **Blind to short lines and to punctuation.** Lines under three normalised
-  tokens contribute nothing, and normalisation strips Markdown syntax, operators,
-  and indentation — so this cannot verify that fenced code, tables, or config
-  snippets came through verbatim. That check is still by hand.
+  that survived but moved scores clean — no positional breakdown. Bucketing by
+  source line doesn't work here: line-sparse input like a caption blob can be a
+  single 100k-char line that swallows a whole bucket. If shape analysis is
+  needed later, bucket by character position instead.
+- **Blind to short lines and punctuation.** Lines under three normalised tokens
+  contribute nothing, and normalisation strips Markdown syntax, operators, and
+  indentation — so it cannot verify that fenced code, tables, or config came
+  through verbatim. That check stays manual.
 
 **Article fixtures score the cloud stage in isolation**, not the endpoint: they
 skip the trafilatura first stage of the cascade and do not pass the title /
@@ -83,5 +79,5 @@ author / date hints that `POST /v1/structure` forwards in production.
 
 **Transcript fixtures go through `structure_transcript` itself**, because
 chunking and that lane's tighter retention floor live in that function. Calling
-the chain directly would score a path production never takes — and would
-silently fail to exercise the behaviour the transcript fixtures exist to check.
+the chain directly would score a path production never takes, and would
+silently skip the behaviour these fixtures exist to check.

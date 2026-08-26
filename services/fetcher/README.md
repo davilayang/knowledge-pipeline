@@ -31,7 +31,7 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 
 - **`POST /v1/fetch`** — sync single-URL fetch; returns markdown + provenance with ETag / `If-None-Match` → 304 support.
 - **`POST /v1/fetches`** — async batch; per-item job_id, `GET /v1/fetches/{job_id}` for status, `DELETE` for real in-process cancellation.
-- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`. Prompt: `prompts/structure_v2.md`, selected server-side by `FETCHER_STRUCTURER_PROMPT_PATH` — swapping it is a service change, not a client header. Superseded versions stay on disk as eval baselines. Note the response metadata carries no prompt identifier, so a stored row does not record which prompt produced it.
+- **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`; prompt `prompts/structure_v2.md`, selected server-side by `FETCHER_STRUCTURER_PROMPT_PATH` (a service change, not a client header) — superseded versions stay on disk as eval baselines. Response metadata carries no prompt identifier, so a stored row doesn't record which prompt produced it.
 - **Structurer fidelity eval** (`evals/`) — scores how much of a pasted body survives `/v1/structure` and A/Bs two prompts. Dev-only; not in the image.
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
 - **Handlers:**
@@ -49,10 +49,10 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 
 ## Structurer fidelity eval
 
-`/v1/structure`'s one hard requirement is that it strips boilerplate without
-rewriting the article, and it fails by quietly summarising instead. The harness
-that measures this — plus what its score does and does not cover — is documented
-in [`evals/README.md`](evals/README.md).
+`/v1/structure`'s one hard requirement is stripping boilerplate without
+rewriting the article; it fails by quietly summarising instead. The harness
+that measures this, and what its score does and doesn't cover, is documented in
+[`evals/README.md`](evals/README.md).
 
 ## Live API reference
 

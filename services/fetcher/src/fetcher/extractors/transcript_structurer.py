@@ -4,12 +4,11 @@ Takes a wall-of-text transcript markdown blob + speaker-hint context
 (title, author/show, optional date) and returns speaker-attributed,
 paragraph-shaped markdown with punctuation restored and specifics preserved.
 
-First caller: YouTube handler (auto-caption transcripts via youtube-transcript-api).
-Second caller: podcast handler (Whisper transcripts, planned, TODO #3).
-Third caller: POST /v1/structure-transcript endpoint (planned).
+Callers: YouTube handler (auto-caption transcripts), podcast handler (Whisper
+transcripts, planned), and the planned `POST /v1/structure-transcript` endpoint.
 
-Keep this module free of source-specific assumptions (no video_id, no URL,
-no oembed dependencies). Per-source plumbing belongs in handlers / endpoint.
+Keep this module free of source-specific assumptions (no video_id, no URL, no
+oembed dependencies) -- per-source plumbing belongs in handlers / endpoint.
 """
 
 import logging
@@ -58,16 +57,15 @@ _CHAIN: list[ChainEntry] = _load_chain(
 _MIN_RETENTION = 0.6
 
 
-# Above roughly 50k characters the model summarises instead of structuring, and
-# it is the input length that does it, not the content: one production
-# transcript retains 19-41% whole, 56.4% as its first half and 98.0% as its
-# first quarter, on the same model with the same prompt. 25k keeps every segment
+# Above roughly 50k characters the model summarises instead of structuring --
+# length triggers it, not content: one production transcript retains 19-41%
+# whole and 98% as a quarter, same model, same prompt. 25k keeps every segment
 # inside the range that measured 98% on the hardest content in the corpus.
 _MAX_CHUNK_CHARS = 25_000
 
 
-# Without this each segment comes back with its own title, opening and wrap-up,
-# and concatenating them yields a document with several introductions.
+# Without this, each segment comes back with its own title, opening, and
+# wrap-up -- concatenating them yields a document with several introductions.
 _FRAGMENT_NOTE = (
     "\n\nThis input is one fragment of a longer transcript. Do not add a title, "
     "an introduction, or a conclusion. Begin and end mid-conversation."
@@ -107,12 +105,11 @@ def get_prompt() -> str:
 def _split(text: str, limit: int) -> list[str]:
     """Split into segments of at most `limit` chars, cutting at whitespace.
 
-    Auto-caption transcripts arrive as one unbroken run of words: no sentence
+    Auto-caption transcripts arrive as one unbroken run of words -- no sentence
     punctuation, and no newlines unless the source had pauses long enough for
-    `chunks_to_markdown` to insert them. So there is no sentence boundary to cut
-    on, and the last space before the limit is the best available seam. A
-    segment starting mid-sentence is fine — the whole transcript already looks
-    that way to the model.
+    `chunks_to_markdown` to insert them. So the last space before the limit is
+    the best available seam. A segment starting mid-sentence is fine -- the
+    whole transcript already looks that way to the model.
     """
     if len(text) <= limit:
         return [text]
@@ -166,8 +163,8 @@ async def structure_transcript(
     usages: list[dict[str, Any]] = []
     tier = ""
     for segment in segments:
-        # Sequential rather than gathered: Ollama Cloud's concurrency limits are
-        # unknown and a partial failure mid-gather is harder to reason about.
+        # Sequential, not gathered: Ollama Cloud's concurrency limits are
+        # unknown, and a partial failure mid-gather is harder to reason about.
         markdown, tier, usage = await call_cloud_chain(
             segment,
             prompt,
