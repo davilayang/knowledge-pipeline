@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **The article structurer no longer summarises long inputs.** `POST /v1/structure` cleans user-pasted article bodies through a cloud LLM; its prompt said "do not summarise" but also told the model to delete boilerplate, and past the first fifth of a long document the model took that as licence to merge sentences and drop code blocks. `prompts/structure_v1.md` now carries the same preservation contract the transcript structurer already had — code blocks reproduced verbatim, no merging of the author's sentences, body text does not shrink once boilerplate is gone. Measured on 8 real pasted articles as the share of the raw input's word-trigrams surviving into the output: the two longest (31k and 27k chars) went 92.3% → 98.0% and 93.0% → 98.3%, the rest unchanged. Cache keys hash the prompt, so previously structured rows are not reused.
+
 ### Added
 
 - **Extracted claims now record where in the source they came from.** The body is split into numbered units before extraction and each claim cites the ones it drew on (`- [reported|12,13] ...`); claim docs extracted before this parse unchanged. Implementation: `domains.wiki.units`, read by `extract_shared.article_envelope`.
