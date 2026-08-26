@@ -39,3 +39,12 @@ def test_positional_recall_localises_loss_to_the_end_of_the_document():
     structured = "\n".join(lines[:5])
     curve = positional_recall(source, structured, buckets=2)
     assert curve == [1.0, 0.0]
+
+
+def test_overall_score_is_the_aggregate_of_the_curve():
+    """The two entry points must never disagree: a reader comparing an overall
+    score against its own positional curve would otherwise be misled. Pinned
+    because they were computed over different denominators when first written."""
+    source = "\n".join(f"{w} {w}wards {w}ology {w}ation" for w in "alpha bravo charlie".split())
+    structured = "alpha alphawards alphaology alphaation\nbravo bravowards"
+    assert positional_recall(source, structured, buckets=1) == [trigram_recall(source, structured)]

@@ -44,14 +44,35 @@ def _trigrams(text: str) -> list[tuple[str, str, str]]:
     return list(zip(t, t[1:], t[2:], strict=False))
 
 
-def trigram_recall(source: str, structured: str) -> float:
-    """Share of the source's word-trigrams that survive into the structured text."""
+def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
+    """Per source line, (surviving trigrams, total trigrams), in document order.
+
+    Counting per line rather than across the whole text keeps trigrams that
+    straddle a line break out of the denominator: the structurer reflows
+    paragraphs, so those would miss on every run and add a constant noise floor.
+    Lines too short to form a trigram contribute nothing.
+    """
     produced = set(_trigrams(structured))
-    source_trigrams = _trigrams(source)
-    if not source_trigrams:
+    tallies = []
+    for line in source.split("\n"):
+        trigrams = _trigrams(line)
+        if not trigrams:
+            continue
+        tallies.append((sum(1 for t in trigrams if t in produced), len(trigrams)))
+    return tallies
+
+
+def trigram_recall(source: str, structured: str) -> float:
+    """Share of the source's word-trigrams that survive into the structured text.
+
+    The aggregate of `positional_recall` over the whole document — both read the
+    same tallies, so the overall score and the curve can never disagree.
+    """
+    tallies = _line_tallies(source, structured)
+    total = sum(n for _, n in tallies)
+    if not total:
         return 1.0
-    hits = sum(1 for t in source_trigrams if t in produced)
-    return hits / len(source_trigrams)
+    return sum(hits for hits, _ in tallies) / total
 
 
 def positional_recall(source: str, structured: str, *, buckets: int = 10) -> list[float]:
@@ -61,17 +82,13 @@ def positional_recall(source: str, structured: str, *, buckets: int = 10) -> lis
     means the model started condensing partway through — the failure a single
     overall score averages away.
     """
-    produced = set(_trigrams(structured))
-    lines = [ln for ln in source.split("\n") if ln.strip()]
-    tallies = [[0, 0] for _ in range(buckets)]
-    for i, line in enumerate(lines):
-        trigrams = _trigrams(line)
-        if not trigrams:
-            continue
-        slot = min(buckets - 1, buckets * i // len(lines))
-        tallies[slot][0] += sum(1 for t in trigrams if t in produced)
-        tallies[slot][1] += len(trigrams)
-    return [hits / total if total else 1.0 for hits, total in tallies]
+    tallies = _line_tallies(source, structured)
+    sums = [[0, 0] for _ in range(buckets)]
+    for i, (hits, total) in enumerate(tallies):
+        slot = min(buckets - 1, buckets * i // len(tallies))
+        sums[slot][0] += hits
+        sums[slot][1] += total
+    return [hits / total if total else 1.0 for hits, total in sums]
 
 
 # ---------------------------------------------------------------------------
