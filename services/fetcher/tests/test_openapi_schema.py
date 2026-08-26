@@ -98,9 +98,9 @@ def test_openapi_includes_problem_response_schema(monkeypatch, tmp_db_path: str)
     schema = _openapi_schema()
     components = schema.get("components") or {}
     schemas = components.get("schemas") or {}
-    assert "ProblemResponse" in schemas, (
-        f"ProblemResponse missing from openapi components.schemas; found: {sorted(schemas.keys())}"
-    )
+    assert (
+        "ProblemResponse" in schemas
+    ), f"ProblemResponse missing from openapi components.schemas; found: {sorted(schemas.keys())}"
 
 
 # Each entry: (path, method) → set of ProblemResponse-shaped status codes

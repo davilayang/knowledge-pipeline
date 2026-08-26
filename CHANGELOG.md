@@ -6,17 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.10] — 2026-08-26
+
+### Added
+
+- **Two new eval fixtures pin the rewriting failure mode.** The structure-fidelity dataset now covers cases where a model paraphrases at full volume instead of collapsing, which trigram recall alone can score as faithful.
+
 ### Changed
 
-- **The transcript structurer tries `gpt-5.6-luna` before `gpt-4.1-mini`.** Neither wins everywhere: across three transcripts the Ollama primary could not structure, luna preserved more of the source wording on two (69.4% and 59.5% against 46.7% and 56.5%) and much less on the third (50.2% against 61.1%). Ordering luna first buys the common case; keeping `gpt-4.1-mini` behind it preserves a recovery path, and it is only reached when the retention guard rejects luna's output.
+- **The structurer's collapse guard now measures surviving wording, not output length.** A model that paraphrases at constant volume passed any length check; `call_cloud_chain` now scores trigram recall via `fetcher.fidelity`, shared with the eval harness.
 
-- **The fetcher can now call gpt-5-family models at all.** `call_cloud_chain` hardcoded `temperature=0, seed=42`, which reasoning models reject with a 400; `_model_params` now sends `reasoning_effort` for them instead, mirroring the extraction path.
+- **A second guard rejects rewriting that recall alone misses.** `fidelity.long_gaps_per_10k` flags contiguous-gap density — removing filler scatters many short gaps, rewriting leaves few long ones — applied only to the transcript lane.
 
-- **The transcript guard also rejects rewriting that recall cannot see.** Removing disfluency scatters many short gaps; rewriting a passage leaves one long contiguous gap, and a heavily filler-laden talk can score 60% recall while being faithful. `fidelity.long_gaps_per_10k` counts contiguous losses of 15+ trigrams — roughly 13 consecutive words — per 10k characters, with a ceiling of 5.0 on the transcript lane — faithful outputs across the corpus sit under 3.3 and the two known rewrites at 8.7 and 22.6. Not applied to articles, where removing a nav block is a long gap and is correct. The recall floor drops to 0.5 in exchange, so the two signals catch different failures instead of one over-tight number catching neither well.
+- **Transcripts now chunk at 12,000 characters, down from 25,000.** Fidelity degrades continuously with input length rather than at a cliff.
 
-- **The structurer's collapse guard now measures wording, not length.** A model that paraphrases at constant volume passed any length check: one production transcript kept 92.5% of its length while preserving 54.8% of its source wording. `call_cloud_chain` scores trigram recall via the new `fetcher.fidelity`, shared with the eval harness so one implementation defines the number both report. Floors are 0.40 by default, 0.60 for transcripts.
+- **The transcript structurer tries `gpt-5.6-luna` before `gpt-4.1-mini`.** On rows the Ollama primary could not structure, `gpt-4.1-mini` scored below it.
 
-- **Transcripts now chunk at 12,000 characters, down from 25,000.** Fidelity falls off continuously with input length rather than at a cliff; the two hardest transcripts in the corpus score 70-80% trigram recall unsplit and 86-91% at this limit.
+- **The fetcher can now call gpt-5-family reasoning models.** They reject `temperature`, which `call_cloud_chain` hardcoded, so none could run in this lane.
 
 ---
 

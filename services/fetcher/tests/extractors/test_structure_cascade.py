@@ -340,7 +340,11 @@ async def test_gpt5_family_gets_reasoning_params_not_temperature() -> None:
 
     with patch("openai.AsyncOpenAI", return_value=client):
         await structure.call_cloud_chain(
-            "some source text", "SYS", chain=[entry], openai_key="sk", ollama_key=None,
+            "some source text",
+            "SYS",
+            chain=[entry],
+            openai_key="sk",
+            ollama_key=None,
             min_retention=0.0,
         )
 
@@ -368,14 +372,23 @@ async def test_guard_rejects_contiguous_gaps_even_when_recall_passes() -> None:
 
     with patch("openai.AsyncOpenAI", return_value=client):
         markdown, _t, _u = await structure.call_cloud_chain(
-            source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None,
+            source,
+            "SYS",
+            chain=[_openai_entry()],
+            openai_key="sk",
+            ollama_key=None,
             min_retention=0.5,
         )
         assert markdown == gappy  # recall alone accepts it
 
         with pytest.raises(structure.StructurerChainFailed) as excinfo:
             await structure.call_cloud_chain(
-                source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None,
-                min_retention=0.5, max_gaps_per_10k=5.0,
+                source,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk",
+                ollama_key=None,
+                min_retention=0.5,
+                max_gaps_per_10k=5.0,
             )
     assert "contiguous" in str(excinfo.value)

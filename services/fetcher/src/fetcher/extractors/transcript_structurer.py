@@ -51,21 +51,19 @@ _CHAIN: list[ChainEntry] = _load_chain(
 
 
 # Recall catches wholesale loss; the gap ceiling catches rewriting that recall
-# cannot see. They are set apart deliberately: a heavily disfluent talk scored
-# 59.5% recall while being the most faithful output produced for it, so a floor
-# tight enough to catch rewriting on its own would reject good work. Across the
-# transcript corpus, faithful outputs sit under 3.3 contiguous gaps per 10k
-# characters and the two known rewrites sit at 8.7 and 22.6. A gap is 15+
-# consecutive missing trigrams, which is about 13 deleted words.
+# alone can't see (see `fidelity.long_gaps_per_10k` for why raising the gap
+# threshold doesn't mean "stricter"). Thresholds set from the transcript
+# corpus: faithful outputs sit under 3.3 gaps per 10k characters, the two known
+# rewrites sit at 8.7 and 22.6, and a 59.5%-recall talk was still the most
+# faithful output produced for it -- so a recall floor alone can't catch this.
 _MIN_RETENTION = 0.5
 _MAX_GAPS_PER_10K = 5.0
 
 
 # Fidelity falls off continuously with input length rather than at a cliff, so
-# the limit is set by what recovers rather than by where collapse starts. The two
+# the limit is set by what recovers, not by where collapse starts. The two
 # hardest transcripts in the corpus score 70-80% trigram recall unsplit, 86-91%
-# at this limit, and 93% at 8,000 -- the remaining gain is not worth doubling the
-# call count.
+# at this limit, and 93% at 8,000 -- not worth doubling the call count for.
 _MAX_CHUNK_CHARS = 12_000
 
 

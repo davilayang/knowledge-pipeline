@@ -118,10 +118,8 @@ def _model_params(model: str) -> dict[str, Any]:
 
     gpt-5-family are reasoning models: they reject `temperature` with a 400 and
     take `reasoning_effort` instead. The two generations spell "lowest"
-    differently and reject each other's spelling — `gpt-5`/`gpt-5-mini` take
-    `minimal`, the dotted `gpt-5.x` take `none`. Everything else takes the
-    deterministic pair. Mirrors `workflows.extraction.three_call_openai`, which
-    solved the same problem for the extraction path.
+    differently — `gpt-5`/`gpt-5-mini` take `minimal`, the dotted `gpt-5.x`
+    take `none`. Everything else takes the deterministic pair.
     """
     if model.startswith("gpt-5"):
         return {"reasoning_effort": "none" if model.startswith("gpt-5.") else "minimal"}
@@ -143,12 +141,10 @@ def _usage_payload(
 
     `finish_reason` separates a model that chose to stop ("stop") from one cut
     off at its output cap ("length") -- a truncated structuring silently loses
-    the article's tail, and no prompt wording fixes that, so the two need
-    telling apart when output comes back shorter than the input.
+    the tail, and no prompt wording fixes that.
 
     `prompt_tokens_details.cached_tokens` may be absent on older response
-    shapes or non-cached models; returns None for missing fields rather than
-    guessing.
+    shapes or non-cached models; returns None rather than guessing.
     """
     prompt_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
     completion_tokens = getattr(usage, "completion_tokens", None) if usage is not None else None
@@ -241,14 +237,11 @@ async def call_cloud_chain(
             if not markdown:
                 raise RuntimeError("empty completion")
             # A collapsed generation is fluent and passes every other check --
-            # without this it would be written to the content-keyed cache and
-            # re-served for the whole TTL, making one bad draw permanent.
-            # Raising falls through to the next chain entry and marks the
-            # failure retryable, so the caller gets another draw.
-            # Long contiguous gaps mean passages were rewritten away; scattered
-            # short ones mean disfluency was removed, which is the job. Only the
-            # transcript lane sets this — dropping a nav block or a footer is a
-            # long gap and is correct on the article lane.
+            # without this it would be cached and re-served for the whole TTL.
+            # Raising falls through to the next chain entry for another draw.
+            # Only the transcript lane sets `max_gaps_per_10k`; see
+            # `fidelity.long_gaps_per_10k` for why it's not meaningful on the
+            # article lane, where dropping a nav block or footer is correct.
             if max_gaps_per_10k is not None:
                 gaps = long_gaps_per_10k(content, markdown)
                 if gaps > max_gaps_per_10k:

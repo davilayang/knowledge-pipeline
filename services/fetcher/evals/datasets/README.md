@@ -29,12 +29,12 @@ reads the body from the `--queue-db` given at run time.
 | `recall_floor` | transcript | Minimum acceptable trigram recall. Below it, the run reports `!! BELOW FLOOR`. |
 | `known_failing` | any | Optional note shown beside a red verdict, marking a fixture that reproduces an open bug rather than a regression. Remove it in the commit that makes the fixture pass. |
 
-**Floors are per fixture, and set below what the lane actually achieves on that
+**Floors are per fixture, set below what the lane actually achieves on that
 input — not to a single corpus-wide number.** Two of the four transcripts are
-documents the structurer finds hard: they carry 0.60 where the other two carry
-0.80, because the best output any available model produces for them is around
-69%. A uniform floor would either wave through a collapse on the easy rows or
-fail the hard ones permanently.
+hard: the best output any available model produces for them is ~69% recall,
+so their floor is 0.60 versus 0.80 for the other two. A uniform floor would
+either wave through a collapse on the easy rows or fail the hard ones
+permanently.
 
 **The four transcript fixtures.** `EnsZazeC1h4` (109,064 chars) structures faithfully
 whether chunked or not — the regression guard. `Ybrl4FYM57c` (111,640 chars)
@@ -43,10 +43,10 @@ for chunking, which recovered it to 93%.
 
 **Why a transcript fixture is here at all.** Nothing in this repo changes the
 transcript structurer — it's pinned as the **control case** for the article
-result: the same model, on one call, holds fidelity above 100,000 characters.
-That's the evidence for reading the article lane's loss as a prompt problem
-rather than a length problem, and for not chunking long article inputs. If this
-fixture ever falls below its floor, both conclusions need revisiting.
+result: the same model, on one call, holds fidelity above 100,000 characters,
+which is why the article lane's loss reads as a prompt problem rather than a
+length problem, and why long article inputs aren't chunked. If this fixture
+ever falls below its floor, both conclusions need revisiting.
 
 **Article rows are more durable than transcript rows.** `queue_items` rows never
 expire. Cache rows carry a TTL and are deleted on the first lookup after they
