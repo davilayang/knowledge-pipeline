@@ -110,6 +110,7 @@ async def test_long_transcript_is_split_into_chunks_and_rejoined(
         _make_ctx(), body, title=None, author=None
     )
 
-    assert len(sent) == 3
-    assert all(len(s) <= 25_000 for s in sent)
-    assert markdown == "[segment 1]\n\n[segment 2]\n\n[segment 3]"
+    expected = -(-len(body) // transcript_structurer._MAX_CHUNK_CHARS)
+    assert len(sent) == expected
+    assert all(len(s) <= transcript_structurer._MAX_CHUNK_CHARS for s in sent)
+    assert markdown == "\n\n".join(f"[segment {i}]" for i in range(1, expected + 1))

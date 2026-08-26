@@ -19,67 +19,16 @@ import asyncio
 import hashlib
 import json
 import os
-import re
 import sqlite3
-from collections import Counter
 from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 
 from fetcher.extractors import transcript_structurer
+from fetcher.fidelity import trigram_recall
 from fetcher.extractors._cloud_chain import ChainEntry, call_cloud_chain
 from fetcher.extractors.structure import get_chain
 from fetcher.extractors.youtube_transcript import chunks_to_markdown
-
-
-def _tokens(text: str) -> list[str]:
-    return re.sub(r"[^a-z0-9 ]", " ", text.lower()).split()
-
-
-def _trigrams(text: str) -> list[tuple[str, str, str]]:
-    t = _tokens(text)
-    return list(zip(t, t[1:], t[2:], strict=False))
-
-
-def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
-    """Per source line, (surviving trigrams, total trigrams), in document order.
-
-    Per-line counting keeps trigrams straddling a line break out of the
-    denominator — the structurer reflows paragraphs, so those would miss on
-    every run and add a constant noise floor. Lines too short for a trigram
-    contribute nothing.
-    """
-    remaining = Counter(_trigrams(structured))
-    tallies = []
-    for line in source.split("\n"):
-        trigrams = _trigrams(line)
-        if not trigrams:
-            continue
-        hits = 0
-        for trigram in trigrams:
-            # Each output occurrence is consumed by at most one source
-            # occurrence, so keeping one of five identical code blocks can't
-            # score a perfect 1.0 -- it stays blind to "kept the first,
-            # dropped the rest" otherwise.
-            if remaining[trigram] > 0:
-                remaining[trigram] -= 1
-                hits += 1
-        tallies.append((hits, len(trigrams)))
-    return tallies
-
-
-def trigram_recall(source: str, structured: str) -> float:
-    """Share of the source's word-trigrams that survive into the structured text."""
-    tallies = _line_tallies(source, structured)
-    total = sum(n for _, n in tallies)
-    if not total:
-        return 1.0
-    return sum(hits for hits, _ in tallies) / total
-
-
-# ---------------------------------------------------------------------------
-# A/B runner
-# ---------------------------------------------------------------------------
 
 
 def _load_fixtures(path: Path) -> list[dict]:

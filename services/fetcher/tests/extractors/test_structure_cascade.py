@@ -276,21 +276,23 @@ async def test_call_cloud_chain_rejects_a_collapsed_completion() -> None:
 
 async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None:
     """The two lanes have different legitimate floors, so one number cannot serve
-    both. A chrome-heavy article can honestly retain ~57% after its navigation
-    is stripped, while the transcript prompt asks for 85-115% — and a transcript
-    collapse has been observed landing at 41%, which the default floor accepts.
+    both. An article legitimately loses wording to boilerplate removal, which
+    counts against the whole-source denominator; a transcript is punctuated
+    rather than edited, so healthy rows keep 70-99% of their wording where
+    collapsed ones kept 5-54%.
     """
+    lines = [f"the speaker made point number {n} about the system" for n in range(100)]
+    source = " ".join(lines)
+    half = " ".join(lines[:50])  # roughly half the source's wording survives
+
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(
-        return_value=_mock_openai_response("x" * 410)  # 41% of a 1000-char input
-    )
-    source = "y" * 1000
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(half))
 
     with patch("openai.AsyncOpenAI", return_value=client):
         markdown, _tier, _usage = await structure.call_cloud_chain(
             source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
         )
-        assert len(markdown) == 410  # default floor accepts it
+        assert markdown == half  # the article-lane default accepts it
 
         with pytest.raises(structure.StructurerChainFailed):
             await structure.call_cloud_chain(
@@ -301,3 +303,24 @@ async def test_transcript_callers_can_demand_a_tighter_retention_floor() -> None
                 ollama_key=None,
                 min_retention=0.6,
             )
+
+
+async def test_guard_rejects_a_rewrite_that_preserves_length() -> None:
+    """A length check cannot see rewriting. One production transcript kept 92.5%
+    of its length while preserving only 54.8% of the source's wording — the
+    model paraphrased rather than punctuated, and a length-ratio guard passed it.
+    """
+    source = " ".join(f"the speaker said point number {n} in detail" for n in range(200))
+    rewrite = " ".join(f"a summary of item {n} appears here instead" for n in range(200))
+    assert abs(len(rewrite) - len(source)) / len(source) < 0.10  # same length, different words
+
+    client = MagicMock()
+    client.chat.completions.create = AsyncMock(return_value=_mock_openai_response(rewrite))
+
+    with patch("openai.AsyncOpenAI", return_value=client):
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                source, "SYS", chain=[_openai_entry()], openai_key="sk", ollama_key=None
+            )
+
+    assert "collapsed" in str(excinfo.value)

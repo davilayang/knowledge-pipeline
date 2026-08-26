@@ -23,6 +23,8 @@ from typing import Any
 
 import yaml
 
+from fetcher.fidelity import trigram_recall
+
 
 logger = logging.getLogger(__name__)
 
@@ -30,13 +32,12 @@ logger = logging.getLogger(__name__)
 _KNOWN_PROVIDERS = {"openai", "ollama"}
 
 
-# Both structurers clean text without rewriting it, so output far shorter than
-# input means the model summarised. The default sits below the article lane's
-# legitimate floor -- a chrome-heavy article can honestly retain ~57% once its
-# navigation is stripped. Transcript callers pass a tighter value: that prompt
-# asks for 85-115%, and one input has been seen collapsing to 19-41% on every
-# attempt, which this default would accept at the top of its range.
-_MIN_RETENTION = 0.35
+# Floor on trigram recall, not on length: a model that paraphrases at constant
+# volume passes any length check. The default leaves room for the article lane's
+# boilerplate removal, which counts as loss against the whole-source denominator
+# -- a chrome-heavy article legitimately scores near 57%. Transcript callers pass
+# a tighter value; see `transcript_structurer`.
+_MIN_RETENTION = 0.40
 
 
 @dataclass(frozen=True)
@@ -229,11 +230,12 @@ async def call_cloud_chain(
             # re-served for the whole TTL, making one bad draw permanent.
             # Raising falls through to the next chain entry and marks the
             # failure retryable, so the caller gets another draw.
-            if len(markdown) < min_retention * len(content):
+            recall = trigram_recall(content, markdown)
+            if recall < min_retention:
                 raise RuntimeError(
-                    f"collapsed completion: {len(markdown)} chars from {len(content)} "
-                    f"({100 * len(markdown) / len(content):.0f}% retained, "
-                    f"floor {100 * min_retention:.0f}%)"
+                    f"collapsed completion: {100 * recall:.0f}% of the source's wording "
+                    f"survived, floor {100 * min_retention:.0f}% "
+                    f"({len(content)} chars in, {len(markdown)} out)"
                 )
             usage = _usage_payload(
                 getattr(response, "usage", None),

@@ -1,8 +1,8 @@
-"""Tests for the structurer-fidelity scorer."""
+"""Tests for the shared input-vs-output fidelity scorer."""
 
 import pytest
 
-from evals.structure_fidelity import trigram_recall
+from fetcher.fidelity import trigram_recall
 
 
 def test_verbatim_copy_scores_one():

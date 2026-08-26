@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The structurer's collapse guard now measures wording, not length.** A model that paraphrases at constant volume passed any length check: one production transcript kept 92.5% of its length while preserving 54.8% of its source wording. `call_cloud_chain` scores trigram recall via the new `fetcher.fidelity`, shared with the eval harness so one implementation defines the number both report. Floors are 0.40 by default, 0.60 for transcripts.
+
+- **Transcripts now chunk at 12,000 characters, down from 25,000.** Fidelity falls off continuously with input length rather than at a cliff; the two hardest transcripts in the corpus score 70-80% trigram recall unsplit and 86-91% at this limit.
+
 ---
 
 ## [0.36.9] — 2026-08-26

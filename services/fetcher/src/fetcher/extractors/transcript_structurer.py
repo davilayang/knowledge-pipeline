@@ -50,18 +50,18 @@ _CHAIN: list[ChainEntry] = _load_chain(
 )
 
 
-# The transcript prompt asks for output within 10-15% of the input, so anything
-# near the shared default is already a collapse. One production input reproduces
-# at 19-41% on every attempt, which the shared default would accept at the top
-# of that range.
+# Transcripts are punctuated, not edited, so most of the speaker's wording should
+# survive: healthy rows score 70-99% trigram recall while collapsed ones scored
+# 5-54%. A floor of 0.6 sits in that gap.
 _MIN_RETENTION = 0.6
 
 
-# Above roughly 50k characters the model summarises instead of structuring --
-# length triggers it, not content: one production transcript retains 19-41%
-# whole and 98% as a quarter, same model, same prompt. 25k keeps every segment
-# inside the range that measured 98% on the hardest content in the corpus.
-_MAX_CHUNK_CHARS = 25_000
+# Fidelity falls off continuously with input length rather than at a cliff, so
+# the limit is set by what recovers rather than by where collapse starts. The two
+# hardest transcripts in the corpus score 70-80% trigram recall unsplit, 86-91%
+# at this limit, and 93% at 8,000 -- the remaining gain is not worth doubling the
+# call count.
+_MAX_CHUNK_CHARS = 12_000
 
 
 # Without this, each segment comes back with its own title, opening, and
