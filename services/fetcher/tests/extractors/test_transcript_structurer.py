@@ -87,3 +87,29 @@ def test_get_chain_returns_a_copy() -> None:
     chain = transcript_structurer.get_chain()
     chain.append(ChainEntry(model="x", provider="openai"))
     assert ChainEntry(model="x", provider="openai") not in transcript_structurer.get_chain()
+
+
+async def test_long_transcript_is_split_into_chunks_and_rejoined(
+    freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Above roughly 50k characters the model summarises instead of structuring:
+    one production transcript retains 19-41% whole, 56% as a half and 98% as a
+    quarter. Splitting the input keeps every segment inside the range where the
+    model transcribes rather than compresses."""
+    monkeypatch.setattr(transcript_structurer, "_PROMPT", "you are a transcript structurer")
+    sent: list[str] = []
+
+    async def fake_chain(content, prompt, **kwargs):
+        sent.append(content)
+        return f"[segment {len(sent)}]", "structurer:gemma4:31b", {}
+
+    monkeypatch.setattr(transcript_structurer, "call_cloud_chain", fake_chain)
+
+    body = "word " * 12_000  # 60,000 chars -> three segments at a 25k limit
+    markdown, _tier, _usage = await transcript_structurer.structure_transcript(
+        _make_ctx(), body, title=None, author=None
+    )
+
+    assert len(sent) == 3
+    assert all(len(s) <= 25_000 for s in sent)
+    assert markdown == "[segment 1]\n\n[segment 2]\n\n[segment 3]"
