@@ -124,11 +124,12 @@ def _ollama_entry() -> ChainEntry:
     )
 
 
-def _mock_openai_response(content: str) -> MagicMock:
+def _mock_openai_response(content: str, finish_reason: str = "stop") -> MagicMock:
     msg = MagicMock()
     msg.content = content
     choice = MagicMock()
     choice.message = msg
+    choice.finish_reason = finish_reason
     response = MagicMock()
     response.choices = [choice]
     return response
@@ -157,6 +158,10 @@ async def test_call_cloud_chain_uses_primary_entry_when_both_keys_set() -> None:
     assert usage["provider"] == "openai"
     assert usage["model"] == "gpt-4.1-mini"
     assert "duration_ms" in usage
+    # Distinguishes a model that chose to stop from one cut off at its output
+    # cap: a truncated structuring silently loses the tail of the article, and
+    # no prompt wording can fix that.
+    assert usage["finish_reason"] == "stop"
 
 
 async def test_call_cloud_chain_falls_to_ollama_on_openai_failure() -> None:

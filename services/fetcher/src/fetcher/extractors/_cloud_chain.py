@@ -114,8 +114,15 @@ def _key_for(provider: str, openai_key: str | None, ollama_key: str | None) -> s
     return None
 
 
-def _usage_payload(usage: Any, model: str, provider: str, duration_ms: float) -> dict[str, Any]:
+def _usage_payload(
+    usage: Any, model: str, provider: str, duration_ms: float, finish_reason: str | None = None
+) -> dict[str, Any]:
     """Capture per-call usage in the orchestrator's shape (tokens_in/out/cached).
+
+    `finish_reason` separates a model that chose to stop ("stop") from one cut
+    off at its output cap ("length"). A truncated structuring silently loses the
+    tail of the article, and no prompt wording can fix that -- so the two need
+    telling apart when output comes back shorter than the input.
 
     OpenAI's `prompt_tokens_details.cached_tokens` may be absent on older
     response shapes or non-cached models. Returns None for missing fields
@@ -129,6 +136,7 @@ def _usage_payload(usage: Any, model: str, provider: str, duration_ms: float) ->
         if details is not None:
             cached_tokens = getattr(details, "cached_tokens", None)
     return {
+        "finish_reason": finish_reason,
         "provider": provider,
         "model": model,
         "tokens_in": prompt_tokens,
@@ -210,7 +218,11 @@ async def call_cloud_chain(
             if not markdown:
                 raise RuntimeError("empty completion")
             usage = _usage_payload(
-                getattr(response, "usage", None), entry.model, entry.provider, duration_ms
+                getattr(response, "usage", None),
+                entry.model,
+                entry.provider,
+                duration_ms,
+                finish_reason=getattr(response.choices[0], "finish_reason", None),
             )
             logger.info(
                 "structurer chain ok: provider=%s model=%s "

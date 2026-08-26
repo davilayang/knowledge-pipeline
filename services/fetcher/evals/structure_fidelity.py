@@ -29,6 +29,8 @@ import json
 import os
 import re
 import sqlite3
+from collections import Counter
+from dataclasses import dataclass
 from pathlib import Path
 
 from fetcher.extractors._cloud_chain import call_cloud_chain
@@ -52,13 +54,23 @@ def _line_tallies(source: str, structured: str) -> list[tuple[int, int]]:
     paragraphs, so those would miss on every run and add a constant noise floor.
     Lines too short to form a trigram contribute nothing.
     """
-    produced = set(_trigrams(structured))
+    remaining = Counter(_trigrams(structured))
     tallies = []
     for line in source.split("\n"):
         trigrams = _trigrams(line)
         if not trigrams:
             continue
-        tallies.append((sum(1 for t in trigrams if t in produced), len(trigrams)))
+        hits = 0
+        for trigram in trigrams:
+            # Each output occurrence is consumed by at most one source
+            # occurrence. Without this, an output keeping one of five identical
+            # code blocks would satisfy all five and score a perfect 1.0 --
+            # blind to the "kept the first of several, dropped the rest"
+            # failure the structurer prompt exists to prevent.
+            if remaining[trigram] > 0:
+                remaining[trigram] -= 1
+                hits += 1
+        tallies.append((hits, len(trigrams)))
     return tallies
 
 
@@ -125,25 +137,59 @@ def _load_body(queue_db: Path, fixture: dict) -> str:
     return body
 
 
-async def _score_arm(prompt: str, body: str, runs: int) -> list[float]:
-    scores = []
+@dataclass(frozen=True)
+class RunResult:
+    """One structuring run: its score, a digest of the exact output, and which
+    chain entry served it.
+
+    The digest and the tier are what let a stability claim be checked. Equal
+    scores do not imply equal outputs — trigram recall is position-blind set
+    membership, so reordered or re-emphasised text scores the same. And an
+    Ollama timeout falling through to the OpenAI entry would otherwise be
+    invisible, silently making the two arms a model comparison rather than a
+    prompt comparison.
+    """
+
+    recall: float
+    digest: str
+    tier: str
+    finish_reason: str | None
+
+
+async def _score_arm(prompt: str, body: str, runs: int) -> list[RunResult]:
+    results = []
     for _ in range(runs):
-        structured, _tier, _usage = await call_cloud_chain(
+        structured, tier, usage = await call_cloud_chain(
             body,
             prompt,
             chain=get_chain(),
             openai_key=os.environ.get("OPENAI_API_KEY"),
             ollama_key=os.environ.get("OLLAMA_API_KEY"),
         )
-        scores.append(trigram_recall(body, structured))
-    return scores
+        results.append(
+            RunResult(
+                recall=trigram_recall(body, structured),
+                digest=hashlib.sha256(structured.encode()).hexdigest()[:12],
+                tier=tier,
+                finish_reason=usage.get("finish_reason"),
+            )
+        )
+    return results
 
 
-def _summarise(scores: list[float]) -> str:
-    mean = sum(scores) / len(scores)
-    if len(scores) == 1:
-        return f"{100 * mean:.1f}%"
-    return f"{100 * mean:.1f}% ({100 * min(scores):.1f}-{100 * max(scores):.1f})"
+def _mean_recall(results: list[RunResult]) -> float:
+    return sum(r.recall for r in results) / len(results)
+
+
+def _summarise(results: list[RunResult]) -> str:
+    """Render an arm as mean, range, and how many distinct outputs produced it."""
+    mean = 100 * _mean_recall(results)
+    if len(results) == 1:
+        return f"{mean:.1f}%"
+    lo = 100 * min(r.recall for r in results)
+    hi = 100 * max(r.recall for r in results)
+    distinct = len({r.digest for r in results})
+    return f"{mean:.1f}% ({lo:.1f}-{hi:.1f}, {distinct}/{len(results)} distinct)"
 
 
 async def _run(args: argparse.Namespace) -> None:
@@ -154,11 +200,24 @@ async def _run(args: argparse.Namespace) -> None:
     for fixture in fixtures:
         body = _load_body(args.queue_db, fixture)
         cand = await _score_arm(candidate, body, args.runs)
+        base: list[RunResult] = []
         line = f"{fixture['source_chars']:>7,} chars  {args.prompt.name} {_summarise(cand)}"
+        served = {r.tier for r in cand}
         if baseline is not None:
             base = await _score_arm(baseline, body, args.runs)
-            delta = 100 * (sum(cand) / len(cand) - sum(base) / len(base))
+            delta = 100 * (_mean_recall(cand) - _mean_recall(base))
             line += f"  vs {args.baseline.name} {_summarise(base)}  ({delta:+.1f}pp)"
+            served |= {r.tier for r in base}
+        # More than one chain entry served this fixture, so the arms differ by
+        # model as well as by prompt and the delta does not isolate the prompt.
+        if len(served) > 1:
+            line += f"  !! MIXED TIERS {sorted(served)}"
+        # "length" means the model hit its output cap, so the tail of the
+        # article was cut off rather than condensed by choice. No prompt wording
+        # fixes that -- it calls for chunking the input instead.
+        truncated = [r for r in cand + base if r.finish_reason == "length"]
+        if truncated:
+            line += f"  !! TRUNCATED {len(truncated)} run(s) hit the output cap"
         print(f"{line}  {fixture['url'][:60]}", flush=True)
 
 
