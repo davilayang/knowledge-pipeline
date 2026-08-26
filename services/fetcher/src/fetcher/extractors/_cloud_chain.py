@@ -32,6 +32,13 @@ logger = logging.getLogger(__name__)
 _KNOWN_PROVIDERS = {"openai", "ollama"}
 
 
+# Both structurers clean text without rewriting it, so output far shorter than
+# input means the model summarised. Set well below legitimate cleanup: the
+# chrome-heaviest article seen retains ~57% and transcripts retain 90-100%,
+# while an observed collapse returned 15-18%.
+_MIN_RETENTION = 0.35
+
+
 @dataclass(frozen=True)
 class ChainEntry:
     model: str
@@ -217,6 +224,17 @@ async def call_cloud_chain(
             markdown = (response.choices[0].message.content or "").strip()
             if not markdown:
                 raise RuntimeError("empty completion")
+            # A collapsed generation is fluent and passes every other check, so
+            # without this it would be written to the content-keyed cache and
+            # re-served for the whole TTL — one bad draw becoming permanent for
+            # that content. Raising falls through to the next chain entry and
+            # marks the failure retryable, so the caller gets another draw.
+            if len(markdown) < _MIN_RETENTION * len(content):
+                raise RuntimeError(
+                    f"collapsed completion: {len(markdown)} chars from {len(content)} "
+                    f"({100 * len(markdown) / len(content):.0f}% retained, "
+                    f"floor {100 * _MIN_RETENTION:.0f}%)"
+                )
             usage = _usage_payload(
                 getattr(response, "usage", None),
                 entry.model,

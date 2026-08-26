@@ -246,3 +246,29 @@ async def test_call_cloud_chain_threads_hint_kwargs_into_user_message() -> None:
     assert "raw paste" in user_msg["content"]
     system_msg = next(m for m in messages if m["role"] == "system")
     assert system_msg["content"] == "SYS"
+
+
+async def test_call_cloud_chain_rejects_a_collapsed_completion() -> None:
+    """A structurer that summarises instead of cleaning must not be returned.
+
+    Its output is fluent and passes every other gate, so it would be written to
+    the content-keyed cache and re-served for the whole TTL — turning one bad
+    generation into permanent damage for that URL. Raising instead lets the
+    chain fall through to the next entry and marks the failure retryable.
+    """
+    collapsing_client = MagicMock()
+    collapsing_client.chat.completions.create = AsyncMock(
+        return_value=_mock_openai_response("A short summary of the whole article.")
+    )
+
+    with patch("openai.AsyncOpenAI", return_value=collapsing_client):
+        with pytest.raises(structure.StructurerChainFailed) as excinfo:
+            await structure.call_cloud_chain(
+                "the author's actual sentences " * 200,
+                "SYS",
+                chain=[_openai_entry()],
+                openai_key="sk-openai",
+                ollama_key=None,
+            )
+
+    assert "collapsed" in str(excinfo.value)
