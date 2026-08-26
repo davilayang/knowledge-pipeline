@@ -45,10 +45,11 @@ set -a && source .env && set +a && \
 
 Article fixtures run as an A/B between the two prompts. The one transcript
 fixture runs as a **regression guard** against a floor instead: nothing here
-changes the transcript structurer, but it is the control case showing the same
-model holds fidelity on a single call at over 100,000 characters — which is why
-the article lane's loss is read as a prompt problem rather than a length
-problem. `--fetches-db` is only needed for that fixture.
+changes the transcript structurer. It shows a single call *can* hold fidelity at
+over 100,000 characters — not that one reliably does. The same endpoint has been
+observed collapsing a ~90k transcript to 15-18% of its length, where chunking
+the identical input to ~12k windows recovered 98%, so the behaviour is bimodal
+and the trigger is unidentified. `--fetches-db` is only needed for that fixture.
 
 Report the mean of at least 3 runs with its observed range, never a single run.
 The headline goes to the Knowledge OS — Eval Runs Notion database; detailed

@@ -220,11 +220,15 @@ async def _run(args: argparse.Namespace) -> None:
 
 async def _run_transcript_guard(args: argparse.Namespace, fixture: dict) -> str:
     """Regression guard for the transcript structurer, which this repo does not
-    change but which is the control case for the article result: it holds
-    fidelity on a single call at 100k+ characters, which is why the article
-    lane's loss is read as a prompt problem rather than a length problem. If
-    this ever drops below its floor, that reading — and the decision not to
-    chunk long inputs — needs revisiting.
+    change.
+
+    It shows a single call *can* hold fidelity at 100k+ characters. It does not
+    show that one reliably does: a review from `newsletter-assistant` recorded
+    the same endpoint collapsing a ~90k transcript to 15-18% of its length
+    twice, and chunking that same input to ~12k windows recovered 98%. Four
+    fresh runs here at 91k and 99k retained 87-96%, so the behaviour is
+    bimodal and the trigger is not yet identified. Treat this fixture as a
+    floor alarm on one known-good input, not as evidence that length is safe.
     """
     body = _load_transcript_body(args.fetches_db, fixture)
     results = await _score_arm(
