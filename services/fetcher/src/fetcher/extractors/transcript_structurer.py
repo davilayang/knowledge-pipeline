@@ -4,12 +4,11 @@ Takes a wall-of-text transcript markdown blob + speaker-hint context
 (title, author/show, optional date) and returns speaker-attributed,
 paragraph-shaped markdown with punctuation restored and specifics preserved.
 
-First caller: YouTube handler (auto-caption transcripts via youtube-transcript-api).
-Second caller: podcast handler (Whisper transcripts, planned, TODO #3).
-Third caller: POST /v1/structure-transcript endpoint (planned).
+Callers: YouTube handler (auto-caption transcripts), podcast handler (Whisper
+transcripts, planned), and the planned `POST /v1/structure-transcript` endpoint.
 
-Keep this module free of source-specific assumptions (no video_id, no URL,
-no oembed dependencies). Per-source plumbing belongs in handlers / endpoint.
+Keep this module free of source-specific assumptions (no video_id, no URL, no
+oembed dependencies) -- per-source plumbing belongs in handlers / endpoint.
 """
 
 import logging
@@ -58,6 +57,21 @@ _CHAIN: list[ChainEntry] = _load_chain(
 _MIN_RETENTION = 0.6
 
 
+# Above roughly 50k characters the model summarises instead of structuring --
+# length triggers it, not content: one production transcript retains 19-41%
+# whole and 98% as a quarter, same model, same prompt. 25k keeps every segment
+# inside the range that measured 98% on the hardest content in the corpus.
+_MAX_CHUNK_CHARS = 25_000
+
+
+# Without this, each segment comes back with its own title, opening, and
+# wrap-up -- concatenating them yields a document with several introductions.
+_FRAGMENT_NOTE = (
+    "\n\nThis input is one fragment of a longer transcript. Do not add a title, "
+    "an introduction, or a conclusion. Begin and end mid-conversation."
+)
+
+
 _PROMPT_PATH: Path = Path(
     os.environ.get(
         "FETCHER_TRANSCRIPT_STRUCTURER_PROMPT_PATH",
@@ -88,6 +102,46 @@ def get_prompt() -> str:
     return _PROMPT
 
 
+def _split(text: str, limit: int) -> list[str]:
+    """Split into segments of at most `limit` chars, cutting at whitespace.
+
+    Auto-caption transcripts arrive as one unbroken run of words -- no sentence
+    punctuation, and no newlines unless the source had pauses long enough for
+    `chunks_to_markdown` to insert them. So the last space before the limit is
+    the best available seam. A segment starting mid-sentence is fine -- the
+    whole transcript already looks that way to the model.
+    """
+    if len(text) <= limit:
+        return [text]
+    segments: list[str] = []
+    start = 0
+    while start < len(text):
+        if len(text) - start <= limit:
+            segments.append(text[start:])
+            break
+        cut = text.rfind(" ", start, start + limit)
+        if cut <= start:
+            cut = start + limit
+        segments.append(text[start:cut])
+        start = cut + 1
+    return segments
+
+
+def _merge_usage(usages: list[dict[str, Any]]) -> dict[str, Any]:
+    """Fold per-segment usage into one payload with the same shape as a single call."""
+    head = next((u for u in usages if u), {})
+    totals: dict[str, Any] = dict(head)
+    for field in ("tokens_in", "tokens_out", "cached_tokens", "duration_ms"):
+        values = [u.get(field) for u in usages if u and u.get(field) is not None]
+        totals[field] = sum(values) if values else None
+    reasons = {u.get("finish_reason") for u in usages if u}
+    totals["finish_reason"] = (
+        "stop" if reasons == {"stop"} else next(iter(reasons - {"stop"}), None)
+    )
+    totals["segments"] = len(usages)
+    return totals
+
+
 async def structure_transcript(
     ctx: "FetchContext",
     raw_markdown: str,
@@ -102,14 +156,26 @@ async def structure_transcript(
     Raises StructurerChainFailed when every chain entry fails or no keys are
     configured — caller decides whether to fall back to raw_markdown.
     """
-    return await call_cloud_chain(
-        raw_markdown,
-        _PROMPT,
-        chain=_CHAIN,
-        openai_key=getattr(ctx, "openai_api_key", None),
-        ollama_key=getattr(ctx, "ollama_api_key", None),
-        title=title,
-        content_date=content_date,
-        author_name=author,
-        min_retention=_MIN_RETENTION,
-    )
+    segments = _split(raw_markdown, _MAX_CHUNK_CHARS)
+    prompt = _PROMPT if len(segments) == 1 else _PROMPT + _FRAGMENT_NOTE
+
+    structured: list[str] = []
+    usages: list[dict[str, Any]] = []
+    tier = ""
+    for segment in segments:
+        # Sequential, not gathered: Ollama Cloud's concurrency limits are
+        # unknown, and a partial failure mid-gather is harder to reason about.
+        markdown, tier, usage = await call_cloud_chain(
+            segment,
+            prompt,
+            chain=_CHAIN,
+            openai_key=getattr(ctx, "openai_api_key", None),
+            ollama_key=getattr(ctx, "ollama_api_key", None),
+            title=title,
+            content_date=content_date,
+            author_name=author,
+            min_retention=_MIN_RETENTION,
+        )
+        structured.append(markdown)
+        usages.append(usage)
+    return "\n\n".join(structured), tier, _merge_usage(usages)

@@ -1,17 +1,15 @@
 """Shared cloud-chain primitives + cache-key helpers for structurer endpoints.
 
 Both `/v1/structure` (article cleanup) and the upcoming
-`/v1/structure-transcript` (YouTube/podcast transcript normalization) share:
-
-- the same OpenAI-compatible chain runner (Ollama Cloud → OpenAI fallback),
-- the same hint-prepended user-message shape (title/author/date as context),
-- the same content-keyed cache.
+`/v1/structure-transcript` (transcript normalization) share the same
+OpenAI-compatible chain runner (Ollama Cloud -> OpenAI fallback), the same
+hint-prepended user-message shape (title/author/date as context), and the same
+content-keyed cache.
 
 Lifted out of `extractors/structure.py` so the second endpoint can reuse the
-runner without duplication, and so cache-key construction has a single
-correct shape — fixes a latent under-keyed cache bug in `/v1/structure`:
-today's key omits prompt content + chain config + hint context, so editing
-`the active structurer prompt` silently fails to invalidate cache.
+runner, and so cache-key construction has one correct shape: the key covers
+prompt content, chain config, and hint context, so editing the active
+structurer prompt invalidates cache.
 """
 
 import asyncio
@@ -60,8 +58,7 @@ class StructurerChainFailed(Exception):
 class StructurerNotConfigured(StructurerChainFailed):
     """Permanent: structurer can't run because the chain config wasn't loaded
     or no provider in the chain has an API key. Distinct subclass so endpoint
-    handlers map it to 503 STRUCTURER_UNCONFIGURED via isinstance — replaces
-    the fragile substring match on ``"no api keys"``."""
+    handlers can map it to 503 STRUCTURER_UNCONFIGURED via isinstance."""
 
     def __init__(self, message: str) -> None:
         super().__init__(message, retryable=False)
@@ -129,13 +126,13 @@ def _usage_payload(
     """Capture per-call usage in the orchestrator's shape (tokens_in/out/cached).
 
     `finish_reason` separates a model that chose to stop ("stop") from one cut
-    off at its output cap ("length"). A truncated structuring silently loses the
-    tail of the article, and no prompt wording can fix that -- so the two need
+    off at its output cap ("length") -- a truncated structuring silently loses
+    the article's tail, and no prompt wording fixes that, so the two need
     telling apart when output comes back shorter than the input.
 
-    OpenAI's `prompt_tokens_details.cached_tokens` may be absent on older
-    response shapes or non-cached models. Returns None for missing fields
-    rather than guessing.
+    `prompt_tokens_details.cached_tokens` may be absent on older response
+    shapes or non-cached models; returns None for missing fields rather than
+    guessing.
     """
     prompt_tokens = getattr(usage, "prompt_tokens", None) if usage is not None else None
     completion_tokens = getattr(usage, "completion_tokens", None) if usage is not None else None
@@ -179,9 +176,9 @@ async def call_cloud_chain(
     """Try each chain entry in order.
 
     Returns (markdown, "structurer:<model>", usage_payload). The usage payload
-    carries per-call provenance (tokens_in/out/cached, duration_ms,
-    provider, model) so the cache row records it for downstream observability —
-    mirrors the orchestrator's `extraction_calls` shape.
+    carries per-call provenance (tokens_in/out/cached, duration_ms, provider,
+    model) so the cache row records it for downstream observability, mirroring
+    the orchestrator's `extraction_calls` shape.
     """
     from openai import AsyncOpenAI
 
@@ -227,11 +224,11 @@ async def call_cloud_chain(
             markdown = (response.choices[0].message.content or "").strip()
             if not markdown:
                 raise RuntimeError("empty completion")
-            # A collapsed generation is fluent and passes every other check, so
+            # A collapsed generation is fluent and passes every other check --
             # without this it would be written to the content-keyed cache and
-            # re-served for the whole TTL — one bad draw becoming permanent for
-            # that content. Raising falls through to the next chain entry and
-            # marks the failure retryable, so the caller gets another draw.
+            # re-served for the whole TTL, making one bad draw permanent.
+            # Raising falls through to the next chain entry and marks the
+            # failure retryable, so the caller gets another draw.
             if len(markdown) < min_retention * len(content):
                 raise RuntimeError(
                     f"collapsed completion: {len(markdown)} chars from {len(content)} "
@@ -286,17 +283,17 @@ def content_sha(text: str) -> str:
 
 def prompt_sha(text: str) -> str:
     """Hash of the prompt text. Use the in-memory prompt string the LLM sees,
-    not the file on disk — a hot-edited file with no restart still has the
-    process running the old prompt, so cache hits from the old prompt are
-    still semantically correct until restart re-loads the file."""
+    not the file on disk -- a hot-edited file with no restart still has the
+    process running the old prompt, so cache hits stay semantically correct
+    until restart reloads the file."""
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def chain_config_sha(chain: list[ChainEntry]) -> str:
     """Hash of the chain config in declaration order.
 
-    Includes provider/model/base_url/attempt_timeout for every entry — not just
-    the head. Reordering, swapping models, or changing per-entry knobs all
+    Includes provider/model/base_url/attempt_timeout for every entry, not just
+    the head -- reordering, swapping models, or changing per-entry knobs all
     invalidate cache.
     """
     serialised = [
@@ -323,9 +320,8 @@ def cache_key_components(
 
     Single source of truth so /v1/structure and /v1/structure-transcript stay
     consistent. The endpoint segment namespaces keys so identical content
-    routed through different endpoints can't collide. A short hash over
-    (prompt, chain, content) keeps the key compact while preserving the
-    invalidation contract.
+    routed through different endpoints can't collide; hashing (prompt, chain,
+    content) keeps the key compact while preserving the invalidation contract.
     """
     digest_input = f"{prompt_sha_value}|{chain_config_sha_value}|{content_sha_value}"
     combined = hashlib.sha256(digest_input.encode("utf-8")).hexdigest()
