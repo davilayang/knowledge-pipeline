@@ -6,17 +6,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- **Transcripts now get the transcript prior for claim tagging, whatever their genre label.** `extract_claims`'s `[reported]`/`[opinion]` prime was gated on `content_shape` — an LLM's guess at genre from a URL — while the prime handles auto-transcribed speech, a property of the medium. In production that primed 66 of 124 spoken items; the other 58 were YouTube rows the classifier called `opinion_essay`, `tutorial`, `research_summary`, `unknown`, or failed to label, and their claims were tagged as prose. The gate is now `content_type in {youtube, file_audio}`, from `classify_content_type(url)`, case-folded because a mis-cased value would skip the prime invisibly.
+## [0.36.11] — 2026-08-27
 
-  Two narrower misses remain, both needing a human override: a Notion `Content Type` of `other` on a YouTube URL skips the prime, and `raw_content_override` primes pasted prose as speech. Existing rows are not re-extracted — `prompt_label`, `_EXTRACT_CLAIMS_PROMPT_SHA` and `FETCH_EXTRACT_QUEUE_DAG_VERSION` are unchanged, so the 58 stand until `scripts/backfill_extraction_from_queue.py` runs over them.
+### Changed
 
-  **Known regression risk, measured:** on one YouTube tutorial, priming took the opinion rate from 74% to 100% — every `reported` claim became `opinion`, including plain definitions. 12 of the 58 are tutorials; the other 46 are talks and interviews, where priming is right. Whether to split "this is a transcript" from "most of what the speaker says is opinion" is open.
+- **Claim extraction now reliably primes the `[reported]`/`[opinion]` tag for spoken content.** It was gated on `content_shape`, an LLM's genre guess that silently skipped 58 of 124 production transcripts; `extract_claims.py`'s `_spoken_prime` now gates on `content_type in {youtube, file_audio}` instead.
 
-- **The extract-claims eval cohort can now see a change to the spoken prime.** Its 12 fixtures each carry `content_type` alongside `content_shape`. They previously could not: every genre label was hand-assigned and correct, so all four spoken fixtures were primed before and after, and the cohort returned an identical number for a change it could not detect. `art_13` — a written tutorial scoring 100% tagging in both recorded runs and duplicating `art_0` at ~5x the size — was replaced by `tut_qYNs80FKIVc`, a spoken tutorial. The `tutorial` pair is now one written and one spoken, so over-tagging reads as a gap between twins, and the cohort's `content_type` mix moves from 6 medium / 4 youtube to 5 / 5 against a corpus that is ~54% youtube.
+- **YouTube tutorials are now primed as speech, and can be over-tagged.** On one, priming took the opinion rate from 74% to 100%, including plain definitions; the risk concentrates in the 12 of 58 newly-primed rows that are tutorials rather than talks or interviews.
 
-  `SCHEMA_VERSION` is 2: `content_type` is required, so a v1 file fails the version check rather than dying on `KeyError`. The `TaggingJudge`'s 60-claim human gold has no spoken tutorial, so a tagging drop there is ambiguous between producer and judge until the disagreeing claims are read by hand.
+- **The extract-claims eval cohort can now detect changes to the spoken prime.** Fixtures gained a `content_type` field, and `art_13` (a written tutorial) in `extract_claims_eval.jsonl` was swapped for the spoken `tut_qYNs80FKIVc`; `SCHEMA_VERSION` bumped 1 → 2.
 
 ---
 
