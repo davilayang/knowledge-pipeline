@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.11] — 2026-08-27
+
+### Changed
+
+- **Claim extraction now reliably primes the `[reported]`/`[opinion]` tag for spoken content.** It was gated on `content_shape`, an LLM's genre guess that silently skipped 58 of 124 production transcripts; `extract_claims.py`'s `_spoken_prime` now gates on `content_type in {youtube, file_audio}` instead.
+
+- **YouTube tutorials are now primed as speech, and can be over-tagged.** On one, priming took the opinion rate from 74% to 100%, including plain definitions; the risk concentrates in the 12 of 58 newly-primed rows that are tutorials rather than talks or interviews.
+
+- **The extract-claims eval cohort can now detect changes to the spoken prime.** Fixtures gained a `content_type` field, and `art_13` (a written tutorial) in `extract_claims_eval.jsonl` was swapped for the spoken `tut_qYNs80FKIVc`; `SCHEMA_VERSION` bumped 1 → 2.
+
+---
+
 ## [0.36.10] — 2026-08-26
 
 ### Added

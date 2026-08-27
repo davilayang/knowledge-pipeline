@@ -14,7 +14,12 @@ from evals.wiki.claims.faithfulness import (
 
 def _fx(fid="art_1", shape="tutorial") -> SourceFixture:
     return SourceFixture(
-        id=fid, content_shape=shape, title="T", content_date=None, body="the source body"
+        id=fid,
+        content_shape=shape,
+        content_type="medium",
+        title="T",
+        content_date=None,
+        body="the source body",
     )
 
 
@@ -40,7 +45,7 @@ class _FakeJudge:
         return _FakeScore(claims=claims, grounded_fraction=grounded)
 
 
-def _fake_extract_claims(item, *, content_shape=None):
+def _fake_extract_claims(item, *, content_type=None):
     summary = ClaimSet(
         item_id=item.item_id,
         content_date=None,

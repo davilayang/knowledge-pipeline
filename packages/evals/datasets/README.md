@@ -283,9 +283,36 @@ script.
 ## `extract_claims_eval.jsonl`
 
 Pinned cohort for the extract-claims producer eval (`evals.wiki.claims`).
-Header `schema_version=1`, `fixture_kind="extract_claims"`; rows are
-`{id, content_shape, title, content_date, body}`. Loaded by
+Header `schema_version=2`, `fixture_kind="extract_claims"`; rows are
+`{id, content_shape, content_type, title, content_date, body}`. Loaded by
 `evals.wiki.claims.dataset.load_source_fixtures`.
+
+`content_type` is required — the loader reads `r["content_type"]`, so a row copied
+from the v0 shape below raises `KeyError`. It decides whether a fixture receives the
+transcript `[opinion]` prime, so a blank or mis-cased value silently scores an
+unprimed cohort. `content_shape` is the per-genre reporting stratification only.
+
+### v1 (2026-08-26) — one tutorial swapped written → spoken
+
+**Still 12 sources, 2 per content shape**; `content_type` added to every row
+(5 medium / 5 youtube / 2 arxiv, against a corpus that is ~54% youtube).
+
+`art_13` (a written Medium tutorial) was replaced by `tut_qYNs80FKIVc`, a spoken
+IBM Technology tutorial taken verbatim from production. The v0 cohort could not see
+a change to the transcript prime's gate at all: every fixture's genre label was
+hand-assigned and correct, so all four spoken fixtures were primed identically
+before and after. `art_13` was the cheapest thing to lose — 100% tagging accuracy in
+both recorded runs, and a duplicate of `art_0` at ~5x the size.
+
+The `tutorial` pair is now one written (unprimed) and one spoken (primed), so
+over-tagging on instructional content reads as a **gap between the two fixtures**.
+Compare the per-fixture lines, not the `tutorial` stratum mean — that mean now
+averages across the treatment boundary and is not comparable to pre-v1 runs.
+
+Not yet established: the new fixture has not been scored, and the `TaggingJudge`'s
+60-claim gold (`extract_claims_tagging_gold.jsonl`) samples six sources whose
+tutorial representative is *written*, so a tagging drop on the spoken tutorial is
+ambiguous between producer and judge until the disagreements are read by hand.
 
 ### v0 (2026-06-30) — bootstrap
 

@@ -7,6 +7,7 @@ from typing import Any
 import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
+from workflows.wiki_synthesis.extract_claims import SPOKEN_CONTENT_TYPES
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
 from workflows.wiki_synthesis.extract_entities import render_candidates
@@ -71,7 +72,7 @@ def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
 
     `item_id` is the canonical URL (the content's stable identity), falling back
     to the captured URL; title/author/content_date come from the persisted
-    fetcher metadata, and the body is `raw_content`. `content_shape` is read
+    fetcher metadata, and the body is `raw_content`. `content_type` is read
     separately by the asset (it is not an IngestItem field).
 
     Note the key choice: source summaries are keyed by `canonical_url`, not the
@@ -486,7 +487,7 @@ def publish_item(
     description=_oneline(
         """
         Extracts claims from the fetched body into per-source [reported]/[opinion] claims
-        (content-shape-aware) and records it as a extract_claims extraction_calls
+        (primed for transcripts by content_type) and records it as a extract_claims extraction_calls
         row — the attributed-lane wiki substrate. Skips when no body is fetched.
         """
     ),
@@ -501,8 +502,8 @@ def extract_claims(
         return dg.MaterializeResult(metadata={"summary_skipped": dg.MetadataValue.bool(True)})
 
     item = _ingest_item_from_row(row)
-    content_shape = row.get("content_shape") or "unknown"
-    summary, call = run_extract_claims(item, content_shape=content_shape)
+    content_type = (row.get("content_type") or "").lower()
+    summary, call = run_extract_claims(item, content_type=content_type)
     store.record_claims(
         notion_page_id=page_id,
         output=render_claims(summary),
@@ -513,14 +514,17 @@ def extract_claims(
         tokens_out=call.output_tokens,
     )
     opinion = sum(c.speculative for c in summary.claims)
+    primed = content_type in SPOKEN_CONTENT_TYPES
     return dg.MaterializeResult(
         metadata={
             "item_id": dg.MetadataValue.text(item.item_id),
-            "content_shape": dg.MetadataValue.text(content_shape),
+            "content_type": dg.MetadataValue.text(content_type or "(none)"),
+            "spoken_prime": dg.MetadataValue.bool(primed),
             "claims": dg.MetadataValue.int(len(summary.claims)),
             "opinion": dg.MetadataValue.int(opinion),
             "summary": dg.MetadataValue.md(
-                f"**{len(summary.claims)} claims** ({opinion} opinion) — {content_shape}"
+                f"**{len(summary.claims)} claims** ({opinion} opinion) — "
+                f"{content_type or 'unknown'}{', spoken prime' if primed else ''}"
             ),
         }
     )

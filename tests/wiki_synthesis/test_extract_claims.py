@@ -11,6 +11,7 @@ message layout (so the article stays cache-aligned with extract_entities).
 from datetime import date
 from unittest.mock import patch
 
+import pytest
 from domains.types import IngestItem
 from domains.wiki.claims import SourceClaim
 from workflows.llm import LLMCall
@@ -97,25 +98,9 @@ def test_none_response_yields_an_empty_summary_not_an_error(caplog):
     assert not [r for r in caplog.records if r.levelname == "WARNING"]
 
 
-def test_spoken_content_shape_primes_the_task():
-    captured = {}
-
-    def fake(messages, *, model, temperature):
-        captured["messages"] = messages
-        return _call("- [opinion] The speaker predicts X.")
-
-    with patch(
-        "workflows.wiki_synthesis.extract_claims.generate_messages_with_usage", side_effect=fake
-    ):
-        extract_claims(_item(), content_shape="podcast_episode")
-
-    # The spoken prime rides in the task tail (last message), not the shared prefix.
-    # Assert a marker UNIQUE to the prime (the general claim rules already mention
-    # "prediction" for every shape, so that word can't distinguish primed calls).
-    assert "most of what the speaker says" in captured["messages"][-1]["content"].lower()
-
-
-def test_text_content_shape_does_not_prime():
+def _task_tail(content_type: str | None) -> str:
+    """Run extract_claims against a stubbed LLM; return the last message, where the
+    spoken prime rides."""
     captured = {}
 
     def fake(messages, *, model, temperature):
@@ -125,9 +110,29 @@ def test_text_content_shape_does_not_prime():
     with patch(
         "workflows.wiki_synthesis.extract_claims.generate_messages_with_usage", side_effect=fake
     ):
-        extract_claims(_item(), content_shape="opinion_essay")
+        extract_claims(_item(), content_type=content_type)
+    return captured["messages"][-1]["content"].lower()
 
-    assert "most of what the speaker says" not in captured["messages"][-1]["content"].lower()
+
+# Asserted rather than "prediction", which the general claim rules use for every
+# source and so cannot distinguish a primed call from an unprimed one.
+_PRIME_MARKER = "most of what the speaker says"
+
+
+@pytest.mark.parametrize("content_type", ["youtube", "file_audio"])
+def test_spoken_content_type_primes_the_task(content_type):
+    assert _PRIME_MARKER in _task_tail(content_type)
+
+
+@pytest.mark.parametrize("content_type", ["medium", "article", "arxiv", "github", None])
+def test_text_content_type_does_not_prime(content_type):
+    assert _PRIME_MARKER not in _task_tail(content_type)
+
+
+@pytest.mark.parametrize("content_type", ["YouTube", "YOUTUBE", "File_Audio"])
+def test_content_type_is_case_folded_before_the_gate(content_type):
+    """A skipped prime is invisible in the output, so the fold is a guard."""
+    assert _PRIME_MARKER in _task_tail(content_type)
 
 
 def test_malformed_response_with_no_tags_logs_a_warning(caplog):
