@@ -15,7 +15,7 @@ from evals.core.fixtures import load_fixtures
 # dataset.py → extract_claims → wiki → evals → src → evals(pkg) → datasets/.
 DATASET_PATH = Path(__file__).resolve().parents[4] / "datasets" / "extract_claims_eval.jsonl"
 
-SCHEMA_VERSION = 1
+SCHEMA_VERSION = 2
 
 
 @dataclass(frozen=True)

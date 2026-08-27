@@ -72,7 +72,7 @@ def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
 
     `item_id` is the canonical URL (the content's stable identity), falling back
     to the captured URL; title/author/content_date come from the persisted
-    fetcher metadata, and the body is `raw_content`. `content_shape` is read
+    fetcher metadata, and the body is `raw_content`. `content_type` is read
     separately by the asset (it is not an IngestItem field).
 
     Note the key choice: source summaries are keyed by `canonical_url`, not the
@@ -487,7 +487,7 @@ def publish_item(
     description=_oneline(
         """
         Extracts claims from the fetched body into per-source [reported]/[opinion] claims
-        (content-shape-aware) and records it as a extract_claims extraction_calls
+        (primed for transcripts by content_type) and records it as a extract_claims extraction_calls
         row — the attributed-lane wiki substrate. Skips when no body is fetched.
         """
     ),
@@ -502,10 +502,8 @@ def extract_claims(
         return dg.MaterializeResult(metadata={"summary_skipped": dg.MetadataValue.bool(True)})
 
     item = _ingest_item_from_row(row)
-    # Lower-cased because the prime silently stops firing on a case mismatch, and a
-    # missing prime is invisible in the output — the failure this gate was moved to fix.
     content_type = (row.get("content_type") or "").lower()
-    summary, call = run_extract_claims(item, content_type=content_type)
+    summary, call = run_extract_claims(item, content_type=content_type)  # folds case itself
     store.record_claims(
         notion_page_id=page_id,
         output=render_claims(summary),

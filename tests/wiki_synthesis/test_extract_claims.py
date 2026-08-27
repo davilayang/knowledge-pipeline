@@ -130,15 +130,11 @@ def test_text_content_type_does_not_prime(content_type):
     assert _PRIME_MARKER not in _task_tail(content_type)
 
 
-def test_youtube_primes_even_when_the_genre_classifier_was_wrong():
-    """The reason this gate moved off content_shape.
-
-    58 of 124 spoken production items carried a genre label of `opinion_essay`,
-    `tutorial`, `research_summary`, `unknown` or nothing at all, and so never
-    received the transcript prior. content_type is set by the fetcher's handler
-    registry rather than guessed from a URL, so a YouTube row is primed whatever
-    a genre classifier would have called it."""
-    assert _PRIME_MARKER in _task_tail("youtube")
+@pytest.mark.parametrize("content_type", ["YouTube", "YOUTUBE", "File_Audio"])
+def test_content_type_is_case_folded_before_the_gate(content_type):
+    """A case mismatch would skip the prime, and a skipped prime is invisible in the
+    output — so the case fold is the guard, not an incidental tidy-up."""
+    assert _PRIME_MARKER in _task_tail(content_type)
 
 
 def test_malformed_response_with_no_tags_logs_a_warning(caplog):

@@ -95,9 +95,9 @@ def _extract_one(queue_db: Path, pid: str) -> tuple[int, int]:
     prompt-cache the claims call primes — matching the asset's shared prefix."""
     row = get_row(db_path=queue_db, notion_page_id=pid)
     item = _ingest_item(row)
-    content_shape = row.get("content_shape") or "unknown"
+    content_type = row.get("content_type") or ""
 
-    claim_set, claim_call = run_extract_claims(item, content_shape=content_shape)
+    claim_set, claim_call = run_extract_claims(item, content_type=content_type)
     claims_doc = render_claims(claim_set)
     record_claims(
         db_path=queue_db,
