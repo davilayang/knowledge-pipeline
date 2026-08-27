@@ -37,7 +37,7 @@ def run_source(
     fx, *, extract_claims_fn: Callable, faithfulness_judge: Any, tagging_judge: Any
 ) -> SourceResult:
     """Extract claims from one fixture, then score faithfulness + tagging over its claims."""
-    claim_set, _ = extract_claims_fn(fixture_to_item(fx), content_shape=fx.content_shape)
+    claim_set, _ = extract_claims_fn(fixture_to_item(fx), content_type=fx.content_type)
     page = "\n".join(f"- {c.text}" for c in claim_set.claims)
     fs = faithfulness_judge.score(page=page, sources=[fx.body])
     ts = tagging_judge.score(claims=claim_set.claims, source=fx.body)

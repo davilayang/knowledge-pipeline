@@ -23,24 +23,31 @@ logger = logging.getLogger(__name__)
 
 EXTRACT_CLAIMS_MODEL = "gpt-4.1-mini"
 
-# Spoken content shapes (triage taxonomy). A long transcript's claims are mostly
-# the speaker's opinions / forecasts; without this prior the model defaults most
-# of them to [reported] at extraction scale, so the prompt's tag rule under-fires.
-SPOKEN_SHAPES = frozenset({"conference_talk", "podcast_episode"})
+# Content types whose body is a transcript of someone talking. A long transcript's
+# claims are mostly the speaker's opinions / forecasts; without this prior the model
+# defaults most of them to [reported] at extraction scale, so the prompt's tag rule
+# under-fires.
+#
+# Gated on content_type rather than on a genre label because "is this a transcript"
+# is a property of the medium, and content_type is decided by the fetcher's handler
+# registry rather than inferred. The genre-label version of this gate primed only 66
+# of 124 spoken production items: the other 58 were YouTube rows a URL-only
+# classifier had called opinion_essay, tutorial, research_summary or nothing.
+SPOKEN_CONTENT_TYPES = frozenset({"youtube", "file_audio"})
 
-_SHAPE_DESC = {
-    "conference_talk": "a recorded conference talk — a speaker presenting to an audience",
-    "podcast_episode": "a podcast episode — a conversational interview",
+_SPOKEN_DESC = {
+    "youtube": "a video transcript — a talk, interview or presentation",
+    "file_audio": "an audio transcript — a podcast or recorded conversation",
 }
 
 
-def _shape_prime(content_shape: str | None) -> str:
-    """Leading prompt block that sets the [reported]/[opinion] prior for spoken
-    sources; empty for text shapes (article / paper), which need no prior."""
-    if content_shape not in SPOKEN_SHAPES:
+def _spoken_prime(content_type: str | None) -> str:
+    """Leading prompt block that sets the [reported]/[opinion] prior for transcripts;
+    empty for written sources (article / paper), which need no prior."""
+    if content_type not in SPOKEN_CONTENT_TYPES:
         return ""
     return (
-        f"This source is {_SHAPE_DESC[content_shape]}, and may be auto-transcribed. "
+        f"This source is {_SPOKEN_DESC[content_type]}, and may be auto-transcribed. "
         "Most of what the speaker says is opinion, prediction, vision, or "
         "recommendation — tag those [opinion]. Reserve [reported] for concrete past "
         "events, releases, and measured numbers.\n\n"
@@ -71,20 +78,20 @@ def _drop_unresolvable_citations(claims: list[SourceClaim], *, n_units: int) -> 
 
 
 def extract_claims(
-    item: IngestItem, *, content_shape: str | None = None
+    item: IngestItem, *, content_type: str | None = None
 ) -> tuple[ClaimSet, LLMCall]:
     """Extract claims from one source into a ClaimSet of tagged claims.
 
-    `content_shape` (triage taxonomy) primes the [reported]/[opinion] tagging for
-    spoken sources; None or a text shape leaves the prompt unprimed. A `NONE`
-    response (no recordable claim) parses to zero claims — a valid outcome, not
-    an error."""
+    `content_type` primes the [reported]/[opinion] tagging for transcript sources
+    (see SPOKEN_CONTENT_TYPES); None or a written type leaves the prompt unprimed.
+    A `NONE` response (no recordable claim) parses to zero claims — a valid
+    outcome, not an error."""
     # Shared-prefix layout: the system + article envelope are byte-identical to the
     # downstream extract_entities call (built by the same shared_prefix_messages),
     # so the article prompt-caches across the two extract-time reads. Only this
     # claims task tail differs. The spoken-source [reported]/[opinion] prime rides
     # in the task tail (not the shared prefix) so it cannot vary the cached bytes.
-    task = EXTRACT_CLAIMS_TASK.format(shape_prime=_shape_prime(content_shape))
+    task = EXTRACT_CLAIMS_TASK.format(shape_prime=_spoken_prime(content_type))
     messages = shared_prefix_messages(item, task)
     # temperature=0: claim extraction is faithful capture, so pin the model to
     # its lowest-variance output for more reproducible summaries + evals. (The

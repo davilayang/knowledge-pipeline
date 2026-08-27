@@ -52,7 +52,7 @@ def score_faithfulness(
     fx: SourceFixture, *, extract_claims_fn: Callable, judge: Any
 ) -> SourceFaithfulness:
     """Extract claims from one source, then judge each claim against the source body."""
-    claim_set, _ = extract_claims_fn(fixture_to_item(fx), content_shape=fx.content_shape)
+    claim_set, _ = extract_claims_fn(fixture_to_item(fx), content_type=fx.content_type)
     page = "\n".join(f"- {c.text}" for c in claim_set.claims)
     fscore = judge.score(page=page, sources=[fx.body])
     return SourceFaithfulness(

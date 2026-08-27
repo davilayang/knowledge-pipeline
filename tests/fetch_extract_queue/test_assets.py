@@ -753,7 +753,7 @@ def test_published_fails_when_no_row(tmp_path: Path):
 # -------- extract_claims --------
 
 
-def test_extract_claims_records_summary_and_passes_content_shape(tmp_path: Path):
+def test_extract_claims_records_summary_and_passes_lowercased_content_type(tmp_path: Path):
     from domains.wiki.claims import (
         ClaimSet,
         SourceClaim,
@@ -777,8 +777,8 @@ def test_extract_claims_records_summary_and_passes_content_shape(tmp_path: Path)
     )
     captured = {}
 
-    def fake_summarize(item, *, content_shape=None):
-        captured["content_shape"] = content_shape
+    def fake_summarize(item, *, content_type=None):
+        captured["content_type"] = content_type
         captured["item_id"] = item.item_id
         return summary, LLMCall(content="x", model="gpt-4.1-mini", input_tokens=10, output_tokens=5)
 
@@ -789,7 +789,9 @@ def test_extract_claims_records_summary_and_passes_content_shape(tmp_path: Path)
         result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
 
     assert result.success
-    assert captured["content_shape"] == "podcast_episode"
+    # Seeded as "YouTube" — lower-cased on the way through, since a case mismatch
+    # would silently skip the transcript prime rather than fail.
+    assert captured["content_type"] == "youtube"
     assert captured["item_id"] == "https://example.com/x"
     assert store.get_claims("p-1") == render_claims(summary)
 

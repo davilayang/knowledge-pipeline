@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Transcripts now get the transcript prior for claim tagging, whatever their genre label.** `extract_claims`'s `[reported]`/`[opinion]` prime was gated on `content_shape` (`conference_talk` / `podcast_episode`) — an LLM's guess at genre from a URL — while the prime's purpose is to handle auto-transcribed speech, a property of the medium. In production that primed 66 of 124 spoken items; the other 58 were YouTube rows the classifier had called `opinion_essay`, `tutorial`, `research_summary`, `unknown`, or had failed to label, and their claims were tagged as though they were prose. The gate is now `content_type in {youtube, file_audio}`, set by the fetcher's handler registry rather than inferred, and lower-cased on read so a case mismatch cannot silently skip the prime.
+
+- **The extract-claims eval cohort can now see a change to the spoken prime.** Its 12 fixtures each carry `content_type` (which gates the prime) alongside `content_shape` (retained as the reporting stratification). They previously could not: every fixture's genre label was hand-assigned and correct, so all four spoken ones were primed before and after, and the cohort returned an identical number for a change it could not detect. `art_13` — a written tutorial that scored 100% tagging accuracy in both recorded runs and duplicated `art_0` at five times the size — was replaced by `tut_qYNs80FKIVc`, a spoken IBM Technology tutorial. The `tutorial` pair is now one written and one spoken, so over-tagging shows up as a gap between twins, and the cohort's `content_type` mix moves from 6 medium / 4 youtube to 5 / 5 against a corpus that is 53% youtube.
+
+  The prime's effect on spoken instructional content is **not yet measured** — the new fixture has not been run. Note also that the `TaggingJudge`'s 60-claim human calibration gold covers six sources whose tutorial representative is written, so the judge itself is unvalidated on spoken tutorials; a tagging drop there would be ambiguous between producer and judge until the disagreeing claims are read by hand.
+
 ---
 
 ## [0.36.10] — 2026-08-26

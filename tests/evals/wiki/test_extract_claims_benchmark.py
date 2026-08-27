@@ -12,7 +12,14 @@ from evals.wiki.claims.dataset import SourceFixture
 
 
 def _fx(fid="art_1", shape="tutorial"):
-    return SourceFixture(id=fid, content_shape=shape, title="T", content_date=None, body="body")
+    return SourceFixture(
+        id=fid,
+        content_shape=shape,
+        content_type="medium",
+        title="T",
+        content_date=None,
+        body="body",
+    )
 
 
 class _FaithJudge:
@@ -32,7 +39,7 @@ class _TagJudge:
         return TaggingScore(verdicts=[], accuracy=1.0)
 
 
-def _extract_claims(item, *, content_shape=None):
+def _extract_claims(item, *, content_type=None):
     s = ClaimSet(
         item_id=item.item_id,
         content_date=None,

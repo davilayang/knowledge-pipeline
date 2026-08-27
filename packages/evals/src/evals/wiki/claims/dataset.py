@@ -21,10 +21,15 @@ SCHEMA_VERSION = 1
 @dataclass(frozen=True)
 class SourceFixture:
     """One pinned source: the real fetched/transcribed body the source writer
-    produces claims from, plus the triage `content_shape` it would be primed with."""
+    produces claims from, plus both label axes it carries.
+
+    `content_type` is what actually gates the transcript [reported]/[opinion] prime.
+    `content_shape` is the genre label, retained here as a reporting stratification
+    so per-genre scores stay comparable with earlier runs."""
 
     id: str
     content_shape: str
+    content_type: str
     title: str
     content_date: str | None
     body: str
@@ -37,6 +42,7 @@ def load_source_fixtures(path: Path = DATASET_PATH) -> list[SourceFixture]:
         SourceFixture(
             id=r["id"],
             content_shape=r["content_shape"],
+            content_type=r["content_type"],
             title=r["title"],
             content_date=r.get("content_date"),
             body=r["body"],
