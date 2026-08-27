@@ -789,8 +789,7 @@ def test_extract_claims_records_summary_and_passes_lowercased_content_type(tmp_p
         result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
 
     assert result.success
-    # Seeded as "YouTube" — lower-cased on the way through, since a case mismatch
-    # would silently skip the transcript prime rather than fail.
+    # Seeded as "YouTube"; lower-cased on the way through.
     assert captured["content_type"] == "youtube"
     assert captured["item_id"] == "https://example.com/x"
     assert store.get_claims("p-1") == render_claims(summary)

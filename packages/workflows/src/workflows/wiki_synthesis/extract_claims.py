@@ -23,24 +23,14 @@ logger = logging.getLogger(__name__)
 
 EXTRACT_CLAIMS_MODEL = "gpt-4.1-mini"
 
-# Content types whose body is a transcript of someone talking. A long transcript's
-# claims are mostly the speaker's opinions / forecasts; without this prior the model
-# defaults most of them to [reported] at extraction scale, so the prompt's tag rule
-# under-fires.
+# Content types whose body is a transcript. A transcript's claims are mostly the
+# speaker's opinions / forecasts, and without this prior the model defaults them to
+# [reported]. Gated on content_type (URL pattern-matching) rather than on a genre
+# label, which is a model's reading of the page: the genre gate primed only 66 of 124
+# spoken production rows.
 #
-# Gated on content_type rather than on a genre label because "is this a transcript"
-# is a property of the medium. content_type comes from `classify_content_type(url)` —
-# pattern-matching on the URL, the same classification the fetcher's handler registry
-# routes on — so unlike a genre label it is not a model's reading of the page. The
-# genre-label version of this gate primed only 66 of 124 spoken production items: the
-# other 58 were YouTube rows the genre classifier had called opinion_essay, tutorial,
-# research_summary, or had failed to label at all.
-#
-# Two ways it can still be wrong, both requiring a human to have overridden something:
-# triage takes a Notion `Content Type` override ahead of the URL classifier, so a
-# YouTube URL marked `other` gets a transcript body with no prime; and
-# `raw_content_override` ("Use page body") stores pasted prose against a YouTube URL,
-# which is primed as though it were speech.
+# Still misses when a human overrides: a Notion `Content Type` of `other` on a YouTube
+# URL skips the prime, and `raw_content_override` primes pasted prose as speech.
 SPOKEN_CONTENT_TYPES = frozenset({"youtube", "file_audio"})
 
 _SPOKEN_DESC = {
@@ -50,11 +40,9 @@ _SPOKEN_DESC = {
 
 
 def _spoken_prime(content_type: str | None) -> str:
-    """Leading prompt block that sets the [reported]/[opinion] prior for transcripts;
-    empty for written sources (article / paper), which need no prior.
-
-    Case-folds first: a caller passing "YouTube" would otherwise skip the prime, and a
-    skipped prime is invisible in the output — the failure this gate exists to fix."""
+    """Leading prompt block setting the [reported]/[opinion] prior for transcripts;
+    empty for written sources. Case-folded because a mis-cased value would skip the
+    prime, and a skipped prime is invisible in the output."""
     content_type = (content_type or "").lower()
     if content_type not in SPOKEN_CONTENT_TYPES:
         return ""
@@ -94,10 +82,9 @@ def extract_claims(
 ) -> tuple[ClaimSet, LLMCall]:
     """Extract claims from one source into a ClaimSet of tagged claims.
 
-    `content_type` primes the [reported]/[opinion] tagging for transcript sources
-    (see SPOKEN_CONTENT_TYPES); None or a written type leaves the prompt unprimed.
-    A `NONE` response (no recordable claim) parses to zero claims — a valid
-    outcome, not an error."""
+    `content_type` primes the [reported]/[opinion] tagging for transcripts (see
+    SPOKEN_CONTENT_TYPES); a written type leaves the prompt unprimed. A `NONE`
+    response (no recordable claim) parses to zero claims — valid, not an error."""
     # Shared-prefix layout: the system + article envelope are byte-identical to the
     # downstream extract_entities call (built by the same shared_prefix_messages),
     # so the article prompt-caches across the two extract-time reads. Only this

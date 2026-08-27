@@ -20,12 +20,9 @@ SCHEMA_VERSION = 2
 
 @dataclass(frozen=True)
 class SourceFixture:
-    """One pinned source: the real fetched/transcribed body the source writer
-    produces claims from, plus both label axes it carries.
-
-    `content_type` is what actually gates the transcript [reported]/[opinion] prime.
-    `content_shape` is the genre label, retained here as a reporting stratification
-    so per-genre scores stay comparable with earlier runs."""
+    """One pinned source: the real fetched/transcribed body the source writer produces
+    claims from. `content_type` gates the transcript prime; `content_shape` is the genre
+    label, kept as the per-genre reporting stratification."""
 
     id: str
     content_shape: str

@@ -99,8 +99,8 @@ def test_none_response_yields_an_empty_summary_not_an_error(caplog):
 
 
 def _task_tail(content_type: str | None) -> str:
-    """Run extract_claims against a stubbed LLM and return the task-tail message —
-    the last message, which is where the spoken prime rides."""
+    """Run extract_claims against a stubbed LLM; return the last message, where the
+    spoken prime rides."""
     captured = {}
 
     def fake(messages, *, model, temperature):
@@ -114,9 +114,8 @@ def _task_tail(content_type: str | None) -> str:
     return captured["messages"][-1]["content"].lower()
 
 
-# The prime's marker phrase. Asserted rather than the word "prediction", which the
-# general claim rules already use for every source and so cannot distinguish a
-# primed call from an unprimed one.
+# Asserted rather than "prediction", which the general claim rules use for every
+# source and so cannot distinguish a primed call from an unprimed one.
 _PRIME_MARKER = "most of what the speaker says"
 
 
@@ -132,8 +131,7 @@ def test_text_content_type_does_not_prime(content_type):
 
 @pytest.mark.parametrize("content_type", ["YouTube", "YOUTUBE", "File_Audio"])
 def test_content_type_is_case_folded_before_the_gate(content_type):
-    """A case mismatch would skip the prime, and a skipped prime is invisible in the
-    output — so the case fold is the guard, not an incidental tidy-up."""
+    """A skipped prime is invisible in the output, so the fold is a guard."""
     assert _PRIME_MARKER in _task_tail(content_type)
 
 

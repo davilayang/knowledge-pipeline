@@ -503,7 +503,7 @@ def extract_claims(
 
     item = _ingest_item_from_row(row)
     content_type = (row.get("content_type") or "").lower()
-    summary, call = run_extract_claims(item, content_type=content_type)  # folds case itself
+    summary, call = run_extract_claims(item, content_type=content_type)
     store.record_claims(
         notion_page_id=page_id,
         output=render_claims(summary),

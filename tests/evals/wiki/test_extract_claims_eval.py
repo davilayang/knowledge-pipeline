@@ -8,9 +8,8 @@ from evals.wiki.claims.dataset import (
     load_source_fixtures,
 )
 
-# Pinned literals rather than an import: the canonical taxonomy lives in
-# `orchestrators.defs.triage_knowledge_queue.classify`, and `evals` sits below
-# `orchestrators` in the dependency order, so it must not import from it.
+# Pinned rather than imported: the taxonomy lives in orchestrators, which sits above
+# evals in the dependency order.
 CONTENT_TYPES = {
     "article",
     "youtube",
@@ -41,18 +40,16 @@ def test_load_source_fixtures_returns_typed_nonempty_rows():
 
 
 def test_every_fixture_carries_a_real_content_type():
-    """content_type gates the transcript [opinion] prime. A blank or mis-cased value
-    would load, run, and silently score an unprimed cohort — the same invisible skip
-    the prime's gate was moved to fix."""
+    """A blank or mis-cased content_type would load, run, and silently score an
+    unprimed cohort."""
     fixtures = load_source_fixtures(DATASET_PATH)
     assert [f.id for f in fixtures if f.content_type not in CONTENT_TYPES] == []
 
 
 def test_the_tutorial_pair_is_one_written_and_one_spoken():
-    """The cohort was blind to a change in the prime's gate until this pair was split:
-    with every fixture's genre label correct, no fixture's priming ever varied. Keeping
-    one written and one spoken tutorial is what makes over-tagging on instructional
-    content readable as a gap between twins."""
+    """With every genre label correct, no fixture's priming varied and the cohort was
+    blind to gate changes. This pair splits written from spoken so over-tagging on
+    instructional content reads as a gap between twins."""
     tutorials = [f for f in load_source_fixtures(DATASET_PATH) if f.content_shape == "tutorial"]
     assert sorted(f.content_type for f in tutorials) == ["medium", "youtube"]
 
