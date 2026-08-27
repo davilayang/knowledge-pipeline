@@ -26,7 +26,7 @@ from domains.wiki.identity import Candidate
 from domains.wiki.types import EntityType
 
 from workflows.llm import LLMCall, generate_messages_with_usage
-from workflows.wiki_synthesis.extract_shared import shared_prefix_messages
+from workflows.wiki_synthesis.extract_shared import EXTRACT_CACHE_KEY, shared_prefix_messages
 from workflows.wiki_synthesis.prompts import EXTRACT_ENTITIES_TASK
 
 logger = logging.getLogger(__name__)
@@ -164,7 +164,9 @@ def extract_entities(
     claim_block = "\n".join(f"- {c.text}" for c in claims.claims) or "(no claims extracted)"
     task = EXTRACT_ENTITIES_TASK.format(claims=claim_block)
     messages = shared_prefix_messages(item, task)
-    call = generate_messages_with_usage(messages, model=model, temperature=0)
+    call = generate_messages_with_usage(
+        messages, model=model, temperature=0, prompt_cache_key=EXTRACT_CACHE_KEY
+    )
     if call.finish_reason == "length":
         # The model hit the output-token cap — for this call shape that only
         # happens when it degenerated into a repetition loop, emitting hundreds

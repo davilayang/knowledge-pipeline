@@ -70,7 +70,7 @@ def test_uses_shared_prefix_layout():
     # the differing tail. The article body lives in the envelope, not the task.
     captured = {}
 
-    def fake(messages, *, model, temperature):
+    def fake(messages, *, model, temperature, **_):
         captured["messages"] = messages
         return _call("- [reported] X shipped.")
 
@@ -103,7 +103,7 @@ def _task_tail(content_type: str | None) -> str:
     spoken prime rides."""
     captured = {}
 
-    def fake(messages, *, model, temperature):
+    def fake(messages, *, model, temperature, **_):
         captured["messages"] = messages
         return _call("- [reported] X shipped.")
 

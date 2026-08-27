@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Extraction and wiki-synthesis calls now declare a `prompt_cache_key`,** so sibling calls over one prompt prefix route toward the same server-side cache rather than scattering across machines and missing. Constants: `EXTRACT_CACHE_KEY` (wiki lane), `EXTRACTION_CACHE_KEY` (three-call extractor).
+
+- **Structured-output calls moved off the `beta` namespace** to `chat.completions.parse`. Since openai 1.92 the beta path is an alias for the same method, so this is a rename with no behaviour change.
+
 ---
 
 ## [0.36.11] — 2026-08-27

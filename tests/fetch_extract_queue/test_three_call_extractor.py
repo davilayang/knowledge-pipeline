@@ -1,7 +1,7 @@
 """Tests for ThreeCallOpenAIExtractor — the v2 extractor strategy.
 
 Mocks the AsyncOpenAI client surface (`chat.completions.create` and
-`beta.chat.completions.parse`). Async surface is exercised end-to-end via
+`chat.completions.parse`). Async surface is exercised end-to-end via
 the sync `.extract()` entry point (which wraps `asyncio.run`).
 """
 
@@ -12,6 +12,7 @@ from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from workflows.extraction import PromptBundle
 from workflows.extraction.three_call_openai import (
+    EXTRACTION_CACHE_KEY,
     ThreeCallOpenAIExtractor,
     _sha,
 )
@@ -82,14 +83,14 @@ def _wire_client(create_text: str, topic_obj, followups_obj):
     client.chat.completions.create = AsyncMock(return_value=_create_resp(create_text))
     client.close = AsyncMock()
 
-    async def _parse(*, model, max_tokens, messages, response_format):
+    async def _parse(*, model, max_tokens, messages, response_format, **_):
         if response_format is TopicCard:
             return _parse_resp(topic_obj)
         if response_format is Followups:
             return _parse_resp(followups_obj)
         raise AssertionError(f"unexpected response_format: {response_format}")
 
-    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.parse = AsyncMock(side_effect=_parse)
     return client
 
 
@@ -181,7 +182,7 @@ def _wire_client_anykwargs(topic_obj, followups_obj):
     async def _parse(**kwargs):
         return _parse_resp(topic_obj if kwargs["response_format"] is TopicCard else followups_obj)
 
-    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.parse = AsyncMock(side_effect=_parse)
     return client
 
 
@@ -199,7 +200,7 @@ def test_gpt5_model_sends_reasoning_params_not_max_tokens():
     assert narr["max_completion_tokens"] == 4096
     assert narr["reasoning_effort"] == "minimal"
     assert "max_tokens" not in narr
-    for parse_call in client.beta.chat.completions.parse.await_args_list:
+    for parse_call in client.chat.completions.parse.await_args_list:
         assert parse_call.kwargs["max_completion_tokens"] == 4096
         assert parse_call.kwargs["reasoning_effort"] == "minimal"
         assert "max_tokens" not in parse_call.kwargs
@@ -223,7 +224,7 @@ def test_dotted_gpt5_models_send_none_effort_not_minimal(model):
     assert narr["max_completion_tokens"] == 4096
     assert narr["reasoning_effort"] == "none"
     assert "max_tokens" not in narr
-    for parse_call in client.beta.chat.completions.parse.await_args_list:
+    for parse_call in client.chat.completions.parse.await_args_list:
         assert parse_call.kwargs["reasoning_effort"] == "none"
 
 
@@ -246,12 +247,12 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
     client.chat.completions.create = AsyncMock(return_value=_create_resp("narrative"))
     client.close = AsyncMock()
 
-    async def _parse(*, model, max_tokens, messages, response_format):
+    async def _parse(*, model, max_tokens, messages, response_format, **_):
         if response_format is TopicCard:
             raise RuntimeError("topic_card OpenAI 500")
         return _parse_resp(_followups_obj())
 
-    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.parse = AsyncMock(side_effect=_parse)
 
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="topic_card OpenAI 500"):
@@ -271,7 +272,7 @@ def test_extract_closes_async_client_even_on_failure(extractor):
     """Client close must fire in `finally`, not only on the success path."""
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=RuntimeError("narrative 500"))
-    client.beta.chat.completions.parse = AsyncMock()
+    client.chat.completions.parse = AsyncMock()
     client.close = AsyncMock()
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="narrative 500"):
@@ -455,11 +456,11 @@ def _wire_client_capturing(captured, create_text, topic_obj, followups_obj):
     keyed by call kind, so tests can assert on the constructed prompts."""
     client = MagicMock()
 
-    async def _create(*, model, max_tokens, messages):
+    async def _create(*, model, max_tokens, messages, **_):
         captured["narrative"] = messages
         return _create_resp(create_text)
 
-    async def _parse(*, model, max_tokens, messages, response_format):
+    async def _parse(*, model, max_tokens, messages, response_format, **_):
         if response_format is TopicCard:
             captured["topic_card"] = messages
             return _parse_resp(topic_obj)
@@ -469,7 +470,7 @@ def _wire_client_capturing(captured, create_text, topic_obj, followups_obj):
         raise AssertionError(f"unexpected response_format: {response_format}")
 
     client.chat.completions.create = AsyncMock(side_effect=_create)
-    client.beta.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.parse = AsyncMock(side_effect=_parse)
     client.close = AsyncMock()
     return client
 
@@ -516,3 +517,24 @@ def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
     # base followups prompt text, proving it's carried through unmodified and
     # not recomputed from a mutated value.
     assert base["followups"].prompt_sha256 == _sha(_bundle().followups[0])
+
+
+def test_every_call_declares_the_same_prompt_cache_key():
+    """OpenAI routes requests sharing a `prompt_cache_key` toward the same cache.
+    The three calls carry different schemas so they cannot share the body's cache
+    entry, but a key that is stable across calls AND across items keeps this lane's
+    traffic on one shard, which is what lets each call reach its own prior entry."""
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t", model="gpt-4.1-mini", prompt_sets={"unknown": _bundle()}
+    )
+    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    with patch.object(ex, "_client", client):
+        ex.extract(content="raw", content_type="Article", content_shape="unknown")
+
+    keys = [client.chat.completions.create.await_args.kwargs.get("prompt_cache_key")]
+    keys += [
+        c.kwargs.get("prompt_cache_key") for c in client.chat.completions.parse.await_args_list
+    ]
+
+    assert len(keys) == 3
+    assert all(k == EXTRACTION_CACHE_KEY for k in keys)

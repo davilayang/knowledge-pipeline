@@ -16,7 +16,7 @@ from domains.wiki.claims import ClaimSet, SourceClaim, parse_claims
 from domains.wiki.units import build_citable_units
 
 from workflows.llm import LLMCall, generate_messages_with_usage
-from workflows.wiki_synthesis.extract_shared import shared_prefix_messages
+from workflows.wiki_synthesis.extract_shared import EXTRACT_CACHE_KEY, shared_prefix_messages
 from workflows.wiki_synthesis.prompts import EXTRACT_CLAIMS_TASK
 
 logger = logging.getLogger(__name__)
@@ -95,7 +95,9 @@ def extract_claims(
     # temperature=0: claim extraction is faithful capture, so pin the model to
     # its lowest-variance output for more reproducible summaries + evals. (The
     # API is not bit-deterministic even at 0 — claim counts still drift a little.)
-    call = generate_messages_with_usage(messages, model=EXTRACT_CLAIMS_MODEL, temperature=0)
+    call = generate_messages_with_usage(
+        messages, model=EXTRACT_CLAIMS_MODEL, temperature=0, prompt_cache_key=EXTRACT_CACHE_KEY
+    )
     claims = parse_claims(call.content, source_id=item.item_id)
     claims = _drop_unresolvable_citations(claims, n_units=len(build_citable_units(item.text)))
     if not claims and "NONE" not in call.content:

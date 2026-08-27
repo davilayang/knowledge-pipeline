@@ -30,7 +30,7 @@ def _chat_response(content: str, *, model: str = "gpt-4.1-mini", usage=None):
 
 
 def _parse_response(parsed, *, content="", refusal=None, model="gpt-4.1-nano", usage=None):
-    """Shape of openai client.beta.chat.completions.parse(...) return value."""
+    """Shape of openai client.chat.completions.parse(...) return value."""
     message = SimpleNamespace(parsed=parsed, content=content, refusal=refusal)
     return SimpleNamespace(choices=[SimpleNamespace(message=message)], model=model, usage=usage)
 
@@ -171,6 +171,22 @@ def test_generate_messages_with_usage_passes_messages_verbatim(mock_get_client):
 
 
 @patch("workflows.llm._get_client")
+def test_generate_messages_forwards_the_prompt_cache_key(mock_get_client):
+    # OpenAI routes requests sharing a prompt_cache_key toward the same cache, so
+    # sibling calls over one byte-identical prefix must be able to declare a shared
+    # key. Without it they can land on different machines and both miss.
+    client = _mock_client()
+    client.chat.completions.create.return_value = _chat_response("out")
+    mock_get_client.return_value = client
+
+    generate_messages_with_usage(
+        [{"role": "user", "content": "x"}], model="gpt-4.1-mini", prompt_cache_key="kp-wiki-extract"
+    )
+
+    assert client.chat.completions.create.call_args.kwargs["prompt_cache_key"] == "kp-wiki-extract"
+
+
+@patch("workflows.llm._get_client")
 def test_generate_structured_returns_pydantic_model(mock_get_client):
     class Entity(BaseModel):
         name: str
@@ -178,13 +194,13 @@ def test_generate_structured_returns_pydantic_model(mock_get_client):
 
     expected = Entity(name="RAG", category="concept")
     client = _mock_client()
-    client.beta.chat.completions.parse.return_value = _parse_response(expected)
+    client.chat.completions.parse.return_value = _parse_response(expected)
     mock_get_client.return_value = client
 
     result = generate_structured("Extract entity", schema=Entity)
 
     assert result == expected
-    assert client.beta.chat.completions.parse.call_args.kwargs["response_format"] is Entity
+    assert client.chat.completions.parse.call_args.kwargs["response_format"] is Entity
 
 
 @patch("workflows.llm._get_client")
@@ -193,12 +209,12 @@ def test_generate_structured_with_system_prepends_system_message(mock_get_client
         value: str
 
     client = _mock_client()
-    client.beta.chat.completions.parse.return_value = _parse_response(Info(value="test"))
+    client.chat.completions.parse.return_value = _parse_response(Info(value="test"))
     mock_get_client.return_value = client
 
     generate_structured("Extract", schema=Info, system="Be precise.")
 
-    messages = client.beta.chat.completions.parse.call_args.kwargs["messages"]
+    messages = client.chat.completions.parse.call_args.kwargs["messages"]
     assert messages[0] == {"role": "system", "content": "Be precise."}
     assert messages[1] == {"role": "user", "content": "Extract"}
 
@@ -210,7 +226,7 @@ def test_generate_structured_with_usage_returns_parsed_and_call(mock_get_client)
 
     parsed = Info(value="ok")
     client = _mock_client()
-    client.beta.chat.completions.parse.return_value = _parse_response(
+    client.chat.completions.parse.return_value = _parse_response(
         parsed,
         model="gpt-4.1-nano",
         usage=SimpleNamespace(prompt_tokens=5, completion_tokens=2),
@@ -231,7 +247,7 @@ def test_generate_structured_raises_on_refusal(mock_get_client):
         value: str
 
     client = _mock_client()
-    client.beta.chat.completions.parse.return_value = _parse_response(
+    client.chat.completions.parse.return_value = _parse_response(
         None, refusal="I can't help with that"
     )
     mock_get_client.return_value = client
@@ -246,7 +262,7 @@ def test_generate_structured_raises_on_empty_parse(mock_get_client):
         value: str
 
     client = _mock_client()
-    client.beta.chat.completions.parse.return_value = _parse_response(None)
+    client.chat.completions.parse.return_value = _parse_response(None)
     mock_get_client.return_value = client
 
     with pytest.raises(ValueError, match="no result"):
