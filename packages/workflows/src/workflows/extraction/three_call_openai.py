@@ -63,6 +63,12 @@ EXTRACTION_CACHE_KEY = "kp-extraction"
 # twice is unlikely to find it on a fourth try.
 _MAX_STRUCTURED_ATTEMPTS = 3
 
+# The narrative call intermittently returns an empty completion — same content,
+# same prompt, `finish_reason="stop"`, no refusal, and 6/6 successes on a rerun of
+# a case that had just failed 2 of 3. It reads as a transient server-side fault,
+# which one retry clears in most cases.
+_MAX_NARRATIVE_ATTEMPTS = 2
+
 # Appended to the followups task tail only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
     "\n\n---\n"
@@ -288,28 +294,58 @@ class ThreeCallOpenAIExtractor:
     ) -> ExtractionCallRecord:
         prompt_text, prompt_label, prompt_sha = prompt_triple
         t0 = time.monotonic()
-        resp = await self._client.chat.completions.create(
-            model=self._model,
-            prompt_cache_key=EXTRACTION_CACHE_KEY,
-            **self._token_kwargs,
-            messages=[
-                {"role": "system", "content": prompt_text},
-                {
-                    "role": "user",
-                    "content": f"[content_type: {content_type}]\n\n{content}",
-                },
-            ],
-        )
+        tokens_in = tokens_out = 0
+        cached: int | None = None
+        for attempt in range(_MAX_NARRATIVE_ATTEMPTS):
+            resp = await self._client.chat.completions.create(
+                model=self._model,
+                prompt_cache_key=EXTRACTION_CACHE_KEY,
+                **self._token_kwargs,
+                messages=[
+                    {"role": "system", "content": prompt_text},
+                    {
+                        "role": "user",
+                        "content": f"[content_type: {content_type}]\n\n{content}",
+                    },
+                ],
+            )
+            # Summed across attempts so a retry's cost is not invisible.
+            tokens_in += resp.usage.prompt_tokens
+            tokens_out += resp.usage.completion_tokens
+            attempt_cached = _cached_tokens(resp.usage)
+            if attempt_cached is not None:
+                cached = (cached or 0) + attempt_cached
+            refusal = getattr(resp.choices[0].message, "refusal", None)
+            if refusal:
+                # A refusal also arrives as empty content, so without this it
+                # retries and then reports "empty narrative" — a confident wrong
+                # diagnosis in the row the user reads.
+                raise RuntimeError(f"narrative: model refused — {refusal}")
+            output = resp.choices[0].message.content or ""
+            if output:
+                break
+        else:
+            # Written for whoever reads the Notion row, not for a stack trace: the
+            # run-failure sensor copies the innermost exception message into that
+            # row's Error field, and pydantic's `narrative_md` length complaint
+            # named our data model instead of what went wrong.
+            raise RuntimeError(
+                f"OpenAI returned an empty narrative on all {_MAX_NARRATIVE_ATTEMPTS} "
+                f"attempts for this {content_type} item ({len(content):,} chars). "
+                "The topic card and follow-ups may have succeeded but are discarded "
+                "with it — the three are stored together. This failure is usually "
+                "transient. Retry by setting Status back to Fetching."
+            )
         duration_ms = (time.monotonic() - t0) * 1000
         return ExtractionCallRecord(
             call_kind="narrative",
             prompt_label=prompt_label,
             prompt_sha256=prompt_sha,
             schema_name=None,
-            output=resp.choices[0].message.content or "",
-            tokens_in=resp.usage.prompt_tokens,
-            tokens_out=resp.usage.completion_tokens,
-            cached_tokens=_cached_tokens(resp.usage),
+            output=output,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cached_tokens=cached,
             duration_ms=duration_ms,
             extracted_at=_now_iso(),
             prompt_set_shape=resolved_shape,

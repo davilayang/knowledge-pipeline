@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **An empty narrative from OpenAI is now retried once instead of failing the item.** The call intermittently returns an empty completion with `finish_reason="stop"` and no refusal — same content and prompt succeeded 6/6 on a rerun of a case that had just failed 2 of 3 — so one retry clears most of them. Previously the whole extraction failed, discarding the topic card and follow-ups that had succeeded.
+
+- **The failure message on a Notion queue row now explains what happened.** It read `String should have at least 1 character` for `narrative_md`, naming the internal data model; it now names the empty completion, the item, that the other two results were discarded with it, and how to re-queue. A refusal is reported as a refusal rather than retried and misreported as an empty completion.
+
 ---
 
 ## [0.36.14] — 2026-08-28
