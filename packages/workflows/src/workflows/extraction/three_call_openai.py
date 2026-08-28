@@ -63,10 +63,10 @@ EXTRACTION_CACHE_KEY = "kp-extraction"
 # twice is unlikely to find it on a fourth try.
 _MAX_STRUCTURED_ATTEMPTS = 3
 
-# The narrative call intermittently returns an empty completion — same content,
-# same prompt, `finish_reason="stop"`, no refusal, and 6/6 successes on a rerun of
-# a case that had just failed 2 of 3. It reads as a transient server-side fault,
-# which one retry clears in most cases.
+# The narrative call intermittently returns an empty completion — `finish_reason`
+# still "stop", no refusal, nothing near the token ceiling, and the same content
+# succeeds on a rerun. Transient rather than content-specific, so one retry
+# clears most of them.
 _MAX_NARRATIVE_ATTEMPTS = 2
 
 # Appended to the followups task tail only when the caller supplies user_notes.
@@ -317,18 +317,17 @@ class ThreeCallOpenAIExtractor:
                 cached = (cached or 0) + attempt_cached
             refusal = getattr(resp.choices[0].message, "refusal", None)
             if refusal:
-                # A refusal also arrives as empty content, so without this it
-                # retries and then reports "empty narrative" — a confident wrong
-                # diagnosis in the row the user reads.
+                # A refusal also arrives as empty content — without this it
+                # retries, then reports "empty narrative", which is just wrong.
                 raise RuntimeError(f"narrative: model refused — {refusal}")
             output = resp.choices[0].message.content or ""
             if output:
                 break
         else:
-            # Written for whoever reads the Notion row, not for a stack trace: the
-            # run-failure sensor copies the innermost exception message into that
-            # row's Error field, and pydantic's `narrative_md` length complaint
-            # named our data model instead of what went wrong.
+            # Written for whoever reads the Notion row: a run-failure sensor
+            # copies the innermost exception message into that row's Error field,
+            # where pydantic's `narrative_md` complaint named our data model
+            # rather than the failure.
             raise RuntimeError(
                 f"OpenAI returned an empty narrative on all {_MAX_NARRATIVE_ATTEMPTS} "
                 f"attempts for this {content_type} item ({len(content):,} chars). "
