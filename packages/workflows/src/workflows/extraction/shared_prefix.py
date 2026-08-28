@@ -1,15 +1,11 @@
 """Shared prompt-cache prefix for the extraction lane's structured calls.
 
-The `topic_card` and `followups` calls read the SAME article. To let the second
-reuse OpenAI's server-side prefix cache, the two must send a byte-identical
-leading prefix — a shared system message plus the article envelope — with only
-the final task message differing. This module owns that construction so the two
-callers cannot drift out of cache alignment (a divergence of one byte before the
-task tail voids the cache).
-
-Layout is load-bearing, not cosmetic: prefix matching runs front-to-back from
-the first character, so the article body has to sit AHEAD of anything that
-differs per call. Role-specific instructions therefore live in the tail.
+`topic_card` and `followups` read the same article, so the second can reuse
+OpenAI's prefix cache — but only if both send a byte-identical leading prefix.
+Prefix matching runs front-to-back from character zero, so the article has to
+sit AHEAD of anything that differs per call, and role instructions go in the
+tail. One byte of divergence before that tail voids the cache, which is why the
+construction lives here rather than in each caller.
 """
 
 import hashlib
@@ -20,23 +16,14 @@ def schema_block(schema: type) -> str:
     """The output contract appended to a call's task tail, generated from the
     pydantic model.
 
-    JSON mode (`response_format={"type": "json_object"}`) never shows the model a
-    schema — unlike Structured Outputs, which the SDK enforces — so the prompt has
-    to carry one. Generating it here rather than hand-writing it into the prompt
-    markdown keeps `domains.extraction.schemas` the single source of truth. It
-    also satisfies the API's requirement that the literal word "json" appear
-    somewhere in the messages, which is otherwise a 400.
-
-    The root JSON-Schema envelope is stripped rather than merely warned about.
-    Shown the raw dump, gpt-5-mini copied the model's own `description` key into
-    every reply — 5 of 5 on a live check — which `validate_strict` then rejects,
-    costing a retry on every call. Removing those keys prevents the confusion;
-    naming the permitted keys is the belt to that braces.
+    JSON mode never shows the model a schema, so the prompt must carry one;
+    generating it keeps `domains.extraction.schemas` the single source of truth.
+    It also supplies the literal word "json" the API requires in the messages.
     """
     full = schema.model_json_schema()
-    # Only the field schemas and the required list — never the root envelope,
-    # whose own `title` / `description` / `properties` keys the model copies into
-    # its reply. Per-field descriptions are inside `properties` and survive.
+    # Field schemas only, never the root envelope: shown the whole dump, the
+    # model copies the envelope's own `description` key into its reply. Per-field
+    # descriptions live inside `properties` and survive the strip.
     fields = {
         "properties": full.get("properties", {}),
         "required": full.get("required", []),
@@ -50,12 +37,10 @@ def schema_block(schema: type) -> str:
     )
 
 
-# Precedes the untrusted article body, so the injection guard is in force before
-# the content it guards is read. It has to name where instructions legitimately
-# come from, because this layout puts the task AFTER the untrusted content —
-# closer to the model's last-read position than the source it must not obey.
-# Deliberately short otherwise: the article body already carries the shared
-# prefix past OpenAI's cache minimum, so padding this buys nothing.
+# Precedes the untrusted article, so the injection guard is in force before the
+# content it guards is read. It names where instructions legitimately come from
+# because this layout puts the task AFTER the untrusted content. Short by
+# design: the article already carries the prefix past the cache minimum.
 SHARED_SYSTEM = (
     "You extract structured information from articles, podcasts, YouTube "
     "transcripts, and newsletter digests for a voice AI agent that helps the "
@@ -69,13 +54,11 @@ SHARED_SYSTEM = (
 
 
 def structured_messages(*, content_type: str, content: str, task: str) -> list[dict[str, str]]:
-    """`[shared system, article envelope, task]` — the message list for one
-    structured extraction call.
+    """`[shared system, article envelope, task]` for one structured call.
 
-    The first two messages are byte-identical across the `topic_card` and
-    `followups` calls for the same item, so whichever runs second reads the
-    article from OpenAI's prefix cache instead of paying for it again. `task` is
-    the only per-call tail.
+    The first two messages are byte-identical across `topic_card` and
+    `followups` on the same item, so whichever runs second reads the article
+    from cache. `task` is the only per-call part.
     """
     return [
         {"role": "system", "content": SHARED_SYSTEM},
@@ -85,16 +68,12 @@ def structured_messages(*, content_type: str, content: str, task: str) -> list[d
 
 
 def effective_prompt_sha(role_prompt: str, schema: type) -> str:
-    """Per-call staleness signal covering everything static the model is shown.
+    """Per-call staleness signal over everything static the model is shown.
 
-    A sha over the prompt markdown alone would miss two things this layout now
-    puts in front of the model: the shared system message, and the schema
-    generated from the pydantic model. Adding a field to `TopicCard` changes what
-    the model is asked for and what is accepted, and rows extracted before that
-    edit have to read as stale.
-
-    Per-item values — the article, the reader's notes — stay out: they are data,
-    not prompt, and folding them in would make every row uniquely stale.
+    Hashing the prompt markdown alone would miss the shared system message and
+    the generated schema, so adding a field to `TopicCard` would change what the
+    model is asked for while every existing row still read as fresh. Per-item
+    values stay out — they are data, and would make every row uniquely stale.
     """
     return hashlib.sha256(
         "\n".join((SHARED_SYSTEM, role_prompt, schema_block(schema))).encode()
@@ -104,24 +83,18 @@ def effective_prompt_sha(role_prompt: str, schema: type) -> str:
 def validate_strict(schema: type, text: str):
     """Parse `text` into `schema`, rejecting keys the schema never declared.
 
-    Structured Outputs could not emit an undeclared key; JSON mode can, and
-    pydantic's default `extra="ignore"` discards it without a word. On a REQUIRED
-    field that is harmless — the field is missing, validation fails, the call
-    retries. On an OPTIONAL one it is silent data loss: a reply that writes
+    JSON mode can return undeclared keys and pydantic's default `extra="ignore"`
+    drops them silently. On an OPTIONAL field that is data loss: a reply writing
     `reader_notes` instead of `reader_threads` validates clean and the reader's
-    own annotations disappear.
-
-    Enforced here rather than by `extra="forbid"` on the model because
-    `domains.extraction.schemas` is duplicated as a cross-repo contract with
-    newsletter-assistant and moves only in lockstep, and because naming the
-    offending key gives the retry something specific to correct. Raises
-    ValueError, which the retry loop treats like any other validation failure.
+    own annotations vanish. Checked here rather than via `extra="forbid"` because
+    `domains.extraction.schemas` is a cross-repo contract that moves in lockstep,
+    and because naming the key gives the retry something specific to correct.
+    Raises ValueError, which the retry loop treats as any other bad reply.
     """
     data = json.loads(text)
     if not isinstance(data, dict):
-        # Valid json includes bare scalars and arrays. Raised as ValueError so
-        # these retry like any other bad reply; the key check below would throw
-        # TypeError on a scalar and escape the retry loop entirely.
+        # Valid json includes bare scalars. ValueError so they retry; the key
+        # check below would raise TypeError and escape the retry loop.
         raise ValueError(f"reply is a json {type(data).__name__}, expected an object")
     undeclared = sorted(set(data) - set(schema.model_fields))
     if undeclared:

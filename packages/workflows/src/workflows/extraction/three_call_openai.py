@@ -6,13 +6,11 @@ Replaces the single-shot extractor with three focused calls:
 2. **topic_card** — JSON mode, validated against `TopicCard`.
 3. **followups** — JSON mode, validated against `Followups`.
 
-Calls 2 and 3 run one after the other so that 3 reads the article body from the
-prompt cache 2 writes. Two conditions make that possible and both are load-bearing:
-they send one `response_format` value between them (OpenAI partitions the prefix
-cache by response format, which is why the pydantic-schema `parse` surface could
-never share an entry), and `shared_prefix.structured_messages` keeps everything
-ahead of the trailing task message byte-identical. Call 1 sends no response format
-and so keeps its own partition.
+Calls 2 and 3 run in sequence so 3 reads the article from the cache 2 writes.
+Both conditions are load-bearing: they share one `response_format` value (OpenAI
+partitions the prefix cache by it, which is why two pydantic schemas never
+could), and `shared_prefix.structured_messages` keeps everything ahead of the
+task tail byte-identical. Call 1 has no response format, so it caches alone.
 
 Returns the composed `ExtractionPayload` (in-memory) + a list of
 `ExtractionCallRecord` (one per call) — the writer in queue_store turns
@@ -331,23 +329,20 @@ class ThreeCallOpenAIExtractor:
         prompt_text, prompt_label, _ = prompt_triple
         role_prompt = prompt_text
         if user_notes:
-            # The fold is prompt, so it joins the sha and marks comment-bearing
-            # rows stale when its wording is edited; the notes themselves are
-            # per-item data and stay out of it.
+            # The fold is prompt, so it joins the sha; the notes it refers to
+            # are per-item data and stay out.
             role_prompt = prompt_text + _READER_THREADS_FOLD
         prompt_sha = effective_prompt_sha(role_prompt, schema)
         task = role_prompt
         if user_notes:
             task += "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
-        # Role prompt, reader notes and schema all live in the tail: everything
-        # ahead of it must stay byte-identical between this call and its sibling
-        # or the article body drops out of the prompt cache.
+        # Role prompt, notes and schema all ride in the tail — everything ahead
+        # of it must match this call's sibling or the article leaves the cache.
         task += "\n\n" + schema_block(schema)
         t0 = time.monotonic()
         tokens_in = tokens_out = 0
-        # None means the API reported no cache details at all, which is a
-        # different fact from a reported zero — the narrative call preserves
-        # that distinction and the ledger's column is nullable for it.
+        # None = the API reported no cache details, a different fact from a
+        # reported zero. The narrative call and the ledger both keep it nullable.
         cached: int | None = None
         correction = ""
         for attempt in range(_MAX_STRUCTURED_ATTEMPTS):
@@ -360,8 +355,7 @@ class ThreeCallOpenAIExtractor:
                 ),
                 response_format={"type": "json_object"},
             )
-            # Summed across attempts so a retry's cost is not invisible in the
-            # ledger; `resp` below is the attempt that succeeded.
+            # Summed across attempts so a retry's cost is not invisible.
             tokens_in += resp.usage.prompt_tokens
             tokens_out += resp.usage.completion_tokens
             attempt_cached = _cached_tokens(resp.usage)
@@ -369,14 +363,11 @@ class ThreeCallOpenAIExtractor:
                 cached = (cached or 0) + attempt_cached
             refusal = getattr(resp.choices[0].message, "refusal", None)
             if refusal:
-                # A refusal comes back with empty content, which would otherwise
-                # read as malformed JSON and burn the retries before failing with
-                # a parse error that never mentions why the model declined.
+                # A refusal has empty content, which would read as malformed
+                # JSON and burn the retries on a parse error that never says why.
                 raise RuntimeError(f"{call_kind}: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
-                # Re-asking under the same ceiling truncates again, so this
-                # fails fast and names the ceiling rather than surfacing three
-                # rounds of "invalid JSON" over the real cause. On gpt-5 the
+                # Re-asking under the same ceiling truncates again. On gpt-5 the
                 # ceiling covers reasoning tokens too, not just the reply.
                 raise RuntimeError(
                     f"{call_kind}: reply truncated at max_tokens={self._max_tokens} "

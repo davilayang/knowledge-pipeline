@@ -11,8 +11,8 @@ Prompt assets consumed by `workflows.extraction`. Each file has its own header e
 | Label (`def_config.py`) | File | Call |
 |---|---|---|
 | `PROMPT_LABEL_NARRATIVE = "narrative_v2"` | `narrative_v2.md` | 1 — free-form markdown, threads-first |
-| `PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"` | `topic_card_v1.md` | 2 — structured `TopicCard` (parallel with call 3) |
-| `PROMPT_LABEL_FOLLOWUPS = "followups_v1"` | `followups_v1.md` | 3 — structured `Followups` (parallel with call 2) |
+| `PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"` | `topic_card_v1.md` | 2 — structured `TopicCard`, JSON mode (runs before call 3, sharing its prompt cache) |
+| `PROMPT_LABEL_FOLLOWUPS = "followups_v1"` | `followups_v1.md` | 3 — structured `Followups`, JSON mode (runs after call 2, reading its prompt cache) |
 
 Labels map to filenames as `<label>.md`. To bump a prompt, edit the file AND the label constant in the same commit.
 

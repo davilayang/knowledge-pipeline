@@ -6,29 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.14] — 2026-08-28
+
 ### Changed
 
-- **The extraction lane's structured calls now share the article between them.** `topic_card` and `followups` moved from pydantic Structured Outputs to JSON mode and run one after the other over a `[shared system][article][role task]` message layout, so the second reads the article from OpenAI's prefix cache instead of paying for it a second time. Both were previously impossible: OpenAI partitions the prefix cache by response format, so two different pydantic schemas could never share an entry, and firing the pair concurrently left neither able to read the other's write. Measured over 9 production articles, `followups` cached 53–98% of its input, scaling with article length; articles under roughly 4,000 characters cache nothing, because their shared prefix falls below OpenAI's 1,024-token minimum. The pair is no longer concurrent, adding roughly 4s per item to a nightly batch.
+- **Extraction's `topic_card` and `followups` calls now share the article via OpenAI's prompt cache instead of paying for it twice.** They moved from pydantic Structured Outputs to sequential JSON-mode calls; cache reuse measured 53–98% of `followups`' input on real articles, and 0% below ~4,000 characters where the shared prefix falls under OpenAI's 1,024-token minimum. Adds ~4s/item to nightly batches. (`workflows.extraction.three_call_openai`, `shared_prefix.py`)
 
-- **Structured calls validate their own output and re-ask on failure.** JSON mode guarantees syntactically valid JSON, not a reply that satisfies the schema, so each call now validates against its pydantic model and retries up to three times, appending the validation error to the trailing task message so the cached prefix survives the retry. Retried attempts' tokens are summed into the `extraction_calls` ledger rather than dropped.
+- **The JSON schema sent to the model is now generated from the pydantic model, not written into prompt markdown.** `domains.extraction.schemas` stays the single source of truth for `topic_card_v1` and `followups_v1`.
 
-- **The JSON schema sent to the model is generated from the pydantic model** rather than written into the prompt markdown, keeping `domains.extraction.schemas` the single source of truth. `topic_card_v1` and `followups_v1` carry semantics only.
+- **A malformed structured-call reply is now retried (up to 3x) instead of failing the item outright.** Undeclared JSON keys are rejected by name rather than silently dropped, and truncated or refused replies fail fast rather than burning retries.
 
-- **`prompt_sha256` and `extractor_sha256` now cover the whole effective prompt** — shared system message, role prompt, and generated schema — not just the prompt markdown. Previously a field added to `TopicCard` would change what the model was asked for while every existing row, and the whole cohort, still read as fresh.
+- **`prompt_sha256` and `extractor_sha256` now cover the full effective prompt** — shared system message, role prompt, and generated schema, not just the markdown — so a schema change is reflected in row provenance and cohort hashing.
 
-- **Undeclared fields in a reply are rejected instead of silently dropped.** JSON mode can return keys the schema never declared, and pydantic's default `extra="ignore"` discards them without a word. On a required field that is harmless; on an optional one it is silent data loss — a reply writing `reader_notes` instead of `reader_threads` validated clean and the reader's own annotations vanished. Checked in the extractor rather than via `extra="forbid"` on the model, because `domains.extraction.schemas` is a cross-repo contract, and because naming the offending key gives the retry something specific to correct.
-
-### Fixed
-
-- **`extract_reading_card` no longer reports a `wall_clock_ms` that assumed parallel calls.** It computed `narrative + max(topic_card, followups)`, which stopped being true once the structured pair became sequential. Model time and wall clock are now the same figure, reported once as `total_model_time_ms`.
-
-- **A reply truncated at the token ceiling now fails immediately, naming the ceiling,** instead of being retried twice more under the same budget and surfacing as a JSON parse error. Refusals fail the same way rather than burning retries on what looks like malformed JSON.
-
-- **The generated schema block now carries only field schemas and the required list, never the JSON Schema root envelope.** That envelope has `title` / `description` / `properties` keys of its own, and gpt-5-mini copied the model's `description` straight into every reply — 5 runs out of 5 — which would have cost a retry on every single call. The permitted top-level keys are also named explicitly. Verified 60/60 clean afterwards, across both structured calls and both a 5,024- and a 252,660-character article.
-
-- **A reply that is valid JSON but not an object — a bare `null`, number or boolean — is retried instead of crashing.** The undeclared-key check raised `TypeError` on those, escaping the retry loop it was meant to feed.
-
-- **`cached_tokens` stays nullable on the structured calls.** Summing retry attempts had flattened an unreported value to `0`, which the narrative call still records as `NULL` — leaving the two call kinds disagreeing about what "the API told us nothing" looks like in the ledger.
+- **`extract_reading_card` now reports `total_model_time_ms` instead of `wall_clock_ms`.** The old figure assumed the two structured calls ran in parallel, which they no longer do.
 
 ---
 
