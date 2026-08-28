@@ -172,9 +172,9 @@ def test_generate_messages_with_usage_passes_messages_verbatim(mock_get_client):
 
 @patch("workflows.llm._get_client")
 def test_generate_messages_forwards_the_prompt_cache_key(mock_get_client):
-    # OpenAI routes requests sharing a prompt_cache_key toward the same cache, so
-    # sibling calls over one byte-identical prefix must be able to declare a shared
-    # key. Without it they can land on different machines and both miss.
+    # OpenAI steers requests sharing a prompt_cache_key to the same cache, so sibling
+    # calls over one prefix must be able to declare a shared key. Without it they can
+    # land on different machines and both miss.
     client = _mock_client()
     client.chat.completions.create.return_value = _chat_response("out")
     mock_get_client.return_value = client

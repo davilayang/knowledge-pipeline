@@ -50,10 +50,10 @@ def _cache_key_of(module_path: str, run) -> str | None:
 
 
 def test_the_two_extract_calls_declare_the_same_prompt_cache_key():
-    # They send a byte-identical [system, envelope] prefix, so OpenAI can serve the
-    # second from the first's cache — but only if routing lands them together. A
-    # shared prompt_cache_key is what asks for that. Divergent keys silently halve
-    # the hit rate with no other visible symptom, which is why this is pinned.
+    # They send a byte-identical [system, envelope] prefix, so the second can be
+    # served from the first's cache — but only if routing lands them together, which
+    # is what a shared key asks for. Divergent keys would halve the hit rate with no
+    # other visible symptom, hence pinning it.
     item = _item("Anthropic shipped subagents. It took two weeks.")
 
     claims_key = _cache_key_of(

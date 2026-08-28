@@ -1,7 +1,7 @@
 # followups_v1 — Likely-follow-up-questions structured output (call 3 of 3)
 
 Three-call refactor: this prompt produces the **Likely follow-up questions**
-only, via OpenAI's `beta.chat.completions.parse(response_format=Followups)`.
+only, via OpenAI's `chat.completions.parse(response_format=Followups)`.
 The SDK enforces the JSON schema (4–6 questions, list of strings) defined
 in `domains/extraction/schemas.py`'s `Followups` model; this prompt sets
 the semantics — what makes a question a useful follow-up vs a restatement.

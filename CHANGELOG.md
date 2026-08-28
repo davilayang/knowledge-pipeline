@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.12] — 2026-08-28
+
 ### Changed
 
 - **Extraction and wiki-synthesis calls now declare a `prompt_cache_key`,** so sibling calls over one prompt prefix route toward the same server-side cache rather than scattering across machines and missing. Constants: `EXTRACT_CACHE_KEY` (wiki lane), `EXTRACTION_CACHE_KEY` (three-call extractor).

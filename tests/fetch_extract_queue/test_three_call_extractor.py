@@ -520,10 +520,9 @@ def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
 
 
 def test_every_call_declares_the_same_prompt_cache_key():
-    """OpenAI routes requests sharing a `prompt_cache_key` toward the same cache.
-    The three calls carry different schemas so they cannot share the body's cache
-    entry, but a key that is stable across calls AND across items keeps this lane's
-    traffic on one shard, which is what lets each call reach its own prior entry."""
+    """OpenAI steers requests sharing a `prompt_cache_key` to the same cache. These
+    three carry different schemas so they cannot share the body's entry, but one
+    shard per lane lets each call reach its own prior entry."""
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model="gpt-4.1-mini", prompt_sets={"unknown": _bundle()}
     )

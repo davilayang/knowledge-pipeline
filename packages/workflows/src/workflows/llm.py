@@ -67,9 +67,9 @@ def _usage(response: Any) -> tuple[int, int, int]:
 
 
 def _cache_key_kwargs(prompt_cache_key: str | None) -> dict[str, Any]:
-    """Optional `prompt_cache_key`. OpenAI routes requests sharing a key toward the
-    same cache, so callers whose prefixes are byte-identical should pass one key
-    between them. Omitted when None rather than sent as null."""
+    """Optional `prompt_cache_key`: OpenAI steers requests sharing a key to the same
+    cache, so callers with byte-identical prefixes should pass one between them.
+    Omitted when None rather than sent as null."""
     return {} if prompt_cache_key is None else {"prompt_cache_key": prompt_cache_key}
 
 

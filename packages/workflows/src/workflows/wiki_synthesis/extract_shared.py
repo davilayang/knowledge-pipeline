@@ -17,10 +17,9 @@ from domains.wiki.units import build_citable_units, number_units
 
 from workflows.wiki_synthesis.prompts import EXTRACT_ARTICLE_ENVELOPE, EXTRACT_SHARED_SYSTEM
 
-# Sent by both extract-time calls so OpenAI routes them toward the same cache.
-# The shared prefix only pays off if the pair lands on the same machine; the key
-# is what asks for that. Lives here, beside the prefix builder, so the two cannot
-# be changed independently.
+# Sent by both extract-time calls. Their shared prefix only pays off if the pair
+# lands on the same machine, and this key is what asks for that. Lives beside the
+# prefix builder so the two cannot drift apart.
 EXTRACT_CACHE_KEY = "kp-wiki-extract"
 
 

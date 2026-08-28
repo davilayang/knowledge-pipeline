@@ -9,10 +9,9 @@ Replaces the single-shot extractor with three focused calls:
    (response_format=Followups).
 
 Calls 2+3 fire in parallel via `asyncio.gather(..., return_exceptions=True)`.
-They do NOT share call 1's prompt cache: OpenAI's prefix cache is partitioned by
-`response_format`, so the three calls hold three unreachable entries and each
-re-sends the body at full price. Measured, and documented by OpenAI as a
-cache-invalidating setting — reordering the messages cannot change it. Returns
+They do NOT share call 1's prompt cache — OpenAI partitions the prefix cache by
+`response_format`, so the three hold three unreachable entries and each re-sends
+the body at full price. Reordering the messages cannot change that. Returns
 the composed `ExtractionPayload` (in-memory) + a list of
 `ExtractionCallRecord` (one per call) — the writer in queue_store turns
 those into one INSERT per row in `extraction_calls`.
@@ -47,10 +46,9 @@ from workflows.extraction.types import PromptBundle
 
 _GENERIC_SHAPE = "unknown"
 
-# Sent on all three calls. OpenAI routes requests sharing a key toward the same
-# cache; the three carry different schemas so they cannot share the body's entry,
-# but a key stable across calls and items keeps this lane on one shard, which is
-# what lets each call reach its own prior entry.
+# Routing hint on all three calls: OpenAI steers requests sharing a key to the
+# same cache. The three carry different schemas so they cannot share the body's
+# entry, but one shard per lane lets each reach its own prior entry.
 EXTRACTION_CACHE_KEY = "kp-extraction"
 
 # Appended to the followups system prompt only when the caller supplies user_notes.
