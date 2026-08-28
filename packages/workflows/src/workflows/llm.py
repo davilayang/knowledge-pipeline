@@ -66,6 +66,13 @@ def _usage(response: Any) -> tuple[int, int, int]:
     return usage.prompt_tokens or 0, usage.completion_tokens or 0, cached
 
 
+def _cache_key_kwargs(prompt_cache_key: str | None) -> dict[str, Any]:
+    """Optional `prompt_cache_key`: OpenAI steers requests sharing a key to the same
+    cache, so callers with byte-identical prefixes should pass one between them.
+    Omitted when None rather than sent as null."""
+    return {} if prompt_cache_key is None else {"prompt_cache_key": prompt_cache_key}
+
+
 def _create_kwargs(temperature: float | None) -> dict[str, Any]:
     """Optional create() kwargs. `temperature=None` omits it (provider default);
     a value pins it — pass 0 for a deterministic, faithful-extraction call."""
@@ -91,6 +98,7 @@ def generate_messages_with_usage(
     *,
     model: str = _DEFAULT_MODEL,
     temperature: float | None = None,
+    prompt_cache_key: str | None = None,
 ) -> LLMCall:
     """Chat completion over a PRE-BUILT message list, returning content + usage.
 
@@ -99,7 +107,10 @@ def generate_messages_with_usage(
     is byte-identical across sibling calls, with only the final task message
     differing. `cached_tokens` on the result reports the prefix-cache hit."""
     response = _get_client().chat.completions.create(
-        model=model, messages=messages, **_create_kwargs(temperature)
+        model=model,
+        messages=messages,
+        **_create_kwargs(temperature),
+        **_cache_key_kwargs(prompt_cache_key),
     )
     in_tokens, out_tokens, cached = _usage(response)
     return LLMCall(
@@ -134,7 +145,7 @@ def generate_structured[
 ](prompt: str, *, schema: type[T], system: str = "", model: str = _DEFAULT_MODEL,) -> T:
     """Generate a structured response validated against a Pydantic model.
 
-    Uses OpenAI's native structured-output parse (`beta.chat.completions.parse`
+    Uses OpenAI's native structured-output parse (`chat.completions.parse`
     with `response_format=schema`); raises on a model refusal or empty parse so
     callers fail fast rather than receive a silent None.
     """
@@ -155,10 +166,10 @@ def generate_structured_with_usage[
 ]:
     """Like generate_structured(), but also returns token usage.
 
-    One round-trip: `beta.chat.completions.parse` returns the validated model
+    One round-trip: `chat.completions.parse` returns the validated model
     and usage together.
     """
-    response = _get_client().beta.chat.completions.parse(
+    response = _get_client().chat.completions.parse(
         model=model,
         messages=_messages(prompt, system),
         response_format=schema,

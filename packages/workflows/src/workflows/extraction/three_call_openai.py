@@ -2,16 +2,17 @@
 
 Replaces the single-shot extractor with three focused calls:
 
-1. **narrative** — unstructured markdown (`chat.completions.create`)
-   primes the prompt cache by firing first.
+1. **narrative** — unstructured markdown (`chat.completions.create`).
 2. **topic_card** — pydantic-structured `TopicCard`
-   (`beta.chat.completions.parse`, response_format=TopicCard).
+   (`chat.completions.parse`, response_format=TopicCard).
 3. **followups** — pydantic-structured `Followups`
    (response_format=Followups).
 
-Calls 2+3 fire in parallel via `asyncio.gather(..., return_exceptions=True)`;
-both hit OpenAI's prompt prefix cache (TTL 5–10 min) within sub-seconds of
-call 1. Returns the composed `ExtractionPayload` (in-memory) + a list of
+Calls 2+3 fire in parallel via `asyncio.gather(..., return_exceptions=True)`.
+They do NOT share call 1's prompt cache — OpenAI partitions the prefix cache by
+`response_format`, so the three hold three unreachable entries and each re-sends
+the body at full price. Reordering the messages cannot change that. Returns
+the composed `ExtractionPayload` (in-memory) + a list of
 `ExtractionCallRecord` (one per call) — the writer in queue_store turns
 those into one INSERT per row in `extraction_calls`.
 
@@ -44,6 +45,11 @@ from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from workflows.extraction.types import PromptBundle
 
 _GENERIC_SHAPE = "unknown"
+
+# Routing hint on all three calls: OpenAI steers requests sharing a key to the
+# same cache. The three carry different schemas so they cannot share the body's
+# entry, but one shard per lane lets each reach its own prior entry.
+EXTRACTION_CACHE_KEY = "kp-extraction"
 
 # Appended to the followups system prompt only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
@@ -267,6 +273,7 @@ class ThreeCallOpenAIExtractor:
         t0 = time.monotonic()
         resp = await self._client.chat.completions.create(
             model=self._model,
+            prompt_cache_key=EXTRACTION_CACHE_KEY,
             **self._token_kwargs,
             messages=[
                 {"role": "system", "content": prompt_text},
@@ -312,8 +319,9 @@ class ThreeCallOpenAIExtractor:
             prompt_sha = _sha(prompt_text)
             user_content += "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
         t0 = time.monotonic()
-        resp = await self._client.beta.chat.completions.parse(
+        resp = await self._client.chat.completions.parse(
             model=self._model,
+            prompt_cache_key=EXTRACTION_CACHE_KEY,
             **self._token_kwargs,
             messages=[
                 {"role": "system", "content": prompt_text},

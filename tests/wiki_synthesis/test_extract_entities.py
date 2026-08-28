@@ -165,7 +165,7 @@ def test_unspaced_separator_and_trailing_description():
 def test_uses_shared_prefix_with_claims_in_tail():
     captured = {}
 
-    def fake(messages, *, model, temperature):
+    def fake(messages, *, model, temperature, **_):
         captured["messages"] = messages
         return _call("Docker — tool")
 
@@ -186,7 +186,7 @@ def test_uses_shared_prefix_with_claims_in_tail():
 def test_empty_claims_still_calls_with_placeholder():
     captured = {}
 
-    def fake(messages, *, model, temperature):
+    def fake(messages, *, model, temperature, **_):
         captured["messages"] = messages
         return _call("Docker — tool")
 
