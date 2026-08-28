@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-evals"
-version = "0.36.12"
+version = "0.36.13"
 description = "Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding), wiki dimensions"
 requires-python = ">=3.13"
 dependencies = [
@@ -13,10 +13,6 @@ dependencies = [
     # Vectorised pairwise-cosine for the wiki dedup candidate search
     # (evals.wiki_dedup) — a pure-Python O(n²)×dims loop times out at prod scale.
     "numpy>=1.26",
-    # Reserved for the generation-quality eval layer (faithfulness /
-    # answer-relevance / grounding) once wiki+research workflows consume
-    # retrieved context. Not imported yet — see CHANGELOG.
-    "ragas>=0.2,<1.0",
 ]
 
 [project.scripts]

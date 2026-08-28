@@ -8,6 +8,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.13] — 2026-08-28
+
+### Changed
+
+- **OpenAI SDK upgraded 1.109 → 2.54.** Makes `prompt_cache_options` reachable — the parameter for declaring explicit cache breakpoints, absent before 2.54 — though no code calls it yet. Capped below 3.0, which switches transport to `httpx2`.
+
+- **Dropped the unused `ragas` dependency** from `knowledge-evals`, removing 19 packages from the lock including `datasets`, `pyarrow`, `scipy` and `huggingface-hub`. It was reserved for a generation-quality eval layer that was never built.
+
+---
+
 ## [0.36.12] — 2026-08-28
 
 ### Changed

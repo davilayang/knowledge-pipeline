@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-retrievers"
-version = "0.36.12"
+version = "0.36.13"
 description = "RAG infrastructure — chunking, embedding (OpenAI), Chroma HTTP client, retrieval protocols"
 requires-python = ">=3.13"
 dependencies = [
@@ -8,7 +8,7 @@ dependencies = [
     "chromadb-client>=1.5,<2.0",
     "langchain-text-splitters>=1.1,<2.0",
     "tiktoken>=0.9,<1.0",
-    "openai>=1.0",
+    "openai>=2.54,<3.0",
     "tenacity>=8.0",
 ]
 
