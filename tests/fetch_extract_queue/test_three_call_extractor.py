@@ -244,8 +244,9 @@ def test_non_reasoning_model_sends_max_tokens(extractor):
 
 
 def test_extract_raises_when_topic_card_call_fails(extractor):
-    """asyncio.gather(return_exceptions=True) catches the exception; wrapper
-    re-raises so Dagster retries the asset (we don't ship partial extractions)."""
+    """A failed structured call fails the whole extract — we don't ship partial
+    extractions, and nothing downstream retries the asset, so the item is left
+    for a manual re-queue rather than half-written."""
     client = MagicMock()
     client.close = AsyncMock()
 
@@ -771,3 +772,90 @@ def test_cached_tokens_stays_none_when_the_api_reports_no_cache_details(extracto
         "topic_card": None,
         "followups": None,
     }
+
+
+def _narrative_client(narrative_bodies: list[str]):
+    """Serves `narrative_bodies` to successive narrative attempts; the structured
+    pair always succeeds."""
+    client = MagicMock()
+    client.close = AsyncMock()
+    pending = list(narrative_bodies)
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is None:
+            return _create_resp(pending.pop(0))
+        obj = (
+            _topic_card_obj()
+            if "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            else _followups_obj()
+        )
+        return _create_resp(obj.model_dump_json())
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    return client
+
+
+def test_an_empty_narrative_is_retried(extractor):
+    """The narrative call intermittently returns an empty completion. One retry
+    recovers most of them; without it the whole item fails and the two
+    structured results are discarded along with it."""
+    client = _narrative_client(["", "# recovered narrative"])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.narrative_md == "# recovered narrative"
+
+
+def test_an_exhausted_narrative_reports_what_happened_not_a_schema_error(extractor):
+    """The message here is written for whoever reads the Notion row: a run-failure
+    sensor copies the innermost exception message into the row's Error field. Left
+    to pydantic it read `String should have at least 1 character` for
+    `narrative_md`, which names our data model rather than the failure."""
+    client = _narrative_client(["", ""])
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError) as exc:
+            extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
+    message = str(exc.value)
+    assert "empty" in message
+    assert "2 attempts" in message
+    assert "YouTube" in message  # the item, so the row is identifiable
+    assert "Retry" in message  # what the reader should do about it
+    # The narrative runs FIRST, so an exhausted narrative means the other two
+    # calls were never made. Saying they "succeeded but were discarded" was true
+    # of the old path, where all three ran before payload assembly rejected the
+    # empty narrative — and is now simply false.
+    assert "not attempted" in message
+    assert "discarded" not in message
+
+
+def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extractor):
+    """A refusal arrives as empty content, so without this it would be retried and
+    then reported as 'OpenAI returned an empty narrative' — a confident, wrong
+    diagnosis in the row the user reads."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            return _create_resp(_topic_card_obj().model_dump_json())
+        resp = _create_resp("")
+        resp.choices[0].message.refusal = "I can't help with that."
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError, match="refused"):
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    assert client.chat.completions.create.await_count == 1
+
+
+def test_a_whitespace_only_narrative_counts_as_empty(extractor):
+    """`"   "` clears both `if output` and pydantic's min_length=1, so without
+    this it is stored as a narrative and the item silently carries a blank one."""
+    client = _narrative_client(["   \n  ", "# recovered narrative"])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.narrative_md == "# recovered narrative"

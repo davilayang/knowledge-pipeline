@@ -34,6 +34,7 @@ invalidate prior shapes' rows.
 
 import asyncio
 import hashlib
+import logging
 import time
 from datetime import UTC, datetime
 from typing import Any
@@ -50,6 +51,8 @@ from workflows.extraction.shared_prefix import (
 )
 from workflows.extraction.types import PromptBundle
 
+_log = logging.getLogger(__name__)
+
 _GENERIC_SHAPE = "unknown"
 
 # Routing hint on all three calls: OpenAI steers requests sharing a key to the
@@ -62,6 +65,12 @@ EXTRACTION_CACHE_KEY = "kp-extraction"
 # insurance rather than the main path, and a model that has missed the schema
 # twice is unlikely to find it on a fourth try.
 _MAX_STRUCTURED_ATTEMPTS = 3
+
+# The narrative call intermittently returns an empty completion — `finish_reason`
+# still "stop", no refusal, nothing near the token ceiling, and the same content
+# succeeds on a rerun. Transient rather than content-specific, so one retry
+# clears most of them.
+_MAX_NARRATIVE_ATTEMPTS = 2
 
 # Appended to the followups task tail only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
@@ -288,28 +297,73 @@ class ThreeCallOpenAIExtractor:
     ) -> ExtractionCallRecord:
         prompt_text, prompt_label, prompt_sha = prompt_triple
         t0 = time.monotonic()
-        resp = await self._client.chat.completions.create(
-            model=self._model,
-            prompt_cache_key=EXTRACTION_CACHE_KEY,
-            **self._token_kwargs,
-            messages=[
-                {"role": "system", "content": prompt_text},
-                {
-                    "role": "user",
-                    "content": f"[content_type: {content_type}]\n\n{content}",
-                },
-            ],
-        )
+        tokens_in = tokens_out = 0
+        cached: int | None = None
+        for attempt in range(_MAX_NARRATIVE_ATTEMPTS):
+            resp = await self._client.chat.completions.create(
+                model=self._model,
+                prompt_cache_key=EXTRACTION_CACHE_KEY,
+                **self._token_kwargs,
+                messages=[
+                    {"role": "system", "content": prompt_text},
+                    {
+                        "role": "user",
+                        "content": f"[content_type: {content_type}]\n\n{content}",
+                    },
+                ],
+            )
+            # Summed across attempts so a retry's cost is not invisible.
+            tokens_in += resp.usage.prompt_tokens
+            tokens_out += resp.usage.completion_tokens
+            attempt_cached = _cached_tokens(resp.usage)
+            if attempt_cached is not None:
+                cached = (cached or 0) + attempt_cached
+            refusal = getattr(resp.choices[0].message, "refusal", None)
+            if refusal is not None:
+                # A refusal also arrives as empty content — without this it
+                # retries, then reports "empty narrative", which is just wrong.
+                # `is not None`, not truthiness: the contract is null-or-string.
+                raise RuntimeError(f"narrative: model refused — {refusal}")
+            output = (resp.choices[0].message.content or "").strip()
+            if output:
+                break
+            # Nothing is persisted when the call ultimately raises — the writer
+            # only runs on a returned record — so this is the sole surviving
+            # evidence of an empty attempt. Keep it until the cause is known.
+            _log.warning(
+                "empty narrative: attempt=%d/%d content_type=%s chars=%d "
+                "finish_reason=%s tokens_in=%d tokens_out=%d",
+                attempt + 1,
+                _MAX_NARRATIVE_ATTEMPTS,
+                content_type,
+                len(content),
+                resp.choices[0].finish_reason,
+                resp.usage.prompt_tokens,
+                resp.usage.completion_tokens,
+            )
+        else:
+            # Written for whoever reads the Notion row: a run-failure sensor
+            # copies the innermost exception message into that row's Error field,
+            # where pydantic's `narrative_md` complaint named our data model
+            # rather than the failure.
+            raise RuntimeError(
+                f"OpenAI returned an empty narrative on all {_MAX_NARRATIVE_ATTEMPTS} "
+                f"attempts for this {content_type} item ({len(content):,} chars). "
+                "The topic card and follow-ups were not attempted — the narrative "
+                "runs first — so nothing else was spent on this item. The cause is "
+                "not yet known; a retry has cleared it before. Retry by setting "
+                "Status back to Fetching."
+            )
         duration_ms = (time.monotonic() - t0) * 1000
         return ExtractionCallRecord(
             call_kind="narrative",
             prompt_label=prompt_label,
             prompt_sha256=prompt_sha,
             schema_name=None,
-            output=resp.choices[0].message.content or "",
-            tokens_in=resp.usage.prompt_tokens,
-            tokens_out=resp.usage.completion_tokens,
-            cached_tokens=_cached_tokens(resp.usage),
+            output=output,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cached_tokens=cached,
             duration_ms=duration_ms,
             extracted_at=_now_iso(),
             prompt_set_shape=resolved_shape,
@@ -362,9 +416,10 @@ class ThreeCallOpenAIExtractor:
             if attempt_cached is not None:
                 cached = (cached or 0) + attempt_cached
             refusal = getattr(resp.choices[0].message, "refusal", None)
-            if refusal:
+            if refusal is not None:
                 # A refusal has empty content, which would read as malformed
                 # JSON and burn the retries on a parse error that never says why.
+                # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"{call_kind}: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
                 # Re-asking under the same ceiling truncates again. On gpt-5 the
