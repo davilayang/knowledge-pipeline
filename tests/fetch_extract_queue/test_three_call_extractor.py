@@ -729,3 +729,15 @@ def test_a_refusal_fails_immediately_rather_than_retrying(extractor):
         with pytest.raises(RuntimeError, match="refused"):
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(_structured_kwargs(client)) == 1
+
+
+def test_a_non_object_json_reply_is_retried_not_crashed(extractor):
+    """JSON mode guarantees valid json, which includes a bare `null` or number.
+    Those have to go down the retry path like any other bad reply, not escape it
+    as an unhandled TypeError from the undeclared-key check."""
+    client = _retrying_client(["null", _topic_card_obj().model_dump_json()])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.topic_card.extracted_title == "t"

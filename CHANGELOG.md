@@ -24,7 +24,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **A reply truncated at the token ceiling now fails immediately, naming the ceiling,** instead of being retried twice more under the same budget and surfacing as a JSON parse error. Refusals fail the same way rather than burning retries on what looks like malformed JSON.
 
-- **The generated schema block now states which top-level keys the reply may carry.** A JSON Schema dump has `title` / `description` / `properties` keys of its own, and gpt-5-mini copied the model's `description` straight into every reply — 5 runs out of 5 — which would have cost a retry on every single call.
+- **The generated schema block now carries only field schemas and the required list, never the JSON Schema root envelope.** That envelope has `title` / `description` / `properties` keys of its own, and gpt-5-mini copied the model's `description` straight into every reply — 5 runs out of 5 — which would have cost a retry on every single call. The permitted top-level keys are also named explicitly. Verified 60/60 clean afterwards, across both structured calls and both a 5,024- and a 252,660-character article.
+
+- **A reply that is valid JSON but not an object — a bare `null`, number or boolean — is retried instead of crashing.** The undeclared-key check raised `TypeError` on those, escaping the retry loop it was meant to feed.
 
 ---
 

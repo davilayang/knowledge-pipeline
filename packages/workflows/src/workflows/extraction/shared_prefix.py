@@ -27,19 +27,26 @@ def schema_block(schema: type) -> str:
     also satisfies the API's requirement that the literal word "json" appear
     somewhere in the messages, which is otherwise a 400.
 
-    The allowed keys are spelled out above the schema because the schema envelope
-    carries top-level keys of its own. Shown the raw dump alone, gpt-5-mini
-    copied the model's `description` into every reply — 5 of 5 on a live check —
-    which `validate_strict` then rejects, costing a retry on every call.
+    The root JSON-Schema envelope is stripped rather than merely warned about.
+    Shown the raw dump, gpt-5-mini copied the model's own `description` key into
+    every reply — 5 of 5 on a live check — which `validate_strict` then rejects,
+    costing a retry on every call. Removing those keys prevents the confusion;
+    naming the permitted keys is the belt to that braces.
     """
+    full = schema.model_json_schema()
+    # Only the field schemas and the required list — never the root envelope,
+    # whose own `title` / `description` / `properties` keys the model copies into
+    # its reply. Per-field descriptions are inside `properties` and survive.
+    fields = {
+        "properties": full.get("properties", {}),
+        "required": full.get("required", []),
+        **({"$defs": full["$defs"]} if "$defs" in full else {}),
+    }
     keys = ", ".join(f"`{f}`" for f in schema.model_fields)
     return (
         f"Return a single json object whose top-level keys are exactly: {keys}. "
         "Emit no prose, no markdown fences — the json object only.\n\n"
-        "The schema below describes those keys. Its own `title`, `description`, "
-        "`properties` and `required` entries describe the contract; they are NOT "
-        "keys to copy into your reply.\n\n"
-        f"{json.dumps(schema.model_json_schema(), indent=2)}"
+        f"{json.dumps(fields, indent=2)}"
     )
 
 
@@ -111,6 +118,11 @@ def validate_strict(schema: type, text: str):
     ValueError, which the retry loop treats like any other validation failure.
     """
     data = json.loads(text)
+    if not isinstance(data, dict):
+        # Valid json includes bare scalars and arrays. Raised as ValueError so
+        # these retry like any other bad reply; the key check below would throw
+        # TypeError on a scalar and escape the retry loop entirely.
+        raise ValueError(f"reply is a json {type(data).__name__}, expected an object")
     undeclared = sorted(set(data) - set(schema.model_fields))
     if undeclared:
         raise ValueError(
