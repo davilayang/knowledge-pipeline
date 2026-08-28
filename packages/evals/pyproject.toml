@@ -16,7 +16,6 @@ dependencies = [
     # Reserved for the generation-quality eval layer (faithfulness /
     # answer-relevance / grounding) once wiki+research workflows consume
     # retrieved context. Not imported yet — see CHANGELOG.
-    "ragas>=0.2,<1.0",
 ]
 
 [project.scripts]
