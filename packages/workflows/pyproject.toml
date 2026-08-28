@@ -10,7 +10,7 @@ dependencies = [
     # (the one place a sub-graph re-earns its place); pulls langchain-core
     # transitively. The wiki path itself is plain OpenAI SDK + langfuse.openai.
     "langgraph>=1.0,<2.0",
-    "openai>=1.0,<2.0",
+    "openai>=2.54,<3.0",
     "langfuse>=3.0,<4.0",
 ]
 
