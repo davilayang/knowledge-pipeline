@@ -26,10 +26,19 @@ def schema_block(schema: type) -> str:
     markdown keeps `domains.extraction.schemas` the single source of truth. It
     also satisfies the API's requirement that the literal word "json" appear
     somewhere in the messages, which is otherwise a 400.
+
+    The allowed keys are spelled out above the schema because the schema envelope
+    carries top-level keys of its own. Shown the raw dump alone, gpt-5-mini
+    copied the model's `description` into every reply — 5 of 5 on a live check —
+    which `validate_strict` then rejects, costing a retry on every call.
     """
+    keys = ", ".join(f"`{f}`" for f in schema.model_fields)
     return (
-        "Return a single json object matching this schema exactly. "
+        f"Return a single json object whose top-level keys are exactly: {keys}. "
         "Emit no prose, no markdown fences — the json object only.\n\n"
+        "The schema below describes those keys. Its own `title`, `description`, "
+        "`properties` and `required` entries describe the contract; they are NOT "
+        "keys to copy into your reply.\n\n"
         f"{json.dumps(schema.model_json_schema(), indent=2)}"
     )
 
@@ -83,3 +92,29 @@ def effective_prompt_sha(role_prompt: str, schema: type) -> str:
     return hashlib.sha256(
         "\n".join((SHARED_SYSTEM, role_prompt, schema_block(schema))).encode()
     ).hexdigest()
+
+
+def validate_strict(schema: type, text: str):
+    """Parse `text` into `schema`, rejecting keys the schema never declared.
+
+    Structured Outputs could not emit an undeclared key; JSON mode can, and
+    pydantic's default `extra="ignore"` discards it without a word. On a REQUIRED
+    field that is harmless — the field is missing, validation fails, the call
+    retries. On an OPTIONAL one it is silent data loss: a reply that writes
+    `reader_notes` instead of `reader_threads` validates clean and the reader's
+    own annotations disappear.
+
+    Enforced here rather than by `extra="forbid"` on the model because
+    `domains.extraction.schemas` is duplicated as a cross-repo contract with
+    newsletter-assistant and moves only in lockstep, and because naming the
+    offending key gives the retry something specific to correct. Raises
+    ValueError, which the retry loop treats like any other validation failure.
+    """
+    data = json.loads(text)
+    undeclared = sorted(set(data) - set(schema.model_fields))
+    if undeclared:
+        raise ValueError(
+            f"reply contains fields the schema does not declare: {undeclared}. "
+            f"Use only: {sorted(schema.model_fields)}"
+        )
+    return schema.model_validate(data)

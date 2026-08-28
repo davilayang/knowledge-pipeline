@@ -65,6 +65,10 @@ def _create_resp(text: str):
     resp.choices = [MagicMock()]
     resp.choices[0].message = MagicMock()
     resp.choices[0].message.content = text
+    # Real responses carry refusal=None when the model did not refuse; a bare
+    # MagicMock would auto-create a truthy attribute and trip the refusal guard.
+    resp.choices[0].message.refusal = None
+    resp.choices[0].finish_reason = "stop"
     resp.usage = _usage()
     return resp
 
@@ -658,5 +662,70 @@ def test_a_truncated_reply_fails_immediately_rather_than_retrying(extractor):
     client.chat.completions.create = AsyncMock(side_effect=_create)
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="truncated"):
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    assert len(_structured_kwargs(client)) == 1
+
+
+def test_an_undeclared_field_is_rejected_rather_than_silently_dropped(extractor):
+    """Structured Outputs could not emit a key the schema never declared; JSON
+    mode can, and pydantic's default `extra="ignore"` drops it without a word.
+    On an OPTIONAL field that is silent data loss: a reply misspelling
+    `reader_threads` still validates and the reader's own notes just vanish."""
+    client = MagicMock()
+    client.close = AsyncMock()
+    replies = [
+        '{"questions": ["a?", "b?", "c?", "d?"], "reader_notes": ["wanted X"]}',
+        '{"questions": ["a?", "b?", "c?", "d?"], "reader_threads": ["wanted X"]}',
+    ]
+
+    async def _create(**kwargs):
+        messages = kwargs["messages"]
+        if kwargs.get("response_format") is None:
+            return _create_resp("# n")
+        if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
+            return _create_resp(_topic_card_obj().model_dump_json())
+        return _create_resp(replies.pop(0))
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.followups.reader_threads == ["wanted X"]
+
+
+def test_bundle_sha_moves_when_the_shared_system_moves(monkeypatch):
+    """`bundle_sha256` is the COHORT staleness signal written to
+    `queue_items.extractor_sha256`. The shared system message and the generated
+    schema are now part of what every structured call sends, so a hash over the
+    prompt markdown alone would leave every existing row reading as fresh after
+    an edit to either."""
+    from workflows.extraction import shared_prefix
+
+    ex = ThreeCallOpenAIExtractor(
+        api_key="t", model="gpt-4.1-mini", prompt_sets={"unknown": _bundle()}
+    )
+    before = ex.bundle_sha256("unknown")
+    monkeypatch.setattr(shared_prefix, "SHARED_SYSTEM", "A DIFFERENT SHARED SYSTEM")
+    assert ex.bundle_sha256("unknown") != before
+
+
+def test_a_refusal_fails_immediately_rather_than_retrying(extractor):
+    """A refusal arrives with empty content, which would otherwise look like
+    malformed JSON and burn three retries before failing with a parse error that
+    says nothing about why the model declined."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is None:
+            return _create_resp("# n")
+        resp = _create_resp("")
+        resp.choices[0].message.refusal = "I can't help with that."
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError, match="refused"):
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(_structured_kwargs(client)) == 1

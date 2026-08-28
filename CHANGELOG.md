@@ -14,13 +14,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **The JSON schema sent to the model is generated from the pydantic model** rather than written into the prompt markdown, keeping `domains.extraction.schemas` the single source of truth. `topic_card_v1` and `followups_v1` carry semantics only.
 
-- **`prompt_sha256` now covers the whole effective prompt** — shared system message, role prompt, and generated schema — not just the prompt markdown. Previously a field added to `TopicCard` would change what the model was asked for while every existing row still read as fresh.
+- **`prompt_sha256` and `extractor_sha256` now cover the whole effective prompt** — shared system message, role prompt, and generated schema — not just the prompt markdown. Previously a field added to `TopicCard` would change what the model was asked for while every existing row, and the whole cohort, still read as fresh.
+
+- **Undeclared fields in a reply are rejected instead of silently dropped.** JSON mode can return keys the schema never declared, and pydantic's default `extra="ignore"` discards them without a word. On a required field that is harmless; on an optional one it is silent data loss — a reply writing `reader_notes` instead of `reader_threads` validated clean and the reader's own annotations vanished. Checked in the extractor rather than via `extra="forbid"` on the model, because `domains.extraction.schemas` is a cross-repo contract, and because naming the offending key gives the retry something specific to correct.
 
 ### Fixed
 
 - **`extract_reading_card` no longer reports a `wall_clock_ms` that assumed parallel calls.** It computed `narrative + max(topic_card, followups)`, which stopped being true once the structured pair became sequential. Model time and wall clock are now the same figure, reported once as `total_model_time_ms`.
 
-- **A reply truncated at the token ceiling now fails immediately, naming the ceiling,** instead of being retried twice more under the same budget and surfacing as a JSON parse error.
+- **A reply truncated at the token ceiling now fails immediately, naming the ceiling,** instead of being retried twice more under the same budget and surfacing as a JSON parse error. Refusals fail the same way rather than burning retries on what looks like malformed JSON.
+
+- **The generated schema block now states which top-level keys the reply may carry.** A JSON Schema dump has `title` / `description` / `properties` keys of its own, and gpt-5-mini copied the model's `description` straight into every reply — 5 runs out of 5 — which would have cost a retry on every single call.
 
 ---
 

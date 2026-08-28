@@ -41,7 +41,6 @@ from datetime import UTC, datetime
 from typing import Any
 
 import openai
-import pydantic
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 
@@ -49,6 +48,7 @@ from workflows.extraction.shared_prefix import (
     effective_prompt_sha,
     schema_block,
     structured_messages,
+    validate_strict,
 )
 from workflows.extraction.types import PromptBundle
 
@@ -179,18 +179,31 @@ class ThreeCallOpenAIExtractor:
         return "3call_v2_shape_routed"
 
     def bundle_sha256(self, content_shape: str) -> str:
-        """Hash across model + the three prompt texts of the SELECTED
-        bundle. Pure function of the chosen bundle — adding a new shape's
-        bundle does NOT invalidate prior shapes' rows. Falls back to the
-        `unknown` bundle when the shape is not in the registered set."""
+        """Cohort staleness signal for the SELECTED bundle, written to
+        `queue_items.extractor_sha256`.
+
+        Covers everything static the three calls send: the model, the narrative
+        prompt, and — via `effective_prompt_sha` — the shared system message,
+        each structured role prompt, and the schema generated from each pydantic
+        model. Hashing the prompt markdown alone would leave every existing row
+        reading as fresh after an edit to the shared system or a field added to
+        `TopicCard`, even though both change what the model is asked for.
+
+        The reader-notes fold is folded into the followups leg unconditionally.
+        That over-fires slightly — editing it marks even note-free rows stale —
+        which is the safe direction for a staleness signal.
+
+        Pure function of the chosen bundle: adding a new shape's bundle does NOT
+        invalidate prior shapes' rows. Falls back to the `unknown` bundle when
+        the shape is not in the registered set."""
         bundle = self._prompt_sets.get(content_shape) or self._prompt_sets[_GENERIC_SHAPE]
         return _sha(
             "\n".join(
                 (
                     self._model,
                     bundle["narrative"][0],
-                    bundle["topic_card"][0],
-                    bundle["followups"][0],
+                    effective_prompt_sha(bundle["topic_card"][0], TopicCard),
+                    effective_prompt_sha(bundle["followups"][0] + _READER_THREADS_FOLD, Followups),
                 )
             )
         )
@@ -348,6 +361,12 @@ class ThreeCallOpenAIExtractor:
             tokens_in += resp.usage.prompt_tokens
             tokens_out += resp.usage.completion_tokens
             cached += _cached_tokens(resp.usage) or 0
+            refusal = getattr(resp.choices[0].message, "refusal", None)
+            if refusal:
+                # A refusal comes back with empty content, which would otherwise
+                # read as malformed JSON and burn the retries before failing with
+                # a parse error that never mentions why the model declined.
+                raise RuntimeError(f"{call_kind}: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
                 # Re-asking under the same ceiling truncates again, so this
                 # fails fast and names the ceiling rather than surfacing three
@@ -358,9 +377,11 @@ class ThreeCallOpenAIExtractor:
                     f"(attempt {attempt + 1}) — raise the ceiling or shorten the schema"
                 )
             try:
-                parsed = schema.model_validate_json(resp.choices[0].message.content or "")
+                parsed = validate_strict(schema, resp.choices[0].message.content or "")
                 break
-            except pydantic.ValidationError as exc:
+            # ValueError covers pydantic.ValidationError (a subclass), malformed
+            # JSON, and the undeclared-field rejection.
+            except ValueError as exc:
                 if attempt == _MAX_STRUCTURED_ATTEMPTS - 1:
                     raise
                 # Appended to the tail, never the prefix — a correction written

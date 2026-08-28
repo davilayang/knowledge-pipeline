@@ -34,3 +34,14 @@ def test_the_prompt_sha_moves_when_the_schema_moves():
     assert effective_prompt_sha("SAME ROLE PROMPT", TopicCard) != effective_prompt_sha(
         "SAME ROLE PROMPT", Followups
     )
+
+
+def test_schema_block_states_the_exact_allowed_top_level_keys():
+    """The generated JSON Schema has its own top-level `description`, `title` and
+    `properties` keys, and gpt-5-mini copies `description` straight into its
+    reply — every run, in a live 5-for-5 check. The block has to say plainly
+    which keys the OUTPUT may carry, not just show the schema."""
+    block = schema_block(TopicCard)
+    assert "top-level keys" in block
+    for field in TopicCard.model_fields:
+        assert f"`{field}`" in block
