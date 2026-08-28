@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The extraction lane's structured calls now share the article between them.** `topic_card` and `followups` moved from pydantic Structured Outputs to JSON mode and run one after the other over a `[shared system][article][role task]` message layout, so the second reads the article from OpenAI's prefix cache instead of paying for it a second time. Both were previously impossible: OpenAI partitions the prefix cache by response format, so two different pydantic schemas could never share an entry, and firing the pair concurrently left neither able to read the other's write. Measured over 9 production articles, `followups` cached 53–98% of its input, scaling with article length; articles under roughly 4,000 characters cache nothing, because their shared prefix falls below OpenAI's 1,024-token minimum. The pair is no longer concurrent, adding roughly 4s per item to a nightly batch.
+
+- **Structured calls validate their own output and re-ask on failure.** JSON mode guarantees syntactically valid JSON, not a reply that satisfies the schema, so each call now validates against its pydantic model and retries up to three times, appending the validation error to the trailing task message so the cached prefix survives the retry. Retried attempts' tokens are summed into the `extraction_calls` ledger rather than dropped.
+
+- **The JSON schema sent to the model is generated from the pydantic model** rather than written into the prompt markdown, keeping `domains.extraction.schemas` the single source of truth. `topic_card_v1` and `followups_v1` carry semantics only.
+
+- **`prompt_sha256` now covers the whole effective prompt** — shared system message, role prompt, and generated schema — not just the prompt markdown. Previously a field added to `TopicCard` would change what the model was asked for while every existing row still read as fresh.
+
+### Fixed
+
+- **`extract_reading_card` no longer reports a `wall_clock_ms` that assumed parallel calls.** It computed `narrative + max(topic_card, followups)`, which stopped being true once the structured pair became sequential. Model time and wall clock are now the same figure, reported once as `total_model_time_ms`.
+
+- **A reply truncated at the token ceiling now fails immediately, naming the ceiling,** instead of being retried twice more under the same budget and surfacing as a JSON parse error.
+
 ---
 
 ## [0.36.13] — 2026-08-28

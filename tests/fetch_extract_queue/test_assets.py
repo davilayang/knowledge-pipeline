@@ -588,12 +588,11 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     assert "Visible Title" in metadata["topic_card_preview"].md_str
     assert metadata["followups_count"].value == 4
     assert metadata["extractor_label"].text == "3call_v2_shape_routed"
-    # Both timing perspectives present — total_model_time_ms is sum of per-call
-    # durations (what you pay), wall_clock_ms is narrative + max(topic,
-    # followups) since calls 2+3 run in parallel inside asyncio.gather.
+    # One timing number: the three calls run one after another, so model time
+    # and wall clock are the same figure and reporting both invited the reader
+    # to believe the pair still overlapped.
     assert "total_model_time_ms" in metadata
-    assert "wall_clock_ms" in metadata
-    assert metadata["wall_clock_ms"].value <= metadata["total_model_time_ms"].value
+    assert "wall_clock_ms" not in metadata
 
 
 # -------- comments_json_to_user_notes helper --------

@@ -1,20 +1,23 @@
 """Tests for ThreeCallOpenAIExtractor — the v2 extractor strategy.
 
-Mocks the AsyncOpenAI client surface (`chat.completions.create` and
-`chat.completions.parse`). Async surface is exercised end-to-end via
-the sync `.extract()` entry point (which wraps `asyncio.run`).
+Mocks the AsyncOpenAI client surface. All three calls go through
+`chat.completions.create`; the structured pair runs in JSON mode and is told
+apart by the prompt text in its trailing task message. Async surface is
+exercised end-to-end via the sync `.extract()` entry point (which wraps
+`asyncio.run`).
 """
 
 from unittest.mock import AsyncMock, MagicMock, patch
 
+import pydantic
 import pytest
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 from workflows.extraction import PromptBundle
+from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.extraction.three_call_openai import (
     EXTRACTION_CACHE_KEY,
     ThreeCallOpenAIExtractor,
-    _sha,
 )
 
 
@@ -66,32 +69,43 @@ def _create_resp(text: str):
     return resp
 
 
-def _parse_resp(parsed_obj):
-    resp = MagicMock()
-    resp.choices = [MagicMock()]
-    resp.choices[0].message = MagicMock()
-    resp.choices[0].message.parsed = parsed_obj
-    resp.usage = _usage()
-    return resp
-
-
-def _wire_client(create_text: str, topic_obj, followups_obj):
-    """Returns a mock AsyncOpenAI client wired with the right async surface.
-    `close()` is an AsyncMock — the extractor awaits it in `finally` for
-    httpx-pool cleanup (introduced in the PR #79 review-fix pass)."""
+def _wire_client(create_text: str, topic_obj, followups_obj, *, capture=None):
+    """Mock client for all three calls. Accepts any kwargs, so a call may send
+    either `max_tokens` or `max_completion_tokens` without the mock rejecting the
+    keyword. `capture`, when given, collects each call's `messages` by kind."""
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=_create_resp(create_text))
     client.close = AsyncMock()
 
-    async def _parse(*, model, max_tokens, messages, response_format, **_):
-        if response_format is TopicCard:
-            return _parse_resp(topic_obj)
-        if response_format is Followups:
-            return _parse_resp(followups_obj)
-        raise AssertionError(f"unexpected response_format: {response_format}")
+    async def _create(**kwargs):
+        messages = kwargs["messages"]
+        if kwargs.get("response_format") is None:
+            if capture is not None:
+                capture["narrative"] = messages
+            return _create_resp(create_text)
+        is_topic = "TOPIC_CARD_PROMPT" in messages[-1]["content"]
+        if capture is not None:
+            capture["topic_card" if is_topic else "followups"] = messages
+        return _create_resp((topic_obj if is_topic else followups_obj).model_dump_json())
 
-    client.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.create = AsyncMock(side_effect=_create)
     return client
+
+
+def _narrative_kwargs(client) -> dict:
+    """The narrative call is the one sending no `response_format`."""
+    return next(
+        c.kwargs
+        for c in client.chat.completions.create.await_args_list
+        if c.kwargs.get("response_format") is None
+    )
+
+
+def _structured_kwargs(client) -> list[dict]:
+    return [
+        c.kwargs
+        for c in client.chat.completions.create.await_args_list
+        if c.kwargs.get("response_format") is not None
+    ]
 
 
 @pytest.fixture
@@ -171,21 +185,6 @@ def test_extract_passes_content_type_tag_in_user_message(extractor):
     assert "raw content" in user_msg
 
 
-def _wire_client_anykwargs(topic_obj, followups_obj):
-    """Mock client whose create/parse accept ANY kwargs (return_value, no
-    fixed signature) — so a call can send either max_tokens or
-    max_completion_tokens without the mock rejecting the keyword."""
-    client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=_create_resp("body"))
-    client.close = AsyncMock()
-
-    async def _parse(**kwargs):
-        return _parse_resp(topic_obj if kwargs["response_format"] is TopicCard else followups_obj)
-
-    client.chat.completions.parse = AsyncMock(side_effect=_parse)
-    return client
-
-
 def test_gpt5_model_sends_reasoning_params_not_max_tokens():
     """gpt-5-family are reasoning models: they reject `max_tokens` and need
     `max_completion_tokens` + `reasoning_effort`. Extraction wants coverage,
@@ -193,17 +192,17 @@ def test_gpt5_model_sends_reasoning_params_not_max_tokens():
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model="gpt-5-mini", prompt_sets={"unknown": _bundle()}, max_tokens=4096
     )
-    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
-    narr = client.chat.completions.create.await_args.kwargs
+    narr = _narrative_kwargs(client)
     assert narr["max_completion_tokens"] == 4096
     assert narr["reasoning_effort"] == "minimal"
     assert "max_tokens" not in narr
-    for parse_call in client.chat.completions.parse.await_args_list:
-        assert parse_call.kwargs["max_completion_tokens"] == 4096
-        assert parse_call.kwargs["reasoning_effort"] == "minimal"
-        assert "max_tokens" not in parse_call.kwargs
+    for kwargs in _structured_kwargs(client):
+        assert kwargs["max_completion_tokens"] == 4096
+        assert kwargs["reasoning_effort"] == "minimal"
+        assert "max_tokens" not in kwargs
 
 
 @pytest.mark.parametrize("model", ["gpt-5.4-mini", "gpt-5.4-nano", "gpt-5.6-luna"])
@@ -217,24 +216,24 @@ def test_dotted_gpt5_models_send_none_effort_not_minimal(model):
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model=model, prompt_sets={"unknown": _bundle()}, max_tokens=4096
     )
-    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
-    narr = client.chat.completions.create.await_args.kwargs
+    narr = _narrative_kwargs(client)
     assert narr["max_completion_tokens"] == 4096
     assert narr["reasoning_effort"] == "none"
     assert "max_tokens" not in narr
-    for parse_call in client.chat.completions.parse.await_args_list:
-        assert parse_call.kwargs["reasoning_effort"] == "none"
+    for kwargs in _structured_kwargs(client):
+        assert kwargs["reasoning_effort"] == "none"
 
 
 def test_non_reasoning_model_sends_max_tokens(extractor):
     """gpt-4.1-family keep the classic `max_tokens` param (they reject
     `reasoning_effort`)."""
-    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(extractor, "_client", client):
         extractor.extract(content="raw", content_type="Article", content_shape="unknown")
-    narr = client.chat.completions.create.await_args.kwargs
+    narr = _narrative_kwargs(client)
     assert narr["max_tokens"] == 2048  # fixture uses the constructor default
     assert "max_completion_tokens" not in narr
     assert "reasoning_effort" not in narr
@@ -244,15 +243,17 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
     """asyncio.gather(return_exceptions=True) catches the exception; wrapper
     re-raises so Dagster retries the asset (we don't ship partial extractions)."""
     client = MagicMock()
-    client.chat.completions.create = AsyncMock(return_value=_create_resp("narrative"))
     client.close = AsyncMock()
 
-    async def _parse(*, model, max_tokens, messages, response_format, **_):
-        if response_format is TopicCard:
+    async def _create(**kwargs):
+        messages = kwargs["messages"]
+        if kwargs.get("response_format") is None:
+            return _create_resp("narrative")
+        if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
             raise RuntimeError("topic_card OpenAI 500")
-        return _parse_resp(_followups_obj())
+        return _create_resp(_followups_obj().model_dump_json())
 
-    client.chat.completions.parse = AsyncMock(side_effect=_parse)
+    client.chat.completions.create = AsyncMock(side_effect=_create)
 
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="topic_card OpenAI 500"):
@@ -272,7 +273,6 @@ def test_extract_closes_async_client_even_on_failure(extractor):
     """Client close must fire in `finally`, not only on the success path."""
     client = MagicMock()
     client.chat.completions.create = AsyncMock(side_effect=RuntimeError("narrative 500"))
-    client.chat.completions.parse = AsyncMock()
     client.close = AsyncMock()
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError, match="narrative 500"):
@@ -375,8 +375,7 @@ def test_extract_selects_shape_specific_bundle_when_present():
         )
     by_kind = {c.call_kind: c for c in calls}
     assert by_kind["narrative"].prompt_label == "narrative_ct_v1"
-    sys_msg = client.chat.completions.create.await_args.kwargs["messages"][0]["content"]
-    assert sys_msg == "CT_NARRATIVE"
+    assert _narrative_kwargs(client)["messages"][0]["content"] == "CT_NARRATIVE"
 
 
 def test_extract_falls_back_to_unknown_for_unregistered_shape():
@@ -451,33 +450,9 @@ def test_bundle_sha256_falls_back_to_unknown_for_unregistered_shape():
 # -------- user_notes / reader_threads --------
 
 
-def _wire_client_capturing(captured, create_text, topic_obj, followups_obj):
-    """Like _wire_client but records the `messages` passed to each call,
-    keyed by call kind, so tests can assert on the constructed prompts."""
-    client = MagicMock()
-
-    async def _create(*, model, max_tokens, messages, **_):
-        captured["narrative"] = messages
-        return _create_resp(create_text)
-
-    async def _parse(*, model, max_tokens, messages, response_format, **_):
-        if response_format is TopicCard:
-            captured["topic_card"] = messages
-            return _parse_resp(topic_obj)
-        if response_format is Followups:
-            captured["followups"] = messages
-            return _parse_resp(followups_obj)
-        raise AssertionError(f"unexpected response_format: {response_format}")
-
-    client.chat.completions.create = AsyncMock(side_effect=_create)
-    client.chat.completions.parse = AsyncMock(side_effect=_parse)
-    client.close = AsyncMock()
-    return client
-
-
 def _followups_sha(extractor, *, user_notes):
     captured = {}
-    client = _wire_client_capturing(captured, "# n", _topic_card_obj(), _followups_obj())
+    client = _wire_client("# n", _topic_card_obj(), _followups_obj(), capture=captured)
     with patch.object(extractor, "_client", client):
         _payload, calls = extractor.extract(
             content="raw",
@@ -491,21 +466,34 @@ def _followups_sha(extractor, *, user_notes):
 
 def test_no_user_notes_leaves_followups_unchanged(extractor):
     captured, _ = _followups_sha(extractor, user_notes=None)
-    assert "reader's notes" not in captured["followups"][1]["content"]
-    assert "reader_threads" not in captured["followups"][0]["content"]
+    # Keyed on the fold's exact label and wording: the generated schema block
+    # carries the `reader_threads` field name and its description, which mentions
+    # a bare "[reader's notes] block", whether or not the fold fired.
+    assert (
+        "[reader's notes — NOT part of the source article]"
+        not in captured["followups"][-1]["content"]
+    )
+    assert "Never answer reader" not in captured["followups"][-1]["content"]
 
 
 def test_user_notes_injected_only_into_followups(extractor):
     captured, _ = _followups_sha(extractor, user_notes="- compare with dbt")
-    # followups user message carries the labeled notes block verbatim
-    fu_user = captured["followups"][1]["content"]
-    assert "[reader's notes — NOT part of the source article]" in fu_user
-    assert "compare with dbt" in fu_user
-    # followups system prompt carries the fold instruction
-    assert "reader_threads" in captured["followups"][0]["content"]
+    # The notes and the fold instruction both ride in the trailing task message.
+    fu_task = captured["followups"][-1]["content"]
+    assert "[reader's notes — NOT part of the source article]" in fu_task
+    assert "compare with dbt" in fu_task
+    assert "Never answer reader" in fu_task
     # topic_card + narrative are untouched
-    assert "reader's notes" not in captured["topic_card"][1]["content"]
-    assert "reader's notes" not in captured["narrative"][1]["content"]
+    assert "reader's notes" not in captured["topic_card"][-1]["content"]
+    assert "reader's notes" not in captured["narrative"][-1]["content"]
+
+
+def test_reader_notes_do_not_break_the_shared_prefix(extractor):
+    """Reader notes are per-item data, so they must ride in the tail. Putting them
+    in the article envelope would leave followups with a different prefix from
+    topic_card on every annotated item, dropping the body out of the cache."""
+    captured, _ = _followups_sha(extractor, user_notes="- compare with dbt")
+    assert captured["followups"][:-1] == captured["topic_card"][:-1]
 
 
 def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
@@ -513,10 +501,12 @@ def test_followups_sha_reflects_notes_topic_card_does_not(extractor):
     _, noted = _followups_sha(extractor, user_notes="- compare with dbt")
     assert noted["followups"].prompt_sha256 != base["followups"].prompt_sha256
     assert noted["topic_card"].prompt_sha256 == base["topic_card"].prompt_sha256
-    # Positive assertion: the no-notes followups sha equals the sha of the raw
-    # base followups prompt text, proving it's carried through unmodified and
-    # not recomputed from a mutated value.
-    assert base["followups"].prompt_sha256 == _sha(_bundle().followups[0])
+    # Positive assertion: the no-notes followups sha is the sha of the effective
+    # prompt built from the unmodified base text, proving it's carried through
+    # and not recomputed from a mutated value.
+    assert base["followups"].prompt_sha256 == effective_prompt_sha(
+        _bundle().followups[0], Followups
+    )
 
 
 def test_every_call_declares_the_same_prompt_cache_key():
@@ -526,14 +516,147 @@ def test_every_call_declares_the_same_prompt_cache_key():
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model="gpt-4.1-mini", prompt_sets={"unknown": _bundle()}
     )
-    client = _wire_client_anykwargs(_topic_card_obj(), _followups_obj())
+    client = _wire_client("body", _topic_card_obj(), _followups_obj())
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
 
-    keys = [client.chat.completions.create.await_args.kwargs.get("prompt_cache_key")]
-    keys += [
-        c.kwargs.get("prompt_cache_key") for c in client.chat.completions.parse.await_args_list
+    keys = [
+        c.kwargs.get("prompt_cache_key") for c in client.chat.completions.create.await_args_list
     ]
 
     assert len(keys) == 3
     assert all(k == EXTRACTION_CACHE_KEY for k in keys)
+
+
+def _json_mode_client(topic_json: str, followups_json: str):
+    """All three calls go through `create`; the structured pair runs in JSON mode
+    and comes back as raw text the extractor has to parse and validate itself."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(*, messages, response_format=None, **_):
+        if response_format is None:
+            return _create_resp("# narrative body")
+        tail = messages[-1]["content"]
+        return _create_resp(topic_json if "TOPIC_CARD_PROMPT" in tail else followups_json)
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    return client
+
+
+def test_structured_call_parses_the_raw_json_body_into_the_schema(extractor):
+    client = _json_mode_client(
+        _topic_card_obj().model_dump_json(), _followups_obj().model_dump_json()
+    )
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.topic_card.extracted_title == "t"
+
+
+def test_the_structured_pair_does_not_overlap(extractor):
+    """topic_card must finish before followups starts: the cached article body
+    only reaches the second call once the first has written it. Running them
+    concurrently leaves both paying full price for the body."""
+    import asyncio
+
+    events: list[str] = []
+
+    async def _create(**kwargs):
+        messages = kwargs["messages"]
+        if kwargs.get("response_format") is None:
+            return _create_resp("# n")
+        kind = "topic_card" if "TOPIC_CARD_PROMPT" in messages[-1]["content"] else "followups"
+        events.append(f"start {kind}")
+        await asyncio.sleep(0)
+        events.append(f"end {kind}")
+        obj = _topic_card_obj() if kind == "topic_card" else _followups_obj()
+        return _create_resp(obj.model_dump_json())
+
+    client = MagicMock()
+    client.close = AsyncMock()
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+
+    assert events == [
+        "start topic_card",
+        "end topic_card",
+        "start followups",
+        "end followups",
+    ]
+
+
+def _retrying_client(topic_bodies: list[str]):
+    """Serves `topic_bodies` to successive topic_card attempts; followups and
+    narrative always succeed."""
+    client = MagicMock()
+    client.close = AsyncMock()
+    pending = list(topic_bodies)
+
+    async def _create(**kwargs):
+        messages = kwargs["messages"]
+        if kwargs.get("response_format") is None:
+            return _create_resp("# n")
+        if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
+            return _create_resp(pending.pop(0))
+        return _create_resp(_followups_obj().model_dump_json())
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    return client
+
+
+def test_structured_call_retries_when_the_json_fails_validation(extractor):
+    """JSON mode guarantees valid json, not a valid TopicCard. A reply that
+    parses but misses a required field is retried rather than failing the job."""
+    client = _retrying_client(
+        ['{"extracted_title": "only this"}', _topic_card_obj().model_dump_json()]
+    )
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.topic_card.extracted_title == "t"
+
+
+def test_structured_call_gives_up_after_three_attempts(extractor):
+    """A model that has missed the schema three times fails the job rather than
+    retrying forever or shipping a partial extraction."""
+    client = _retrying_client(['{"extracted_title": "no"}'] * 3)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(pydantic.ValidationError):
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    assert len(_structured_kwargs(client)) == 3
+
+
+def test_the_retry_correction_leaves_the_cached_prefix_intact(extractor):
+    """The validation error rides in the tail. Written ahead of the article body
+    it would void the prompt cache on exactly the calls that retry."""
+    client = _retrying_client(['{"extracted_title": "no"}', _topic_card_obj().model_dump_json()])
+    with patch.object(extractor, "_client", client):
+        extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    first, retry = (k["messages"] for k in _structured_kwargs(client)[:2])
+    assert retry[:-1] == first[:-1]
+    assert "rejected by the schema" in retry[-1]["content"]
+
+
+def test_a_truncated_reply_fails_immediately_rather_than_retrying(extractor):
+    """A reply cut off at the token ceiling will be cut off again on a retry with
+    the same ceiling, so re-asking only burns calls and buries the real reason
+    under a JSON parse error."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is None:
+            return _create_resp("# n")
+        resp = _create_resp('{"extracted_title": "cut off here')
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError, match="truncated"):
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    assert len(_structured_kwargs(client)) == 1
