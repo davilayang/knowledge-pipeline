@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-workflows"
-version = "0.36.12"
+version = "0.36.13"
 description = "LangGraph agentic workflows and agent primitives"
 requires-python = ">=3.13"
 dependencies = [
@@ -10,6 +10,8 @@ dependencies = [
     # (the one place a sub-graph re-earns its place); pulls langchain-core
     # transitively. The wiki path itself is plain OpenAI SDK + langfuse.openai.
     "langgraph>=1.0,<2.0",
+    # 2.54 is where `prompt_cache_options` lands; capped below 3.0, which
+    # switches transport to httpx2 and would strand the httpx used elsewhere.
     "openai>=2.54,<3.0",
     "langfuse>=3.0,<4.0",
 ]
