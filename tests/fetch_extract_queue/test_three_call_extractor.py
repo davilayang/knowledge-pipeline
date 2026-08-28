@@ -821,6 +821,12 @@ def test_an_exhausted_narrative_reports_what_happened_not_a_schema_error(extract
     assert "2 attempts" in message
     assert "YouTube" in message  # the item, so the row is identifiable
     assert "Retry" in message  # what the reader should do about it
+    # The narrative runs FIRST, so an exhausted narrative means the other two
+    # calls were never made. Saying they "succeeded but were discarded" was true
+    # of the old path, where all three ran before payload assembly rejected the
+    # empty narrative — and is now simply false.
+    assert "not attempted" in message
+    assert "discarded" not in message
 
 
 def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extractor):
@@ -842,3 +848,14 @@ def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extract
         with pytest.raises(RuntimeError, match="refused"):
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert client.chat.completions.create.await_count == 1
+
+
+def test_a_whitespace_only_narrative_counts_as_empty(extractor):
+    """`"   "` clears both `if output` and pydantic's min_length=1, so without
+    this it is stored as a narrative and the item silently carries a blank one."""
+    client = _narrative_client(["   \n  ", "# recovered narrative"])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.narrative_md == "# recovered narrative"

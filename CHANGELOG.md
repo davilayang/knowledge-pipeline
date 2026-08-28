@@ -16,6 +16,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **The failure message on a Notion queue row now explains what happened.** It read `String should have at least 1 character` for `narrative_md`; it now names the empty completion, the item, and how to re-queue. Refusals are reported as refusals rather than misread as empty completions.
 
+- **A whitespace-only narrative is treated as empty.** `"   "` cleared both the emptiness check and the schema's `min_length=1`, so an item could be stored carrying a blank narrative.
+
 ---
 
 ## [0.36.14] — 2026-08-28
