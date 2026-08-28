@@ -344,7 +344,11 @@ class ThreeCallOpenAIExtractor:
         # or the article body drops out of the prompt cache.
         task += "\n\n" + schema_block(schema)
         t0 = time.monotonic()
-        tokens_in = tokens_out = cached = 0
+        tokens_in = tokens_out = 0
+        # None means the API reported no cache details at all, which is a
+        # different fact from a reported zero — the narrative call preserves
+        # that distinction and the ledger's column is nullable for it.
+        cached: int | None = None
         correction = ""
         for attempt in range(_MAX_STRUCTURED_ATTEMPTS):
             resp = await self._client.chat.completions.create(
@@ -360,7 +364,9 @@ class ThreeCallOpenAIExtractor:
             # ledger; `resp` below is the attempt that succeeded.
             tokens_in += resp.usage.prompt_tokens
             tokens_out += resp.usage.completion_tokens
-            cached += _cached_tokens(resp.usage) or 0
+            attempt_cached = _cached_tokens(resp.usage)
+            if attempt_cached is not None:
+                cached = (cached or 0) + attempt_cached
             refusal = getattr(resp.choices[0].message, "refusal", None)
             if refusal:
                 # A refusal comes back with empty content, which would otherwise

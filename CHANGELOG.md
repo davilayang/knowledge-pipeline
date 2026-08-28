@@ -28,6 +28,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **A reply that is valid JSON but not an object — a bare `null`, number or boolean — is retried instead of crashing.** The undeclared-key check raised `TypeError` on those, escaping the retry loop it was meant to feed.
 
+- **`cached_tokens` stays nullable on the structured calls.** Summing retry attempts had flattened an unreported value to `0`, which the narrative call still records as `NULL` — leaving the two call kinds disagreeing about what "the API told us nothing" looks like in the ledger.
+
 ---
 
 ## [0.36.13] — 2026-08-28

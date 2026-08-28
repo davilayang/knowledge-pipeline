@@ -741,3 +741,33 @@ def test_a_non_object_json_reply_is_retried_not_crashed(extractor):
             content="raw", content_type="Article", content_shape="unknown"
         )
     assert payload.topic_card.extracted_title == "t"
+
+
+def test_cached_tokens_stays_none_when_the_api_reports_no_cache_details(extractor):
+    """`cached_tokens` is `int | None`, where None means the API did not report
+    prefix-cache details at all — distinct from a reported zero. The narrative
+    call preserves that; the structured pair must not flatten it to 0, or the
+    two call kinds disagree about what an unreported value looks like."""
+    client = _wire_client("# n", _topic_card_obj(), _followups_obj())
+
+    async def _create(**kwargs):
+        resp = _create_resp(
+            "# n"
+            if kwargs.get("response_format") is None
+            else (
+                _topic_card_obj().model_dump_json()
+                if "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+                else _followups_obj().model_dump_json()
+            )
+        )
+        resp.usage.prompt_tokens_details = None  # older/non-caching response shape
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    assert {c.call_kind: c.cached_tokens for c in calls} == {
+        "narrative": None,
+        "topic_card": None,
+        "followups": None,
+    }
