@@ -2,17 +2,17 @@
 
 Replaces the single-shot extractor with three focused calls:
 
-1. **narrative** — unstructured markdown (`chat.completions.create`).
-2. **topic_card** — pydantic-structured `TopicCard`
-   (`chat.completions.parse`, response_format=TopicCard).
-3. **followups** — pydantic-structured `Followups`
-   (response_format=Followups).
+1. **narrative** — unstructured markdown, no `response_format`.
+2. **topic_card** — JSON mode, validated against `TopicCard`.
+3. **followups** — JSON mode, validated against `Followups`.
 
-Calls 2+3 fire in parallel via `asyncio.gather(..., return_exceptions=True)`.
-They do NOT share call 1's prompt cache — OpenAI partitions the prefix cache by
-`response_format`, so the three hold three unreachable entries and each re-sends
-the body at full price. Reordering the messages cannot change that. Returns
-the composed `ExtractionPayload` (in-memory) + a list of
+Calls 2 and 3 run in sequence so 3 reads the article from the cache 2 writes.
+Both conditions are load-bearing: they share one `response_format` value (OpenAI
+partitions the prefix cache by it, which is why two pydantic schemas never
+could), and `shared_prefix.structured_messages` keeps everything ahead of the
+task tail byte-identical. Call 1 has no response format, so it caches alone.
+
+Returns the composed `ExtractionPayload` (in-memory) + a list of
 `ExtractionCallRecord` (one per call) — the writer in queue_store turns
 those into one INSERT per row in `extraction_calls`.
 
@@ -42,16 +42,28 @@ import openai
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
 
+from workflows.extraction.shared_prefix import (
+    effective_prompt_sha,
+    schema_block,
+    structured_messages,
+    validate_strict,
+)
 from workflows.extraction.types import PromptBundle
 
 _GENERIC_SHAPE = "unknown"
 
 # Routing hint on all three calls: OpenAI steers requests sharing a key to the
-# same cache. The three carry different schemas so they cannot share the body's
-# entry, but one shard per lane lets each reach its own prior entry.
+# same cache, so the structured pair's shared article prefix lands on one machine.
 EXTRACTION_CACHE_KEY = "kp-extraction"
 
-# Appended to the followups system prompt only when the caller supplies user_notes.
+# JSON mode guarantees syntactically valid json, not a reply that satisfies the
+# pydantic model, so a structured call validates its own output and re-asks on
+# failure. Three attempts: gpt-5-mini validated 16/16 in measurement, so this is
+# insurance rather than the main path, and a model that has missed the schema
+# twice is unlikely to find it on a fourth try.
+_MAX_STRUCTURED_ATTEMPTS = 3
+
+# Appended to the followups task tail only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
     "\n\n---\n"
     "The user message may include a `[reader's notes — NOT part of the source "
@@ -64,7 +76,7 @@ _READER_THREADS_FOLD = (
 
 
 def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
-    """Token-budget kwargs for the chat/parse calls, per model family.
+    """Token-budget kwargs for the three calls, per model family.
 
     gpt-5-family are reasoning models: they reject `max_tokens` and need
     `max_completion_tokens`, plus the lowest reasoning effort — extraction wants
@@ -115,8 +127,8 @@ def _expand(bundle: PromptBundle) -> dict[str, _RoleTriple]:
 
 
 class ThreeCallOpenAIExtractor:
-    """v2 strategy. Three OpenAI calls per content item, asyncio.gather for the
-    structured pair. Returns (ExtractionPayload, list[ExtractionCallRecord]).
+    """v2 strategy. Three sequential OpenAI calls per content item. Returns
+    (ExtractionPayload, list[ExtractionCallRecord]).
 
     Single-use: `.extract()` closes the underlying AsyncOpenAI client at the
     end of the call (same event loop that opened it, before asyncio.run
@@ -165,18 +177,31 @@ class ThreeCallOpenAIExtractor:
         return "3call_v2_shape_routed"
 
     def bundle_sha256(self, content_shape: str) -> str:
-        """Hash across model + the three prompt texts of the SELECTED
-        bundle. Pure function of the chosen bundle — adding a new shape's
-        bundle does NOT invalidate prior shapes' rows. Falls back to the
-        `unknown` bundle when the shape is not in the registered set."""
+        """Cohort staleness signal for the SELECTED bundle, written to
+        `queue_items.extractor_sha256`.
+
+        Covers everything static the three calls send: the model, the narrative
+        prompt, and — via `effective_prompt_sha` — the shared system message,
+        each structured role prompt, and the schema generated from each pydantic
+        model. Hashing the prompt markdown alone would leave every existing row
+        reading as fresh after an edit to the shared system or a field added to
+        `TopicCard`, even though both change what the model is asked for.
+
+        The reader-notes fold is folded into the followups leg unconditionally.
+        That over-fires slightly — editing it marks even note-free rows stale —
+        which is the safe direction for a staleness signal.
+
+        Pure function of the chosen bundle: adding a new shape's bundle does NOT
+        invalidate prior shapes' rows. Falls back to the `unknown` bundle when
+        the shape is not in the registered set."""
         bundle = self._prompt_sets.get(content_shape) or self._prompt_sets[_GENERIC_SHAPE]
         return _sha(
             "\n".join(
                 (
                     self._model,
                     bundle["narrative"][0],
-                    bundle["topic_card"][0],
-                    bundle["followups"][0],
+                    effective_prompt_sha(bundle["topic_card"][0], TopicCard),
+                    effective_prompt_sha(bundle["followups"][0] + _READER_THREADS_FOLD, Followups),
                 )
             )
         )
@@ -219,34 +244,26 @@ class ThreeCallOpenAIExtractor:
                 content, content_type, bundle["narrative"], resolved_shape
             )
 
-            topic_result, followups_result = await asyncio.gather(
-                self._structured_call(
-                    content,
-                    content_type,
-                    bundle["topic_card"],
-                    TopicCard,
-                    "topic_card",
-                    resolved_shape,
-                ),
-                self._structured_call(
-                    content,
-                    content_type,
-                    bundle["followups"],
-                    Followups,
-                    "followups",
-                    resolved_shape,
-                    user_notes=user_notes or None,
-                ),
-                return_exceptions=True,
+            # Sequential, not concurrent: `followups` reads the article body from
+            # the prompt cache that `topic_card` writes, which cannot happen while
+            # the two are in flight together.
+            topic_card, topic_record = await self._structured_call(
+                content,
+                content_type,
+                bundle["topic_card"],
+                TopicCard,
+                "topic_card",
+                resolved_shape,
             )
-
-            if isinstance(topic_result, BaseException):
-                raise topic_result
-            if isinstance(followups_result, BaseException):
-                raise followups_result
-
-            topic_card, topic_record = topic_result
-            followups, followups_record = followups_result
+            followups, followups_record = await self._structured_call(
+                content,
+                content_type,
+                bundle["followups"],
+                Followups,
+                "followups",
+                resolved_shape,
+                user_notes=user_notes or None,
+            )
 
             payload = ExtractionPayload(
                 narrative_md=narrative_record.output,
@@ -309,37 +326,79 @@ class ThreeCallOpenAIExtractor:
         *,
         user_notes: str | None = None,
     ) -> tuple[Any, ExtractionCallRecord]:
-        prompt_text, prompt_label, prompt_sha = prompt_triple
-        user_content = f"[content_type: {content_type}]\n\n{content}"
+        prompt_text, prompt_label, _ = prompt_triple
+        role_prompt = prompt_text
         if user_notes:
-            # Recompute the per-call sha over the actual prompt that ran (base +
-            # fold) so a later edit to the fold instruction marks comment-bearing
-            # rows stale; the no-comment path keeps the base sha untouched.
-            prompt_text = prompt_text + _READER_THREADS_FOLD
-            prompt_sha = _sha(prompt_text)
-            user_content += "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
+            # The fold is prompt, so it joins the sha; the notes it refers to
+            # are per-item data and stay out.
+            role_prompt = prompt_text + _READER_THREADS_FOLD
+        prompt_sha = effective_prompt_sha(role_prompt, schema)
+        task = role_prompt
+        if user_notes:
+            task += "\n\n[reader's notes — NOT part of the source article]\n" + user_notes
+        # Role prompt, notes and schema all ride in the tail — everything ahead
+        # of it must match this call's sibling or the article leaves the cache.
+        task += "\n\n" + schema_block(schema)
         t0 = time.monotonic()
-        resp = await self._client.chat.completions.parse(
-            model=self._model,
-            prompt_cache_key=EXTRACTION_CACHE_KEY,
-            **self._token_kwargs,
-            messages=[
-                {"role": "system", "content": prompt_text},
-                {"role": "user", "content": user_content},
-            ],
-            response_format=schema,
-        )
+        tokens_in = tokens_out = 0
+        # None = the API reported no cache details, a different fact from a
+        # reported zero. The narrative call and the ledger both keep it nullable.
+        cached: int | None = None
+        correction = ""
+        for attempt in range(_MAX_STRUCTURED_ATTEMPTS):
+            resp = await self._client.chat.completions.create(
+                model=self._model,
+                prompt_cache_key=EXTRACTION_CACHE_KEY,
+                **self._token_kwargs,
+                messages=structured_messages(
+                    content_type=content_type, content=content, task=task + correction
+                ),
+                response_format={"type": "json_object"},
+            )
+            # Summed across attempts so a retry's cost is not invisible.
+            tokens_in += resp.usage.prompt_tokens
+            tokens_out += resp.usage.completion_tokens
+            attempt_cached = _cached_tokens(resp.usage)
+            if attempt_cached is not None:
+                cached = (cached or 0) + attempt_cached
+            refusal = getattr(resp.choices[0].message, "refusal", None)
+            if refusal:
+                # A refusal has empty content, which would read as malformed
+                # JSON and burn the retries on a parse error that never says why.
+                raise RuntimeError(f"{call_kind}: model refused — {refusal}")
+            if resp.choices[0].finish_reason == "length":
+                # Re-asking under the same ceiling truncates again. On gpt-5 the
+                # ceiling covers reasoning tokens too, not just the reply.
+                raise RuntimeError(
+                    f"{call_kind}: reply truncated at max_tokens={self._max_tokens} "
+                    f"(attempt {attempt + 1}) — raise the ceiling or shorten the schema"
+                )
+            try:
+                parsed = validate_strict(schema, resp.choices[0].message.content or "")
+                break
+            # ValueError covers pydantic.ValidationError (a subclass), malformed
+            # JSON, and the undeclared-field rejection.
+            except ValueError as exc:
+                if attempt == _MAX_STRUCTURED_ATTEMPTS - 1:
+                    raise
+                # Appended to the tail, never the prefix — a correction written
+                # ahead of the article body would cost the cache on every retry.
+                # It also supplies the between-attempt variation that sampling
+                # would normally give: gpt-5 models reject `temperature`.
+                correction = (
+                    f"\n\nYour previous reply was rejected by the schema:\n{exc}\n"
+                    "Return corrected json."
+                )
         duration_ms = (time.monotonic() - t0) * 1000
-        parsed = resp.choices[0].message.parsed
         record = ExtractionCallRecord(
             call_kind=call_kind,
             prompt_label=prompt_label,
             prompt_sha256=prompt_sha,
             schema_name=schema.__name__,
             output=parsed.model_dump_json(),
-            tokens_in=resp.usage.prompt_tokens,
-            tokens_out=resp.usage.completion_tokens,
-            cached_tokens=_cached_tokens(resp.usage),
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cached_tokens=cached,
             duration_ms=duration_ms,
             extracted_at=_now_iso(),
             prompt_set_shape=resolved_shape,

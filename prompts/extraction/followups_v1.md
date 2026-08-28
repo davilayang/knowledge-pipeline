@@ -1,10 +1,11 @@
 # followups_v1 — Likely-follow-up-questions structured output (call 3 of 3)
 
 Three-call refactor: this prompt produces the **Likely follow-up questions**
-only, via OpenAI's `chat.completions.parse(response_format=Followups)`.
-The SDK enforces the JSON schema (4–6 questions, list of strings) defined
-in `domains/extraction/schemas.py`'s `Followups` model; this prompt sets
-the semantics — what makes a question a useful follow-up vs a restatement.
+only, via OpenAI's JSON mode (`chat.completions.create` with
+`response_format={"type": "json_object"}`). The extractor appends the JSON
+schema — generated from `domains/extraction/schemas.py`'s `Followups` model,
+which caps the list at 4–6 questions — after this prompt body, and validates
+the reply against that model; this prompt sets the semantics — what makes a question a useful follow-up vs a restatement.
 
 The followups output drives chip suggestions on the voice agent's drilldown
 turn. Each question becomes a tap-target; the user can pick one to dig
@@ -13,6 +14,10 @@ deeper, OR keep talking. The chips must therefore be sharp, distinct, and
 
 Carved from `v5_*_kp_copy_*.md` (the "Likely follow-up questions" section);
 content-type routing block preserved.
+
+This body is sent as the trailing message of the call, after the article
+itself, so that the article stays byte-identical between this call and the
+topic-card call and reaches OpenAI's prompt cache.
 
 Everything below the horizontal rule is the prompt body. Everything above
 it is design notes.
@@ -60,4 +65,4 @@ GOOD: "How does Hinton's forward-forward algorithm differ from JEPA's pretrainin
 BAD: "Tell me more about world models." (open-ended; vague)
 GOOD: "Which downstream robotic manipulation tasks at NYU used DINO-WM's video extension of JEPA?"
 
-Emit a `Followups` instance matching the schema — 4 to 6 questions. The SDK enforces the JSON shape via response_format; your job is question quality. If the source genuinely supports fewer than 4 distinct, source-answerable, specifics-driven questions, choose 4 anyway by drilling deeper on the most-substantive sub-threads. Empty array is NOT an option.
+Emit a single json object matching the schema that follows this prompt — 4 to 6 questions. Your job is question quality. If the source genuinely supports fewer than 4 distinct, source-answerable, specifics-driven questions, choose 4 anyway by drilling deeper on the most-substantive sub-threads. Empty array is NOT an option.

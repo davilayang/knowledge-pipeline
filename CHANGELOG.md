@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.14] — 2026-08-28
+
+### Changed
+
+- **Extraction's `topic_card` and `followups` calls now share the article via OpenAI's prompt cache instead of paying for it twice.** They moved from pydantic Structured Outputs to sequential JSON-mode calls; cache reuse measured 53–98% of `followups`' input on real articles, and 0% below ~4,000 characters where the shared prefix falls under OpenAI's 1,024-token minimum. Adds ~4s/item to nightly batches. (`workflows.extraction.three_call_openai`, `shared_prefix.py`)
+
+- **The JSON schema sent to the model is now generated from the pydantic model, not written into prompt markdown.** `domains.extraction.schemas` stays the single source of truth for `topic_card_v1` and `followups_v1`.
+
+- **A malformed structured-call reply is now retried (up to 3x) instead of failing the item outright.** Undeclared JSON keys are rejected by name rather than silently dropped, and truncated or refused replies fail fast rather than burning retries.
+
+- **`prompt_sha256` and `extractor_sha256` now cover the full effective prompt** — shared system message, role prompt, and generated schema, not just the markdown — so a schema change is reflected in row provenance and cohort hashing.
+
+- **`extract_reading_card` now reports `total_model_time_ms` instead of `wall_clock_ms`.** The old figure assumed the two structured calls ran in parallel, which they no longer do.
+
+---
+
 ## [0.36.13] — 2026-08-28
 
 ### Changed

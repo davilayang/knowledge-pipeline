@@ -294,11 +294,12 @@ def fetch_content(
     description=_oneline(
         """
         Runs the three-call extractor via ExtractorRegistry (v2:
-        ThreeCallOpenAIExtractor — narrative + topic_card + followups in
-        one Dagster op, calls 2+3 in parallel via asyncio.gather). Persists
-        one row per call into extraction_calls + updates queue_items cohort
-        fields atomically. Future LangGraph swap is a one-class change
-        inside the registry; no asset edits required.
+        ThreeCallOpenAIExtractor — narrative, then topic_card, then
+        followups, sequentially in one Dagster op so the structured pair
+        shares the article's prompt cache). Persists one row per call into
+        extraction_calls + updates queue_items cohort fields atomically.
+        Future LangGraph swap is a one-class change inside the registry;
+        no asset edits required.
         """
     ),
 )
@@ -338,17 +339,9 @@ def extract_reading_card(
     tokens_out_total = sum(c.tokens_out for c in calls)
     by_kind = {c.call_kind: c for c in calls}
 
-    # Two perspectives on the cohort time:
-    #   - total_model_time_ms: sum of per-call durations (what you pay for)
-    #   - wall_clock_ms: narrative ran first (sequential), then topic_card
-    #     and followups in parallel inside asyncio.gather — so user-visible
-    #     latency is narrative + max(topic_card, followups), not the sum.
-    durations = {k: (v.duration_ms or 0) for k, v in by_kind.items()}
-    total_model_time_ms = int(sum(durations.values()))
-    wall_clock_ms = int(
-        durations.get("narrative", 0)
-        + max(durations.get("topic_card", 0), durations.get("followups", 0))
-    )
+    # One figure, not two: the three calls run one after another, so model time
+    # and user-visible latency are the same number.
+    total_model_time_ms = int(sum((v.duration_ms or 0) for v in by_kind.values()))
 
     store.record_extraction_calls(
         notion_page_id=page_id,
@@ -383,7 +376,6 @@ def extract_reading_card(
             "tokens_in_total": dg.MetadataValue.int(tokens_in_total),
             "tokens_out_total": dg.MetadataValue.int(tokens_out_total),
             "total_model_time_ms": dg.MetadataValue.int(total_model_time_ms),
-            "wall_clock_ms": dg.MetadataValue.int(wall_clock_ms),
             "prompt_sha_short_narrative": dg.MetadataValue.text(
                 by_kind["narrative"].prompt_sha256[:12]
             ),
@@ -399,8 +391,7 @@ def extract_reading_card(
             ),
             "summary": dg.MetadataValue.md(
                 f"**{topic_card.extracted_title}** — 3-call extraction, "
-                f"{len(followups.questions)} chips, {wall_clock_ms}ms wall / "
-                f"{total_model_time_ms}ms model"
+                f"{len(followups.questions)} chips, {total_model_time_ms}ms model"
             ),
         }
     )
