@@ -294,11 +294,12 @@ def fetch_content(
     description=_oneline(
         """
         Runs the three-call extractor via ExtractorRegistry (v2:
-        ThreeCallOpenAIExtractor — narrative + topic_card + followups in
-        one Dagster op, calls 2+3 in parallel via asyncio.gather). Persists
-        one row per call into extraction_calls + updates queue_items cohort
-        fields atomically. Future LangGraph swap is a one-class change
-        inside the registry; no asset edits required.
+        ThreeCallOpenAIExtractor — narrative, then topic_card, then
+        followups, sequentially in one Dagster op so the structured pair
+        shares the article's prompt cache). Persists one row per call into
+        extraction_calls + updates queue_items cohort fields atomically.
+        Future LangGraph swap is a one-class change inside the registry;
+        no asset edits required.
         """
     ),
 )
