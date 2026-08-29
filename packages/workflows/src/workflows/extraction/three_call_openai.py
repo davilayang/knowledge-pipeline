@@ -325,18 +325,21 @@ class ThreeCallOpenAIExtractor:
                 # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"narrative: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
-                # Checked before the empty test below, so a reply cut off at zero
-                # bytes is reported as truncation rather than retried as an empty
-                # one — a retry under an unchanged ceiling truncates again.
+                # Checked before the empty test below: hitting the limit can leave
+                # zero visible bytes (reasoning models spend the same budget on
+                # thinking), and that is truncation, not the transient empty reply
+                # the retry exists for — which arrives with finish_reason "stop".
                 raise RuntimeError(
-                    f"The narrative hit the {self._max_tokens}-token output ceiling "
-                    f"and was cut off part-way through this {content_type} item "
-                    f"({len(content):,} chars, {resp.usage.completion_tokens} tokens "
-                    "produced). It was not stored: a cut-off narrative still reads as "
-                    "a finished one, so the voice agent would speak it as complete. "
-                    "The topic card and follow-ups were not attempted — the narrative "
-                    "runs first. Retrying hits the same ceiling; shorten the source or "
-                    "raise the extractor's max_tokens."
+                    f"The narrative reached the {self._max_tokens}-token completion "
+                    f"limit before finishing, on this {content_type} item "
+                    f"({len(content):,} chars; {resp.usage.completion_tokens} "
+                    "completion tokens spent — on reasoning models that counts "
+                    "thinking, not just written output). Nothing was stored: a "
+                    "cut-short narrative carries no marker saying so, and the voice "
+                    "agent would read it out as complete. The topic card and "
+                    "follow-ups were not attempted — the narrative runs first. A "
+                    "retry sometimes fits under the limit; if it fails again the "
+                    "source needs a higher ceiling, which is a maintainer change."
                 )
             output = (resp.choices[0].message.content or "").strip()
             if output:
