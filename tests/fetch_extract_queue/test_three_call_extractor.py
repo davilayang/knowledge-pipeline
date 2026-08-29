@@ -859,3 +859,85 @@ def test_a_whitespace_only_narrative_counts_as_empty(extractor):
             content="raw", content_type="Article", content_shape="unknown"
         )
     assert payload.narrative_md == "# recovered narrative"
+
+
+def test_a_truncated_narrative_is_not_stored_as_a_whole_one(extractor):
+    """`finish_reason="length"` means the model was cut off at the output ceiling.
+    What came back still reads as a finished narrative, and the voice agent would
+    speak it as one, so storing it is silent corruption rather than a short answer."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            obj = _topic_card_obj() if is_topic else _followups_obj()
+            return _create_resp(obj.model_dump_json())
+        resp = _create_resp("Salient threads:\n- one thing\n- a second thing, cut off mid-")
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError):
+            extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
+
+
+def test_a_truncated_narrative_message_names_the_limit_and_the_next_step(extractor):
+    """Covers the message text only — a run-failure sensor is what copies it into
+    the Notion row's Error field, and that boundary is not exercised here. It is
+    still the whole explanation the reader gets, and truncation and the empty-reply
+    fault both surface as a failed item, so the message is what tells them apart."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            obj = _topic_card_obj() if is_topic else _followups_obj()
+            return _create_resp(obj.model_dump_json())
+        resp = _create_resp("Salient threads:\n- one thing, cut off mid-")
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError) as exc:
+            extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
+    message = str(exc.value)
+    assert "2048" in message  # the limit that was hit, not a bare "too long"
+    assert "YouTube" in message  # the item, so the row is identifiable
+    assert "Nothing was stored" in message  # what became of the half narrative
+    assert "maintainer" in message  # who can act, since the reader cannot
+    # The spent-token count is not narrative length on a reasoning model, and a
+    # reader who takes it as one concludes the ceiling is far tighter than it is.
+    assert "thinking" in message
+    # "empty" belongs to the other narrative fault, which is transient and worth
+    # retrying. Reusing the word here would point the reader at the wrong fix.
+    assert "empty" not in message
+
+
+def test_a_zero_byte_reply_at_the_limit_is_truncation_not_an_empty_narrative(extractor):
+    """Reasoning models spend the completion budget on thinking as well as output,
+    so hitting the limit can return nothing at all. That is not the transient empty
+    reply the retry exists for — that one arrives with `finish_reason="stop"` and a
+    second attempt clears it. Retrying this instead burns another full budget and
+    then reports the wrong fault, so the length check has to come first."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            obj = _topic_card_obj() if is_topic else _followups_obj()
+            return _create_resp(obj.model_dump_json())
+        resp = _create_resp("")
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError, match="completion"):
+            extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+    # One call: no retry, and the structured pair never ran.
+    assert client.chat.completions.create.await_count == 1

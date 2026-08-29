@@ -324,6 +324,23 @@ class ThreeCallOpenAIExtractor:
                 # retries, then reports "empty narrative", which is just wrong.
                 # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"narrative: model refused — {refusal}")
+            if resp.choices[0].finish_reason == "length":
+                # Checked before the empty test below: hitting the limit can leave
+                # zero visible bytes (reasoning models spend the same budget on
+                # thinking), and that is truncation, not the transient empty reply
+                # the retry exists for — which arrives with finish_reason "stop".
+                raise RuntimeError(
+                    f"The narrative reached the {self._max_tokens}-token completion "
+                    f"limit before finishing, on this {content_type} item "
+                    f"({len(content):,} chars; {resp.usage.completion_tokens} "
+                    "completion tokens spent — on reasoning models that counts "
+                    "thinking, not just written output). Nothing was stored: a "
+                    "cut-short narrative carries no marker saying so, and the voice "
+                    "agent would read it out as complete. The topic card and "
+                    "follow-ups were not attempted — the narrative runs first. A "
+                    "retry sometimes fits under the limit; if it fails again the "
+                    "source needs a higher ceiling, which is a maintainer change."
+                )
             output = (resp.choices[0].message.content or "").strip()
             if output:
                 break

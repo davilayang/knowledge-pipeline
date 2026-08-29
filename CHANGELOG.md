@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.16] — 2026-08-29
+
+### Changed
+
+- **A narrative cut short at the model's completion limit now fails the item instead of being stored as if whole.** `_narrative_call` checks `finish_reason == "length"`, as the structured calls already did; the failed Notion row explains the limit.
+
+---
+
 ## [0.36.15] — 2026-08-28
 
 ### Changed
