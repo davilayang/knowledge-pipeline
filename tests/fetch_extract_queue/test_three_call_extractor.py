@@ -859,3 +859,55 @@ def test_a_whitespace_only_narrative_counts_as_empty(extractor):
             content="raw", content_type="Article", content_shape="unknown"
         )
     assert payload.narrative_md == "# recovered narrative"
+
+
+def test_a_truncated_narrative_is_not_stored_as_a_whole_one(extractor):
+    """`finish_reason="length"` means the model was cut off at the output ceiling.
+    What came back still reads as a finished narrative, and the voice agent would
+    speak it as one, so storing it is silent corruption rather than a short answer."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            obj = _topic_card_obj() if is_topic else _followups_obj()
+            return _create_resp(obj.model_dump_json())
+        resp = _create_resp("Salient threads:\n- one thing\n- a second thing, cut off mid-")
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError):
+            extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
+
+
+def test_a_truncated_narrative_says_it_was_truncated_in_the_row(extractor):
+    """A run-failure sensor copies this message into the Notion row's Error field,
+    so it is the whole explanation the reader gets. Truncation and the empty-reply
+    fault both surface as a failed item; the message is what tells them apart."""
+    client = MagicMock()
+    client.close = AsyncMock()
+
+    async def _create(**kwargs):
+        if kwargs.get("response_format") is not None:
+            is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
+            obj = _topic_card_obj() if is_topic else _followups_obj()
+            return _create_resp(obj.model_dump_json())
+        resp = _create_resp("Salient threads:\n- one thing, cut off mid-")
+        resp.choices[0].finish_reason = "length"
+        return resp
+
+    client.chat.completions.create = AsyncMock(side_effect=_create)
+    with patch.object(extractor, "_client", client):
+        with pytest.raises(RuntimeError) as exc:
+            extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
+    message = str(exc.value)
+    assert "2048" in message  # the ceiling that was hit, not a bare "too long"
+    assert "YouTube" in message  # the item, so the row is identifiable
+    assert "not stored" in message  # what became of the half narrative
+    assert "shorten the source or raise" in message  # what the reader can do
+    # "empty" belongs to the other narrative fault. Reusing the word here would
+    # send the reader to a retry that cannot help.
+    assert "empty" not in message

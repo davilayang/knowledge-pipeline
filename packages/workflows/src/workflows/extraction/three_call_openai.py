@@ -324,6 +324,20 @@ class ThreeCallOpenAIExtractor:
                 # retries, then reports "empty narrative", which is just wrong.
                 # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"narrative: model refused — {refusal}")
+            if resp.choices[0].finish_reason == "length":
+                # Checked before the empty test below, so a reply cut off at zero
+                # bytes is reported as truncation rather than retried as an empty
+                # one — a retry under an unchanged ceiling truncates again.
+                raise RuntimeError(
+                    f"The narrative hit the {self._max_tokens}-token output ceiling "
+                    f"and was cut off part-way through this {content_type} item "
+                    f"({len(content):,} chars, {resp.usage.completion_tokens} tokens "
+                    "produced). It was not stored: a cut-off narrative still reads as "
+                    "a finished one, so the voice agent would speak it as complete. "
+                    "The topic card and follow-ups were not attempted — the narrative "
+                    "runs first. Retrying hits the same ceiling; shorten the source or "
+                    "raise the extractor's max_tokens."
+                )
             output = (resp.choices[0].message.content or "").strip()
             if output:
                 break

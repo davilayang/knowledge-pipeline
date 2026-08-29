@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **A narrative cut off at the model's output-token ceiling now fails the item instead of being stored as a whole one.** `_narrative_call` checks `finish_reason == "length"`, as the structured calls already did; the Notion row shows Failed, naming the ceiling and what to do about it.
+
 ---
 
 ## [0.36.15] — 2026-08-28
