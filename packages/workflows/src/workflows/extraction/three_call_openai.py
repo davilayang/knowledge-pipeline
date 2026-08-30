@@ -47,6 +47,7 @@ from workflows.extraction.shared_prefix import (
     effective_prompt_sha,
     schema_block,
     structured_messages,
+    token_kwargs,
     validate_strict,
 )
 from workflows.extraction.types import PromptBundle
@@ -82,26 +83,6 @@ _READER_THREADS_FOLD = (
     "notes from the source, never invent threads, and never treat a note as a fact "
     "stated by the source. Leave `reader_threads` empty if the block is absent."
 )
-
-
-def _token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
-    """Token-budget kwargs for the three calls, per model family.
-
-    gpt-5-family are reasoning models: they reject `max_tokens` and need
-    `max_completion_tokens`, plus the lowest reasoning effort — extraction wants
-    coverage of the source, not deliberation. gpt-4.1/4o keep the classic
-    `max_tokens` and reject `reasoning_effort` entirely.
-
-    The two gpt-5 generations spell "lowest" differently and reject each other's
-    value, so one prefix would 400 a whole generation on every call. Verified
-    live: `gpt-5`/`gpt-5-mini` take `minimal`; `gpt-5.4-*` and `gpt-5.6-*` take
-    `none`. Splitting on the dot means an unknown dotted release gets the newer
-    spelling and fails safe. `gpt-5-chat-*` would be mis-routed; none is in use.
-    """
-    if model.startswith("gpt-5"):
-        effort = "none" if model.startswith("gpt-5.") else "minimal"
-        return {"max_completion_tokens": max_tokens, "reasoning_effort": effort}
-    return {"max_tokens": max_tokens}
 
 
 def _sha(text: str) -> str:
@@ -170,7 +151,7 @@ class ThreeCallOpenAIExtractor:
             shape: _expand(bundle) for shape, bundle in prompt_sets.items()
         }
         self._max_tokens = max_tokens
-        self._token_kwargs = _token_kwargs(model, max_tokens)
+        self._token_kwargs = token_kwargs(model, max_tokens)
 
     @property
     def model(self) -> str:

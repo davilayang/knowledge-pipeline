@@ -24,21 +24,26 @@ poll_notion_for_extract (sensor, every 15min)
 fetch_extract_queue_job  (partition_key = notion_page_id)
         │
         ▼
-fetch_content ──► extract_reading_card ──► publish_item
-   │           │              │
-   │           │              └──► Notion: Status=Ready + Name (extracted_title)
-   │           │                   + Description (core_mechanism)
-   │           │
-   │           └─ on failure (LLM error / required-fields check):
-   │              run_failure_sensor → Notion: Status=Failed + Error
-   │
-   ├──► extract_claims  (parallel with extract_reading_card; [reported]/[opinion] claims
-   │        │            → extraction_calls extract_claims row — attributed-lane wiki substrate)
-   │        ▼
-   │    extract_entities  (article-grounded candidates; shared prompt-cache prefix so the
-   │                       article body is served from cache on this second extract-time call
-   │                       → extraction_calls extract_entities row. The synthesize_wiki DAG
-   │                       reads these two docs later — this pipeline no longer writes wiki.db.)
+fetch_content ──► extract_metadata ──► extract_reading_card ──► publish_item
+   │                    │         │              │
+   │                    │         │              └──► Notion: Status=Ready + Name (extracted_title)
+   │                    │         │                   + Description (core_mechanism)
+   │                    │         │
+   │                    │         └─ on failure (LLM error / required-fields check):
+   │                    │            run_failure_sensor → Notion: Status=Failed + Error
+   │                    │
+   │                    ├──► extract_claims  (parallel with extract_reading_card; [reported]/[opinion] claims
+   │                    │        │            → extraction_calls extract_claims row — attributed-lane wiki substrate)
+   │                    │        ▼
+   │                    │    extract_entities  (article-grounded candidates; shared prompt-cache prefix so the
+   │                    │                       article body is served from cache on this second extract-time call
+   │                    │                       → extraction_calls extract_entities row. The synthesize_wiki DAG
+   │                    │                       reads these two docs later — this pipeline no longer writes wiki.db.)
+   │                    │
+   │                    └─ best-effort: one OpenAI call over the fetched body, writing
+   │                       contributors_json / publisher on queue_items plus a
+   │                       call_kind='metadata' extraction_calls row. Any failure is swallowed and
+   │                       the asset still materialises — it does not block either branch below it.
    │
    └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
@@ -50,15 +55,17 @@ queue_items row has `raw_content_override` set (user ticked
 in `resources.py` and the override branch in `assets.fetch_content`). For
 `/v1/fetch`, the service is authoritative for source matching
 (arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
-and quality-floor enforcement. `extract_reading_card`
+and quality-floor enforcement. `extract_metadata` runs one OpenAI call over the
+fetched body before either branch below it. `extract_reading_card`
 runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetch_content +
 extract_reading_card include `content_preview` / `narrative_preview` / `topic_card_preview`
 metadata (head + tail of the content) for at-a-glance verification.
 ```
 
 Local store: `data/queue.db` (SQLite) for fetch + extraction state (raw_content,
-extracted Topic Card, provenance, per-source `extract_claims` + `extract_entities`
-docs). This pipeline no longer writes `data/wiki.db` — the wiki-write lane
+extracted Topic Card, provenance, contributors/publisher metadata,
+per-source `extract_claims` + `extract_entities` docs). This pipeline no longer
+writes `data/wiki.db` — the wiki-write lane
 (attribute + render) moved to the `synthesize_wiki` DAG, which reads those two
 extraction docs on a daily sweep. Lifecycle status (Queued / Fetching / Ready /
 Failed) lives in Notion.

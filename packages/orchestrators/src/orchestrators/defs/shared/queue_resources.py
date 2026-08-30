@@ -481,6 +481,40 @@ class QueueStoreResource(dg.ConfigurableResource):
             tokens_out=tokens_out,
         )
 
+    def record_metadata(
+        self,
+        *,
+        notion_page_id: str,
+        contributors_json: str,
+        publisher: str | None,
+        prompt_label: str,
+        prompt_sha256: str,
+        model: str,
+        output: str,
+        tokens_in: int,
+        tokens_out: int,
+        cached_tokens: int | None = None,
+        duration_ms: float | None = None,
+        content_hash: str | None = None,
+        inputs_sha: str | None = None,
+    ) -> None:
+        queue_db.record_metadata(
+            db_path=self._path(),
+            notion_page_id=notion_page_id,
+            contributors_json=contributors_json,
+            publisher=publisher,
+            prompt_label=prompt_label,
+            prompt_sha256=prompt_sha256,
+            model=model,
+            output=output,
+            tokens_in=tokens_in,
+            tokens_out=tokens_out,
+            cached_tokens=cached_tokens,
+            duration_ms=duration_ms,
+            content_hash=content_hash,
+            inputs_sha=inputs_sha,
+        )
+
     def get_claims(self, notion_page_id: str) -> str | None:
         return queue_db.get_claims(db_path=self._path(), notion_page_id=notion_page_id)
 

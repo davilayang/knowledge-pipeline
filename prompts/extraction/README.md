@@ -16,6 +16,8 @@ Prompt assets consumed by `workflows.extraction`. Each file has its own header e
 
 Labels map to filenames as `<label>.md`. To bump a prompt, edit the file AND the label constant in the same commit.
 
+Also active in production, but read directly via `read_extraction_prompt` rather than through `ExtractorRegistry` (it runs upstream of both extraction branches, not as one of the three calls above): `PROMPT_LABEL_METADATA = "metadata_v1"` → `metadata_v1.md`, called once per item by the `extract_metadata` asset.
+
 ## Reference / eval variants (not loaded by production)
 
 | File | Notes |

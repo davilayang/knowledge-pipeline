@@ -10,6 +10,27 @@ construction lives here rather than in each caller.
 
 import hashlib
 import json
+from typing import Any
+
+
+def token_kwargs(model: str, max_tokens: int) -> dict[str, Any]:
+    """Token-budget kwargs for an extraction call, per model family.
+
+    gpt-5-family are reasoning models: they reject `max_tokens` and need
+    `max_completion_tokens`, plus the lowest reasoning effort — extraction wants
+    coverage of the source, not deliberation. gpt-4.1/4o keep the classic
+    `max_tokens` and reject `reasoning_effort` entirely.
+
+    The two gpt-5 generations spell "lowest" differently and reject each other's
+    value, so one prefix would 400 a whole generation on every call. Verified
+    live: `gpt-5`/`gpt-5-mini` take `minimal`; `gpt-5.4-*` and `gpt-5.6-*` take
+    `none`. Splitting on the dot means an unknown dotted release gets the newer
+    spelling and fails safe. `gpt-5-chat-*` would be mis-routed; none is in use.
+    """
+    if model.startswith("gpt-5"):
+        effort = "none" if model.startswith("gpt-5.") else "minimal"
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": effort}
+    return {"max_tokens": max_tokens}
 
 
 def schema_block(schema: type) -> str:

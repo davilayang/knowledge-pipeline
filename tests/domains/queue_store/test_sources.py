@@ -29,6 +29,7 @@ from domains.queue_store.sources import (
     record_candidates,
     record_claims,
     record_extraction_calls,
+    record_metadata,
     upsert_enriched,
     upsert_fetched,
     upsert_triaged,
@@ -1175,3 +1176,125 @@ def test_extract_claims_cleared_on_re_triage(db_path: Path):
     )
     _seed_row(db_path)  # re-triage same page → cohort reset
     assert get_claims(db_path=db_path, notion_page_id="p-1") is None
+
+
+def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path):
+    """A queue.db predating the asset carries neither column, and the tables
+    already exist — so `CREATE TABLE IF NOT EXISTS` is a no-op and only the ADD
+    COLUMN loop can converge an old file's shape."""
+    p = tmp_path / "old.db"
+    create_schema(db_path=p)
+    with sqlite3.connect(p) as conn:
+        for col in ("contributors_json", "publisher"):
+            conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
+        dropped = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    # Without this the assert below passes on a database that still has the
+    # columns, and the ADD COLUMN loop is never exercised at all.
+    assert not (dropped & {"contributors_json", "publisher"})
+
+    create_schema(db_path=p)
+    with sqlite3.connect(p) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    assert {"contributors_json", "publisher"} <= cols
+
+
+def test_upsert_triaged_clears_metadata_columns(db_path: Path):
+    """Re-triage is a cohort boundary: a requeued row that kept these columns would
+    serve the previous URL's people under the new content — the stale-state
+    failure the fetched columns are already cleared for."""
+    page_id = "p-meta-clear"
+    _seed_row(db_path, page_id)
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json='[{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}]',
+        publisher="Orchestra",
+        prompt_label="metadata_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-5-mini",
+        output="{}",
+        tokens_in=10,
+        tokens_out=5,
+    )
+    _seed_row(db_path, page_id)  # re-triage same page
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert row["contributors_json"] is None
+    assert row["publisher"] is None
+
+
+def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
+    """`get_queue_extraction` is the declared cross-repo view over queue.db and
+    selects a fixed column list, so metadata is invisible through it until the
+    columns are added. Additive keys only. Note newsletter-assistant does not
+    call this function — it runs its own named-column SQL over the same file, so
+    reaching NA means widening that query too."""
+    page_id = "p-meta-view"
+    _seed_row(db_path, page_id)
+    _record_three_call(db_path, page_id)  # sets extracted_at, which this view gates on
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json=json.dumps([{"name": "Kyle Cheung", "role": "author"}]),
+        publisher="Orchestra",
+        prompt_label="metadata_v1",
+        prompt_sha256="d" * 64,
+        model="gpt-5-mini",
+        output="{}",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    out = get_queue_extraction(db_path=db_path, notion_page_id=page_id)
+    assert out is not None
+    assert out["contributors"] == [{"name": "Kyle Cheung", "role": "author"}]
+    assert out["publisher"] == "Orchestra"
+    # The topic-card view it has always served is untouched.
+    assert out["extracted_title"] == "T"
+
+
+def test_get_queue_extraction_metadata_keys_are_present_when_never_extracted(db_path: Path):
+    """A row whose reading card landed but whose metadata call failed must not
+    make the consumer branch on missing keys — the keys exist, holding None."""
+    page_id = "p-meta-absent"
+    _seed_row(db_path, page_id)
+    _record_three_call(db_path, page_id)
+    out = get_queue_extraction(db_path=db_path, notion_page_id=page_id)
+    assert out is not None
+    assert out["contributors"] == []
+    assert out["publisher"] is None
+
+
+def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
+    """One item carries several distinct people plus a publisher that is none of
+    them — the production article this mirrors opens "By Hugo Lu ... guest post by
+    Kyle Cheung, CEO at Greybeam". All three survive storage independently."""
+    page_id = "p-guest-post"
+    _seed_row(db_path, page_id)
+    contributors = [
+        {"name": "Hugo Lu", "role": "author", "affiliation": None},
+        {"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"},
+    ]
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json=json.dumps(contributors),
+        publisher="Orchestra",
+        prompt_label="metadata_v1",
+        prompt_sha256="c" * 64,
+        model="gpt-5-mini",
+        output='{"contributors": []}',
+        tokens_in=900,
+        tokens_out=120,
+        cached_tokens=800,
+        duration_ms=1500.0,
+        content_hash="hash-of-the-body-read",
+    )
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert json.loads(row["contributors_json"]) == contributors
+    assert row["publisher"] == "Orchestra"
+
+    call = get_latest_extraction_calls(db_path=db_path, notion_page_id=page_id)["metadata"]
+    assert call["prompt_label"] == "metadata_v1"
+    assert call["cached_tokens"] == 800
+    assert json.loads(call["node_metadata"])["content_hash"] == "hash-of-the-body-read"
