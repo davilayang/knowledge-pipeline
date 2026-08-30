@@ -432,13 +432,30 @@ sibling sections.
 **What it does not decide.** Nothing about `delivery_shape` or `parts` — those fields were dropped
 on evidence and do not exist.
 
-Nothing about **`unreadable`**, the prompt's third field, which is deliberately out of scope. It is
-the only field that fails a row rather than recording one, and its severity test was calibrated
-against the entire production corpus rather than a sample — the "is a claim unverifiable" reading
-called 41% of all bodies damaged, the "would a refetch recover it" reading lands at 1.8%. A 58-item
-sample adds nothing to a rate already measured over 227, and the field's precision has never been
-labelled at all. If `unreadable` gold is ever wanted, this set is the natural host: add the labels,
-bump `gold_version`, and the item selection stands.
+**`unreadable` is now covered too, as one binary rather than as the prompt's full list.** The prompt
+emits a list of entries with causes, severities and free-text descriptions; none of that compares
+cleanly between labellers. What the pipeline actually *acts* on is a single question — does this row
+fail — so that is what the gold answers:
+
+| field | |
+|---|---|
+| `gold_damaged` | did the body arrive broken such that a refetch could recover substance? `null` where the two labellers differed |
+| `gold_cause` | `chrome` or `truncation`, only where damaged |
+| `gold_references_unshown` | does the piece lean on material that was never text — slides, figures, charts? Reported, never a failure. `null` on the 7 rows where the labellers split |
+| `unreadable_gold_source` | `cross_family_agreed` (57) or `disputed_unresolved` (1) |
+
+Labelled against a separate codebook, [`extract_metadata_unreadable_codebook.md`](extract_metadata_unreadable_codebook.md),
+by the same two model families working independently. It is deliberately a second document: a
+labeller deciding whether a fetch survived does not need three hundred lines about publishers, and
+nothing in that decision depends on this one.
+
+**Cross-family agreement on `damaged` was 57/58** — higher than either of the other two fields, which
+is what you would expect from a more objective question. **Neither labeller found a single damaged
+body in the 58**, and the one dispute is `md_11`.
+
+**This set cannot measure the gate's recall**, only its precision, because it contains no confirmed
+damaged rows to miss. Establishing recall needs items sampled *because* they are broken, which this
+corpus was not built to supply.
 
 Nothing about **external truth**: this measures whether the prompt
 correctly reported *what the fetched text presents as its own authorship*. A label is not wrong
@@ -647,16 +664,19 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
   and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
   model).
-- **Exclude the one `expected_unreadable_gate_reject` row.** `gh_01` is 25k of GitHub navigation
-  chrome with no article in it; the gate raises on it, so in production the item fails before
-  `publish_item` and never yields a contributors/publisher value. Scoring a prompt on it measures
-  output the pipeline discards. This drops the `github` stratum to two rows.
+- **`expected_unreadable_gate_reject` marks `gh_01`, and the gold now says the gate is wrong about
+  it.** The flag records measured gate behaviour: running the prompt over the set, `gh_01` is the one
+  row where the gate raises. But **both independent labellers read that row as undamaged** — GitHub's
+  navigation, file table and sidebar surround the *complete* sqlbuild README, from tagline through
+  Key features and Quick start. The "error while loading" notices the model keys on are about
+  sub-components of the page, not the article.
 
-  The flag is set from **measured gate behaviour**, not from matching a string. That distinction was
-  earned: `gh_02` carries the same GitHub failure text and was initially marked too, but it wraps a
-  *complete* article in chrome, and running the prompt over the set showed the model correctly
-  reporting it readable — `minor` entries only, so the gate does not fire. A string match would have
-  excluded a perfectly scorable row.
+  So the row is scorable for contributors and publisher, and it is simultaneously evidence that the
+  gate has a false positive. Do not silently drop it; it is the most informative row in the set.
+
+  That the flag is measured rather than string-matched was itself earned: `gh_02` carries the same
+  GitHub failure text and was initially marked too, but it wraps a complete article in chrome and the
+  model correctly reports it readable. A string match would have excluded a perfectly scorable row.
 - **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
   `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
   slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where
