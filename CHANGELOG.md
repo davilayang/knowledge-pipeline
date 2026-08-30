@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Triage now keeps the page metadata it was fetching and throwing away.** The article path already parsed a byline, publication date, site name, keywords and `og:type` out of every page it enriched, and kept only the title and description; the arXiv path walked past the paper's author list and publication date in the Atom response it already received. All of it now lands in `enrichment_json`. No new network calls. (`triage_knowledge_queue.url_meta`, `.enrich`)
+
+- **Dates from publishers and from arXiv are validated on the way in.** A timestamp is stored as its `YYYY-MM-DD` day and an unparseable value is dropped, so a later reader can call `date.fromisoformat` on the field without special-casing it.
+
+- **The `content_shape` classifier's prompt is pinned to the fields it already read.** It builds its prompt from whatever enrichment holds, so the newly kept fields would otherwise have silently entered it — and `content_shape` selects which extraction prompt bundle runs. Widening what it reads is a change to extraction output and needs measuring on its own.
+
 ---
 
 ## [0.36.16] — 2026-08-29

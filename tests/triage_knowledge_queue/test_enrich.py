@@ -84,6 +84,9 @@ _ARXIV_ATOM_XML = """<?xml version="1.0" encoding="UTF-8"?>
     <summary>
       Sample abstract body explaining the result.
     </summary>
+    <published>2021-05-10T17:48:00Z</published>
+    <author><name>Ada Lovelace</name></author>
+    <author><name>Alan Turing</name></author>
     <category term="cs.LG" />
     <category term="stat.ML" />
   </entry>
@@ -263,3 +266,81 @@ def test_signals_serialise_categories_as_list():
     )
     payload = json.loads(signals.to_json())
     assert payload["arxiv"]["categories"] == ["cs.LG", "stat.ML"]
+
+
+def test_article_signals_carry_attribution_and_shape_evidence():
+    """What `fetch_url_meta` parses beyond title/description reaches
+    enrichment_json: publisher-supplied byline, publication day, site name,
+    and the page's own topic / type hints."""
+    meta = UrlMeta(
+        redirected_url="https://example.com/post",
+        title="The Rise of Multi-Query Engines",
+        description="How AI opens up more options for querying.",
+        author="Hugo Lu",
+        date="2026-05-28",
+        sitename="Orchestra Newsletter",
+        categories=("Data",),
+        tags=("data, orchestration",),
+        pagetype="article",
+    )
+    with patch(
+        "orchestrators.defs.triage_knowledge_queue.enrich.fetch_url_meta",
+        return_value=meta,
+    ):
+        signals = enrich_url("https://example.com/post", "article")
+    assert signals.article is not None
+    assert signals.article.author == "Hugo Lu"
+    assert signals.article.date == "2026-05-28"
+    assert signals.article.sitename == "Orchestra Newsletter"
+    assert signals.article.categories == ("Data",)
+    assert signals.article.tags == ("data, orchestration",)
+    assert signals.article.pagetype == "article"
+
+
+def test_arxiv_signals_extracts_every_author():
+    """Papers are multi-author, so the Atom entry's repeated <author> elements
+    are all kept — an arXiv listing's attribution is the whole author list,
+    not its first name."""
+    resp = _fake_arxiv_response()
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.authors == ("Ada Lovelace", "Alan Turing")
+
+
+def test_arxiv_signals_normalises_published_timestamp_to_a_day():
+    """The Atom feed's <published> is a full UTC timestamp
+    (`2021-05-10T17:48:00Z`), which `date.fromisoformat` rejects. It is stored
+    as the day alone so a later consumer can parse it without special-casing."""
+    resp = _fake_arxiv_response()
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.published == "2021-05-10"
+
+
+def test_new_evidence_fields_roundtrip_through_json():
+    """enrichment_json is the storage format, so anything captured has to come
+    back out of it unchanged — including the tuple-valued fields, which JSON
+    stores as lists."""
+    original = EnrichmentSignals(
+        arxiv=ArxivSignals(
+            title="t",
+            abstract="a",
+            categories=("cs.LG",),
+            authors=("Ada Lovelace", "Alan Turing"),
+            published="2021-05-10",
+        ),
+        article=ArticleSignals(
+            redirected_url="https://example.com/post",
+            title="T",
+            description="d",
+            author="Hugo Lu",
+            date="2026-05-28",
+            sitename="Orchestra Newsletter",
+            categories=("Data",),
+            tags=("data, orchestration",),
+            pagetype="article",
+        ),
+    )
+    assert EnrichmentSignals.from_json(original.to_json()) == original

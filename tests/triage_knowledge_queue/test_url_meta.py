@@ -153,3 +153,69 @@ def test_returns_immutable_dataclass():
     meta = UrlMeta(redirected_url="x", title=None, description=None)
     with pytest.raises(Exception):
         meta.redirected_url = "y"  # type: ignore[misc]
+
+
+_HTML_WITH_ATTRIBUTION = """
+<html>
+<head>
+  <title>The Rise of Multi-Query Engines</title>
+  <meta name="description" content="How AI opens up more options for querying.">
+  <meta name="author" content="Hugo Lu">
+  <meta property="og:site_name" content="Orchestra Newsletter">
+  <meta property="article:published_time" content="2026-05-28T09:00:00Z">
+  <meta name="keywords" content="data, orchestration">
+  <meta property="og:type" content="article">
+</head>
+<body><article><p>Body text long enough for the extractor to accept it.</p></article></body>
+</html>
+"""
+
+
+def test_keeps_author_and_sitename_from_html_metadata():
+    """trafilatura already parses these; triage used to discard them. `author`
+    is publisher-supplied HTML metadata (org accounts, editorial bylines,
+    syndication), so it is evidence about attribution, not verified authorship."""
+    resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
+    with _patch_get(resp):
+        meta = fetch_url_meta("https://example.com/post")
+    assert meta.author == "Hugo Lu"
+    assert meta.sitename == "Orchestra Newsletter"
+
+
+def test_keeps_publication_date_as_iso_day():
+    """trafilatura's htmldate backend normally emits YYYY-MM-DD; the field is
+    stored as a plain day so a consumer can parse it with date.fromisoformat."""
+    resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
+    with _patch_get(resp):
+        meta = fetch_url_meta("https://example.com/post")
+    assert meta.date == "2026-05-28"
+
+
+def test_drops_unparseable_publication_date():
+    """trafilatura permits custom output date formats, so the value is not
+    assumed to be ISO — anything date.fromisoformat could not read is dropped
+    rather than handed downstream."""
+    metadata = MagicMock(title="t", description=None, author=None, sitename=None)
+    metadata.date = "28 May 2026"
+    resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
+    with (
+        _patch_get(resp),
+        patch(
+            "orchestrators.defs.triage_knowledge_queue.url_meta.trafilatura.extract_metadata",
+            return_value=metadata,
+        ),
+    ):
+        meta = fetch_url_meta("https://example.com/post")
+    assert meta.date is None
+
+
+def test_keeps_classification_hints_from_html_metadata():
+    """`pagetype` (og:type) cross-checks how the piece is shaped; keywords /
+    section metadata are topic hints. All three are parsed by trafilatura on
+    the call triage already makes, so keeping them costs no extra request."""
+    resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
+    with _patch_get(resp):
+        meta = fetch_url_meta("https://example.com/post")
+    assert meta.pagetype == "article"
+    assert meta.tags == ("data, orchestration",)
+    assert meta.categories == ()

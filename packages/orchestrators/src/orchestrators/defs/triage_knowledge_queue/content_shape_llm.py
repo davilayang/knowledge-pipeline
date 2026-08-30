@@ -9,7 +9,6 @@ even when the LLM is unavailable.
 """
 
 import os
-from dataclasses import asdict
 from pathlib import Path
 
 import dagster as dg
@@ -33,13 +32,27 @@ _PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
 _SYSTEM_PROMPT = (_PROMPTS_ROOT / "triage" / f"{CONTENT_SHAPE_CLASSIFIER_PROMPT}.md").read_text()
 
 
+# Which enrichment fields the shape prompt is allowed to read. Enrichment
+# also carries attribution evidence (byline, publication date, site name,
+# keywords, og:type) captured for later stages; that is deliberately excluded
+# here, because `content_shape` selects the extraction prompt bundle — so any
+# widening of this list changes extraction output and needs measuring on its
+# own rather than arriving as a side effect of capturing a new field.
+_SHAPE_PROMPT_FIELDS = {
+    "youtube": ("channel", "title"),
+    "arxiv": ("title", "abstract", "categories"),
+    "article": ("redirected_url", "title", "description"),
+}
+
+
 def _build_user_prompt(enrichment: EnrichmentSignals, content_type: str, url: str) -> str:
     parts = [f"url: {url}", f"content_type: {content_type}"]
-    for sub_name in ("youtube", "arxiv", "article"):
+    for sub_name, fields in _SHAPE_PROMPT_FIELDS.items():
         sub = getattr(enrichment, sub_name, None)
         if sub is None:
             continue
-        for k, v in asdict(sub).items():
+        for k in fields:
+            v = getattr(sub, k, None)
             if not v:
                 continue
             if isinstance(v, (list, tuple)):

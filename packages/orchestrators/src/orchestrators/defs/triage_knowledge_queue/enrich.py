@@ -3,15 +3,19 @@
 Per-source HTTP probes dispatched by `content_type`:
 
 - YouTube → oEmbed (channel + title; no API key)
-- arXiv → public Atom API (title + abstract + categories)
-- Article → reuses `url_meta.fetch_url_meta` (redirected_url + title + description)
+- arXiv → public Atom API (title + abstract + categories + author list + published day)
+- Article → reuses `url_meta.fetch_url_meta` (redirected_url, title, description,
+  plus the byline / publication day / site name / keywords / og:type that the
+  same parse yields)
 - Podcast / Other → empty signals (HEAD-sniff for podcasts is a follow-up)
 
 Failure-tolerant: any per-source HTTP / parse error collapses to empty
 signals for that source. `enrich_url` never raises; triage must not fail
-on enrichment. Output is consumed by `classify_content_shape` to drive
-the extractor's per-shape prompt selection (conference channels,
-tutorial channels, podcast shows, research-blog hosts, etc.).
+on enrichment. `classify_content_shape` reads a fixed subset of these
+signals to drive the extractor's per-shape prompt selection (conference
+channels, tutorial channels, podcast shows, research-blog hosts, etc.);
+the attribution fields are captured for later stages and are not part of
+that prompt — see `_SHAPE_PROMPT_FIELDS` in `content_shape_llm`.
 """
 
 import json
@@ -26,7 +30,7 @@ from .classify import (
     CONTENT_TYPE_ARXIV,
     CONTENT_TYPE_YOUTUBE,
 )
-from .url_meta import fetch_url_meta
+from .url_meta import fetch_url_meta, normalize_iso_day, normalize_terms
 
 _TIMEOUT_S = 10.0
 _OEMBED_URL = "https://www.youtube.com/oembed"
@@ -49,6 +53,8 @@ class ArxivSignals:
     title: str | None = None
     abstract: str | None = None
     categories: tuple[str, ...] = ()
+    authors: tuple[str, ...] = ()
+    published: str | None = None
 
 
 @dataclass(frozen=True)
@@ -56,6 +62,12 @@ class ArticleSignals:
     redirected_url: str | None = None
     title: str | None = None
     description: str | None = None
+    author: str | None = None
+    date: str | None = None
+    sitename: str | None = None
+    categories: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    pagetype: str | None = None
 
 
 @dataclass(frozen=True)
@@ -110,11 +122,12 @@ def _build_youtube(data: dict | None) -> YoutubeSignals | None:
 def _build_arxiv(data: dict | None) -> ArxivSignals | None:
     if not isinstance(data, dict):
         return None
-    cats = data.get("categories") or []
     return ArxivSignals(
         title=data.get("title"),
         abstract=data.get("abstract"),
-        categories=tuple(c for c in cats if isinstance(c, str)),
+        categories=normalize_terms(data.get("categories")),
+        authors=normalize_terms(data.get("authors")),
+        published=data.get("published"),
     )
 
 
@@ -128,6 +141,12 @@ def _build_article(data: dict | None) -> ArticleSignals | None:
         redirected_url=redirected_url,
         title=data.get("title"),
         description=data.get("description"),
+        author=data.get("author"),
+        date=data.get("date"),
+        sitename=data.get("sitename"),
+        categories=normalize_terms(data.get("categories")),
+        tags=normalize_terms(data.get("tags")),
+        pagetype=data.get("pagetype"),
     )
 
 
@@ -173,13 +192,19 @@ def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
         return ArxivSignals()
     title_el = entry.find("atom:title", _ATOM_NS)
     summary_el = entry.find("atom:summary", _ATOM_NS)
+    published_el = entry.find("atom:published", _ATOM_NS)
     categories = tuple(
         term for c in entry.findall("atom:category", _ATOM_NS) if (term := c.attrib.get("term"))
+    )
+    authors = tuple(
+        name for el in entry.findall("atom:author/atom:name", _ATOM_NS) if (name := _norm(el.text))
     )
     return ArxivSignals(
         title=_norm(title_el.text if title_el is not None else None),
         abstract=_norm(summary_el.text if summary_el is not None else None),
         categories=categories,
+        authors=authors,
+        published=normalize_iso_day(published_el.text if published_el is not None else None),
     )
 
 
@@ -189,6 +214,12 @@ def _article_signals(url: str) -> ArticleSignals:
         redirected_url=meta.redirected_url,
         title=meta.title,
         description=meta.description,
+        author=meta.author,
+        date=meta.date,
+        sitename=meta.sitename,
+        categories=meta.categories,
+        tags=meta.tags,
+        pagetype=meta.pagetype,
     )
 
 

@@ -203,3 +203,39 @@ def test_all_tiers_fail_returns_unknown_with_exception_status() -> None:
     # (exception vs invalid_output) would need attempt logging.
     assert metadata["status"] == "invalid_output"
     assert mock_post.call_count == 2
+
+
+def test_shape_prompt_ignores_attribution_fields() -> None:
+    """Enrichment also captures attribution evidence (byline, publication
+    date, site name, keywords, og:type) for later stages. That evidence is
+    deliberately kept out of this prompt: `content_shape` selects which
+    extraction prompt bundle runs, so widening what the classifier reads is a
+    change to extraction output and has to be measured on its own, not ride
+    along with a capture-only change."""
+    classifier = ContentShapeClassifier(groq_api_key="g-key")
+
+    with patch(
+        "workflows.llm_cascade.httpx.post",
+        return_value=_mock_chat_response("tutorial"),
+    ) as mock_post:
+        classifier.classify(
+            enrichment=EnrichmentSignals(
+                article=ArticleSignals(
+                    title="Build X with Y",
+                    description="A walkthrough.",
+                    author="Hugo Lu",
+                    date="2026-05-28",
+                    sitename="Orchestra Newsletter",
+                    tags=("data, orchestration",),
+                    pagetype="article",
+                )
+            ),
+            content_type="article",
+            url="https://example.com/build-x",
+        )
+
+    user_prompt = mock_post.call_args.kwargs["json"]["messages"][1]["content"]
+    assert "Build X with Y" in user_prompt
+    assert "A walkthrough." in user_prompt
+    for absent in ("Hugo Lu", "2026-05-28", "Orchestra Newsletter", "orchestration", "pagetype"):
+        assert absent not in user_prompt
