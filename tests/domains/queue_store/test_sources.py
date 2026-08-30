@@ -1185,17 +1185,17 @@ def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path)
     p = tmp_path / "old.db"
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
-        for col in ("contributors_json", "publisher"):
+        for col in ("contributors_json", "publisher", "unreadable_json"):
             conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
         dropped = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
     # Without this the assert below passes on a database that still has the
     # columns, and the ADD COLUMN loop is never exercised at all.
-    assert not (dropped & {"contributors_json", "publisher"})
+    assert not (dropped & {"contributors_json", "publisher", "unreadable_json"})
 
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
-    assert {"contributors_json", "publisher"} <= cols
+    assert {"contributors_json", "publisher", "unreadable_json"} <= cols
 
 
 def test_upsert_triaged_clears_metadata_columns(db_path: Path):
@@ -1209,6 +1209,7 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
         notion_page_id=page_id,
         contributors_json='[{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}]',
         publisher="Orchestra",
+        unreadable_json="[]",
         prompt_label="metadata_v1",
         prompt_sha256="a" * 64,
         model="gpt-5-mini",
@@ -1221,6 +1222,7 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
     assert row is not None
     assert row["contributors_json"] is None
     assert row["publisher"] is None
+    assert row["unreadable_json"] is None
 
 
 def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
@@ -1237,6 +1239,7 @@ def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
         notion_page_id=page_id,
         contributors_json=json.dumps([{"name": "Kyle Cheung", "role": "author"}]),
         publisher="Orchestra",
+        unreadable_json="[]",
         prompt_label="metadata_v1",
         prompt_sha256="d" * 64,
         model="gpt-5-mini",
@@ -1278,6 +1281,7 @@ def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
         db_path=db_path,
         notion_page_id=page_id,
         contributors_json=json.dumps(contributors),
+        unreadable_json="[]",
         publisher="Orchestra",
         prompt_label="metadata_v1",
         prompt_sha256="c" * 64,
@@ -1298,3 +1302,35 @@ def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
     assert call["prompt_label"] == "metadata_v1"
     assert call["cached_tokens"] == 800
     assert json.loads(call["node_metadata"])["content_hash"] == "hash-of-the-body-read"
+
+
+def test_record_metadata_persists_unreadable(db_path: Path):
+    """The substance-loss list is stored beside the people it was extracted with:
+    a row that raised on a broken fetch must still show *what* was missing after
+    the run has failed, because the asset writes before it raises."""
+    page_id = "p-meta-unreadable"
+    _seed_row(db_path, page_id)
+    unreadable = [
+        {
+            "cause": "chrome",
+            "severity": "major",
+            "missing": "the repository README",
+            "evidence": "There was an error while loading. Please reload this page",
+        }
+    ]
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json="[]",
+        publisher=None,
+        unreadable_json=json.dumps(unreadable),
+        prompt_label="metadata_v1",
+        prompt_sha256="e" * 64,
+        model="gpt-5-mini",
+        output="{}",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert json.loads(row["unreadable_json"]) == unreadable

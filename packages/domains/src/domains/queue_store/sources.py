@@ -56,6 +56,9 @@ CREATE TABLE IF NOT EXISTS queue_items (
                                                    -- extracted. Not `author`, which stays the
                                                    -- platform's raw byline.
     publisher                   TEXT,              -- who published it (channel / site / show)
+    unreadable_json             TEXT,              -- JSON array of substance the body refers to
+                                                   -- but does not contain; a `major` entry means
+                                                   -- the fetch arrived damaged and the row failed
     extracted_at                TEXT,              -- cohort completion ts
     extraction_model            TEXT,              -- cohort model
     extractor_label             TEXT,              -- "3call_v1" etc.
@@ -169,6 +172,7 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN content_date TEXT",
             "ALTER TABLE queue_items ADD COLUMN contributors_json TEXT",
             "ALTER TABLE queue_items ADD COLUMN publisher TEXT",
+            "ALTER TABLE queue_items ADD COLUMN unreadable_json TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -261,6 +265,7 @@ def upsert_triaged(
                 author = NULL,
                 contributors_json = NULL,
                 publisher = NULL,
+                unreadable_json = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -671,6 +676,7 @@ def record_metadata(
     notion_page_id: str,
     contributors_json: str,
     publisher: str | None,
+    unreadable_json: str,
     prompt_label: str,
     prompt_sha256: str,
     model: str,
@@ -682,7 +688,7 @@ def record_metadata(
     content_hash: str | None = None,
     inputs_sha: str | None = None,
 ) -> None:
-    """Persist one metadata extraction: the two `queue_items` columns plus a
+    """Persist one metadata extraction: the three `queue_items` columns plus a
     `metadata`-kind `extraction_calls` row, in one transaction so a row can never
     carry columns without the call that produced them.
 
@@ -697,10 +703,10 @@ def record_metadata(
         conn.execute(
             """
             UPDATE queue_items
-               SET contributors_json = ?, publisher = ?
+               SET contributors_json = ?, publisher = ?, unreadable_json = ?
              WHERE notion_page_id = ?
             """,
-            (contributors_json, publisher, notion_page_id),
+            (contributors_json, publisher, unreadable_json, notion_page_id),
         )
         conn.execute(
             """

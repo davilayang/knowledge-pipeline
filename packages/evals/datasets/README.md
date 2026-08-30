@@ -417,13 +417,30 @@ A missed person leaves the wiki no worse than today; a false one actively corrup
 precision/recall tradeoff or the confusion matrix as the headline and treat any weighted scalar as
 one operating point on it, never as the result.
 
+**It also answers a question that only exists once the prompt grew a third field.** `unreadable` was
+added to the same call, and the prompt itself warns that a long list there *"crowds out the rest of
+this reply and the whole answer is discarded when it runs past the length limit, so brevity here
+protects the other fields."* That is a stated risk to the two fields this set scores, and nothing
+currently measures it. Running these 58 items against the two-field prompt and the three-field prompt
+is a paired before/after on exactly that question — the labels are unchanged between them, because
+257 left the contributors and publisher instructions byte-identical.
+
 **No loader and no scorer exist yet.** There is no `eval-*` entry point for this dataset; it is the
 pinned input, and the harness that consumes it is not written. Do not infer a command from the
 sibling sections.
 
 **What it does not decide.** Nothing about `delivery_shape` or `parts` — those fields were dropped
-on evidence and do not exist. Nothing about `unreadable`, which is a separate change with its own
-user-facing failure path. Nothing about **external truth**: this measures whether the prompt
+on evidence and do not exist.
+
+Nothing about **`unreadable`**, the prompt's third field, which is deliberately out of scope. It is
+the only field that fails a row rather than recording one, and its severity test was calibrated
+against the entire production corpus rather than a sample — the "is a claim unverifiable" reading
+called 41% of all bodies damaged, the "would a refetch recover it" reading lands at 1.8%. A 58-item
+sample adds nothing to a rate already measured over 227, and the field's precision has never been
+labelled at all. If `unreadable` gold is ever wanted, this set is the natural host: add the labels,
+bump `gold_version`, and the item selection stands.
+
+Nothing about **external truth**: this measures whether the prompt
 correctly reported *what the fetched text presents as its own authorship*. A label is not wrong
 because reality disagrees with the byline, and nobody should later "fix" a correct label because
 they know better than the source.
@@ -619,6 +636,12 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
   and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
   model).
+- **Exclude the two rows the `unreadable` gate rejects.** `gh_01` and `gh_02` both fetched as
+  GitHub's error page — their bodies contain the literal failure string the gate raises on — so in
+  production those items fail before `publish_item` and never yield a contributors/publisher value at
+  all. Scoring a prompt on them measures output the pipeline discards. `expected_unreadable_gate_reject`
+  marks them. This leaves the `github` stratum with **one** gate-survivable row, so that lane cannot
+  carry even a read-the-cases verdict on its own any more.
 - **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
   `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
   slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where

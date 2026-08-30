@@ -339,6 +339,40 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
     return recorded.get("inputs_sha") == inputs_sha
 
 
+# The two causes that mean the text arrived damaged, and so the only two a
+# refetch can repair. `screen_reference` / `images` / `unspeakable` describe
+# material that was never text — a talk pointing at a slide, a paper referencing
+# a figure — so failing on them would fail the normal shape of those sources:
+# measured over the 227-body production corpus, 41% of rows, half of all YouTube.
+DAMAGED_CAUSES = frozenset({"chrome", "truncation"})
+
+
+class _DamagedFetch(Exception):
+    """Leaves `extract_metadata`'s catch-all try without tripping its
+    swallow-everything handler, so the damaged-body gate can raise past it."""
+
+
+def _damaged(unreadable: list[dict]) -> list[dict]:
+    """The entries that fail an item: substance the body arrived without, that
+    fetching it again could recover."""
+    return [
+        u for u in unreadable if u.get("severity") == "major" and u.get("cause") in DAMAGED_CAUSES
+    ]
+
+
+def _damaged_fetch_message(damaged: list[dict]) -> str:
+    """The text a curator reads in Notion's Error field, so it names the specific
+    missing material and what to do about it — a generic "extraction failed"
+    leaves them nothing to act on."""
+    lines = [
+        "The fetched text is missing substance the content depends on. "
+        "Refetch this item, or queue a source that carries the full text."
+    ]
+    for u in damaged:
+        lines.append(f"- {u['cause']}: {u['missing']} (text says: \"{u['evidence'][:200]}\")")
+    return "\n".join(lines)
+
+
 @dg.asset(
     key=["fetch_extract_queue", "extract_metadata"],
     group_name=GROUP_NAME,
@@ -353,7 +387,8 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
             asset=dg.AssetKey(["fetch_extract_queue", "extract_metadata"]),
             blocking=False,
             description=(
-                "A row with a fetched body carries contributors_json and publisher. "
+                "A row with a fetched body carries contributors_json, publisher and "
+                "unreadable_json. "
                 "Non-blocking, so an unwritten row is visible without gating the two "
                 "extraction branches that depend on this asset."
             ),
@@ -361,11 +396,15 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
     ],
     description=_oneline(
         """
-        Reads the fetched body once and captures who made it and who
-        published it. Sits upstream of both extraction branches, since a field
-        the narrative call emitted would be invisible to the claims branch.
-        Best-effort: any failure writes nothing and materialises anyway.
-        Nothing reads these columns yet — they exist to be measured first.
+        Reads the fetched body once and captures who made it, who published
+        it, and what substance it refers to but does not contain. Sits upstream
+        of both extraction branches, since a field the narrative call emitted
+        would be invisible to the claims branch. A failed call writes nothing
+        and materialises anyway, so metadata can never gate extraction. The one
+        exception is a call that succeeds and reports the body arrived damaged
+        — navigation chrome in place of the article, or text that stops
+        mid-thought: that fails the item, because nothing downstream can tell a
+        broken fetch from a thin one.
         """
     ),
 )
@@ -382,6 +421,7 @@ def extract_metadata(
     # too. A missing metadata row costs nothing; a blocked extraction costs the
     # item. Every write precedes the first yield, so the failure path cannot emit
     # a second materialisation.
+    damaged: list[dict] = []
     try:
         # Migrates the schema it writes to: this asset can be materialised alone
         # (a backfill over stored bodies is exactly that), so it cannot rely on a
@@ -404,6 +444,15 @@ def extract_metadata(
         if _metadata_is_fresh(
             store.get_latest_extraction_calls(page_id).get("metadata"), inputs_sha
         ):
+            # Re-read, not re-derived: skipping the call must not skip the gate
+            # too, or the same damaged body passes on its second materialisation
+            # and the reading card proceeds on chrome.
+            damaged = _damaged(json.loads(row.get("unreadable_json") or "[]"))
+            if damaged:
+                # Falls through to the raise past the except — this block
+                # swallows every exception by design, so raising here would be
+                # caught and turned into a clean materialisation.
+                raise _DamagedFetch
             yield dg.MaterializeResult(
                 metadata={
                     "metadata_skipped": dg.MetadataValue.bool(True),
@@ -424,6 +473,8 @@ def extract_metadata(
 
         known_publisher = _deterministic_publisher(row)
         contributors = [c.model_dump() for c in payload.contributors]
+        unreadable = [u.model_dump() for u in payload.unreadable]
+        damaged = _damaged(unreadable)
 
         store.record_metadata(
             notion_page_id=page_id,
@@ -431,6 +482,7 @@ def extract_metadata(
             # On a disagreement the deterministic value wins and the model's
             # survives in the ledger row's `output`, which holds the whole reply.
             publisher=known_publisher or payload.publisher,
+            unreadable_json=json.dumps(unreadable),
             prompt_label=PROMPT_LABEL_METADATA,
             prompt_sha256=prompt_sha,
             model=call.model,
@@ -443,6 +495,8 @@ def extract_metadata(
             inputs_sha=inputs_sha,
         )
         store.checkpoint_wal()
+    except _DamagedFetch:
+        pass
     except Exception as exc:
         context.log.warning("extract_metadata failed for %s: %r", page_id, exc)
         reason = dg.MetadataValue.text(f"{type(exc).__name__}: {exc}"[:1000])
@@ -460,10 +514,20 @@ def extract_metadata(
         )
         return
 
+    if damaged:
+        # Outside the try above, deliberately: that block exists so a failed
+        # metadata *call* cannot gate the two extraction branches, and a call
+        # that failed cannot know whether the body was readable. This is the
+        # opposite case — the call succeeded and reported the body damaged.
+        # The columns are already written, so the failed row still shows what
+        # was missing.
+        raise dg.Failure(description=_damaged_fetch_message(damaged))
+
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
             "contributors": dg.MetadataValue.int(len(contributors)),
+            "unreadable": dg.MetadataValue.int(len(unreadable)),
             "publisher": dg.MetadataValue.text(known_publisher or payload.publisher or ""),
             "publisher_source": dg.MetadataValue.text(
                 "deterministic" if known_publisher else "model"
@@ -475,6 +539,7 @@ def extract_metadata(
             "summary": dg.MetadataValue.md(
                 f"**{len(contributors)} contributors** — "
                 f"publisher {known_publisher or payload.publisher or '(none)'}"
+                + (f", {len(unreadable)} unreadable" if unreadable else "")
             ),
         }
     )
