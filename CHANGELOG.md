@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Documentation
+
+- **The narrative prompt must be about 1900 tokens to be cached, not the 1024 OpenAI documents.** 1024 is the minimum when a whole request repeats; the narrative call only ever repeats its leading system message, and measured against `gpt-5-mini` a 1705-token prompt still cached nothing while 1904 cached 1792. `narrative_v2` at 897 tokens has never cached; `narrative_v3` at 2044 does. Recorded in `prompts/extraction/README.md`, alongside the finding that `response_format` partitions the cache — which is why the narrative call can never share the article prefix that `topic_card` and `followups` share.
+
+### Added
+
+- **A test stops `narrative_v3` being shrunk below the size at which it caches.** The queued reshape would leave it at 1446 tokens: over the documented floor, under the measured one, cached tokens back to zero.
+
 ---
 
 ## [0.36.20] — 2026-08-30

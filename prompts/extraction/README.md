@@ -30,6 +30,52 @@ Also active in production, but read directly via `read_extraction_prompt` rather
 
 The v1 trio above was derived from these v5 single-shots by splitting the schema into three calls. Keeping the v5 files lets evals A/B the single-shot baseline against the 3-call cohort without resurrecting old prompt copies from git history.
 
+## Prompt size and the OpenAI prompt cache
+
+A prompt that leads a request is also that request's cacheable prefix, so its
+**length is a functional property, not just a style choice**. Only the
+`narrative` call is affected: its messages are `[system: prompt, user: article]`,
+so the prompt body is the sole text repeating across items and therefore the only
+thing that can be cached. `metadata`, `topic_card` and `followups` lead with the
+short `SHARED_SYSTEM` and reuse the *article* behind it instead (see
+`workflows.extraction.shared_prefix`), so their leading static text is
+deliberately short and no length rule applies to them.
+
+**The documented 1024-token minimum is not the number that matters here.** 1024
+is the floor when a whole request repeats. When only the leading system message
+repeats and the user message differs — the narrative call's shape — caching
+starts much higher. Measured 2026-08-30 against the production model
+`gpt-5-mini`, sending a fresh article behind an identical system message each
+time and reading `cached_tokens` on the 2nd through 4th call:
+
+| system prompt tokens | `cached_tokens` on calls 2-4 |
+|---|---|
+| 897 (`narrative_v2`, active) | 0, 0, 0 |
+| 1225 | 0, 0, 0 |
+| 1503 | 0, 0, 0 |
+| 1705 | 0, 0, 0 |
+| 1904 | 1792, 1792, 1792 |
+| 2044 (`narrative_v3`) | 1792, 1792, 1792 |
+
+So the threshold sits between **1705 and 1904 tokens**. `narrative_v2` never
+caches; `narrative_v3` does, with about 140 tokens to spare.
+`tests/workflows/extraction/test_prompt_cache_floor.py` pins `narrative_v3`
+above that line, because shrinking it back under is invisible in review.
+
+Two related facts from the same session, worth not re-deriving:
+
+- **`response_format` partitions the cache.** A byte-identical 3000-token prefix
+  written with no `response_format` returned `cached_tokens=0` when re-sent with
+  `{"type": "json_object"}`, while a no-`response_format` control on the same
+  write returned 2944. This is why the narrative call cannot share the article
+  prefix that `topic_card` and `followups` share — it emits markdown and they
+  emit JSON, so they sit in different cache partitions no matter how the
+  messages are arranged.
+- **The saving is small.** 1792 cached tokens per item at `gpt-5-mini`'s 90%
+  cached-input discount is roughly $0.09 per 225 items. Prompt length is worth
+  getting right when a prompt is being written anyway; it is not on its own a
+  reason to grow one.
+
 ## Resolution
 
 `KP_PROMPTS_ROOT` env var → see [`../README.md`](../README.md).
