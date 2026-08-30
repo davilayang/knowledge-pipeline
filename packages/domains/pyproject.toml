@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-domains"
-version = "0.36.19"
+version = "0.36.20"
 description = "Pure data layer — types, schema, sources (no LLM/ML/Dagster deps)"
 requires-python = ">=3.13"
 dependencies = [

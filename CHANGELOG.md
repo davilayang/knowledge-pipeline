@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.20] — 2026-08-30
+
+### Added
+
+- **A reading whose body arrived damaged now fails, instead of producing a card built out of navigation chrome.** `extract_metadata` writes `unreadable_json` on `queue_items`; a `major` entry caused by chrome or truncation fails the item into Notion, naming what is missing.
+
+### Changed
+
+- **Damaged-body severity asks whether a refetch would recover the material**, not whether a claim is verifiable without it. Over 227 production bodies the old framing flagged 41%, the new one 1.8%. Slides and figures stay `minor`.
+
+---
+
 ## [0.36.19] — 2026-08-30
 
 ### Changed
