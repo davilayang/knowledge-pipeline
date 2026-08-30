@@ -63,8 +63,7 @@ class MetadataPayload(BaseModel):
 
     contributors: list[Contributor] = Field(
         # Defaulted: omitting an empty list rather than sending `[]` is cosmetic,
-        # and discarding the whole payload over it would throw away the publisher,
-        # which does have a verifiable right answer.
+        # and rejecting the payload over it would throw the publisher away too.
         default_factory=list,
         description="People who made this, in the order the source presents them. Empty if none.",
     )

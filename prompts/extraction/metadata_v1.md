@@ -15,11 +15,10 @@ in four incompatible title formats and absent entirely from a third of items,
 and a `By ` regex reading "By Hugo Lu | This is a guest post by Kyle Cheung, CEO
 at Greybeam" picks the wrong person.
 
-Two fields, deliberately. A `delivery_shape` structural label was written here
-and dropped: it reproduced at 58.8% across model vendors, and feeding it to the
-narrative prompt made the spoken delivery worse on 2 of 3 items. An `unreadable`
-substance-loss list is a separate change, because it is the only field that
-would fail a row rather than just record one.
+Two fields, deliberately. A `delivery_shape` structural label was dropped —
+58.8% reproduction across model vendors, and it made the spoken delivery worse
+on 2 of 3 items. An `unreadable` substance-loss list ships separately: it is the
+only field that would fail a row rather than record one.
 
 Everything below the horizontal rule is the prompt body. Everything above
 it is design notes.

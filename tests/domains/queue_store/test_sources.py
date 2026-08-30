@@ -1224,12 +1224,11 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
 
 
 def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
-    """`get_queue_extraction` is the declared cross-repo flat-dict view over
-    queue.db, and it selects a fixed column list — so metadata written by the
-    extract_metadata asset is invisible through it until the columns are added.
-    Additive keys only; nothing existing moves. Note newsletter-assistant does
-    not call this function today: it issues its own explicitly-named-column SQL
-    against the same file, so reaching NA means widening that query too."""
+    """`get_queue_extraction` is the declared cross-repo view over queue.db and
+    selects a fixed column list, so metadata is invisible through it until the
+    columns are added. Additive keys only. Note newsletter-assistant does not
+    call this function — it runs its own named-column SQL over the same file, so
+    reaching NA means widening that query too."""
     page_id = "p-meta-view"
     _seed_row(db_path, page_id)
     _record_three_call(db_path, page_id)  # sets extracted_at, which this view gates on

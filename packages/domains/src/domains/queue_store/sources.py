@@ -879,8 +879,7 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
     core_mechanism / etc. + provenance keys at top level).
 
     `contributors` / `publisher` come from the metadata asset and were added
-    later; they are additive keys, so a reader written against the earlier shape
-    is unaffected."""
+    later — additive keys, so an older reader is unaffected."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """

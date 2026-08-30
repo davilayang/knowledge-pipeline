@@ -362,11 +362,10 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
     description=_oneline(
         """
         Reads the fetched body once and captures who made it and who
-        published it. Sits upstream of both extraction branches so either can
-        route on it — a field the narrative call emitted would be invisible to
-        the claims branch. Best-effort: any failure writes nothing and
-        materialises anyway. Nothing reads these columns yet — they exist to be
-        measured before a consumer is designed.
+        published it. Sits upstream of both extraction branches, since a field
+        the narrative call emitted would be invisible to the claims branch.
+        Best-effort: any failure writes nothing and materialises anyway.
+        Nothing reads these columns yet — they exist to be measured first.
         """
     ),
 )
@@ -429,9 +428,8 @@ def extract_metadata(
         store.record_metadata(
             notion_page_id=page_id,
             contributors_json=json.dumps(contributors),
-            # When the two disagree the deterministic value is stored and the
-            # model's survives only in the ledger row's `output`, which holds
-            # the whole reply. That is the disagreement log; there is no other.
+            # On a disagreement the deterministic value wins and the model's
+            # survives in the ledger row's `output`, which holds the whole reply.
             publisher=known_publisher or payload.publisher,
             prompt_label=PROMPT_LABEL_METADATA,
             prompt_sha256=prompt_sha,
