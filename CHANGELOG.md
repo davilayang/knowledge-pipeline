@@ -6,17 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.17] — 2026-08-30
+
 ### Changed
 
-- **Triage now keeps the page metadata it was fetching and throwing away.** The article path already parsed a byline, publication date, site name, keywords and `og:type` out of every page it enriched, and kept only the title and description; the arXiv path walked past the paper's author list and publication date in the Atom response it already received. All of it now lands in `enrichment_json`. No new network calls. (`triage_knowledge_queue.url_meta`, `.enrich`)
+- **Triage keeps the page metadata it was already fetching and discarding.** The article path parsed a byline, date, site name, keywords and `og:type` off every page and kept only title + description; the arXiv path walked past the paper's authors and publication date. All now land in `enrichment_json`, with no new requests.
 
-- **Dates from publishers and from arXiv are validated on the way in.** A timestamp is stored as its `YYYY-MM-DD` day and an unparseable value is dropped, so a later reader can call `date.fromisoformat` on the field without special-casing it.
+- **arXiv enrichment returns data again.** `export.arxiv.org` 301s http to https; unfollowed, the empty redirect body parsed as an empty feed, so every paper enriched to nothing — invisibly, since empty is also a valid result.
 
-- **The `content_shape` classifier's prompt is pinned to the fields it already read.** It builds its prompt from whatever enrichment holds, so the newly kept fields would otherwise have silently entered it — and `content_shape` selects which extraction prompt bundle runs. Widening what it reads is a change to extraction output and needs measuring on its own.
+- **Dates are validated on capture.** A timestamp is stored as its `YYYY-MM-DD` day and an unparseable value is dropped, so consumers can call `date.fromisoformat` on the field directly.
 
-### Fixed
-
-- **arXiv enrichment was silently returning nothing for every paper.** `export.arxiv.org` answers plain http with a 301 to its https address; the request did not follow redirects, and a 301 is not `>= 400`, so the empty redirect body reached the XML parser as if it were a feed. Every arXiv item enriched to empty signals — no title, no abstract, no categories — and the failure was invisible because empty signals are a valid result for a source that genuinely had nothing. Found by running the enrichment against the live API. (`triage_knowledge_queue.enrich`)
+- **The `content_shape` classifier's prompt is pinned to the fields it already read.** It builds from whatever enrichment holds, so the newly kept fields would have silently entered it — and `content_shape` selects the extraction prompt bundle.
 
 ---
 

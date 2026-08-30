@@ -1,12 +1,8 @@
-"""Best-effort URL → page metadata for triage display and downstream evidence.
+"""Best-effort URL → page metadata, from one HTTP GET parsed by trafilatura.
 
-One HTTP GET, parsed once by trafilatura. `title` / `description` seed Notion's
-Name (if the user left it blank) and Description; `author` / `date` / `sitename`
-/ `categories` / `tags` / `pagetype` are the rest of what that same parse
-yields, kept as attribution and shape evidence for later stages rather than
-discarded. Never raises — network errors, non-HTML responses, or missing tags
-collapse to a UrlMeta holding only redirected_url = input_url. Triage must not
-fail on enrichment.
+`title` / `description` seed Notion's Name and Description; the rest of what
+the same parse yields is kept as evidence for later stages. Never raises —
+any failure collapses to a UrlMeta holding only redirected_url = input_url.
 """
 
 from dataclasses import dataclass
@@ -51,9 +47,8 @@ class UrlMeta:
 
 def normalize_iso_day(value: str | None) -> str | None:
     """Any ISO 8601 date or timestamp → its `YYYY-MM-DD` day; anything else →
-    None. Callers hand this whatever a publisher or an API claims is a date,
-    so an unparseable value is dropped rather than stored: a downstream
-    `date.fromisoformat` must never trip on it."""
+    None. Publishers and APIs claim many things are dates; dropping the
+    unparseable ones keeps a downstream `date.fromisoformat` safe."""
     if not value:
         return None
     try:
@@ -63,12 +58,9 @@ def normalize_iso_day(value: str | None) -> str | None:
 
 
 def normalize_terms(values: object) -> tuple[str, ...]:
-    """A list of keyword / section strings → tuple, dropping blanks and any
-    non-string entry. Callers pass whatever trafilatura parsed off a page or
-    whatever an older build wrote into `enrichment_json`, so neither the type
-    nor the contents are trusted. Terms are otherwise kept verbatim —
-    splitting a publisher's comma-joined keyword string is a guess this layer
-    has no basis for."""
+    """Untrusted list of keyword strings → tuple, dropping blanks and
+    non-strings. Terms are kept verbatim: splitting a publisher's
+    comma-joined keyword string is a guess this layer can't make."""
     if not isinstance(values, list):
         return ()
     return tuple(term for v in values if isinstance(v, str) and (term := v.strip()))

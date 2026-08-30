@@ -206,12 +206,10 @@ def test_all_tiers_fail_returns_unknown_with_exception_status() -> None:
 
 
 def test_shape_prompt_ignores_attribution_fields() -> None:
-    """Enrichment also captures attribution evidence (byline, publication
-    date, site name, keywords, og:type) for later stages. That evidence is
-    deliberately kept out of this prompt: `content_shape` selects which
-    extraction prompt bundle runs, so widening what the classifier reads is a
-    change to extraction output and has to be measured on its own, not ride
-    along with a capture-only change."""
+    """`content_shape` selects which extraction prompt bundle runs, so the
+    attribution fields enrichment captures for later stages stay out of this
+    prompt — widening it is a change to extraction output, to be measured on
+    its own."""
     classifier = ContentShapeClassifier(groq_api_key="g-key")
 
     with patch(

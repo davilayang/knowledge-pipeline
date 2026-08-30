@@ -32,12 +32,10 @@ _PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
 _SYSTEM_PROMPT = (_PROMPTS_ROOT / "triage" / f"{CONTENT_SHAPE_CLASSIFIER_PROMPT}.md").read_text()
 
 
-# Which enrichment fields the shape prompt is allowed to read. Enrichment
-# also carries attribution evidence (byline, publication date, site name,
-# keywords, og:type) captured for later stages; that is deliberately excluded
-# here, because `content_shape` selects the extraction prompt bundle — so any
-# widening of this list changes extraction output and needs measuring on its
-# own rather than arriving as a side effect of capturing a new field.
+# What the shape prompt may read. Enrichment also carries attribution fields
+# for later stages, excluded here because `content_shape` selects the
+# extraction prompt bundle — widening this list changes extraction output and
+# has to be measured, not inherited from capturing a new field.
 _SHAPE_PROMPT_FIELDS = {
     "youtube": ("channel", "title"),
     "arxiv": ("title", "abstract", "categories"),

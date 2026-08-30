@@ -269,9 +269,8 @@ def test_signals_serialise_categories_as_list():
 
 
 def test_article_signals_carry_attribution_and_shape_evidence():
-    """What `fetch_url_meta` parses beyond title/description reaches
-    enrichment_json: publisher-supplied byline, publication day, site name,
-    and the page's own topic / type hints."""
+    """Everything `fetch_url_meta` parses beyond title/description reaches
+    enrichment_json."""
     meta = UrlMeta(
         redirected_url="https://example.com/post",
         title="The Rise of Multi-Query Engines",
@@ -298,9 +297,7 @@ def test_article_signals_carry_attribution_and_shape_evidence():
 
 
 def test_arxiv_signals_extracts_every_author():
-    """Papers are multi-author, so the Atom entry's repeated <author> elements
-    are all kept — an arXiv listing's attribution is the whole author list,
-    not its first name."""
+    """A paper's attribution is its whole author list, not its first name."""
     resp = _fake_arxiv_response()
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
         signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
@@ -309,9 +306,8 @@ def test_arxiv_signals_extracts_every_author():
 
 
 def test_arxiv_signals_normalises_published_timestamp_to_a_day():
-    """The Atom feed's <published> is a full UTC timestamp
-    (`2021-05-10T17:48:00Z`), which `date.fromisoformat` rejects. It is stored
-    as the day alone so a later consumer can parse it without special-casing."""
+    """<published> is a full UTC timestamp, which `date.fromisoformat`
+    rejects; the day alone is stored so a consumer needn't special-case it."""
     resp = _fake_arxiv_response()
     with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
         signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
@@ -320,9 +316,8 @@ def test_arxiv_signals_normalises_published_timestamp_to_a_day():
 
 
 def test_new_evidence_fields_roundtrip_through_json():
-    """enrichment_json is the storage format, so anything captured has to come
-    back out of it unchanged — including the tuple-valued fields, which JSON
-    stores as lists."""
+    """enrichment_json is the storage format, so captured fields must come back
+    out unchanged — including tuples, which JSON stores as lists."""
     original = EnrichmentSignals(
         arxiv=ArxivSignals(
             title="t",
@@ -347,10 +342,9 @@ def test_new_evidence_fields_roundtrip_through_json():
 
 
 def test_arxiv_signals_follow_the_apis_http_to_https_redirect():
-    """export.arxiv.org answers plain http with a 301 to its https address.
-    A 301 is not >= 400, so it slips past the status guard and the empty
-    redirect body reaches the XML parser as if it were a feed — every arXiv
-    item enriching to nothing, silently. The request has to follow it."""
+    """export.arxiv.org 301s plain http to https. A 301 is not >= 400, so it
+    slips past the status guard and the empty body parses as an empty feed —
+    every arXiv item silently enriching to nothing."""
 
     def fake_get(url, **kwargs):
         resp = MagicMock(spec=httpx.Response)

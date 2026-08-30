@@ -3,19 +3,17 @@
 Per-source HTTP probes dispatched by `content_type`:
 
 - YouTube → oEmbed (channel + title; no API key)
-- arXiv → public Atom API (title + abstract + categories + author list + published day)
-- Article → reuses `url_meta.fetch_url_meta` (redirected_url, title, description,
-  plus the byline / publication day / site name / keywords / og:type that the
-  same parse yields)
+- arXiv → public Atom API (title, abstract, categories, authors, published day)
+- Article → reuses `url_meta.fetch_url_meta` (redirected_url + everything
+  trafilatura parses off the page)
 - Podcast / Other → empty signals (HEAD-sniff for podcasts is a follow-up)
 
 Failure-tolerant: any per-source HTTP / parse error collapses to empty
 signals for that source. `enrich_url` never raises; triage must not fail
 on enrichment. `classify_content_shape` reads a fixed subset of these
-signals to drive the extractor's per-shape prompt selection (conference
-channels, tutorial channels, podcast shows, research-blog hosts, etc.);
-the attribution fields are captured for later stages and are not part of
-that prompt — see `_SHAPE_PROMPT_FIELDS` in `content_shape_llm`.
+signals (`_SHAPE_PROMPT_FIELDS` in `content_shape_llm`) to drive the
+extractor's per-shape prompt selection; the attribution fields are
+captured for later stages and stay out of that prompt.
 """
 
 import json
@@ -180,9 +178,9 @@ def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
     if arxiv_id is None:
         return ArxivSignals()
     try:
-        # export.arxiv.org answers plain http with a 301 to its https address,
-        # and a 301 is not >= 400 — unfollowed, the empty redirect body reaches
-        # the XML parser and every arXiv item enriches to nothing.
+        # export.arxiv.org 301s plain http to https, and a 301 is not >= 400 —
+        # unfollowed, the empty body parses as an empty feed and every arXiv
+        # item enriches to nothing.
         resp = httpx.get(
             _ARXIV_API,
             params={"id_list": arxiv_id},

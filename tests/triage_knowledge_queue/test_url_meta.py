@@ -172,9 +172,9 @@ _HTML_WITH_ATTRIBUTION = """
 
 
 def test_keeps_author_and_sitename_from_html_metadata():
-    """trafilatura already parses these; triage used to discard them. `author`
-    is publisher-supplied HTML metadata (org accounts, editorial bylines,
-    syndication), so it is evidence about attribution, not verified authorship."""
+    """`author` is publisher-supplied HTML metadata — org accounts, editorial
+    bylines, syndication — so it is attribution evidence, not verified
+    authorship."""
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
     with _patch_get(resp):
         meta = fetch_url_meta("https://example.com/post")
@@ -183,8 +183,7 @@ def test_keeps_author_and_sitename_from_html_metadata():
 
 
 def test_keeps_publication_date_as_iso_day():
-    """trafilatura's htmldate backend normally emits YYYY-MM-DD; the field is
-    stored as a plain day so a consumer can parse it with date.fromisoformat."""
+    """Stored as a plain day so a consumer can use date.fromisoformat."""
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
     with _patch_get(resp):
         meta = fetch_url_meta("https://example.com/post")
@@ -192,9 +191,8 @@ def test_keeps_publication_date_as_iso_day():
 
 
 def test_drops_unparseable_publication_date():
-    """trafilatura permits custom output date formats, so the value is not
-    assumed to be ISO — anything date.fromisoformat could not read is dropped
-    rather than handed downstream."""
+    """trafilatura permits custom date formats, so the value isn't assumed to
+    be ISO — unreadable ones are dropped rather than handed downstream."""
     metadata = MagicMock(title="t", description=None, author=None, sitename=None)
     metadata.date = "28 May 2026"
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
@@ -210,9 +208,8 @@ def test_drops_unparseable_publication_date():
 
 
 def test_keeps_classification_hints_from_html_metadata():
-    """`pagetype` (og:type) cross-checks how the piece is shaped; keywords /
-    section metadata are topic hints. All three are parsed by trafilatura on
-    the call triage already makes, so keeping them costs no extra request."""
+    """`pagetype` (og:type) cross-checks the piece's shape, keywords are topic
+    hints. Both come off the call triage already makes."""
     resp = _fake_response(url="https://example.com/post", text=_HTML_WITH_ATTRIBUTION)
     with _patch_get(resp):
         meta = fetch_url_meta("https://example.com/post")
