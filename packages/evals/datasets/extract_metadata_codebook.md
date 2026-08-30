@@ -137,6 +137,25 @@ itself. If the piece's own text names nobody and the only names are in the
 surrounding page chrome, `contributors` is empty; flag `text_unusable` when the
 chrome has evidently replaced the content altogether.
 
+**Except a personal site named after its owner.** The rule above has one
+deliberate exception, because otherwise it swallows a common and clear case. A
+personal blog is often titled with the owner's name, so that name appears *only*
+in the site header — which is furniture — while the piece itself is written
+throughout in the first person and names nobody. Here the header name **is** the
+author: record it as a contributor with role `author`, and leave `publisher`
+null, because a self-published personal site is not a separate publishing
+organisation.
+
+Three things must hold together: the site is named after a person, the piece is
+written in the first person, and no other author is named. If the first-person
+writing is absent — a link roll, an aggregator, a company site that happens to
+carry a person's name — this exception does not apply and the name stays
+furniture.
+
+**Write the name as the text gives it.** Do not shorten a full name to a
+surname, expand initials, or reorder it. If the text says `Shutaro Hashimoto`,
+the label is `Shutaro Hashimoto`, not `Hashimoto`.
+
 **More than one affiliation for one person.** Where someone states several
 organisations, record the one they give **for their role in this piece**. If the
 text does not distinguish, take the first stated and say so in `notes`. Do not
@@ -172,6 +191,38 @@ that put this piece out. `null` when the text does not make it clear.
   them into `publisher` creates a false organisation entity.
 - Record it **as the text gives it**, without expanding abbreviations or adding
   legal suffixes.
+
+### Writing *as* an organisation counts as naming it
+
+A piece written from inside a company often never says "published by X" — it
+simply speaks as X: *"our data warehouse at Booking.com"*, *"At DataCamp, we
+offer…"*, *"we're building in at sqlsure"*, *"pushing us beyond our traditional
+Homes"*. **Treat that as naming the publisher.** First-person organisational
+voice identifies who put the piece out just as well as a masthead would, and
+requiring an explicit statement would null out the publisher on most company
+engineering blogs.
+
+The voice must be the *maker's*, not a mention. A piece that discusses Booking.com
+in the third person has not told you who published it.
+
+### Channels and shows are publishers even when the name looks like a handle
+
+The rule that a bare handle is not a *name* governs `contributors`, which holds
+people. It does not govern `publisher`. A channel called `dreadjordan` is still
+the channel that published the video, and a channel line in the text
+(`**Channel:** …`) states the publisher outright. Record it.
+
+### Platform versus venue, for papers and preprints
+
+A paper carries two candidates: the archive hosting the file, and the venue that
+published or will publish it.
+
+- A **stated venue wins**: *"Published as a conference paper at ICLR 2026"*, or a
+  copyright line assigning publication rights to a named publisher.
+- **Otherwise the archive is the publisher** — a bare `arXiv:` identifier with no
+  venue named means the publisher is `arXiv`.
+- *"Accepted to"* a venue is **not** *"published at"* it. A paper announcing
+  future acceptance is still published by the archive today.
 
 Give a verbatim `evidence` quote for the publisher too, on the same terms as for
 contributors.

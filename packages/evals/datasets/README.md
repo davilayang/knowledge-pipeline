@@ -502,7 +502,7 @@ Per-row `gold_source` says exactly how far each label was corroborated, and it m
 | value | rows | meaning |
 |---|---|---|
 | `cross_family_agreed` | 45 | both families produced the same contributor set and publisher, and both labels' evidence quotes verify |
-| `disputed_unresolved` | 12 | the two families differed and no human has decided — **not gold, exclude from scoring** |
+| `human_adjudicated` | 12 | the two families differed and a human decided, against a rule now written into the codebook — `adjudication_note` names the rule |
 | `single_labelled` | 1 | the cross-family label was discarded because one of its evidence quotes was not found in the body, leaving only the primary label |
 
 That last row is `art_01`, and it is worth noting as a live example of why the evidence check exists:
@@ -510,13 +510,37 @@ the two labellers agreed on the *name*, but the OpenAI labeller's supporting quo
 reconstructed rather than copied, so it does not occur in the source. Agreement on a conclusion does
 not license an unverifiable citation.
 
+**Every dispute was settled by a rule, not by preferring a labeller.** All twelve happened to resolve
+toward the primary labeller, which is worth stating plainly because it looks like rubber-stamping and
+is not: the cross-family labeller was systematically *conservative*, returning `null` where the other
+named something, so a rule that says "this evidence is sufficient" resolves that way by construction.
+Each rule is written into the codebook, so re-labelling from scratch reaches the same answers. Three
+were added at `gold_version` 2 in response to what the disputes exposed:
+
+- **A personal site named after its owner.** A blog titled with its owner's name puts that name only
+  in the site header — furniture, which the codebook otherwise excludes — while the piece is written
+  throughout in the first person and names nobody. The header name is the author, and `publisher` is
+  null. This one item, `art_10`, produced *three different answers* across three labellers, because
+  three existing rules each claimed it.
+- **Writing as an organisation names it.** `"our data warehouse at Booking.com"`, `"At DataCamp, we
+  offer…"` — first-person organisational voice identifies the publisher as well as a masthead would.
+  This settled 9 of the 11 publisher disputes. Requiring an explicit statement would null out the
+  publisher on most company engineering blogs.
+- **Platform versus venue for papers.** A stated venue wins; otherwise the archive is the publisher;
+  and *"accepted to"* is not *"published at"*.
+
+The weakest of the twelve is `yt_02`, resolved on course identity — a university lecture addressed to
+that university's own students — where the evidence is contextual rather than first-person publishing
+voice. Revisit it first if the publisher axis is re-examined.
+
 ### How to read a number off it
 
-- **Exclude `disputed_unresolved` rows.** They carry the primary labeller's answer so the row is not
-  empty, but that answer is not gold. Currently 12 rows: `art_03`, `art_10`, `arx_01`, `arx_05`,
-  `aud_03`, `gh_01`, `gh_03`, `md_05`, `md_08`, `md_11`, `yt_02`, `yt_13`. Ten of the twelve split on
-  publisher only, so they remain usable for a contributors-only score — filter on
-  `adjudication_note` if you want that larger denominator, and say which denominator you used.
+- **All 58 rows are scorable at `gold_version` 2.** No row is `disputed_unresolved`. If a future
+  round reopens a label, that value returns and those rows must be excluded — check for it rather
+  than assuming the set is always fully usable.
+- **The 12 `human_adjudicated` rows are gold, but they are the softest gold here.** They are where
+  two model families read the same text differently, so they are the rows most likely to move if the
+  codebook changes. When an arm loses on one of them, read the case before believing the score.
 - **Report per-stratum, never aggregate alone.** `github` and `file_audio` hold 3 rows each — those
   lanes support a read-the-cases verdict and never a percentage. A rate quoted off three items is
   noise wearing a number's clothes.
