@@ -284,9 +284,8 @@ def fetch_content(
 
 
 def _github_owner(url: str | None) -> str | None:
-    """The owner segment of a github URL — `langchain-ai` from
-    `github.com/langchain-ai/langgraph`. None for a bare github.com URL or a
-    reserved path that owns no repo."""
+    """Owner segment of a github URL — `langchain-ai` from
+    `github.com/langchain-ai/langgraph`. None for a bare host or a reserved path."""
     if not url:
         return None
     parts = [seg for seg in urlparse(url).path.split("/") if seg]
@@ -298,17 +297,11 @@ def _github_owner(url: str | None) -> str | None:
 def _deterministic_publisher(row: dict[str, Any]) -> str | None:
     """The publisher a non-LLM source already knows, or None to let the model decide.
 
-    Two sources qualify, and both are unambiguous by construction: oEmbed's
-    `author_name` for youtube IS the channel and the channel IS the publisher,
-    and a github repo's owner is a fixed segment of its URL.
-
-    An HTML site name is deliberately never used. It is only captured for
-    article-like types, and `article` among them is the fetcher's CATCH-ALL —
-    every URL that is not youtube/arxiv/medium/facebook/github/file_pdf/file_audio
-    lands there, so `og:site_name` is as likely to read Substack, LinkedIn or
-    Reddit as it is to name a real publication. Storing the platform would bury
-    the publication that actually ran the piece. It is handed to the model as
-    evidence instead, alongside the body, which is strictly more to go on."""
+    Only two are unambiguous: oEmbed's `author_name` for youtube IS the channel,
+    and a github repo's owner is a fixed URL segment. An HTML site name never
+    qualifies — `article` is the fetcher's catch-all, so `og:site_name` reads
+    Substack or Reddit as often as a real publication, and storing the platform
+    buries the publication that ran the piece."""
     match (row.get("content_type") or "").lower():
         case "youtube":
             signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
@@ -322,28 +315,24 @@ def _deterministic_publisher(row: dict[str, Any]) -> str | None:
 def _metadata_inputs_sha(*, content_hash: str | None, model: str, prompt_sha: str) -> str:
     """One hash over everything that decides what this call returns.
 
-    Populated columns alone are not enough to skip: a re-fetch replaces the body,
-    a prompt edit changes the question and a model swap changes the answerer —
-    all while leaving the columns in place. Anything left out of this hash is a
-    way for the corpus to end up holding two incomparable populations with
-    nothing to tell them apart, which is the whole reason this lane is measured."""
+    Populated columns are not enough to skip on: a re-fetch replaces the body, a
+    prompt edit changes the question, a model swap changes the answerer — each
+    leaving the columns in place. Anything left out lets the corpus hold two
+    incomparable populations with nothing to tell them apart."""
     return hashlib.sha256("\n".join((content_hash or "", model, prompt_sha)).encode()).hexdigest()
 
 
 def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> bool:
-    """True when the last recorded call read exactly these inputs.
-
-    The hash lives on the call row rather than on `queue_items` because it is a
-    fact about one call, and `queue_items` has no per-column extraction
-    timestamp to compare against."""
+    """True when the last recorded call read exactly these inputs. The hash rides
+    on the call row because it is a fact about one call, and `queue_items` has no
+    per-column extraction timestamp."""
     if not last_call:
         return False
     try:
         recorded = json.loads(last_call.get("node_metadata") or "{}")
     except ValueError:
-        # `node_metadata` is a shared, reserved JSON slot. A row written by some
-        # future producer must not be able to raise on a path whose contract is
-        # to never fail — treat anything unreadable as "not fresh".
+        # Shared reserved slot: a future producer's row must not raise here, on a
+        # path whose whole contract is to never fail.
         return False
     if not isinstance(recorded, dict):
         return False
@@ -365,21 +354,19 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
             blocking=False,
             description=(
                 "A row with a fetched body carries contributors_json / publisher / "
-                "delivery_json. Non-blocking: the asset is best-effort, so this is "
-                "how a silently-unwritten row becomes visible without gating the "
-                "two extraction branches that depend on it."
+                "delivery_json. Non-blocking, so an unwritten row is visible without "
+                "gating the two extraction branches that depend on this asset."
             ),
         ),
     ],
     description=_oneline(
         """
         Reads the fetched body once and captures who made it, who published
-        it, whether its sections need a non-default spoken opening, and what
-        substance the fetch lost. Sits upstream of both extraction branches
-        because a field emitted by the narrative call cannot route that call
-        and the claims branch could never see it. Best-effort: any failure
-        writes nothing and materialises anyway. Nothing reads these columns
-        yet — they exist to be measured before a consumer is designed.
+        it, how it is put together, and what substance the fetch lost. Sits
+        upstream of both extraction branches because the claims branch could
+        never see a field the narrative call emitted. Best-effort: any failure
+        writes nothing and materialises anyway. Nothing reads these columns yet
+        — they exist to be measured before a consumer is designed.
         """
     ),
 )
@@ -390,17 +377,16 @@ def extract_metadata(
 ):
     page_id = context.partition_key
     check_name = "metadata_columns_populated"
-    # The whole body is guarded, not just the model call: both extract branches
-    # depend on this asset, so ANY exception here — a missing prompt file, a
-    # locked queue.db, an unreadable ledger row — would stop the reading card and
-    # the claims lane for the item. Nothing reads these columns yet, so a missing
-    # metadata row costs nothing while a blocked extraction costs the whole item.
-    # Every write happens before the first yield, so the failure path can never
-    # emit a second materialisation for the same asset.
+    # The WHOLE body is guarded, not just the model call: both extract branches
+    # depend on this asset, so any exception here — missing prompt file, locked
+    # queue.db, unreadable ledger row — stops the reading card and the claims lane
+    # too. A missing metadata row costs nothing; a blocked extraction costs the
+    # item. Every write precedes the first yield, so the failure path cannot emit
+    # a second materialisation.
     try:
-        # This asset can be materialised on its own — a backfill over stored
-        # bodies is exactly that — so it migrates the schema it writes to rather
-        # than relying on a sibling having run first.
+        # Migrates the schema it writes to: this asset can be materialised alone
+        # (a backfill over stored bodies is exactly that), so it cannot rely on a
+        # sibling having run first.
         store.ensure_schema()
         row = store.get_row(page_id)
         if not row or not row.get("raw_content"):
@@ -445,10 +431,9 @@ def extract_metadata(
             "unreadable": [u.model_dump() for u in payload.unreadable],
         }
         if known_publisher and payload.publisher and payload.publisher != known_publisher:
-            # The deterministic value wins, so the model's reading would otherwise
-            # vanish unrecorded. Kept as an audit hint rather than a disagreement
-            # count — string inequality also fires on `TED` versus `TED Talks`,
-            # and a channel and a publisher can legitimately be different things.
+            # An audit hint, not a disagreement count: string inequality also
+            # fires on `TED` vs `TED Talks`, and a channel and a publisher can
+            # legitimately be different things.
             delivery["publisher_model_said"] = payload.publisher
 
         store.record_metadata(

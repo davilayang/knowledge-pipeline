@@ -1,22 +1,17 @@
 """Metadata extraction — one structured call over the fetched body.
 
 Answers four things no deterministic source covers for the whole corpus: who
-made a piece, who published it, whether it needs a non-default spoken opening,
-and whether its substance survived the fetch.
-
-The body is the only substrate with no coverage hole — publisher metadata is
-absent or wrong often enough (a YouTube channel is not a person; a platform
-byline is not the guest author who wrote the piece) that no deterministic source
-can replace this call. The body is also enough on its own: across the corpus the
-platform byline appears in the fetched text on 71 of the 72 rows that have one,
-so the model is given the content and nothing else.
+made a piece, who published it, how it is put together, and whether its
+substance survived the fetch. Platform metadata is absent or wrong too often to
+replace this call — a YouTube channel is not a person — and the body is enough
+on its own: the platform byline is already in the fetched text on 71 of the 72
+rows that have one, so the model gets the content and nothing else.
 
 Rides the extraction lane's shared cache prefix (same system message, same
-article envelope, same `response_format`), so the topic_card and followups calls
-on the same item are served the body from the cache this call primes. The
-narrative call is NOT included — it sends a different system message and no
-`response_format`, which puts it in a different cache partition. Everything
-per-item lives in the task tail, behind the article.
+article envelope, same `response_format`), priming the body cache that
+topic_card and followups then read. The narrative call sends a different system
+message and no `response_format`, so it sits in another partition and is not
+primed.
 """
 
 import dataclasses
@@ -33,17 +28,15 @@ from workflows.extraction.shared_prefix import (
 from workflows.extraction.three_call_openai import EXTRACTION_CACHE_KEY
 from workflows.llm import LLMCall, generate_messages_with_usage
 
-# The reply is a handful of short fields — this ceiling exists to bound a
-# runaway list, not to fit the output. Reasoning models spend it on thinking
-# too, which is why `token_kwargs` also pins them to their lowest effort.
+# The reply is a handful of short fields; this ceiling bounds a runaway list
+# rather than fitting the output. Reasoning models spend it on thinking too,
+# which is why `token_kwargs` pins them to their lowest effort.
 METADATA_MAX_TOKENS = 2048
 
-# JSON mode guarantees syntactically valid json, not a reply that satisfies the
-# model, and the usual miss is one stochastic wrong field name. Naming the
-# rejection back to the model fixes it; the OpenAI SDK's own retries cannot,
-# because the HTTP call succeeded and it was the local validation that failed.
-# Same ceiling as the sibling structured calls: a model that has missed the
-# schema twice is unlikely to find it on a fourth try.
+# JSON mode guarantees valid json, not a reply that satisfies the schema, and
+# the usual miss is one wrong field name — naming the rejection back to the model
+# fixes it. The SDK's retries cannot: the HTTP call succeeded, the local
+# validation failed. Three, like the sibling structured calls.
 _MAX_ATTEMPTS = 3
 
 
@@ -93,10 +86,9 @@ class MetadataPayload(BaseModel):
     ledger."""
 
     contributors: list[Contributor] = Field(
-        # Defaulted, like the two lists below: a model that omits an empty list
-        # rather than sending `[]` is making a cosmetic choice, and discarding
-        # the whole payload over it would throw away the fields that do have a
-        # verifiable right answer.
+        # Defaulted, like the two lists below: omitting an empty list rather than
+        # sending `[]` is cosmetic, and discarding the whole payload over it would
+        # throw away the fields that do have a verifiable right answer.
         default_factory=list,
         description="People who made this, in the order the source presents them. Empty if none.",
     )
@@ -136,10 +128,9 @@ def extract_metadata(
 ) -> tuple[MetadataPayload, LLMCall]:
     """Read `content` once and return the validated payload plus call usage.
 
-    Raises ValueError on any reply the schema does not accept, and on a reply cut
-    off at the token ceiling — truncated JSON can still parse, so the stop reason
-    is the only evidence that a half-read body produced it. The caller decides
-    what a failure means; here it is always "this reply is not usable"."""
+    Raises ValueError on any reply the schema rejects, and on one cut off at the
+    token ceiling — truncated JSON still parses, so the stop reason is the only
+    sign it was cut. The caller decides what a failure means."""
     task = prompt + "\n\n" + schema_block(MetadataPayload)
 
     tokens_in = tokens_out = cached = 0

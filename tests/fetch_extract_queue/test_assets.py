@@ -936,11 +936,9 @@ def _check_events(result):
     ids=["transient_network", "unusable_reply"],
 )
 def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_path: Path, exc):
-    """Both extract branches depend on this asset, so a failure here would gate
-    the reading card AND the claims lane — a blast radius neither has today.
-    Nothing reads these columns yet, so a missing metadata row costs nothing
-    while a blocked extraction costs the whole item. It materialises; the
-    non-blocking check is what turns red."""
+    """A failure here would gate the reading card AND the claims lane — a blast
+    radius neither has today. A missing metadata row costs nothing; a blocked
+    extraction costs the item. It materialises; the check turns red."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1000,11 +998,10 @@ def _metadata_call(payload):
 
 
 def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
-    """The three columns are the artefact; the call row is its provenance. Both
-    are written from one payload, so a row can never carry metadata without the
-    call that produced it. Contributors stay multi-valued and independent of the
-    publisher — one guest post carries a platform byline, a real author with an
-    affiliation, and a publishing newsletter that is neither."""
+    """The columns are the artefact, the call row its provenance; both come from
+    one payload, so a row cannot carry metadata without the call that made it.
+    Contributors stay multi-valued and independent of publisher — one guest post
+    has a platform byline, a real author, and a newsletter that is neither."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1043,10 +1040,9 @@ def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
 
 
 def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(tmp_path: Path):
-    """For YouTube, oEmbed's author_name IS the channel and the channel IS the
-    publisher — a mapping the model cannot improve on, so it wins. The model's
-    answer is kept rather than dropped: a repeated disagreement is how we would
-    learn the deterministic source is the wrong one for a lane."""
+    """oEmbed's author_name IS the channel and the channel IS the publisher, so it
+    wins. The model's answer is kept, not dropped — a repeated disagreement is how
+    we would learn the deterministic source is wrong for a lane."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1088,12 +1084,10 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
 def test_extract_metadata_never_takes_a_site_name_as_the_publisher(
     tmp_path: Path, content_type: str, sitename: str, expected_publisher: str
 ):
-    """`article` is the fetcher's CATCH-ALL type, not "a plain web article": every
-    URL that is not youtube/arxiv/medium/facebook/github/file_pdf/file_audio lands
-    there, so its `og:site_name` is just as likely to be Substack, LinkedIn or
-    Reddit as a real publication. Trusting it would bury the publication that
-    actually ran the piece — the same failure the Medium and GitHub carve-outs
-    existed for. The model, which reads the body, decides instead."""
+    """`article` is the fetcher's CATCH-ALL, not "a plain web article", so its
+    `og:site_name` is as likely to be Substack, LinkedIn or Reddit as a real
+    publication. Trusting it would bury the publication that ran the piece. The
+    model, which reads the body, decides instead."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1180,11 +1174,9 @@ def test_extract_metadata_re_extracts_when_the_body_changed(tmp_path: Path):
 
 
 def test_extract_metadata_still_materializes_when_the_store_write_fails(tmp_path: Path):
-    """The best-effort contract has to cover the whole asset, not just the model
-    call. queue.db is written by triage and read whole-corpus by the wiki sweep,
-    so a lock during the write is realistic — and because both extract branches
-    now depend on this asset, an exception here would stop the reading card and
-    the claims lane for that item."""
+    """The contract has to cover the whole asset, not just the model call. queue.db
+    is written by triage and read whole-corpus by the wiki sweep, so a lock during
+    the write is realistic — and it would stop both extract branches."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1214,10 +1206,10 @@ def test_extract_metadata_still_materializes_when_the_store_write_fails(tmp_path
 
 
 def test_extract_metadata_migrates_the_schema_it_writes_to(tmp_path: Path):
-    """This asset can be materialised on its own — a Phase C backfill over stored
-    bodies is exactly that — so it cannot rely on a sibling having migrated the
-    database first. Only `fetch_content` calls ensure_schema today, and without
-    one here the write hits `no such column: contributors_json`."""
+    """This asset can be materialised alone — a backfill over stored bodies is
+    exactly that — so it cannot rely on a sibling having migrated first. Only
+    `fetch_content` calls ensure_schema; without one here the write hits
+    `no such column: contributors_json`."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1247,11 +1239,9 @@ def test_extract_metadata_migrates_the_schema_it_writes_to(tmp_path: Path):
 
 
 def test_extract_metadata_re_extracts_when_the_model_changed(tmp_path: Path):
-    """Two models' answers in one column, distinguishable only by joining back to
-    the call ledger, is the same corpus-labelling problem the prompt hash exists
-    to prevent. The three-call lane already folds the model into its staleness
-    signal; this lane must too, or a model swap leaves every existing row frozen
-    on the old one."""
+    """Two models' answers in one column is the corpus-labelling problem the prompt
+    hash exists to prevent. The three-call lane already folds the model into its
+    staleness signal; without it here, a model swap freezes every existing row."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"

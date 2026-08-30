@@ -1,34 +1,28 @@
 # metadata_v1 — contributors, publisher, delivery shape, unreadable substance
 
-Produces the `MetadataPayload` (`workflows/extraction/metadata.py`) via
-OpenAI's JSON mode. Runs upstream of both extraction branches — the reading
-card and the claims lane — because a field emitted *by* the narrative call
-cannot route that call, and the claims branch could never see it.
+Produces the `MetadataPayload` (`workflows/extraction/metadata.py`) via OpenAI's
+JSON mode, upstream of both extraction branches — the claims lane could never
+see a field the narrative call emitted.
 
-The extractor appends the JSON schema, generated from the pydantic model,
-after this body and validates the reply against it. Nothing else is sent: the
-model gets the content and the task, and no deterministic side-channel. Across
-the corpus the platform byline is already in the fetched text on 71 of the 72
-rows that have one, so a separate evidence block bought attribution on a single
-measured row while adding a per-lane coupling and an injection surface.
+The extractor appends the schema generated from the pydantic model and validates
+against it. Nothing else is sent: no deterministic side-channel. The platform
+byline is already in the fetched text on 71 of the 72 rows that have one, so an
+evidence block bought attribution on one measured row while adding per-lane
+coupling and an injection surface.
 
-Why the model rather than a rule table: the corpus spans 49 hosts with a long
-tail, YouTube speaker names appear in four incompatible title formats and are
-absent entirely from a third of items, and a `By ` regex on an article that
-opens "By Hugo Lu | This is a guest post by Kyle Cheung, CEO at Greybeam"
-extracts the wrong person.
+Why a model and not a rule table: 49 hosts in a long tail, YouTube speaker names
+in four incompatible title formats and absent entirely from a third of items,
+and a `By ` regex reading "By Hugo Lu | This is a guest post by Kyle Cheung, CEO
+at Greybeam" picks the wrong person.
 
-`delivery_shape` carries two values plus null. A six-label predecessor was
-dropped on evidence: across model vendors it reproduced at 58.8%, and the
-openings it implied were identical on 29 of 31 double-read items. The two
-survivors are the cases where a default opening genuinely misfires, and both
-reproduced unanimously across vendors when asked as narrow yes/no questions —
-which is how they are asked below.
+`delivery_shape` is two values plus null. A six-label predecessor reproduced at
+58.8% across vendors and implied identical openings on 29 of 31 double-read
+items; the two survivors reproduced unanimously when asked as narrow yes/no
+questions, which is how they are asked below.
 
-The `unreadable` list is capped because the reply shares one token ceiling
-with reasoning, and a truncated reply is discarded whole — an uncapped list on a
-long transcript would cost the contributors and publisher, the two fields with a
-verifiable right answer.
+`unreadable` is capped: the reply shares one token ceiling with reasoning and a
+truncated reply is discarded whole, so an uncapped list on a long transcript
+would cost the contributors and publisher.
 
 Everything below the horizontal rule is the prompt body. Everything above
 it is design notes.

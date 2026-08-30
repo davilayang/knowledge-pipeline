@@ -21,11 +21,10 @@ def test_pipeline_defs_loads():
 
 
 def test_both_extract_branches_run_after_metadata():
-    """extract_reading_card and extract_claims are parallel siblings — anything
-    produced inside one is permanently invisible to the other, so metadata that
-    either might route on has to be produced upstream of the fork. A decorated
-    function is not enough: without the dependency edges, the asset would still
-    load and simply run in an order nothing guarantees."""
+    """extract_reading_card and extract_claims are parallel siblings, so anything
+    one produces is invisible to the other and metadata must sit upstream of the
+    fork. A decorated function is not enough — without the edges the asset loads
+    and runs in an order nothing guarantees."""
     graph = defs.resolve_asset_graph()
 
     def parents(name: str) -> set[str]:

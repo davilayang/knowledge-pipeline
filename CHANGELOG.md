@@ -6,14 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.18] — 2026-08-30
+
 ### Added
 
-- **The pipeline now captures who made a piece, who published it, how it is put together, and what its fetch lost — but nothing reads it yet, by design.** A new `extract_metadata` asset reads the fetched body once and writes `queue_items.contributors_json` / `publisher` / `delivery_json`, plus a `metadata` row in the `extraction_calls` ledger. The payoff is a few weeks of production data: whether the two-value `delivery_shape` fires at the expected ~6%, and how often a YouTube talk's substance is only on screen. Consumers are designed against that sample rather than against a 51-item hand-curated one.
-  - `contributors` is multi-valued and separate from `publisher` — one guest post carries a platform byline, a real author with an affiliation, and a publishing newsletter that is none of them. `author` keeps its current meaning (the byline as the source platform reports it) and is untouched, so no existing row changes meaning.
-  - The asset is **best-effort and always materialises**: a refusal, an unusable reply, a truncated reply or a dead socket writes nothing and logs why. Both extract branches now depend on it, and gating them on one metadata failure would be a blast radius neither has today. A non-blocking asset check turns red when a row with a body ends up with empty columns.
-  - It sits upstream of the `extract_reading_card` / `extract_claims` fork because those are parallel siblings — anything produced inside one is permanently invisible to the other, so a field either might route on cannot be emitted by one of them.
-  - Re-running an unchanged row costs nothing; a re-fetched body, a re-enrichment, an edited prompt or a model swap all re-extract.
-  - **`get_queue_extraction` gains `contributors` / `publisher` / `delivery`.** Additive keys on the cross-repo read path newsletter-assistant consumes, so the new fields are reachable through the supported API rather than only by reading the table. The view stays gated on `extracted_at`, which the metadata asset does not set — metadata for an item whose reading-card extraction failed is stored but not visible here.
+- **A new `extract_metadata` asset captures contributors, publisher, and delivery shape from each item's fetched body — but nothing reads the columns yet.** One best-effort OpenAI call writes `queue_items.contributors_json` / `publisher` / `delivery_json`; a failure writes nothing and flags a non-blocking asset check, so both extraction branches keep running unaffected.
+
+- **`get_queue_extraction` — the read path newsletter-assistant consumes — now returns `contributors` / `publisher` / `delivery` as additive keys.** Existing readers are unaffected.
+
+### Changed
+
+- **Every extracted item now costs one extra OpenAI call.** `extract_metadata` runs ahead of the reading card and primes the body's prompt cache (measured 61% / 72% hits on `topic_card` / `followups`); `FETCH_EXTRACT_QUEUE_DAG_VERSION` 6 → 7 marks existing materializations stale.
 
 ---
 

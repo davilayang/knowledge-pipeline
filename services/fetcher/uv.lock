@@ -514,7 +514,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.36.17"
+version = "0.36.18"
 source = { directory = "../../packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },

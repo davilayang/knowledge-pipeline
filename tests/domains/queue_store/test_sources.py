@@ -1179,10 +1179,9 @@ def test_extract_claims_cleared_on_re_triage(db_path: Path):
 
 
 def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path):
-    """A queue.db created before the extract_metadata asset existed carries no
-    contributors_json / publisher / delivery_json. create_schema must ALTER them
-    in: the tables already exist, so the CREATE TABLE IF NOT EXISTS in _SCHEMA is
-    a no-op and only the ADD COLUMN loop can converge an old file's shape."""
+    """A queue.db predating the asset carries none of the three columns, and the
+    tables already exist — so `CREATE TABLE IF NOT EXISTS` is a no-op and only the
+    ADD COLUMN loop can converge an old file's shape."""
     p = tmp_path / "old.db"
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
@@ -1200,10 +1199,9 @@ def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path)
 
 
 def test_upsert_triaged_clears_metadata_columns(db_path: Path):
-    """Re-triage is a cohort boundary: metadata extracted from the old URL must
-    not survive onto the new one. A requeued row that kept its contributors /
-    publisher / delivery would serve the previous URL's people under the new
-    content — the same stale-state failure the fetched columns are cleared for."""
+    """Re-triage is a cohort boundary: a requeued row that kept these columns would
+    serve the previous URL's people under the new content — the stale-state
+    failure the fetched columns are already cleared for."""
     page_id = "p-meta-clear"
     _seed_row(db_path, page_id)
     record_metadata(
@@ -1271,11 +1269,9 @@ def test_get_queue_extraction_metadata_keys_are_present_when_never_extracted(db_
 
 
 def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
-    """One item can carry several distinct people plus a publisher that is none of
-    them. The production article this mirrors opens "By Hugo Lu | May 28, 2026 /
-    This is a guest post by Kyle Cheung, CEO at Greybeam" — a platform byline, a
-    real author with an affiliation, and a publishing newsletter. All three
-    survive storage independently, and the call ledger carries the provenance."""
+    """One item carries several distinct people plus a publisher that is none of
+    them — the production article this mirrors opens "By Hugo Lu ... guest post by
+    Kyle Cheung, CEO at Greybeam". All three survive storage independently."""
     page_id = "p-guest-post"
     _seed_row(db_path, page_id)
     contributors = [
