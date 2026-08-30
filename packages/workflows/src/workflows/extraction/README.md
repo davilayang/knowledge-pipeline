@@ -21,6 +21,8 @@ from workflows.extraction import (
 
 Prompt resolution is an orchestration concern. Production resolves via `orchestrators.defs.fetch_extract_queue.resources.ExtractorRegistry`, which reads markdown from repo-root `prompts/extraction/` using the label constants in `def_config.py` (`PROMPT_LABEL_NARRATIVE`, `PROMPT_LABEL_TOPIC_CARD`, `PROMPT_LABEL_FOLLOWUPS`). The `KP_PROMPTS_ROOT` env var overrides the prompts root (used by evals + tests, not deployments).
 
+`workflows.extraction.metadata.extract_metadata` (a single structured call, not part of `ThreeCallOpenAIExtractor`) resolves its prompt the same way but bypasses `ExtractorRegistry`: the `extract_metadata` Dagster asset calls `resources.read_extraction_prompt(PROMPT_LABEL_METADATA)` directly, since it only needs one prompt.
+
 Evals and notebooks resolve prompts directly via variant config (see `evals/extraction/variants.py`).
 
 ## Why this lives in `workflows/`

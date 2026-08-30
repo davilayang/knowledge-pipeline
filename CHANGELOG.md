@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.18] — 2026-08-30
+
+### Added
+
+- **A new `extract_metadata` asset captures contributors, publisher, and delivery shape from each item's fetched body — but nothing reads the columns yet.** One best-effort OpenAI call writes `queue_items.contributors_json` / `publisher` / `delivery_json`; a failure writes nothing and flags a non-blocking asset check, so both extraction branches keep running unaffected.
+
+- **`get_queue_extraction` — the read path newsletter-assistant consumes — now returns `contributors` / `publisher` / `delivery` as additive keys.** Existing readers are unaffected.
+
+### Changed
+
+- **Every extracted item now costs one extra OpenAI call.** `extract_metadata` runs ahead of the reading card and primes the body's prompt cache (measured 61% / 72% hits on `topic_card` / `followups`); `FETCH_EXTRACT_QUEUE_DAG_VERSION` 6 → 7 marks existing materializations stale.
+
+---
+
 ## [0.36.17] — 2026-08-30
 
 ### Changed

@@ -1,12 +1,17 @@
 import hashlib
 import json
 import textwrap
+import time
 from datetime import date
 from typing import Any
+from urllib.parse import urlparse
 
 import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
+from workflows.extraction.metadata import MetadataPayload
+from workflows.extraction.metadata import extract_metadata as run_extract_metadata
+from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.wiki_synthesis.extract_claims import SPOKEN_CONTENT_TYPES
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
@@ -21,11 +26,17 @@ from workflows.wiki_synthesis.prompts import (
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
+# enrichment_json is written by triage and read here for the youtube channel;
+# EnrichmentSignals IS that serialisation contract, so it is imported rather than
+# the JSON re-parsed by hand.
+from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
+
 from .def_config import (
     PIPELINE_TAG,
+    PROMPT_LABEL_METADATA,
     queue_items_partition_def,
 )
-from .resources import ExtractorRegistry, FetcherResource
+from .resources import ExtractorRegistry, FetcherResource, read_extraction_prompt
 
 GROUP_NAME = "fetch_extract_queue"
 
@@ -272,6 +283,216 @@ def fetch_content(
     return dg.MaterializeResult(metadata=metadata)
 
 
+def _github_owner(url: str | None) -> str | None:
+    """Owner segment of a github URL — `langchain-ai` from
+    `github.com/langchain-ai/langgraph`. None for a bare host or a reserved path."""
+    if not url:
+        return None
+    parts = [seg for seg in urlparse(url).path.split("/") if seg]
+    if not parts or parts[0] in {"orgs", "settings", "features", "about"}:
+        return None
+    return parts[0]
+
+
+def _deterministic_publisher(row: dict[str, Any]) -> str | None:
+    """The publisher a non-LLM source already knows, or None to let the model decide.
+
+    Only two are unambiguous: oEmbed's `author_name` for youtube IS the channel,
+    and a github repo's owner is a fixed URL segment. An HTML site name never
+    qualifies — `article` is the fetcher's catch-all, so `og:site_name` reads
+    Substack or Reddit as often as a real publication, and storing the platform
+    buries the publication that ran the piece."""
+    match (row.get("content_type") or "").lower():
+        case "youtube":
+            signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
+            return signals.youtube.channel if signals.youtube else None
+        case "github":
+            return _github_owner(row.get("canonical_url") or row.get("url"))
+        case _:
+            return None
+
+
+def _metadata_inputs_sha(*, content_hash: str | None, model: str, prompt_sha: str) -> str:
+    """One hash over everything that decides what this call returns.
+
+    Populated columns are not enough to skip on: a re-fetch replaces the body, a
+    prompt edit changes the question, a model swap changes the answerer — each
+    leaving the columns in place. Anything left out lets the corpus hold two
+    incomparable populations with nothing to tell them apart."""
+    return hashlib.sha256("\n".join((content_hash or "", model, prompt_sha)).encode()).hexdigest()
+
+
+def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> bool:
+    """True when the last recorded call read exactly these inputs. The hash rides
+    on the call row because it is a fact about one call, and `queue_items` has no
+    per-column extraction timestamp."""
+    if not last_call:
+        return False
+    try:
+        recorded = json.loads(last_call.get("node_metadata") or "{}")
+    except ValueError:
+        # Shared reserved slot: a future producer's row must not raise here, on a
+        # path whose whole contract is to never fail.
+        return False
+    if not isinstance(recorded, dict):
+        return False
+    return recorded.get("inputs_sha") == inputs_sha
+
+
+@dg.asset(
+    key=["fetch_extract_queue", "extract_metadata"],
+    group_name=GROUP_NAME,
+    kinds={"openai", "sqlite"},
+    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
+    partitions_def=queue_items_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    deps=[fetch_content],
+    check_specs=[
+        dg.AssetCheckSpec(
+            name="metadata_columns_populated",
+            asset=dg.AssetKey(["fetch_extract_queue", "extract_metadata"]),
+            blocking=False,
+            description=(
+                "A row with a fetched body carries contributors_json / publisher / "
+                "delivery_json. Non-blocking, so an unwritten row is visible without "
+                "gating the two extraction branches that depend on this asset."
+            ),
+        ),
+    ],
+    description=_oneline(
+        """
+        Reads the fetched body once and captures who made it, who published
+        it, how it is put together, and what substance the fetch lost. Sits
+        upstream of both extraction branches because the claims branch could
+        never see a field the narrative call emitted. Best-effort: any failure
+        writes nothing and materialises anyway. Nothing reads these columns yet
+        — they exist to be measured before a consumer is designed.
+        """
+    ),
+)
+def extract_metadata(
+    context: dg.AssetExecutionContext,
+    extractor: ExtractorRegistry,
+    store: QueueStoreResource,
+):
+    page_id = context.partition_key
+    check_name = "metadata_columns_populated"
+    # The WHOLE body is guarded, not just the model call: both extract branches
+    # depend on this asset, so any exception here — missing prompt file, locked
+    # queue.db, unreadable ledger row — stops the reading card and the claims lane
+    # too. A missing metadata row costs nothing; a blocked extraction costs the
+    # item. Every write precedes the first yield, so the failure path cannot emit
+    # a second materialisation.
+    try:
+        # Migrates the schema it writes to: this asset can be materialised alone
+        # (a backfill over stored bodies is exactly that), so it cannot rely on a
+        # sibling having run first.
+        store.ensure_schema()
+        row = store.get_row(page_id)
+        if not row or not row.get("raw_content"):
+            yield dg.MaterializeResult(metadata={"metadata_skipped": dg.MetadataValue.bool(True)})
+            # Nothing was expected of a body-less row, so this is not a finding.
+            yield dg.AssetCheckResult(check_name=check_name, passed=True)
+            return
+
+        prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
+        prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
+        inputs_sha = _metadata_inputs_sha(
+            content_hash=row.get("content_hash"),
+            model=extractor.model,
+            prompt_sha=prompt_sha,
+        )
+        if _metadata_is_fresh(
+            store.get_latest_extraction_calls(page_id).get("metadata"), inputs_sha
+        ):
+            yield dg.MaterializeResult(
+                metadata={
+                    "metadata_skipped": dg.MetadataValue.bool(True),
+                    "summary": dg.MetadataValue.md("Skipped — same body, prompt and model."),
+                }
+            )
+            yield dg.AssetCheckResult(check_name=check_name, passed=True)
+            return
+
+        started = time.monotonic()
+        payload, call = run_extract_metadata(
+            row["raw_content"],
+            content_type=row.get("content_type") or "",
+            prompt=prompt,
+            model=extractor.model,
+        )
+        duration_ms = (time.monotonic() - started) * 1000
+
+        known_publisher = _deterministic_publisher(row)
+        contributors = [c.model_dump() for c in payload.contributors]
+        delivery: dict[str, Any] = {
+            "shape": payload.delivery_shape,
+            "parts": payload.parts,
+            "unreadable": [u.model_dump() for u in payload.unreadable],
+        }
+        if known_publisher and payload.publisher and payload.publisher != known_publisher:
+            # An audit hint, not a disagreement count: string inequality also
+            # fires on `TED` vs `TED Talks`, and a channel and a publisher can
+            # legitimately be different things.
+            delivery["publisher_model_said"] = payload.publisher
+
+        store.record_metadata(
+            notion_page_id=page_id,
+            contributors_json=json.dumps(contributors),
+            publisher=known_publisher or payload.publisher,
+            delivery_json=json.dumps(delivery),
+            prompt_label=PROMPT_LABEL_METADATA,
+            prompt_sha256=prompt_sha,
+            model=call.model,
+            output=call.content,
+            tokens_in=call.input_tokens,
+            tokens_out=call.output_tokens,
+            cached_tokens=call.cached_tokens,
+            duration_ms=duration_ms,
+            content_hash=row.get("content_hash"),
+            inputs_sha=inputs_sha,
+        )
+        store.checkpoint_wal()
+    except Exception as exc:
+        context.log.warning("extract_metadata failed for %s: %r", page_id, exc)
+        reason = dg.MetadataValue.text(f"{type(exc).__name__}: {exc}"[:1000])
+        yield dg.MaterializeResult(
+            metadata={
+                "metadata_error": reason,
+                "summary": dg.MetadataValue.md("No metadata written — see metadata_error."),
+            }
+        )
+        yield dg.AssetCheckResult(
+            check_name=check_name,
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            metadata={"metadata_error": reason},
+        )
+        return
+
+    yield dg.MaterializeResult(
+        metadata={
+            "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
+            "contributors": dg.MetadataValue.int(len(contributors)),
+            "publisher": dg.MetadataValue.text(known_publisher or payload.publisher or ""),
+            "delivery_shape": dg.MetadataValue.text(payload.delivery_shape or "(default)"),
+            "unreadable_major": dg.MetadataValue.int(
+                sum(1 for u in payload.unreadable if u.severity == "major")
+            ),
+            "model": dg.MetadataValue.text(call.model),
+            "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
+            "duration_ms": dg.MetadataValue.int(int(duration_ms)),
+            "payload": dg.MetadataValue.json(delivery),
+            "summary": dg.MetadataValue.md(
+                f"**{len(contributors)} contributors** — "
+                f"shape {payload.delivery_shape or 'default'}, "
+                f"{len(payload.unreadable)} unreadable"
+            ),
+        }
+    )
+    yield dg.AssetCheckResult(check_name=check_name, passed=True)
+
+
 @dg.asset(
     key=["fetch_extract_queue", "extract_reading_card"],
     group_name=GROUP_NAME,
@@ -279,7 +500,7 @@ def fetch_content(
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["fetch_extract_queue", "fetch_content"])],
+    deps=[dg.AssetDep(["fetch_extract_queue", "extract_metadata"])],
     check_specs=[
         dg.AssetCheckSpec(
             name="topic_card_has_required_fields",
@@ -422,6 +643,9 @@ def extract_reading_card(
         Isolated from extraction so a Notion API hiccup can be retried
         without re-spending an OpenAI extraction. Verifies
         queue_items.extracted_at is set as a guard against bad ordering.
+        Ready means the reading card is ready — it does not mean every
+        branch finished: this asset depends only on extract_reading_card,
+        so claims and entities may still be running or may later fail.
         """
     ),
 )
@@ -474,7 +698,7 @@ def publish_item(
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[fetch_content],
+    deps=[extract_metadata],
     description=_oneline(
         """
         Extracts claims from the fetched body into per-source [reported]/[opinion] claims
@@ -592,6 +816,7 @@ def extract_entities(
 # seam: this pipeline writes queue.db + Notion only; wiki.db writes live there.
 all_assets = [
     fetch_content,
+    extract_metadata,
     extract_reading_card,
     publish_item,
     extract_claims,

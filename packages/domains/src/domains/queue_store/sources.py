@@ -51,6 +51,14 @@ CREATE TABLE IF NOT EXISTS queue_items (
     title                       TEXT,              -- fetcher metadata: article title
     author                      TEXT,              -- fetcher metadata: author/byline
     content_date                TEXT,              -- fetcher metadata: publication date (ISO)
+    contributors_json           TEXT,              -- JSON [{name, role, affiliation}] read off
+                                                   -- the body. `[]` = none found, NULL = never
+                                                   -- extracted. Not `author`, which stays the
+                                                   -- platform's raw byline.
+    publisher                   TEXT,              -- who published it (channel / site / show)
+    delivery_json               TEXT,              -- JSON {shape, parts, unreadable} —
+                                                   -- experimental fields, kept out of the
+                                                   -- lean columns until they earn promotion
     extracted_at                TEXT,              -- cohort completion ts
     extraction_model            TEXT,              -- cohort model
     extractor_label             TEXT,              -- "3call_v1" etc.
@@ -162,6 +170,9 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN title TEXT",
             "ALTER TABLE queue_items ADD COLUMN author TEXT",
             "ALTER TABLE queue_items ADD COLUMN content_date TEXT",
+            "ALTER TABLE queue_items ADD COLUMN contributors_json TEXT",
+            "ALTER TABLE queue_items ADD COLUMN publisher TEXT",
+            "ALTER TABLE queue_items ADD COLUMN delivery_json TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -252,6 +263,9 @@ def upsert_triaged(
                 content_hash = NULL,
                 title = NULL,
                 author = NULL,
+                contributors_json = NULL,
+                publisher = NULL,
+                delivery_json = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -656,6 +670,72 @@ def record_candidates(
         )
 
 
+def record_metadata(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    contributors_json: str,
+    publisher: str | None,
+    delivery_json: str,
+    prompt_label: str,
+    prompt_sha256: str,
+    model: str,
+    output: str,
+    tokens_in: int,
+    tokens_out: int,
+    cached_tokens: int | None = None,
+    duration_ms: float | None = None,
+    content_hash: str | None = None,
+    inputs_sha: str | None = None,
+) -> None:
+    """Persist one metadata extraction: the three `queue_items` columns plus a
+    `metadata`-kind `extraction_calls` row, in one transaction so a row can never
+    carry columns without the call that produced them.
+
+    Columns are UPDATE-not-INSERT (`fetch_content` already wrote the row); the
+    call row is INSERT-not-UPSERT like every other kind, so re-runs accumulate and
+    the latest wins.
+
+    `inputs_sha` in `node_metadata` is what the caller compares to skip a
+    re-extraction; `content_hash` rides along as its readable half — the sha says
+    a row is stale, the hash says whether the body was why."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE queue_items
+               SET contributors_json = ?, publisher = ?, delivery_json = ?
+             WHERE notion_page_id = ?
+            """,
+            (contributors_json, publisher, delivery_json, notion_page_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO extraction_calls (
+                notion_page_id, call_kind, prompt_label, prompt_sha256,
+                schema_name, model, output, tokens_in, tokens_out,
+                cached_tokens, duration_ms, extracted_at, node_metadata
+            ) VALUES (?, 'metadata', ?, ?, 'MetadataPayload', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                notion_page_id,
+                prompt_label,
+                prompt_sha256,
+                model,
+                output,
+                tokens_in,
+                tokens_out,
+                cached_tokens,
+                duration_ms,
+                _now_iso(),
+                (
+                    json.dumps({"content_hash": content_hash, "inputs_sha": inputs_sha})
+                    if (content_hash or inputs_sha)
+                    else None
+                ),
+            ),
+        )
+
+
 def get_ready_extraction_docs(
     *, db_path: Path
 ) -> tuple[dict[str, tuple[str, str, str]], list[str]]:
@@ -802,12 +882,17 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
     None when the page hasn't been extracted yet. Composes the flat view from
     the latest `topic_card` row in `extraction_calls`; field shape matches
     what NA's reader has historically consumed (extracted_title /
-    core_mechanism / etc. + provenance keys at top level)."""
+    core_mechanism / etc. + provenance keys at top level).
+
+    `contributors` / `publisher` / `delivery` come from the metadata asset and
+    were added later; they are additive keys, so a reader written against the
+    earlier shape is unaffected."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
             SELECT url, canonical_url, content_type, extraction_model,
-                   extracted_at, content_hash
+                   extracted_at, content_hash,
+                   contributors_json, publisher, delivery_json
             FROM queue_items
             WHERE notion_page_id = ? AND extracted_at IS NOT NULL
             """,
@@ -827,4 +912,13 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
         "extraction_model": row["extraction_model"],
         "extracted_at": row["extracted_at"],
         "content_hash": row["content_hash"],
+        # Written by a different asset than the topic card, so these can be
+        # empty on a row that is otherwise fully extracted. The keys are always
+        # present, holding empty values, so the consumer never branches on a
+        # missing key. Note the view is gated on `extracted_at`, which the
+        # metadata asset does not set: metadata for an item whose reading-card
+        # extraction failed is stored but not visible here.
+        "contributors": json.loads(row["contributors_json"]) if row["contributors_json"] else [],
+        "publisher": row["publisher"],
+        "delivery": json.loads(row["delivery_json"]) if row["delivery_json"] else {},
     }

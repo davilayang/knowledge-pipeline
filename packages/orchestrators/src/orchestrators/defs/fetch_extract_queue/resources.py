@@ -44,6 +44,14 @@ _PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
 _PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
 
 
+def read_extraction_prompt(label: str) -> str:
+    """Load `prompts/extraction/<label>.md`, minus its design-notes header (the
+    text above the first `---`), so only the prompt body reaches the model — see
+    domains.extraction.strip_design_notes. Module-level so callers that need one
+    prompt (the metadata asset) don't construct an extractor to reach it."""
+    return strip_design_notes((_PROMPTS_DIR / f"{label}.md").read_text())
+
+
 @dataclass
 class FetchResult:
     content: str = ""
@@ -203,9 +211,7 @@ class ExtractorRegistry(dg.ConfigurableResource):
     max_tokens: int = 4096
 
     def _prompt_text(self, label: str) -> str:
-        # Strip the design-notes header (above the first `---`) so only the
-        # prompt body reaches the model — see domains.extraction.strip_design_notes.
-        return strip_design_notes((_PROMPTS_DIR / f"{label}.md").read_text())
+        return read_extraction_prompt(label)
 
     def build(self) -> ThreeCallOpenAIExtractor:
         # One bundle registered as the generic fallback. Per-shape bundles
