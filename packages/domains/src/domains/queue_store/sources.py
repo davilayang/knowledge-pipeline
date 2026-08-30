@@ -56,9 +56,6 @@ CREATE TABLE IF NOT EXISTS queue_items (
                                                    -- extracted. Not `author`, which stays the
                                                    -- platform's raw byline.
     publisher                   TEXT,              -- who published it (channel / site / show)
-    delivery_json               TEXT,              -- JSON {shape, parts, unreadable} —
-                                                   -- experimental fields, kept out of the
-                                                   -- lean columns until they earn promotion
     extracted_at                TEXT,              -- cohort completion ts
     extraction_model            TEXT,              -- cohort model
     extractor_label             TEXT,              -- "3call_v1" etc.
@@ -172,7 +169,6 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN content_date TEXT",
             "ALTER TABLE queue_items ADD COLUMN contributors_json TEXT",
             "ALTER TABLE queue_items ADD COLUMN publisher TEXT",
-            "ALTER TABLE queue_items ADD COLUMN delivery_json TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -265,7 +261,6 @@ def upsert_triaged(
                 author = NULL,
                 contributors_json = NULL,
                 publisher = NULL,
-                delivery_json = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -676,7 +671,6 @@ def record_metadata(
     notion_page_id: str,
     contributors_json: str,
     publisher: str | None,
-    delivery_json: str,
     prompt_label: str,
     prompt_sha256: str,
     model: str,
@@ -688,7 +682,7 @@ def record_metadata(
     content_hash: str | None = None,
     inputs_sha: str | None = None,
 ) -> None:
-    """Persist one metadata extraction: the three `queue_items` columns plus a
+    """Persist one metadata extraction: the two `queue_items` columns plus a
     `metadata`-kind `extraction_calls` row, in one transaction so a row can never
     carry columns without the call that produced them.
 
@@ -703,10 +697,10 @@ def record_metadata(
         conn.execute(
             """
             UPDATE queue_items
-               SET contributors_json = ?, publisher = ?, delivery_json = ?
+               SET contributors_json = ?, publisher = ?
              WHERE notion_page_id = ?
             """,
-            (contributors_json, publisher, delivery_json, notion_page_id),
+            (contributors_json, publisher, notion_page_id),
         )
         conn.execute(
             """
@@ -884,15 +878,15 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
     what NA's reader has historically consumed (extracted_title /
     core_mechanism / etc. + provenance keys at top level).
 
-    `contributors` / `publisher` / `delivery` come from the metadata asset and
-    were added later; they are additive keys, so a reader written against the
-    earlier shape is unaffected."""
+    `contributors` / `publisher` come from the metadata asset and were added
+    later; they are additive keys, so a reader written against the earlier shape
+    is unaffected."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
             SELECT url, canonical_url, content_type, extraction_model,
                    extracted_at, content_hash,
-                   contributors_json, publisher, delivery_json
+                   contributors_json, publisher
             FROM queue_items
             WHERE notion_page_id = ? AND extracted_at IS NOT NULL
             """,
@@ -920,5 +914,4 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
         # extraction failed is stored but not visible here.
         "contributors": json.loads(row["contributors_json"]) if row["contributors_json"] else [],
         "publisher": row["publisher"],
-        "delivery": json.loads(row["delivery_json"]) if row["delivery_json"] else {},
     }

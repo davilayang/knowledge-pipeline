@@ -32,9 +32,6 @@ def _reply(**overrides) -> str:
     payload = {
         "contributors": [{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}],
         "publisher": "Orchestra",
-        "delivery_shape": None,
-        "parts": [],
-        "unreadable": [],
     }
     payload.update(overrides)
     import json
@@ -62,30 +59,12 @@ def test_parses_reply_and_sends_the_article_ahead_of_the_task():
     assert [c.name for c in payload.contributors] == ["Kyle Cheung"]
     assert payload.contributors[0].affiliation == "Greybeam"
     assert payload.publisher == "Orchestra"
-    assert payload.delivery_shape is None
     assert call.cached_tokens == 800
 
     messages = llm.call_args.args[0]
     assert messages[0] == {"role": "system", "content": SHARED_SYSTEM}
     assert messages[1]["content"].endswith("the article body")
     assert _PROMPT in messages[2]["content"]
-
-
-def test_rejects_a_delivery_shape_outside_the_settled_set():
-    """`delivery_shape` is two values plus null. A third label is a reply the
-    schema never declared, and Phase B's contract is to write nothing rather than
-    store a value no consumer will know how to read."""
-    with patch(
-        "workflows.extraction.metadata.generate_messages_with_usage",
-        return_value=_call(_reply(delivery_shape="builds_in_order")),
-    ):
-        with pytest.raises(ValueError):
-            extract_metadata(
-                "body",
-                content_type="article",
-                prompt=_PROMPT,
-                model="gpt-5-mini",
-            )
 
 
 def test_re_asks_once_with_the_validation_error_when_the_reply_misses_the_schema():
@@ -132,13 +111,13 @@ def test_gives_up_after_repeated_schema_failures_rather_than_looping():
 
 
 def test_a_reply_omitting_an_empty_list_still_validates():
-    """`parts` is empty whenever delivery_shape is null, which is most items. A
-    model that omits the key rather than sending `[]` is making a cosmetic
-    choice, and discarding the contributors and publisher over it would lose the
-    two fields that have a verifiable right answer."""
+    """Content naming nobody is a correct answer, and a model that omits
+    `contributors` rather than sending `[]` is making a cosmetic choice.
+    Discarding the reply over it would lose the publisher, which does have a
+    verifiable right answer."""
     import json as _json
 
-    minimal = _json.dumps({"publisher": "Orchestra", "delivery_shape": None})
+    minimal = _json.dumps({"publisher": "Orchestra"})
     with patch(
         "workflows.extraction.metadata.generate_messages_with_usage",
         return_value=_call(minimal),
@@ -150,8 +129,6 @@ def test_a_reply_omitting_an_empty_list_still_validates():
             model="gpt-5-mini",
         )
     assert payload.contributors == []
-    assert payload.parts == []
-    assert payload.unreadable == []
     assert payload.publisher == "Orchestra"
 
 
