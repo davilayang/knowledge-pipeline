@@ -960,7 +960,6 @@ def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_p
     row = store.get_row("p-1")
     assert row["contributors_json"] is None
     assert row["publisher"] is None
-    assert row["delivery_json"] is None
     assert "metadata" not in store.get_latest_extraction_calls("p-1")
 
     checks = _check_events(result)
@@ -976,9 +975,6 @@ def _metadata_payload(**overrides):
             Contributor(name="Kyle Cheung", role="author", affiliation="Greybeam"),
         ],
         publisher="Orchestra",
-        delivery_shape=None,
-        parts=[],
-        unreadable=[],
     )
     fields.update(overrides)
     return MetadataPayload(**fields)
@@ -1025,7 +1021,6 @@ def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
     assert [c["name"] for c in json.loads(row["contributors_json"])] == ["Hugo Lu", "Kyle Cheung"]
     assert json.loads(row["contributors_json"])[1]["affiliation"] == "Greybeam"
     assert row["publisher"] == "Orchestra"
-    assert json.loads(row["delivery_json"]) == {"shape": None, "parts": [], "unreadable": []}
     # `author` is the source platform's raw byline and keeps that meaning — no
     # existing row changes meaning when this asset lands.
     assert row["author"] is None
@@ -1041,8 +1036,9 @@ def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
 
 def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(tmp_path: Path):
     """oEmbed's author_name IS the channel and the channel IS the publisher, so it
-    wins. The model's answer is kept, not dropped — a repeated disagreement is how
-    we would learn the deterministic source is wrong for a lane."""
+    wins. The model's answer survives in the call ledger rather than being dropped
+    — a repeated disagreement is how we would learn the deterministic source is
+    wrong for a lane."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1069,7 +1065,8 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     assert result.success
     row = store.get_row("p-1")
     assert row["publisher"] == "AI Engineer"
-    assert json.loads(row["delivery_json"])["publisher_model_said"] == "Together AI"
+    call = store.get_latest_extraction_calls("p-1")["metadata"]
+    assert json.loads(call["output"])["publisher"] == "Together AI"
 
 
 @pytest.mark.parametrize(
@@ -1218,7 +1215,7 @@ def test_extract_metadata_migrates_the_schema_it_writes_to(tmp_path: Path):
     import sqlite3
 
     with sqlite3.connect(db_path) as conn:
-        for col in ("contributors_json", "publisher", "delivery_json"):
+        for col in ("contributors_json", "publisher"):
             conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
     store = QueueStoreResource(db_path=str(db_path))
     extractor = MagicMock()

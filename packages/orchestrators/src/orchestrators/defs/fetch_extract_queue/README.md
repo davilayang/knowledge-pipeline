@@ -41,7 +41,7 @@ fetch_content ──► extract_metadata ──► extract_reading_card ──�
    │                    │                       reads these two docs later — this pipeline no longer writes wiki.db.)
    │                    │
    │                    └─ best-effort: one OpenAI call over the fetched body, writing
-   │                       contributors_json / publisher / delivery_json on queue_items plus a
+   │                       contributors_json / publisher on queue_items plus a
    │                       call_kind='metadata' extraction_calls row. Any failure is swallowed and
    │                       the asset still materialises — it does not block either branch below it.
    │
@@ -63,7 +63,7 @@ metadata (head + tail of the content) for at-a-glance verification.
 ```
 
 Local store: `data/queue.db` (SQLite) for fetch + extraction state (raw_content,
-extracted Topic Card, provenance, contributors/publisher/delivery metadata,
+extracted Topic Card, provenance, contributors/publisher metadata,
 per-source `extract_claims` + `extract_entities` docs). This pipeline no longer
 writes `data/wiki.db` — the wiki-write lane
 (attribute + render) moved to the `synthesize_wiki` DAG, which reads those two

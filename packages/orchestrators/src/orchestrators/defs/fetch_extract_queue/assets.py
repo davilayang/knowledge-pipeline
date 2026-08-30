@@ -353,20 +353,19 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
             asset=dg.AssetKey(["fetch_extract_queue", "extract_metadata"]),
             blocking=False,
             description=(
-                "A row with a fetched body carries contributors_json / publisher / "
-                "delivery_json. Non-blocking, so an unwritten row is visible without "
-                "gating the two extraction branches that depend on this asset."
+                "A row with a fetched body carries contributors_json and publisher. "
+                "Non-blocking, so an unwritten row is visible without gating the two "
+                "extraction branches that depend on this asset."
             ),
         ),
     ],
     description=_oneline(
         """
-        Reads the fetched body once and captures who made it, who published
-        it, how it is put together, and what substance the fetch lost. Sits
-        upstream of both extraction branches because the claims branch could
-        never see a field the narrative call emitted. Best-effort: any failure
-        writes nothing and materialises anyway. Nothing reads these columns yet
-        — they exist to be measured before a consumer is designed.
+        Reads the fetched body once and captures who made it and who
+        published it. Sits upstream of both extraction branches, since a field
+        the narrative call emitted would be invisible to the claims branch.
+        Best-effort: any failure writes nothing and materialises anyway.
+        Nothing reads these columns yet — they exist to be measured first.
         """
     ),
 )
@@ -425,22 +424,13 @@ def extract_metadata(
 
         known_publisher = _deterministic_publisher(row)
         contributors = [c.model_dump() for c in payload.contributors]
-        delivery: dict[str, Any] = {
-            "shape": payload.delivery_shape,
-            "parts": payload.parts,
-            "unreadable": [u.model_dump() for u in payload.unreadable],
-        }
-        if known_publisher and payload.publisher and payload.publisher != known_publisher:
-            # An audit hint, not a disagreement count: string inequality also
-            # fires on `TED` vs `TED Talks`, and a channel and a publisher can
-            # legitimately be different things.
-            delivery["publisher_model_said"] = payload.publisher
 
         store.record_metadata(
             notion_page_id=page_id,
             contributors_json=json.dumps(contributors),
+            # On a disagreement the deterministic value wins and the model's
+            # survives in the ledger row's `output`, which holds the whole reply.
             publisher=known_publisher or payload.publisher,
-            delivery_json=json.dumps(delivery),
             prompt_label=PROMPT_LABEL_METADATA,
             prompt_sha256=prompt_sha,
             model=call.model,
@@ -475,18 +465,16 @@ def extract_metadata(
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
             "contributors": dg.MetadataValue.int(len(contributors)),
             "publisher": dg.MetadataValue.text(known_publisher or payload.publisher or ""),
-            "delivery_shape": dg.MetadataValue.text(payload.delivery_shape or "(default)"),
-            "unreadable_major": dg.MetadataValue.int(
-                sum(1 for u in payload.unreadable if u.severity == "major")
+            "publisher_source": dg.MetadataValue.text(
+                "deterministic" if known_publisher else "model"
             ),
             "model": dg.MetadataValue.text(call.model),
             "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
             "duration_ms": dg.MetadataValue.int(int(duration_ms)),
-            "payload": dg.MetadataValue.json(delivery),
+            "payload": dg.MetadataValue.json({"contributors": contributors}),
             "summary": dg.MetadataValue.md(
                 f"**{len(contributors)} contributors** — "
-                f"shape {payload.delivery_shape or 'default'}, "
-                f"{len(payload.unreadable)} unreadable"
+                f"publisher {known_publisher or payload.publisher or '(none)'}"
             ),
         }
     )

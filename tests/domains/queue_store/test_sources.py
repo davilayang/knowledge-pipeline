@@ -1179,23 +1179,23 @@ def test_extract_claims_cleared_on_re_triage(db_path: Path):
 
 
 def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path):
-    """A queue.db predating the asset carries none of the three columns, and the
-    tables already exist — so `CREATE TABLE IF NOT EXISTS` is a no-op and only the
-    ADD COLUMN loop can converge an old file's shape."""
+    """A queue.db predating the asset carries neither column, and the tables
+    already exist — so `CREATE TABLE IF NOT EXISTS` is a no-op and only the ADD
+    COLUMN loop can converge an old file's shape."""
     p = tmp_path / "old.db"
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
-        for col in ("contributors_json", "publisher", "delivery_json"):
+        for col in ("contributors_json", "publisher"):
             conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
         dropped = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
     # Without this the assert below passes on a database that still has the
     # columns, and the ADD COLUMN loop is never exercised at all.
-    assert not (dropped & {"contributors_json", "publisher", "delivery_json"})
+    assert not (dropped & {"contributors_json", "publisher"})
 
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
-    assert {"contributors_json", "publisher", "delivery_json"} <= cols
+    assert {"contributors_json", "publisher"} <= cols
 
 
 def test_upsert_triaged_clears_metadata_columns(db_path: Path):
@@ -1209,7 +1209,6 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
         notion_page_id=page_id,
         contributors_json='[{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}]',
         publisher="Orchestra",
-        delivery_json='{"shape": null, "parts": [], "unreadable": []}',
         prompt_label="metadata_v1",
         prompt_sha256="a" * 64,
         model="gpt-5-mini",
@@ -1222,14 +1221,14 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
     assert row is not None
     assert row["contributors_json"] is None
     assert row["publisher"] is None
-    assert row["delivery_json"] is None
 
 
 def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
-    """`get_queue_extraction` is the cross-repo read path newsletter-assistant
-    consumes, and it selects a fixed column list — so metadata written by the
-    extract_metadata asset is invisible through it until the columns are added.
-    Additive keys only; nothing existing moves."""
+    """`get_queue_extraction` is the declared cross-repo view over queue.db and
+    selects a fixed column list, so metadata is invisible through it until the
+    columns are added. Additive keys only. Note newsletter-assistant does not
+    call this function — it runs its own named-column SQL over the same file, so
+    reaching NA means widening that query too."""
     page_id = "p-meta-view"
     _seed_row(db_path, page_id)
     _record_three_call(db_path, page_id)  # sets extracted_at, which this view gates on
@@ -1238,7 +1237,6 @@ def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
         notion_page_id=page_id,
         contributors_json=json.dumps([{"name": "Kyle Cheung", "role": "author"}]),
         publisher="Orchestra",
-        delivery_json=json.dumps({"shape": "different_goals", "parts": ["Install"]}),
         prompt_label="metadata_v1",
         prompt_sha256="d" * 64,
         model="gpt-5-mini",
@@ -1250,7 +1248,6 @@ def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
     assert out is not None
     assert out["contributors"] == [{"name": "Kyle Cheung", "role": "author"}]
     assert out["publisher"] == "Orchestra"
-    assert out["delivery"]["shape"] == "different_goals"
     # The topic-card view it has always served is untouched.
     assert out["extracted_title"] == "T"
 
@@ -1265,7 +1262,6 @@ def test_get_queue_extraction_metadata_keys_are_present_when_never_extracted(db_
     assert out is not None
     assert out["contributors"] == []
     assert out["publisher"] is None
-    assert out["delivery"] == {}
 
 
 def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
@@ -1283,7 +1279,6 @@ def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
         notion_page_id=page_id,
         contributors_json=json.dumps(contributors),
         publisher="Orchestra",
-        delivery_json='{"shape": null, "parts": [], "unreadable": []}',
         prompt_label="metadata_v1",
         prompt_sha256="c" * 64,
         model="gpt-5-mini",

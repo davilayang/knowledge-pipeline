@@ -1,8 +1,7 @@
 """Metadata extraction — one structured call over the fetched body.
 
-Answers four things no deterministic source covers for the whole corpus: who
-made a piece, who published it, how it is put together, and whether its
-substance survived the fetch. Platform metadata is absent or wrong too often to
+Answers two things no deterministic source covers for the whole corpus: who made
+a piece and who published it. Platform metadata is absent or wrong too often to
 replace this call — a YouTube channel is not a person — and the body is enough
 on its own: the platform byline is already in the fetched text on 71 of the 72
 rows that have one, so the model gets the content and nothing else.
@@ -15,7 +14,6 @@ primed.
 """
 
 import dataclasses
-from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -58,64 +56,20 @@ class Contributor(BaseModel):
     )
 
 
-class Unreadable(BaseModel):
-    """One piece of substance the fetched text references but does not contain.
-
-    The severity test: remove the unshown material — does a claim become
-    unverifiable, or a section become empty? Then `major`. A pointing gesture
-    attached to something also said aloud is `minor`."""
-
-    cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
-        description=(
-            "screen_reference: points at something on screen. images: the text "
-            "refers to figures not captured. chrome: navigation/boilerplate "
-            "replaced the content. truncation: the text stops mid-thought. "
-            "unspeakable: present but unreadable aloud, e.g. raw tables."
-        )
-    )
-    severity: Literal["major", "minor"] = Field(
-        description="major when a claim becomes unverifiable or a section empty."
-    )
-    missing: str = Field(description="What is not in the text, specifically.")
-    evidence: str = Field(description="The quote from the text that depends on it.")
-
-
 class MetadataPayload(BaseModel):
-    """What one metadata call returns. Stored across the three `queue_items`
+    """What one metadata call returns. Stored across the two `queue_items`
     metadata columns; the whole reply also lands in the `extraction_calls`
     ledger."""
 
     contributors: list[Contributor] = Field(
-        # Defaulted, like the two lists below: omitting an empty list rather than
-        # sending `[]` is cosmetic, and discarding the whole payload over it would
-        # throw away the fields that do have a verifiable right answer.
+        # Defaulted: omitting an empty list rather than sending `[]` is cosmetic,
+        # and rejecting the payload over it would throw the publisher away too.
         default_factory=list,
         description="People who made this, in the order the source presents them. Empty if none.",
     )
     publisher: str | None = Field(
         default=None,
         description="Channel, site, show or org that published it. Null if unclear.",
-    )
-    delivery_shape: Literal["different_subjects", "different_goals"] | None = Field(
-        default=None,
-        description=(
-            "different_subjects when the item bundles pieces sharing no subject "
-            "(a digest issue covering an export ban, a funding round and a paper). "
-            "different_goals when its sections serve different reader intentions "
-            "(a README: what this is / how to install / how to configure). Null "
-            "otherwise — null is the normal answer and fits most content."
-        ),
-    )
-    parts: list[str] = Field(
-        default_factory=list,
-        description="Names of the sections or items, when delivery_shape is set. Else empty.",
-    )
-    unreadable: list[Unreadable] = Field(
-        default_factory=list,
-        description=(
-            "Substance the text references but does not contain. Empty when none. "
-            "At most 5, the ones that matter most."
-        ),
     )
 
 
