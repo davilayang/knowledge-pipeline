@@ -24,6 +24,10 @@ from workflows.wiki_synthesis.prompts import (
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
+# enrichment_json is written by triage and read here; EnrichmentSignals IS that
+# serialisation contract, so it is imported rather than the JSON re-parsed by hand.
+from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
+
 from .def_config import (
     PIPELINE_TAG,
     PROMPT_LABEL_METADATA,
@@ -279,14 +283,23 @@ def fetch_content(
 def _deterministic_publisher(row: dict[str, Any]) -> str | None:
     """The publisher a non-LLM source already knows, or None to let the model decide.
 
-    Only YouTube qualifies today: oEmbed's `author_name` IS the channel, and the
-    channel IS the publisher — an unambiguous mapping the model cannot improve on.
-    Every other lane's publisher is either absent from enrichment or a guess (a URL
-    host is not a publication name), so the body-reading call owns it."""
-    if (row.get("content_type") or "").lower() != "youtube":
-        return None
-    enrichment = json.loads(row.get("enrichment_json") or "{}")
-    return (enrichment.get("youtube") or {}).get("channel") or None
+    Two lanes qualify. YouTube: oEmbed's `author_name` IS the channel and the
+    channel IS the publisher. Plain web articles: the HTML site name IS the
+    publication.
+
+    Medium, GitHub and Facebook run through the same HTML-metadata enrichment but
+    are excluded, because there the site name is the hosting platform — writing
+    "Medium" as the publisher would bury the publication that actually ran the
+    piece. Those, and every lane with no enrichment at all, are answered by the
+    call that reads the body."""
+    signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
+    match (row.get("content_type") or "").lower():
+        case "youtube":
+            return signals.youtube.channel if signals.youtube else None
+        case "article":
+            return signals.article.sitename if signals.article else None
+        case _:
+            return None
 
 
 def _metadata_is_fresh(
@@ -310,21 +323,30 @@ def _metadata_is_fresh(
 
 def _metadata_evidence(row: dict[str, Any]) -> str:
     """What deterministic sources say about this item, for the model to reconcile
-    against the body. Deliberately labelled as claims rather than facts: the
-    `author` column holds whatever the source platform reported, which for YouTube
-    is the channel, and for a syndicated article is often an editorial account."""
-    enrichment = json.loads(row.get("enrichment_json") or "{}")
-    lines = [
-        f"{label}: {value}"
-        for label, value in (
-            ("title", row.get("title")),
-            ("byline reported by the source platform", row.get("author")),
-            ("youtube channel", (enrichment.get("youtube") or {}).get("channel")),
-            ("url", row.get("canonical_url") or row.get("url")),
-        )
-        if value
+    against the body.
+
+    Every label says who is doing the claiming, because none of these are verified
+    facts: an HTML `author` meta tag carries editorial accounts and syndication
+    artefacts, a site name is often the platform rather than the publication, and
+    the YouTube byline is the channel. The model is asked to weigh them against
+    what the piece itself says, so it needs to know what it is weighing."""
+    signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
+    article = signals.article
+    arxiv = signals.arxiv
+    pairs: list[tuple[str, Any]] = [
+        ("title", row.get("title") or (article.title if article else None)),
+        ("byline reported by the source platform", row.get("author")),
+        ("youtube channel", signals.youtube.channel if signals.youtube else None),
+        ("author named in the page's HTML metadata", article.author if article else None),
+        ("site name in the page's HTML metadata", article.sitename if article else None),
+        ("date in the page's HTML metadata", article.date if article else None),
+        ("og:type declared by the page", article.pagetype if article else None),
+        ("topic tags on the page", ", ".join(article.tags) if article and article.tags else None),
+        ("arxiv authors", ", ".join(arxiv.authors) if arxiv and arxiv.authors else None),
+        ("arxiv published", arxiv.published if arxiv else None),
+        ("url", row.get("canonical_url") or row.get("url")),
     ]
-    return "\n".join(lines)
+    return "\n".join(f"{label}: {value}" for label, value in pairs if value)
 
 
 @dg.asset(

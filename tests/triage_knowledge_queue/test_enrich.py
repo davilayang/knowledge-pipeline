@@ -84,6 +84,9 @@ _ARXIV_ATOM_XML = """<?xml version="1.0" encoding="UTF-8"?>
     <summary>
       Sample abstract body explaining the result.
     </summary>
+    <published>2021-05-10T17:48:00Z</published>
+    <author><name>Ada Lovelace</name></author>
+    <author><name>Alan Turing</name></author>
     <category term="cs.LG" />
     <category term="stat.ML" />
   </entry>
@@ -263,3 +266,98 @@ def test_signals_serialise_categories_as_list():
     )
     payload = json.loads(signals.to_json())
     assert payload["arxiv"]["categories"] == ["cs.LG", "stat.ML"]
+
+
+def test_article_signals_carry_attribution_and_shape_evidence():
+    """Everything `fetch_url_meta` parses beyond title/description reaches
+    enrichment_json."""
+    meta = UrlMeta(
+        redirected_url="https://example.com/post",
+        title="The Rise of Multi-Query Engines",
+        description="How AI opens up more options for querying.",
+        author="Hugo Lu",
+        date="2026-05-28",
+        sitename="Orchestra Newsletter",
+        categories=("Data",),
+        tags=("data, orchestration",),
+        pagetype="article",
+    )
+    with patch(
+        "orchestrators.defs.triage_knowledge_queue.enrich.fetch_url_meta",
+        return_value=meta,
+    ):
+        signals = enrich_url("https://example.com/post", "article")
+    assert signals.article is not None
+    assert signals.article.author == "Hugo Lu"
+    assert signals.article.date == "2026-05-28"
+    assert signals.article.sitename == "Orchestra Newsletter"
+    assert signals.article.categories == ("Data",)
+    assert signals.article.tags == ("data, orchestration",)
+    assert signals.article.pagetype == "article"
+
+
+def test_arxiv_signals_extracts_every_author():
+    """A paper's attribution is its whole author list, not its first name."""
+    resp = _fake_arxiv_response()
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.authors == ("Ada Lovelace", "Alan Turing")
+
+
+def test_arxiv_signals_normalises_published_timestamp_to_a_day():
+    """<published> is a full UTC timestamp, which `date.fromisoformat`
+    rejects; the day alone is stored so a consumer needn't special-case it."""
+    resp = _fake_arxiv_response()
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", return_value=resp):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.published == "2021-05-10"
+
+
+def test_new_evidence_fields_roundtrip_through_json():
+    """enrichment_json is the storage format, so captured fields must come back
+    out unchanged — including tuples, which JSON stores as lists."""
+    original = EnrichmentSignals(
+        arxiv=ArxivSignals(
+            title="t",
+            abstract="a",
+            categories=("cs.LG",),
+            authors=("Ada Lovelace", "Alan Turing"),
+            published="2021-05-10",
+        ),
+        article=ArticleSignals(
+            redirected_url="https://example.com/post",
+            title="T",
+            description="d",
+            author="Hugo Lu",
+            date="2026-05-28",
+            sitename="Orchestra Newsletter",
+            categories=("Data",),
+            tags=("data, orchestration",),
+            pagetype="article",
+        ),
+    )
+    assert EnrichmentSignals.from_json(original.to_json()) == original
+
+
+def test_arxiv_signals_follow_the_apis_http_to_https_redirect():
+    """export.arxiv.org 301s plain http to https. A 301 is not >= 400, so it
+    slips past the status guard and the empty body parses as an empty feed —
+    every arXiv item silently enriching to nothing."""
+
+    def fake_get(url, **kwargs):
+        resp = MagicMock(spec=httpx.Response)
+        if kwargs.get("follow_redirects"):
+            resp.status_code = 200
+            resp.text = _ARXIV_ATOM_XML
+        else:
+            resp.status_code = 301
+            resp.text = ""
+        return resp
+
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", fake_get):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.title == "Sample arXiv Title"
+    assert signals.arxiv.authors == ("Ada Lovelace", "Alan Turing")

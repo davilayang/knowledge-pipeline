@@ -1079,6 +1079,94 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     assert "AI Engineer" in call.call_args.kwargs["evidence"]
 
 
+def test_extract_metadata_hands_the_model_what_triage_already_learned(tmp_path: Path):
+    """Triage parses a byline, a site name and an og:type off every article page.
+    Handing them over costs nothing and is exactly the evidence the model is asked
+    to reconcile — a byline that is really an editorial account, a site name that
+    is really the platform. Withholding them would make it re-derive from the body
+    what a cheap HTTP call already knows."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    store.upsert_enriched(
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        enrichment_json=json.dumps(
+            {
+                "article": {
+                    "title": "The Rise of Multi-Query Engines",
+                    "author": "Hugo Lu",
+                    "sitename": "Orchestra",
+                    "date": "2026-05-28",
+                    "pagetype": "article",
+                }
+            }
+        ),
+    )
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload()
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ) as call:
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    evidence = call.call_args.kwargs["evidence"]
+    for expected in ("Hugo Lu", "Orchestra", "2026-05-28", "article"):
+        assert expected in evidence
+
+
+@pytest.mark.parametrize(
+    ("content_type", "sitename", "expected_publisher"),
+    [
+        ("article", "Orchestra", "Orchestra"),
+        ("medium", "Medium", "Together AI"),
+        ("github", "GitHub", "Together AI"),
+    ],
+    ids=["article_sitename_wins", "medium_platform_ignored", "github_platform_ignored"],
+)
+def test_extract_metadata_takes_the_site_name_only_where_it_names_a_publication(
+    tmp_path: Path, content_type: str, sitename: str, expected_publisher: str
+):
+    """For a plain web article the HTML site name IS the publication, so it beats
+    the model. For Medium and GitHub it is the hosting platform — writing "Medium"
+    as the publisher would bury the publication that actually ran the piece, so
+    those fall through to what the model read off the body."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", content_type, "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    store.upsert_enriched(
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        enrichment_json=json.dumps({"article": {"sitename": sitename}}),
+    )
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload(publisher="Together AI")
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ):
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    assert store.get_row("p-1")["publisher"] == expected_publisher
+
+
 def _materialize_metadata_twice(tmp_path: Path, *, refetch_body: str | None = None):
     """Run extract_metadata, optionally re-fetch a different body, run it again.
     Returns (mock, store) so callers can count the calls the second run made."""
