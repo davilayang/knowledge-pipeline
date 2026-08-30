@@ -647,15 +647,16 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
   and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
   model).
-- **Treat the two `expected_unreadable_gate_reject` rows with care.** `gh_01` and `gh_02` both carry
-  GitHub's signed-out failure text, which is what the gate added alongside this work is meant to catch;
-  in production such an item fails before `publish_item` and never yields a contributors/publisher
-  value, so scoring a prompt on it measures output the pipeline discards. **The flag is an
-  expectation, not a guarantee** — the gate reads the model's own `unreadable` output rather than
-  matching a string, so it may not fire. And the two rows are not alike: `gh_01` is 25k of pure
-  navigation chrome with no article in it, while `gh_02` carries the complete article and is merely
-  *wrapped* in chrome, so a model applying the refetch test could reasonably pass it. Check the rows
-  before excluding them, and if both are excluded the `github` stratum drops to one row.
+- **Exclude the one `expected_unreadable_gate_reject` row.** `gh_01` is 25k of GitHub navigation
+  chrome with no article in it; the gate raises on it, so in production the item fails before
+  `publish_item` and never yields a contributors/publisher value. Scoring a prompt on it measures
+  output the pipeline discards. This drops the `github` stratum to two rows.
+
+  The flag is set from **measured gate behaviour**, not from matching a string. That distinction was
+  earned: `gh_02` carries the same GitHub failure text and was initially marked too, but it wraps a
+  *complete* article in chrome, and running the prompt over the set showed the model correctly
+  reporting it readable — `minor` entries only, so the gate does not fire. A string match would have
+  excluded a perfectly scorable row.
 - **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
   `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
   slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where
