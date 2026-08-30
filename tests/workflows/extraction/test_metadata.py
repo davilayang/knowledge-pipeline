@@ -46,7 +46,7 @@ def test_parses_reply_and_sends_the_article_ahead_of_the_task():
     """The article must sit in its own message ahead of the task tail, behind the
     same shared system message the topic_card / followups calls send — that
     ordering is what lets OpenAI serve this body from the prefix cache the
-    extraction lane shares. Per-item evidence rides in the tail, never the prefix."""
+    extraction lane shares."""
     with patch(
         "workflows.extraction.metadata.generate_messages_with_usage",
         return_value=_call(_reply()),
@@ -54,7 +54,6 @@ def test_parses_reply_and_sends_the_article_ahead_of_the_task():
         payload, call = extract_metadata(
             "the article body",
             content_type="article",
-            evidence="title: The Rise of Multi-Query Engines",
             prompt=_PROMPT,
             model="gpt-5-mini",
         )
@@ -70,7 +69,6 @@ def test_parses_reply_and_sends_the_article_ahead_of_the_task():
     assert messages[0] == {"role": "system", "content": SHARED_SYSTEM}
     assert messages[1]["content"].endswith("the article body")
     assert _PROMPT in messages[2]["content"]
-    assert "The Rise of Multi-Query Engines" in messages[2]["content"]
 
 
 def test_rejects_a_delivery_shape_outside_the_settled_set():
@@ -85,7 +83,6 @@ def test_rejects_a_delivery_shape_outside_the_settled_set():
             extract_metadata(
                 "body",
                 content_type="article",
-                evidence="",
                 prompt=_PROMPT,
                 model="gpt-5-mini",
             )
@@ -105,7 +102,6 @@ def test_re_asks_once_with_the_validation_error_when_the_reply_misses_the_schema
         payload, call = extract_metadata(
             "body",
             content_type="article",
-            evidence="",
             prompt=_PROMPT,
             model="gpt-5-mini",
         )
@@ -129,7 +125,6 @@ def test_gives_up_after_repeated_schema_failures_rather_than_looping():
             extract_metadata(
                 "body",
                 content_type="article",
-                evidence="",
                 prompt=_PROMPT,
                 model="gpt-5-mini",
             )
@@ -151,7 +146,6 @@ def test_a_reply_omitting_an_empty_list_still_validates():
         payload, _ = extract_metadata(
             "body",
             content_type="article",
-            evidence="",
             prompt=_PROMPT,
             model="gpt-5-mini",
         )
@@ -174,7 +168,6 @@ def test_treats_a_truncated_reply_as_invalid_output():
             extract_metadata(
                 "body",
                 content_type="article",
-                evidence="",
                 prompt=_PROMPT,
                 model="gpt-5-mini",
             )

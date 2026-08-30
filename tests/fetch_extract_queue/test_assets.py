@@ -1063,7 +1063,7 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     with patch(
         "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
         return_value=(payload, _metadata_call(payload)),
-    ) as call:
+    ):
         result = _materialize(
             extract_metadata,
             partition_key="p-1",
@@ -1074,54 +1074,6 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     row = store.get_row("p-1")
     assert row["publisher"] == "AI Engineer"
     assert json.loads(row["delivery_json"])["publisher_model_said"] == "Together AI"
-    # The channel is also handed to the model as evidence to reconcile, rather
-    # than only being applied behind its back.
-    assert "AI Engineer" in call.call_args.kwargs["evidence"]
-
-
-def test_extract_metadata_hands_the_model_what_triage_already_learned(tmp_path: Path):
-    """Triage parses a byline, a site name and an og:type off every article page.
-    Handing them over costs nothing and is exactly the evidence the model is asked
-    to reconcile — a byline that is really an editorial account, a site name that
-    is really the platform. Withholding them would make it re-derive from the body
-    what a cheap HTTP call already knows."""
-    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
-    store = QueueStoreResource(db_path=str(db_path))
-    store.upsert_enriched(
-        notion_page_id="p-1",
-        url="https://example.com/x",
-        enrichment_json=json.dumps(
-            {
-                "article": {
-                    "title": "The Rise of Multi-Query Engines",
-                    "author": "Hugo Lu",
-                    "sitename": "Orchestra",
-                    "date": "2026-05-28",
-                    "pagetype": "article",
-                }
-            }
-        ),
-    )
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
-    payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ) as call:
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
-
-    assert result.success
-    evidence = call.call_args.kwargs["evidence"]
-    for expected in ("Hugo Lu", "Orchestra", "2026-05-28", "article"):
-        assert expected in evidence
 
 
 @pytest.mark.parametrize(
@@ -1141,8 +1093,7 @@ def test_extract_metadata_never_takes_a_site_name_as_the_publisher(
     there, so its `og:site_name` is just as likely to be Substack, LinkedIn or
     Reddit as a real publication. Trusting it would bury the publication that
     actually ran the piece — the same failure the Medium and GitHub carve-outs
-    existed for. The site name is still handed over as evidence; the model, which
-    can read the body, decides."""
+    existed for. The model, which reads the body, decides instead."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
@@ -1328,42 +1279,6 @@ def test_extract_metadata_re_extracts_when_the_model_changed(tmp_path: Path):
     assert call.call_count == 2
 
 
-def test_extract_metadata_re_extracts_when_the_evidence_changed(tmp_path: Path):
-    """Enrichment can improve under an unchanged body — Phase A just widened what
-    it captures, and a YouTube row can gain a channel it did not have. Keyed on
-    the body alone, such a row would keep the model's publisher forever even
-    though the deterministic answer has since arrived."""
-    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "youtube", "transcript " * 200)
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
-    payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ) as call:
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
-        store.upsert_enriched(
-            notion_page_id="p-1",
-            url="https://example.com/x",
-            enrichment_json=json.dumps({"youtube": {"channel": "AI Engineer"}}),
-        )
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
-    assert call.call_count == 2
-    assert store.get_row("p-1")["publisher"] == "AI Engineer"
-
-
 def test_extract_metadata_uses_the_repo_owner_as_the_github_publisher(tmp_path: Path):
     """A GitHub repo's owner is in the URL path and is unambiguous, which is the
     whole test for letting a deterministic source win. The og:site_name for the
@@ -1398,39 +1313,6 @@ def test_extract_metadata_uses_the_repo_owner_as_the_github_publisher(tmp_path: 
 
     assert result.success
     assert store.get_row("p-1")["publisher"] == "langchain-ai"
-
-
-def test_extract_metadata_dedupes_contributors_by_name(tmp_path: Path):
-    """The same person reaches the model twice — as a byline and again in a
-    self-introduction — and comes back twice, spelled differently. Phase C counts
-    these, so the duplicate has to be collapsed on the way in."""
-    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Contributor
-
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
-    payload = _metadata_payload(
-        contributors=[
-            Contributor(name="Kyle Cheung", role="author", affiliation="Greybeam"),
-            Contributor(name="  kyle cheung ", role=None, affiliation=None),
-            Contributor(name="Hugo Lu", role="author", affiliation=None),
-        ]
-    )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
-
-    stored = json.loads(store.get_row("p-1")["contributors_json"])
-    assert [c["name"] for c in stored] == ["Kyle Cheung", "Hugo Lu"]
 
 
 def test_extract_metadata_records_call_latency(tmp_path: Path):

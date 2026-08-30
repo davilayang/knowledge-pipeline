@@ -26,8 +26,9 @@ from workflows.wiki_synthesis.prompts import (
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
-# enrichment_json is written by triage and read here; EnrichmentSignals IS that
-# serialisation contract, so it is imported rather than the JSON re-parsed by hand.
+# enrichment_json is written by triage and read here for the youtube channel;
+# EnrichmentSignals IS that serialisation contract, so it is imported rather than
+# the JSON re-parsed by hand.
 from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
 
 from .def_config import (
@@ -318,20 +319,15 @@ def _deterministic_publisher(row: dict[str, Any]) -> str | None:
             return None
 
 
-def _metadata_inputs_sha(
-    *, content_hash: str | None, model: str, evidence: str, prompt_sha: str
-) -> str:
+def _metadata_inputs_sha(*, content_hash: str | None, model: str, prompt_sha: str) -> str:
     """One hash over everything that decides what this call returns.
 
     Populated columns alone are not enough to skip: a re-fetch replaces the body,
-    a re-enrichment improves the evidence, a prompt edit changes the question and
-    a model swap changes the answerer — all while leaving the columns in place.
-    Anything left out of this hash is a way for the corpus to end up holding two
-    incomparable populations with nothing to tell them apart, which is the whole
-    reason this lane is being measured."""
-    return hashlib.sha256(
-        "\n".join((content_hash or "", model, evidence, prompt_sha)).encode()
-    ).hexdigest()
+    a prompt edit changes the question and a model swap changes the answerer —
+    all while leaving the columns in place. Anything left out of this hash is a
+    way for the corpus to end up holding two incomparable populations with
+    nothing to tell them apart, which is the whole reason this lane is measured."""
+    return hashlib.sha256("\n".join((content_hash or "", model, prompt_sha)).encode()).hexdigest()
 
 
 def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> bool:
@@ -352,52 +348,6 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
     if not isinstance(recorded, dict):
         return False
     return recorded.get("inputs_sha") == inputs_sha
-
-
-def _dedupe_contributors(contributors: list[Any]) -> list[dict[str, Any]]:
-    """Collapse repeats on the stripped, case-folded name, keeping the first
-    (richest) spelling. The same person reaches the model twice on a normal item
-    — once as a byline, once introducing themselves in the speech — and comes
-    back twice, spelled differently. Phase C counts contributors, so the
-    duplicate has to go before it is stored, not after."""
-    seen: set[str] = set()
-    out: list[dict[str, Any]] = []
-    for c in contributors:
-        name = (c.name or "").strip()
-        key = name.casefold()
-        if not key or key in seen:
-            continue
-        seen.add(key)
-        out.append({**c.model_dump(), "name": name})
-    return out
-
-
-def _metadata_evidence(row: dict[str, Any]) -> str:
-    """What deterministic sources say about this item, for the model to reconcile
-    against the body.
-
-    Every label says who is doing the claiming, because none of these are verified
-    facts: an HTML `author` meta tag carries editorial accounts and syndication
-    artefacts, a site name is often the platform rather than the publication, and
-    the YouTube byline is the channel. The model is asked to weigh them against
-    what the piece itself says, so it needs to know what it is weighing."""
-    signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
-    article = signals.article
-    arxiv = signals.arxiv
-    pairs: list[tuple[str, Any]] = [
-        ("title", row.get("title") or (article.title if article else None)),
-        ("byline reported by the source platform", row.get("author")),
-        ("youtube channel", signals.youtube.channel if signals.youtube else None),
-        ("author named in the page's HTML metadata", article.author if article else None),
-        ("site name in the page's HTML metadata", article.sitename if article else None),
-        ("date in the page's HTML metadata", article.date if article else None),
-        ("og:type declared by the page", article.pagetype if article else None),
-        ("topic tags on the page", ", ".join(article.tags) if article and article.tags else None),
-        ("arxiv authors", ", ".join(arxiv.authors) if arxiv and arxiv.authors else None),
-        ("arxiv published", arxiv.published if arxiv else None),
-        ("url", row.get("canonical_url") or row.get("url")),
-    ]
-    return "\n".join(f"{label}: {value}" for label, value in pairs if value)
 
 
 @dg.asset(
@@ -461,11 +411,9 @@ def extract_metadata(
 
         prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
         prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
-        evidence = _metadata_evidence(row)
         inputs_sha = _metadata_inputs_sha(
             content_hash=row.get("content_hash"),
             model=extractor.model,
-            evidence=evidence,
             prompt_sha=prompt_sha,
         )
         if _metadata_is_fresh(
@@ -474,7 +422,7 @@ def extract_metadata(
             yield dg.MaterializeResult(
                 metadata={
                     "metadata_skipped": dg.MetadataValue.bool(True),
-                    "summary": dg.MetadataValue.md("Skipped — same body, prompt, model, evidence."),
+                    "summary": dg.MetadataValue.md("Skipped — same body, prompt and model."),
                 }
             )
             yield dg.AssetCheckResult(check_name=check_name, passed=True)
@@ -484,14 +432,13 @@ def extract_metadata(
         payload, call = run_extract_metadata(
             row["raw_content"],
             content_type=row.get("content_type") or "",
-            evidence=evidence,
             prompt=prompt,
             model=extractor.model,
         )
         duration_ms = (time.monotonic() - started) * 1000
 
         known_publisher = _deterministic_publisher(row)
-        contributors = _dedupe_contributors(payload.contributors)
+        contributors = [c.model_dump() for c in payload.contributors]
         delivery: dict[str, Any] = {
             "shape": payload.delivery_shape,
             "parts": payload.parts,
