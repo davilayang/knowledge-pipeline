@@ -29,6 +29,7 @@ from domains.queue_store.sources import (
     record_candidates,
     record_claims,
     record_extraction_calls,
+    record_metadata,
     upsert_enriched,
     upsert_fetched,
     upsert_triaged,
@@ -1175,3 +1176,89 @@ def test_extract_claims_cleared_on_re_triage(db_path: Path):
     )
     _seed_row(db_path)  # re-triage same page → cohort reset
     assert get_claims(db_path=db_path, notion_page_id="p-1") is None
+
+
+def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path):
+    """A queue.db created before the extract_metadata asset existed carries no
+    contributors_json / publisher / delivery_json. create_schema must ALTER them
+    in: the tables already exist, so the CREATE TABLE IF NOT EXISTS in _SCHEMA is
+    a no-op and only the ADD COLUMN loop can converge an old file's shape."""
+    p = tmp_path / "old.db"
+    create_schema(db_path=p)
+    with sqlite3.connect(p) as conn:
+        for col in ("contributors_json", "publisher", "delivery_json"):
+            try:
+                conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
+            except sqlite3.OperationalError:
+                pass  # already absent — this file predates the column
+    create_schema(db_path=p)
+    with sqlite3.connect(p) as conn:
+        cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    assert {"contributors_json", "publisher", "delivery_json"} <= cols
+
+
+def test_upsert_triaged_clears_metadata_columns(db_path: Path):
+    """Re-triage is a cohort boundary: metadata extracted from the old URL must
+    not survive onto the new one. A requeued row that kept its contributors /
+    publisher / delivery would serve the previous URL's people under the new
+    content — the same stale-state failure the fetched columns are cleared for."""
+    page_id = "p-meta-clear"
+    _seed_row(db_path, page_id)
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json='[{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}]',
+        publisher="Orchestra",
+        delivery_json='{"shape": null, "parts": [], "unreadable": []}',
+        prompt_label="metadata_v1",
+        prompt_sha256="a" * 64,
+        model="gpt-5-mini",
+        output="{}",
+        tokens_in=10,
+        tokens_out=5,
+    )
+    _seed_row(db_path, page_id)  # re-triage same page
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert row["contributors_json"] is None
+    assert row["publisher"] is None
+    assert row["delivery_json"] is None
+
+
+def test_record_metadata_round_trips_multiple_contributors(db_path: Path):
+    """One item can carry several distinct people plus a publisher that is none of
+    them. The production article this mirrors opens "By Hugo Lu | May 28, 2026 /
+    This is a guest post by Kyle Cheung, CEO at Greybeam" — a platform byline, a
+    real author with an affiliation, and a publishing newsletter. All three
+    survive storage independently, and the call ledger carries the provenance."""
+    page_id = "p-guest-post"
+    _seed_row(db_path, page_id)
+    contributors = [
+        {"name": "Hugo Lu", "role": "author", "affiliation": None},
+        {"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"},
+    ]
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json=json.dumps(contributors),
+        publisher="Orchestra",
+        delivery_json='{"shape": null, "parts": [], "unreadable": []}',
+        prompt_label="metadata_v1",
+        prompt_sha256="c" * 64,
+        model="gpt-5-mini",
+        output='{"contributors": []}',
+        tokens_in=900,
+        tokens_out=120,
+        cached_tokens=800,
+        duration_ms=1500.0,
+        content_hash="hash-of-the-body-read",
+    )
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert json.loads(row["contributors_json"]) == contributors
+    assert row["publisher"] == "Orchestra"
+
+    call = get_latest_extraction_calls(db_path=db_path, notion_page_id=page_id)["metadata"]
+    assert call["prompt_label"] == "metadata_v1"
+    assert call["cached_tokens"] == 800
+    assert json.loads(call["node_metadata"])["content_hash"] == "hash-of-the-body-read"

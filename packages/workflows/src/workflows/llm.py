@@ -99,18 +99,29 @@ def generate_messages_with_usage(
     model: str = _DEFAULT_MODEL,
     temperature: float | None = None,
     prompt_cache_key: str | None = None,
+    response_format: dict[str, str] | None = None,
+    **create_kwargs: Any,
 ) -> LLMCall:
     """Chat completion over a PRE-BUILT message list, returning content + usage.
 
     The entry point for prompt-cached calls: the caller controls the exact message
     order so the cacheable prefix (a shared system message + the source document)
     is byte-identical across sibling calls, with only the final task message
-    differing. `cached_tokens` on the result reports the prefix-cache hit."""
+    differing. `cached_tokens` on the result reports the prefix-cache hit.
+
+    `response_format` is explicit rather than left to `create_kwargs` because it
+    partitions the server-side cache: two calls sharing a byte-identical prefix
+    still miss each other's cache unless this matches, so callers coordinating a
+    prefix must agree on it. `create_kwargs` passes the rest straight to the SDK
+    (token budget, reasoning effort) — the caller owns those, since which keys are
+    even accepted depends on the model family."""
     response = _get_client().chat.completions.create(
         model=model,
         messages=messages,
         **_create_kwargs(temperature),
         **_cache_key_kwargs(prompt_cache_key),
+        **({} if response_format is None else {"response_format": response_format}),
+        **create_kwargs,
     )
     in_tokens, out_tokens, cached = _usage(response)
     return LLMCall(

@@ -12,11 +12,31 @@ def test_pipeline_defs_loads():
     asset_keys = {k.to_user_string() for k in defs.resolve_asset_graph().get_all_asset_keys()}
     assert asset_keys == {
         "fetch_extract_queue/fetch_content",
+        "fetch_extract_queue/extract_metadata",
         "fetch_extract_queue/extract_reading_card",
         "fetch_extract_queue/publish_item",
         "fetch_extract_queue/extract_claims",
         "fetch_extract_queue/extract_entities",
     }
+
+
+def test_both_extract_branches_run_after_metadata():
+    """extract_reading_card and extract_claims are parallel siblings — anything
+    produced inside one is permanently invisible to the other, so metadata that
+    either might route on has to be produced upstream of the fork. A decorated
+    function is not enough: without the dependency edges, the asset would still
+    load and simply run in an order nothing guarantees."""
+    graph = defs.resolve_asset_graph()
+
+    def parents(name: str) -> set[str]:
+        key = next(k for k in graph.get_all_asset_keys() if k.to_user_string() == name)
+        return {p.to_user_string() for p in graph.get(key).parent_keys}
+
+    assert parents("fetch_extract_queue/extract_metadata") == {"fetch_extract_queue/fetch_content"}
+    assert parents("fetch_extract_queue/extract_reading_card") == {
+        "fetch_extract_queue/extract_metadata"
+    }
+    assert parents("fetch_extract_queue/extract_claims") == {"fetch_extract_queue/extract_metadata"}
 
 
 def test_pipeline_has_only_the_fetch_job():

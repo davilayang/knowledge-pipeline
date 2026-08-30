@@ -51,6 +51,15 @@ CREATE TABLE IF NOT EXISTS queue_items (
     title                       TEXT,              -- fetcher metadata: article title
     author                      TEXT,              -- fetcher metadata: author/byline
     content_date                TEXT,              -- fetcher metadata: publication date (ISO)
+    contributors_json           TEXT,              -- JSON array of {name, role, affiliation}
+                                                   -- read off the body by the extract_metadata
+                                                   -- asset. `[]` = none found; NULL = never
+                                                   -- extracted. Distinct from `author`, which
+                                                   -- stays the source platform's raw byline.
+    publisher                   TEXT,              -- who published it (channel / site / show)
+    delivery_json               TEXT,              -- JSON {shape, parts, unreadable, ...} —
+                                                   -- experimental fields that change shape
+                                                   -- together, kept out of lean columns
     extracted_at                TEXT,              -- cohort completion ts
     extraction_model            TEXT,              -- cohort model
     extractor_label             TEXT,              -- "3call_v1" etc.
@@ -162,6 +171,9 @@ def create_schema(*, db_path: Path) -> None:
             "ALTER TABLE queue_items ADD COLUMN title TEXT",
             "ALTER TABLE queue_items ADD COLUMN author TEXT",
             "ALTER TABLE queue_items ADD COLUMN content_date TEXT",
+            "ALTER TABLE queue_items ADD COLUMN contributors_json TEXT",
+            "ALTER TABLE queue_items ADD COLUMN publisher TEXT",
+            "ALTER TABLE queue_items ADD COLUMN delivery_json TEXT",
             "ALTER TABLE extraction_calls ADD COLUMN prompt_set_shape TEXT",
         ):
             _ddl_idempotent(conn, ddl)
@@ -252,6 +264,9 @@ def upsert_triaged(
                 content_hash = NULL,
                 title = NULL,
                 author = NULL,
+                contributors_json = NULL,
+                publisher = NULL,
+                delivery_json = NULL,
                 extracted_at = NULL,
                 extraction_model = NULL,
                 extractor_label = NULL,
@@ -652,6 +667,69 @@ def record_candidates(
                 tokens_out,
                 cached_tokens,
                 _now_iso(),
+            ),
+        )
+
+
+def record_metadata(
+    *,
+    db_path: Path,
+    notion_page_id: str,
+    contributors_json: str,
+    publisher: str | None,
+    delivery_json: str,
+    prompt_label: str,
+    prompt_sha256: str,
+    model: str,
+    output: str,
+    tokens_in: int,
+    tokens_out: int,
+    cached_tokens: int | None = None,
+    duration_ms: float | None = None,
+    content_hash: str | None = None,
+) -> None:
+    """Persist one metadata extraction: the three `queue_items` columns plus a
+    `metadata`-kind `extraction_calls` row, in one transaction so a row can never
+    carry columns without the call that produced them.
+
+    Columns are UPDATE-not-INSERT (the row exists — `fetch_content` wrote the body
+    this reads), while the call row is INSERT-not-UPSERT like every other call kind:
+    re-runs accumulate and the latest wins.
+
+    `content_hash` is stored in `node_metadata` as the body the extraction actually
+    read. The caller compares it against the row's current hash to decide whether a
+    re-fetch has invalidated the columns — `queue_items` has no per-column
+    extraction timestamp to compare against, and a re-fetch leaves the columns in
+    place."""
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            UPDATE queue_items
+               SET contributors_json = ?, publisher = ?, delivery_json = ?
+             WHERE notion_page_id = ?
+            """,
+            (contributors_json, publisher, delivery_json, notion_page_id),
+        )
+        conn.execute(
+            """
+            INSERT INTO extraction_calls (
+                notion_page_id, call_kind, prompt_label, prompt_sha256,
+                schema_name, model, output, tokens_in, tokens_out,
+                cached_tokens, duration_ms, extracted_at, node_metadata
+            ) VALUES (?, 'metadata', ?, ?, 'MetadataPayload', ?, ?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                notion_page_id,
+                prompt_label,
+                prompt_sha256,
+                model,
+                output,
+                tokens_in,
+                tokens_out,
+                cached_tokens,
+                duration_ms,
+                _now_iso(),
+                json.dumps({"content_hash": content_hash}) if content_hash else None,
             ),
         )
 

@@ -6,6 +6,7 @@ by content_type via FetcherResource, extracted persists three extraction_calls
 rows + updates queue_items cohort fields, published flips Notion only when
 extraction is complete and reads core_mechanism via the latest topic_card row."""
 
+import json
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -917,3 +918,220 @@ def test_extract_entities_skips_when_no_claims(tmp_path: Path):
     assert result.success
     mock_entities.assert_not_called()
     assert store.get_candidates("p-1") is None
+
+
+# -------- extract_metadata --------
+
+
+def _check_events(result):
+    return [e for e in result.all_events if e.event_type_value == "ASSET_CHECK_EVALUATION"]
+
+
+@pytest.mark.parametrize(
+    "exc",
+    [
+        ConnectionError("connection reset by peer"),
+        ValueError("reply contains fields the schema does not declare: ['shape']"),
+    ],
+    ids=["transient_network", "unusable_reply"],
+)
+def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_path: Path, exc):
+    """Both extract branches depend on this asset, so a failure here would gate
+    the reading card AND the claims lane — a blast radius neither has today.
+    Nothing reads these columns yet, so a missing metadata row costs nothing
+    while a blocked extraction costs the whole item. It materialises; the
+    non-blocking check is what turns red."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        side_effect=exc,
+    ):
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    row = store.get_row("p-1")
+    assert row["contributors_json"] is None
+    assert row["publisher"] is None
+    assert row["delivery_json"] is None
+    assert "metadata" not in store.get_latest_extraction_calls("p-1")
+
+    checks = _check_events(result)
+    assert checks and not checks[0].asset_check_evaluation_data.passed
+
+
+def _metadata_payload(**overrides):
+    from workflows.extraction.metadata import Contributor, MetadataPayload
+
+    fields = dict(
+        contributors=[
+            Contributor(name="Hugo Lu", role="author", affiliation=None),
+            Contributor(name="Kyle Cheung", role="author", affiliation="Greybeam"),
+        ],
+        publisher="Orchestra",
+        delivery_shape=None,
+        parts=[],
+        unreadable=[],
+    )
+    fields.update(overrides)
+    return MetadataPayload(**fields)
+
+
+def _metadata_call(payload):
+    from workflows.llm import LLMCall
+
+    return LLMCall(
+        content=payload.model_dump_json(),
+        model="gpt-5-mini",
+        input_tokens=900,
+        output_tokens=120,
+        cached_tokens=800,
+        finish_reason="stop",
+    )
+
+
+def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
+    """The three columns are the artefact; the call row is its provenance. Both
+    are written from one payload, so a row can never carry metadata without the
+    call that produced it. Contributors stay multi-valued and independent of the
+    publisher — one guest post carries a platform byline, a real author with an
+    affiliation, and a publishing newsletter that is neither."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload()
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ):
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    row = store.get_row("p-1")
+    assert [c["name"] for c in json.loads(row["contributors_json"])] == ["Hugo Lu", "Kyle Cheung"]
+    assert json.loads(row["contributors_json"])[1]["affiliation"] == "Greybeam"
+    assert row["publisher"] == "Orchestra"
+    assert json.loads(row["delivery_json"]) == {"shape": None, "parts": [], "unreadable": []}
+    # `author` is the source platform's raw byline and keeps that meaning — no
+    # existing row changes meaning when this asset lands.
+    assert row["author"] is None
+
+    call = store.get_latest_extraction_calls("p-1")["metadata"]
+    assert call["prompt_label"] == "metadata_v1"
+    assert call["model"] == "gpt-5-mini"
+    assert json.loads(call["node_metadata"])["content_hash"] == row["content_hash"]
+
+    checks = _check_events(result)
+    assert checks and checks[0].asset_check_evaluation_data.passed
+
+
+def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(tmp_path: Path):
+    """For YouTube, oEmbed's author_name IS the channel and the channel IS the
+    publisher — a mapping the model cannot improve on, so it wins. The model's
+    answer is kept rather than dropped: a repeated disagreement is how we would
+    learn the deterministic source is the wrong one for a lane."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "youtube", "transcript " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    store.upsert_enriched(
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        enrichment_json=json.dumps({"youtube": {"channel": "AI Engineer", "title": "A talk"}}),
+    )
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload(publisher="Together AI")
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ) as call:
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    row = store.get_row("p-1")
+    assert row["publisher"] == "AI Engineer"
+    assert json.loads(row["delivery_json"])["publisher_model_said"] == "Together AI"
+    # The channel is also handed to the model as evidence to reconcile, rather
+    # than only being applied behind its back.
+    assert "AI Engineer" in call.call_args.kwargs["evidence"]
+
+
+def _materialize_metadata_twice(tmp_path: Path, *, refetch_body: str | None = None):
+    """Run extract_metadata, optionally re-fetch a different body, run it again.
+    Returns (mock, store) so callers can count the calls the second run made."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload()
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ) as call:
+        _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+        if refetch_body is not None:
+            queue_db.upsert_fetched(
+                db_path=db_path,
+                notion_page_id="p-1",
+                url="https://example.com/x",
+                raw_content=refetch_body,
+                fetch_tier="jina",
+                fetch_tier_log=[],
+                fetched_content_char_count=len(refetch_body),
+                content_hash="a-different-hash",
+            )
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+    assert result.success
+    return call, store
+
+
+def test_extract_metadata_skips_the_call_when_body_and_prompt_are_unchanged(tmp_path: Path):
+    """Re-materialising an unchanged row must cost nothing. The columns being
+    populated is not sufficient on its own — the check is what body and which
+    prompt produced them, so a re-run after a backfill or a partition sweep does
+    not re-buy the same answer."""
+    call, store = _materialize_metadata_twice(tmp_path)
+    assert call.call_count == 1
+    assert store.get_row("p-1")["contributors_json"] is not None
+
+
+def test_extract_metadata_re_extracts_when_the_body_changed(tmp_path: Path):
+    """A re-fetch replaces the body but leaves these columns in place, so
+    populated-columns alone would serve metadata read off content that no longer
+    exists — the stale-body failure the fetch cache hit in PR #109."""
+    call, _store = _materialize_metadata_twice(tmp_path, refetch_body="an entirely new body " * 50)
+    assert call.call_count == 2

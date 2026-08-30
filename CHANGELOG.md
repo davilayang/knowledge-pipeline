@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **The pipeline now captures who made a piece, who published it, how it is put together, and what its fetch lost — but nothing reads it yet, by design.** A new `extract_metadata` asset reads the fetched body once and writes `queue_items.contributors_json` / `publisher` / `delivery_json`, plus a `metadata` row in the `extraction_calls` ledger. The payoff is a few weeks of production data: whether the two-value `delivery_shape` fires at the expected ~6%, and how often a YouTube talk's substance is only on screen. Consumers are designed against that sample rather than against a 51-item hand-curated one.
+  - `contributors` is multi-valued and separate from `publisher` — one guest post carries a platform byline, a real author with an affiliation, and a publishing newsletter that is none of them. `author` keeps its current meaning (the byline as the source platform reports it) and is untouched, so no existing row changes meaning.
+  - The asset is **best-effort and always materialises**: a refusal, an unusable reply, a truncated reply or a dead socket writes nothing and logs why. Both extract branches now depend on it, and gating them on one metadata failure would be a blast radius neither has today. A non-blocking asset check turns red when a row with a body ends up with empty columns.
+  - It sits upstream of the `extract_reading_card` / `extract_claims` fork because those are parallel siblings — anything produced inside one is permanently invisible to the other, so a field either might route on cannot be emitted by one of them.
+  - Re-running an unchanged row costs nothing; a re-fetched body or an edited prompt re-extracts.
+
 ---
 
 ## [0.36.16] — 2026-08-29

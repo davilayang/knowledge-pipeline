@@ -7,6 +7,9 @@ from typing import Any
 import dagster as dg
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
+from workflows.extraction.metadata import MetadataPayload
+from workflows.extraction.metadata import extract_metadata as run_extract_metadata
+from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.wiki_synthesis.extract_claims import SPOKEN_CONTENT_TYPES
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
@@ -23,9 +26,10 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource, Queue
 
 from .def_config import (
     PIPELINE_TAG,
+    PROMPT_LABEL_METADATA,
     queue_items_partition_def,
 )
-from .resources import ExtractorRegistry, FetcherResource
+from .resources import ExtractorRegistry, FetcherResource, read_extraction_prompt
 
 GROUP_NAME = "fetch_extract_queue"
 
@@ -272,6 +276,196 @@ def fetch_content(
     return dg.MaterializeResult(metadata=metadata)
 
 
+def _deterministic_publisher(row: dict[str, Any]) -> str | None:
+    """The publisher a non-LLM source already knows, or None to let the model decide.
+
+    Only YouTube qualifies today: oEmbed's `author_name` IS the channel, and the
+    channel IS the publisher — an unambiguous mapping the model cannot improve on.
+    Every other lane's publisher is either absent from enrichment or a guess (a URL
+    host is not a publication name), so the body-reading call owns it."""
+    if (row.get("content_type") or "").lower() != "youtube":
+        return None
+    enrichment = json.loads(row.get("enrichment_json") or "{}")
+    return (enrichment.get("youtube") or {}).get("channel") or None
+
+
+def _metadata_is_fresh(
+    row: dict[str, Any], last_call: dict[str, Any] | None, prompt_sha: str
+) -> bool:
+    """True when re-running would buy the same answer twice.
+
+    Populated columns alone are not enough. A re-fetch replaces the body while
+    leaving these columns untouched, so the body that was actually read is
+    compared — it is recorded on the call row, since `queue_items` has no
+    per-column extraction timestamp. The prompt hash is compared too, so editing
+    the prompt re-extracts every row it next touches instead of leaving a corpus
+    labelled by two different prompts with no way to tell which."""
+    if row.get("contributors_json") is None or not last_call:
+        return False
+    if last_call.get("prompt_sha256") != prompt_sha:
+        return False
+    read_hash = json.loads(last_call.get("node_metadata") or "{}").get("content_hash")
+    return read_hash is not None and read_hash == row.get("content_hash")
+
+
+def _metadata_evidence(row: dict[str, Any]) -> str:
+    """What deterministic sources say about this item, for the model to reconcile
+    against the body. Deliberately labelled as claims rather than facts: the
+    `author` column holds whatever the source platform reported, which for YouTube
+    is the channel, and for a syndicated article is often an editorial account."""
+    enrichment = json.loads(row.get("enrichment_json") or "{}")
+    lines = [
+        f"{label}: {value}"
+        for label, value in (
+            ("title", row.get("title")),
+            ("byline reported by the source platform", row.get("author")),
+            ("youtube channel", (enrichment.get("youtube") or {}).get("channel")),
+            ("url", row.get("canonical_url") or row.get("url")),
+        )
+        if value
+    ]
+    return "\n".join(lines)
+
+
+@dg.asset(
+    key=["fetch_extract_queue", "extract_metadata"],
+    group_name=GROUP_NAME,
+    kinds={"openai", "sqlite"},
+    code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
+    partitions_def=queue_items_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    deps=[fetch_content],
+    check_specs=[
+        dg.AssetCheckSpec(
+            name="metadata_columns_populated",
+            asset=dg.AssetKey(["fetch_extract_queue", "extract_metadata"]),
+            blocking=False,
+            description=(
+                "A row with a fetched body carries contributors_json / publisher / "
+                "delivery_json. Non-blocking: the asset is best-effort, so this is "
+                "how a silently-unwritten row becomes visible without gating the "
+                "two extraction branches that depend on it."
+            ),
+        ),
+    ],
+    description=_oneline(
+        """
+        Reads the fetched body once and captures who made it, who published
+        it, whether its sections need a non-default spoken opening, and what
+        substance the fetch lost. Sits upstream of both extraction branches
+        because a field emitted by the narrative call cannot route that call
+        and the claims branch could never see it. Best-effort: any failure
+        writes nothing and materialises anyway. Nothing reads these columns
+        yet — they exist to be measured before a consumer is designed.
+        """
+    ),
+)
+def extract_metadata(
+    context: dg.AssetExecutionContext,
+    extractor: ExtractorRegistry,
+    store: QueueStoreResource,
+):
+    page_id = context.partition_key
+    check_name = "metadata_columns_populated"
+    row = store.get_row(page_id)
+    if not row or not row.get("raw_content"):
+        yield dg.MaterializeResult(metadata={"metadata_skipped": dg.MetadataValue.bool(True)})
+        # Nothing was expected of a body-less row, so this is not a finding.
+        yield dg.AssetCheckResult(check_name=check_name, passed=True)
+        return
+
+    prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
+    prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
+    if _metadata_is_fresh(
+        row, store.get_latest_extraction_calls(page_id).get("metadata"), prompt_sha
+    ):
+        yield dg.MaterializeResult(
+            metadata={
+                "metadata_skipped": dg.MetadataValue.bool(True),
+                "summary": dg.MetadataValue.md("Skipped — same body, same prompt."),
+            }
+        )
+        yield dg.AssetCheckResult(check_name=check_name, passed=True)
+        return
+
+    try:
+        payload, call = run_extract_metadata(
+            row["raw_content"],
+            content_type=row.get("content_type") or "",
+            evidence=_metadata_evidence(row),
+            prompt=prompt,
+            model=extractor.model,
+        )
+    # Deliberately broad: a refusal, an unparseable reply, a schema mismatch and a
+    # dead socket all mean the same thing here — no usable metadata this run. The
+    # OpenAI SDK has already retried the transient ones internally.
+    except Exception as exc:
+        context.log.warning("extract_metadata failed for %s: %r", page_id, exc)
+        reason = dg.MetadataValue.text(f"{type(exc).__name__}: {exc}"[:1000])
+        yield dg.MaterializeResult(
+            metadata={
+                "metadata_error": reason,
+                "summary": dg.MetadataValue.md("No metadata written — see metadata_error."),
+            }
+        )
+        yield dg.AssetCheckResult(
+            check_name=check_name,
+            passed=False,
+            severity=dg.AssetCheckSeverity.ERROR,
+            metadata={"metadata_error": reason},
+        )
+        return
+
+    known_publisher = _deterministic_publisher(row)
+    delivery: dict[str, Any] = {
+        "shape": payload.delivery_shape,
+        "parts": payload.parts,
+        "unreadable": [u.model_dump() for u in payload.unreadable],
+    }
+    if known_publisher and payload.publisher and payload.publisher != known_publisher:
+        # The deterministic value wins, so the model's reading would otherwise
+        # vanish unrecorded. It is kept because a persistent disagreement is
+        # evidence the deterministic source is the wrong one for that lane.
+        delivery["publisher_model_said"] = payload.publisher
+
+    store.record_metadata(
+        notion_page_id=page_id,
+        contributors_json=json.dumps([c.model_dump() for c in payload.contributors]),
+        publisher=known_publisher or payload.publisher,
+        delivery_json=json.dumps(delivery),
+        prompt_label=PROMPT_LABEL_METADATA,
+        prompt_sha256=prompt_sha,
+        model=call.model,
+        output=call.content,
+        tokens_in=call.input_tokens,
+        tokens_out=call.output_tokens,
+        cached_tokens=call.cached_tokens,
+        content_hash=row.get("content_hash"),
+    )
+    store.checkpoint_wal()
+
+    yield dg.MaterializeResult(
+        metadata={
+            "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
+            "contributors": dg.MetadataValue.int(len(payload.contributors)),
+            "publisher": dg.MetadataValue.text(known_publisher or payload.publisher or ""),
+            "delivery_shape": dg.MetadataValue.text(payload.delivery_shape or "(default)"),
+            "unreadable_major": dg.MetadataValue.int(
+                sum(1 for u in payload.unreadable if u.severity == "major")
+            ),
+            "model": dg.MetadataValue.text(call.model),
+            "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
+            "payload": dg.MetadataValue.json(delivery),
+            "summary": dg.MetadataValue.md(
+                f"**{len(payload.contributors)} contributors** — "
+                f"shape {payload.delivery_shape or 'default'}, "
+                f"{len(payload.unreadable)} unreadable"
+            ),
+        }
+    )
+    yield dg.AssetCheckResult(check_name=check_name, passed=True)
+
+
 @dg.asset(
     key=["fetch_extract_queue", "extract_reading_card"],
     group_name=GROUP_NAME,
@@ -279,7 +473,7 @@ def fetch_content(
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[dg.AssetDep(["fetch_extract_queue", "fetch_content"])],
+    deps=[dg.AssetDep(["fetch_extract_queue", "extract_metadata"])],
     check_specs=[
         dg.AssetCheckSpec(
             name="topic_card_has_required_fields",
@@ -422,6 +616,9 @@ def extract_reading_card(
         Isolated from extraction so a Notion API hiccup can be retried
         without re-spending an OpenAI extraction. Verifies
         queue_items.extracted_at is set as a guard against bad ordering.
+        Ready means the reading card is ready — it does not mean every
+        branch finished: this asset depends only on extract_reading_card,
+        so claims and entities may still be running or may later fail.
         """
     ),
 )
@@ -474,7 +671,7 @@ def publish_item(
     code_version=FETCH_EXTRACT_QUEUE_DAG_VERSION,
     partitions_def=queue_items_partition_def,
     op_tags={"dagster/concurrency_key": PIPELINE_TAG},
-    deps=[fetch_content],
+    deps=[extract_metadata],
     description=_oneline(
         """
         Extracts claims from the fetched body into per-source [reported]/[opinion] claims
@@ -592,6 +789,7 @@ def extract_entities(
 # seam: this pipeline writes queue.db + Notion only; wiki.db writes live there.
 all_assets = [
     fetch_content,
+    extract_metadata,
     extract_reading_card,
     publish_item,
     extract_claims,
