@@ -18,19 +18,14 @@ at Greybeam" picks the wrong person.
 Three fields. A `delivery_shape` structural label was dropped — 58.8%
 reproduction across model vendors, and it made the spoken delivery worse on 2 of
 3 items. `unreadable` is the only field here that fails a row rather than just
-recording one: a `major` entry whose cause is `chrome` or `truncation` raises,
+recording one: a `major` entry caused by `chrome` or `truncation` raises,
 stopping the reading card and writing Status=Failed back to Notion.
 
-The severity test asks whether a refetch would recover the material, not whether
-a claim is unverifiable without it. That distinction is the whole field. Asking
-"is a claim unverifiable" was measured over all 227 production bodies and called
-41% of the corpus `major` — half of YouTube, 73% of arXiv — because a paper
-referencing Figure 4 genuinely does have an unverifiable claim. Nothing
-actionable follows from that, and a gate that fails two ingests in five is a
-gate nobody keeps. Asking "would a refetch recover it" lands at 1.8% over the
-same corpus, stable across repeat runs, and what it catches is the real defect:
-a GitHub page whose body fetched as "There was an error while loading", a
-Facebook post that arrived as five headings with nothing under them.
+Severity asks whether a refetch would recover the material, not whether a claim
+is unverifiable without it. Measured over all 227 production bodies, the
+unverifiable-claim reading called 41% of the corpus `major` — a paper
+referencing Figure 4 qualifies — and a gate that fails two ingests in five is a
+gate nobody keeps. The refetch reading lands at 1.8%.
 
 Everything below the horizontal rule is the prompt body. Everything above
 it is design notes.
