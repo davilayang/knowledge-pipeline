@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **A reading now fails when its body arrived damaged, instead of being extracted from anyway.** `extract_metadata` reports substance the text refers to but does not contain (`unreadable_json` on `queue_items`); when the cause is navigation chrome or truncated text at major severity, the item fails and Notion shows Status=Failed with the specific missing material and what to try. A GitHub page whose body fetched as "There was an error while loading" no longer produces a confident reading card built out of navigation.
+- **Severity asks whether a refetch would recover the material, not whether a claim is unverifiable.** Measured over all 227 production bodies: the unverifiable-claim test called 41% of the corpus damaged — half of YouTube, 73% of arXiv — because a paper referencing Figure 4 really does have a claim you cannot check. The refetch test lands at 1.8%, stable across repeat runs. Slides, figures and charts are recorded as `minor` rather than failing: they were never text, so no refetch produces them.
+
 ---
 
 ## [0.36.19] — 2026-08-30

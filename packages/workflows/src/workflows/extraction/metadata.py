@@ -14,6 +14,7 @@ primed.
 """
 
 import dataclasses
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
@@ -56,6 +57,28 @@ class Contributor(BaseModel):
     )
 
 
+class Unreadable(BaseModel):
+    """One piece of substance the fetched text references but does not contain.
+
+    The severity test: remove the unshown material — does a claim become
+    unverifiable, or a section become empty? Then `major`. A pointing gesture
+    attached to something also said aloud is `minor`."""
+
+    cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
+        description=(
+            "screen_reference: points at something on screen. images: the text "
+            "refers to figures not captured. chrome: navigation/boilerplate "
+            "replaced the content. truncation: the text stops mid-thought. "
+            "unspeakable: present but unreadable aloud, e.g. raw tables."
+        )
+    )
+    severity: Literal["major", "minor"] = Field(
+        description="major when a claim becomes unverifiable or a section empty."
+    )
+    missing: str = Field(description="What is not in the text, specifically.")
+    evidence: str = Field(description="The quote from the text that depends on it.")
+
+
 class MetadataPayload(BaseModel):
     """What one metadata call returns. Stored across the two `queue_items`
     metadata columns; the whole reply also lands in the `extraction_calls`
@@ -70,6 +93,13 @@ class MetadataPayload(BaseModel):
     publisher: str | None = Field(
         default=None,
         description="Channel, site, show or org that published it. Null if unclear.",
+    )
+    unreadable: list[Unreadable] = Field(
+        default_factory=list,
+        description=(
+            "Substance the text points at but does not contain. Empty when the "
+            "text stands on its own."
+        ),
     )
 
 
