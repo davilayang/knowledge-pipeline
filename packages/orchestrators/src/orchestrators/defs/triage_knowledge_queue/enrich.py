@@ -180,7 +180,15 @@ def _arxiv_signals(url: str, *, timeout: float = _TIMEOUT_S) -> ArxivSignals:
     if arxiv_id is None:
         return ArxivSignals()
     try:
-        resp = httpx.get(_ARXIV_API, params={"id_list": arxiv_id}, timeout=timeout)
+        # export.arxiv.org answers plain http with a 301 to its https address,
+        # and a 301 is not >= 400 — unfollowed, the empty redirect body reaches
+        # the XML parser and every arXiv item enriches to nothing.
+        resp = httpx.get(
+            _ARXIV_API,
+            params={"id_list": arxiv_id},
+            timeout=timeout,
+            follow_redirects=True,
+        )
         if resp.status_code >= 400:
             return ArxivSignals()
         root = ET.fromstring(resp.text)

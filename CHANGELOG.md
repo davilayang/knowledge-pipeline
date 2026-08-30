@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **The `content_shape` classifier's prompt is pinned to the fields it already read.** It builds its prompt from whatever enrichment holds, so the newly kept fields would otherwise have silently entered it — and `content_shape` selects which extraction prompt bundle runs. Widening what it reads is a change to extraction output and needs measuring on its own.
 
+### Fixed
+
+- **arXiv enrichment was silently returning nothing for every paper.** `export.arxiv.org` answers plain http with a 301 to its https address; the request did not follow redirects, and a 301 is not `>= 400`, so the empty redirect body reached the XML parser as if it were a feed. Every arXiv item enriched to empty signals — no title, no abstract, no categories — and the failure was invisible because empty signals are a valid result for a source that genuinely had nothing. Found by running the enrichment against the live API. (`triage_knowledge_queue.enrich`)
+
 ---
 
 ## [0.36.16] — 2026-08-29

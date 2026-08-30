@@ -344,3 +344,26 @@ def test_new_evidence_fields_roundtrip_through_json():
         ),
     )
     assert EnrichmentSignals.from_json(original.to_json()) == original
+
+
+def test_arxiv_signals_follow_the_apis_http_to_https_redirect():
+    """export.arxiv.org answers plain http with a 301 to its https address.
+    A 301 is not >= 400, so it slips past the status guard and the empty
+    redirect body reaches the XML parser as if it were a feed — every arXiv
+    item enriching to nothing, silently. The request has to follow it."""
+
+    def fake_get(url, **kwargs):
+        resp = MagicMock(spec=httpx.Response)
+        if kwargs.get("follow_redirects"):
+            resp.status_code = 200
+            resp.text = _ARXIV_ATOM_XML
+        else:
+            resp.status_code = 301
+            resp.text = ""
+        return resp
+
+    with patch("orchestrators.defs.triage_knowledge_queue.enrich.httpx.get", fake_get):
+        signals = enrich_url("https://arxiv.org/abs/2105.04663", "arxiv")
+    assert signals.arxiv is not None
+    assert signals.arxiv.title == "Sample arXiv Title"
+    assert signals.arxiv.authors == ("Ada Lovelace", "Alan Turing")
