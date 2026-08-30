@@ -1,8 +1,10 @@
 import hashlib
 import json
 import textwrap
+import time
 from datetime import date
 from typing import Any
+from urllib.parse import urlparse
 
 import dagster as dg
 from domains.types import IngestItem
@@ -280,45 +282,94 @@ def fetch_content(
     return dg.MaterializeResult(metadata=metadata)
 
 
+def _github_owner(url: str | None) -> str | None:
+    """The owner segment of a github URL — `langchain-ai` from
+    `github.com/langchain-ai/langgraph`. None for a bare github.com URL or a
+    reserved path that owns no repo."""
+    if not url:
+        return None
+    parts = [seg for seg in urlparse(url).path.split("/") if seg]
+    if not parts or parts[0] in {"orgs", "settings", "features", "about"}:
+        return None
+    return parts[0]
+
+
 def _deterministic_publisher(row: dict[str, Any]) -> str | None:
     """The publisher a non-LLM source already knows, or None to let the model decide.
 
-    Two lanes qualify. YouTube: oEmbed's `author_name` IS the channel and the
-    channel IS the publisher. Plain web articles: the HTML site name IS the
-    publication.
+    Two sources qualify, and both are unambiguous by construction: oEmbed's
+    `author_name` for youtube IS the channel and the channel IS the publisher,
+    and a github repo's owner is a fixed segment of its URL.
 
-    Medium, GitHub and Facebook run through the same HTML-metadata enrichment but
-    are excluded, because there the site name is the hosting platform — writing
-    "Medium" as the publisher would bury the publication that actually ran the
-    piece. Those, and every lane with no enrichment at all, are answered by the
-    call that reads the body."""
-    signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
+    An HTML site name is deliberately never used. It is only captured for
+    article-like types, and `article` among them is the fetcher's CATCH-ALL —
+    every URL that is not youtube/arxiv/medium/facebook/github/file_pdf/file_audio
+    lands there, so `og:site_name` is as likely to read Substack, LinkedIn or
+    Reddit as it is to name a real publication. Storing the platform would bury
+    the publication that actually ran the piece. It is handed to the model as
+    evidence instead, alongside the body, which is strictly more to go on."""
     match (row.get("content_type") or "").lower():
         case "youtube":
+            signals = EnrichmentSignals.from_json(row.get("enrichment_json"))
             return signals.youtube.channel if signals.youtube else None
-        case "article":
-            return signals.article.sitename if signals.article else None
+        case "github":
+            return _github_owner(row.get("canonical_url") or row.get("url"))
         case _:
             return None
 
 
-def _metadata_is_fresh(
-    row: dict[str, Any], last_call: dict[str, Any] | None, prompt_sha: str
-) -> bool:
-    """True when re-running would buy the same answer twice.
+def _metadata_inputs_sha(
+    *, content_hash: str | None, model: str, evidence: str, prompt_sha: str
+) -> str:
+    """One hash over everything that decides what this call returns.
 
-    Populated columns alone are not enough. A re-fetch replaces the body while
-    leaving these columns untouched, so the body that was actually read is
-    compared — it is recorded on the call row, since `queue_items` has no
-    per-column extraction timestamp. The prompt hash is compared too, so editing
-    the prompt re-extracts every row it next touches instead of leaving a corpus
-    labelled by two different prompts with no way to tell which."""
-    if row.get("contributors_json") is None or not last_call:
+    Populated columns alone are not enough to skip: a re-fetch replaces the body,
+    a re-enrichment improves the evidence, a prompt edit changes the question and
+    a model swap changes the answerer — all while leaving the columns in place.
+    Anything left out of this hash is a way for the corpus to end up holding two
+    incomparable populations with nothing to tell them apart, which is the whole
+    reason this lane is being measured."""
+    return hashlib.sha256(
+        "\n".join((content_hash or "", model, evidence, prompt_sha)).encode()
+    ).hexdigest()
+
+
+def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> bool:
+    """True when the last recorded call read exactly these inputs.
+
+    The hash lives on the call row rather than on `queue_items` because it is a
+    fact about one call, and `queue_items` has no per-column extraction
+    timestamp to compare against."""
+    if not last_call:
         return False
-    if last_call.get("prompt_sha256") != prompt_sha:
+    try:
+        recorded = json.loads(last_call.get("node_metadata") or "{}")
+    except ValueError:
+        # `node_metadata` is a shared, reserved JSON slot. A row written by some
+        # future producer must not be able to raise on a path whose contract is
+        # to never fail — treat anything unreadable as "not fresh".
         return False
-    read_hash = json.loads(last_call.get("node_metadata") or "{}").get("content_hash")
-    return read_hash is not None and read_hash == row.get("content_hash")
+    if not isinstance(recorded, dict):
+        return False
+    return recorded.get("inputs_sha") == inputs_sha
+
+
+def _dedupe_contributors(contributors: list[Any]) -> list[dict[str, Any]]:
+    """Collapse repeats on the stripped, case-folded name, keeping the first
+    (richest) spelling. The same person reaches the model twice on a normal item
+    — once as a byline, once introducing themselves in the speech — and comes
+    back twice, spelled differently. Phase C counts contributors, so the
+    duplicate has to go before it is stored, not after."""
+    seen: set[str] = set()
+    out: list[dict[str, Any]] = []
+    for c in contributors:
+        name = (c.name or "").strip()
+        key = name.casefold()
+        if not key or key in seen:
+            continue
+        seen.add(key)
+        out.append({**c.model_dump(), "name": name})
+    return out
 
 
 def _metadata_evidence(row: dict[str, Any]) -> str:
@@ -389,38 +440,87 @@ def extract_metadata(
 ):
     page_id = context.partition_key
     check_name = "metadata_columns_populated"
-    row = store.get_row(page_id)
-    if not row or not row.get("raw_content"):
-        yield dg.MaterializeResult(metadata={"metadata_skipped": dg.MetadataValue.bool(True)})
-        # Nothing was expected of a body-less row, so this is not a finding.
-        yield dg.AssetCheckResult(check_name=check_name, passed=True)
-        return
-
-    prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
-    prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
-    if _metadata_is_fresh(
-        row, store.get_latest_extraction_calls(page_id).get("metadata"), prompt_sha
-    ):
-        yield dg.MaterializeResult(
-            metadata={
-                "metadata_skipped": dg.MetadataValue.bool(True),
-                "summary": dg.MetadataValue.md("Skipped — same body, same prompt."),
-            }
-        )
-        yield dg.AssetCheckResult(check_name=check_name, passed=True)
-        return
-
+    # The whole body is guarded, not just the model call: both extract branches
+    # depend on this asset, so ANY exception here — a missing prompt file, a
+    # locked queue.db, an unreadable ledger row — would stop the reading card and
+    # the claims lane for the item. Nothing reads these columns yet, so a missing
+    # metadata row costs nothing while a blocked extraction costs the whole item.
+    # Every write happens before the first yield, so the failure path can never
+    # emit a second materialisation for the same asset.
     try:
+        # This asset can be materialised on its own — a backfill over stored
+        # bodies is exactly that — so it migrates the schema it writes to rather
+        # than relying on a sibling having run first.
+        store.ensure_schema()
+        row = store.get_row(page_id)
+        if not row or not row.get("raw_content"):
+            yield dg.MaterializeResult(metadata={"metadata_skipped": dg.MetadataValue.bool(True)})
+            # Nothing was expected of a body-less row, so this is not a finding.
+            yield dg.AssetCheckResult(check_name=check_name, passed=True)
+            return
+
+        prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
+        prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
+        evidence = _metadata_evidence(row)
+        inputs_sha = _metadata_inputs_sha(
+            content_hash=row.get("content_hash"),
+            model=extractor.model,
+            evidence=evidence,
+            prompt_sha=prompt_sha,
+        )
+        if _metadata_is_fresh(
+            store.get_latest_extraction_calls(page_id).get("metadata"), inputs_sha
+        ):
+            yield dg.MaterializeResult(
+                metadata={
+                    "metadata_skipped": dg.MetadataValue.bool(True),
+                    "summary": dg.MetadataValue.md("Skipped — same body, prompt, model, evidence."),
+                }
+            )
+            yield dg.AssetCheckResult(check_name=check_name, passed=True)
+            return
+
+        started = time.monotonic()
         payload, call = run_extract_metadata(
             row["raw_content"],
             content_type=row.get("content_type") or "",
-            evidence=_metadata_evidence(row),
+            evidence=evidence,
             prompt=prompt,
             model=extractor.model,
         )
-    # Deliberately broad: a refusal, an unparseable reply, a schema mismatch and a
-    # dead socket all mean the same thing here — no usable metadata this run. The
-    # OpenAI SDK has already retried the transient ones internally.
+        duration_ms = (time.monotonic() - started) * 1000
+
+        known_publisher = _deterministic_publisher(row)
+        contributors = _dedupe_contributors(payload.contributors)
+        delivery: dict[str, Any] = {
+            "shape": payload.delivery_shape,
+            "parts": payload.parts,
+            "unreadable": [u.model_dump() for u in payload.unreadable],
+        }
+        if known_publisher and payload.publisher and payload.publisher != known_publisher:
+            # The deterministic value wins, so the model's reading would otherwise
+            # vanish unrecorded. Kept as an audit hint rather than a disagreement
+            # count — string inequality also fires on `TED` versus `TED Talks`,
+            # and a channel and a publisher can legitimately be different things.
+            delivery["publisher_model_said"] = payload.publisher
+
+        store.record_metadata(
+            notion_page_id=page_id,
+            contributors_json=json.dumps(contributors),
+            publisher=known_publisher or payload.publisher,
+            delivery_json=json.dumps(delivery),
+            prompt_label=PROMPT_LABEL_METADATA,
+            prompt_sha256=prompt_sha,
+            model=call.model,
+            output=call.content,
+            tokens_in=call.input_tokens,
+            tokens_out=call.output_tokens,
+            cached_tokens=call.cached_tokens,
+            duration_ms=duration_ms,
+            content_hash=row.get("content_hash"),
+            inputs_sha=inputs_sha,
+        )
+        store.checkpoint_wal()
     except Exception as exc:
         context.log.warning("extract_metadata failed for %s: %r", page_id, exc)
         reason = dg.MetadataValue.text(f"{type(exc).__name__}: {exc}"[:1000])
@@ -438,38 +538,10 @@ def extract_metadata(
         )
         return
 
-    known_publisher = _deterministic_publisher(row)
-    delivery: dict[str, Any] = {
-        "shape": payload.delivery_shape,
-        "parts": payload.parts,
-        "unreadable": [u.model_dump() for u in payload.unreadable],
-    }
-    if known_publisher and payload.publisher and payload.publisher != known_publisher:
-        # The deterministic value wins, so the model's reading would otherwise
-        # vanish unrecorded. It is kept because a persistent disagreement is
-        # evidence the deterministic source is the wrong one for that lane.
-        delivery["publisher_model_said"] = payload.publisher
-
-    store.record_metadata(
-        notion_page_id=page_id,
-        contributors_json=json.dumps([c.model_dump() for c in payload.contributors]),
-        publisher=known_publisher or payload.publisher,
-        delivery_json=json.dumps(delivery),
-        prompt_label=PROMPT_LABEL_METADATA,
-        prompt_sha256=prompt_sha,
-        model=call.model,
-        output=call.content,
-        tokens_in=call.input_tokens,
-        tokens_out=call.output_tokens,
-        cached_tokens=call.cached_tokens,
-        content_hash=row.get("content_hash"),
-    )
-    store.checkpoint_wal()
-
     yield dg.MaterializeResult(
         metadata={
             "content_type": dg.MetadataValue.text(row.get("content_type") or "(none)"),
-            "contributors": dg.MetadataValue.int(len(payload.contributors)),
+            "contributors": dg.MetadataValue.int(len(contributors)),
             "publisher": dg.MetadataValue.text(known_publisher or payload.publisher or ""),
             "delivery_shape": dg.MetadataValue.text(payload.delivery_shape or "(default)"),
             "unreadable_major": dg.MetadataValue.int(
@@ -477,9 +549,10 @@ def extract_metadata(
             ),
             "model": dg.MetadataValue.text(call.model),
             "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
+            "duration_ms": dg.MetadataValue.int(int(duration_ms)),
             "payload": dg.MetadataValue.json(delivery),
             "summary": dg.MetadataValue.md(
-                f"**{len(payload.contributors)} contributors** — "
+                f"**{len(contributors)} contributors** — "
                 f"shape {payload.delivery_shape or 'default'}, "
                 f"{len(payload.unreadable)} unreadable"
             ),

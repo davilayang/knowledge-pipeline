@@ -12,7 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   - `contributors` is multi-valued and separate from `publisher` — one guest post carries a platform byline, a real author with an affiliation, and a publishing newsletter that is none of them. `author` keeps its current meaning (the byline as the source platform reports it) and is untouched, so no existing row changes meaning.
   - The asset is **best-effort and always materialises**: a refusal, an unusable reply, a truncated reply or a dead socket writes nothing and logs why. Both extract branches now depend on it, and gating them on one metadata failure would be a blast radius neither has today. A non-blocking asset check turns red when a row with a body ends up with empty columns.
   - It sits upstream of the `extract_reading_card` / `extract_claims` fork because those are parallel siblings — anything produced inside one is permanently invisible to the other, so a field either might route on cannot be emitted by one of them.
-  - Re-running an unchanged row costs nothing; a re-fetched body or an edited prompt re-extracts.
+  - Re-running an unchanged row costs nothing; a re-fetched body, a re-enrichment, an edited prompt or a model swap all re-extract.
+  - **`get_queue_extraction` gains `contributors` / `publisher` / `delivery`.** Additive keys on the cross-repo read path newsletter-assistant consumes, so the new fields are reachable through the supported API rather than only by reading the table. The view stays gated on `extracted_at`, which the metadata asset does not set — metadata for an item whose reading-card extraction failed is stored but not visible here.
 
 ---
 

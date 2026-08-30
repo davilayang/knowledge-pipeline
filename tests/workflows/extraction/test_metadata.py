@@ -91,6 +91,76 @@ def test_rejects_a_delivery_shape_outside_the_settled_set():
             )
 
 
+def test_re_asks_once_with_the_validation_error_when_the_reply_misses_the_schema():
+    """JSON mode guarantees valid JSON, not a reply that satisfies the model — a
+    stochastic wrong field name is the common failure, and naming it back to the
+    model fixes it. Dropping the observation instead is the one cost this asset
+    exists to avoid, and the SDK's own retries cannot help: the HTTP call
+    succeeded, the validation did not."""
+    good = _reply()
+    with patch(
+        "workflows.extraction.metadata.generate_messages_with_usage",
+        side_effect=[_call('{"contributor": []}'), _call(good)],
+    ) as llm:
+        payload, call = extract_metadata(
+            "body",
+            content_type="article",
+            evidence="",
+            prompt=_PROMPT,
+            model="gpt-5-mini",
+        )
+
+    assert payload.publisher == "Orchestra"
+    assert llm.call_count == 2
+    # The correction rides in the task tail, never ahead of the article — a
+    # correction written into the prefix would cost the body's cache on the retry.
+    retry_task = llm.call_args.args[0][2]["content"]
+    assert "contributor" in retry_task
+    # Cost across both attempts is visible, not just the winning one.
+    assert call.input_tokens == 1800
+
+
+def test_gives_up_after_repeated_schema_failures_rather_than_looping():
+    with patch(
+        "workflows.extraction.metadata.generate_messages_with_usage",
+        return_value=_call('{"contributor": []}'),
+    ) as llm:
+        with pytest.raises(ValueError):
+            extract_metadata(
+                "body",
+                content_type="article",
+                evidence="",
+                prompt=_PROMPT,
+                model="gpt-5-mini",
+            )
+    assert llm.call_count == 3
+
+
+def test_a_reply_omitting_an_empty_list_still_validates():
+    """`parts` is empty whenever delivery_shape is null, which is most items. A
+    model that omits the key rather than sending `[]` is making a cosmetic
+    choice, and discarding the contributors and publisher over it would lose the
+    two fields that have a verifiable right answer."""
+    import json as _json
+
+    minimal = _json.dumps({"publisher": "Orchestra", "delivery_shape": None})
+    with patch(
+        "workflows.extraction.metadata.generate_messages_with_usage",
+        return_value=_call(minimal),
+    ):
+        payload, _ = extract_metadata(
+            "body",
+            content_type="article",
+            evidence="",
+            prompt=_PROMPT,
+            model="gpt-5-mini",
+        )
+    assert payload.contributors == []
+    assert payload.parts == []
+    assert payload.unreadable == []
+    assert payload.publisher == "Orchestra"
+
+
 def test_treats_a_truncated_reply_as_invalid_output():
     """A reply cut off at the token ceiling can still be valid JSON — a
     contributor list that stops halfway parses clean and reads as complete. The

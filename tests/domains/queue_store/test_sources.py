@@ -1187,10 +1187,12 @@ def test_create_schema_adds_metadata_columns_to_pre_migration_db(tmp_path: Path)
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
         for col in ("contributors_json", "publisher", "delivery_json"):
-            try:
-                conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
-            except sqlite3.OperationalError:
-                pass  # already absent — this file predates the column
+            conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
+        dropped = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
+    # Without this the assert below passes on a database that still has the
+    # columns, and the ADD COLUMN loop is never exercised at all.
+    assert not (dropped & {"contributors_json", "publisher", "delivery_json"})
+
     create_schema(db_path=p)
     with sqlite3.connect(p) as conn:
         cols = {row[1] for row in conn.execute("PRAGMA table_info(queue_items)")}
@@ -1223,6 +1225,49 @@ def test_upsert_triaged_clears_metadata_columns(db_path: Path):
     assert row["contributors_json"] is None
     assert row["publisher"] is None
     assert row["delivery_json"] is None
+
+
+def test_get_queue_extraction_exposes_the_metadata_columns(db_path: Path):
+    """`get_queue_extraction` is the cross-repo read path newsletter-assistant
+    consumes, and it selects a fixed column list — so metadata written by the
+    extract_metadata asset is invisible through it until the columns are added.
+    Additive keys only; nothing existing moves."""
+    page_id = "p-meta-view"
+    _seed_row(db_path, page_id)
+    _record_three_call(db_path, page_id)  # sets extracted_at, which this view gates on
+    record_metadata(
+        db_path=db_path,
+        notion_page_id=page_id,
+        contributors_json=json.dumps([{"name": "Kyle Cheung", "role": "author"}]),
+        publisher="Orchestra",
+        delivery_json=json.dumps({"shape": "different_goals", "parts": ["Install"]}),
+        prompt_label="metadata_v1",
+        prompt_sha256="d" * 64,
+        model="gpt-5-mini",
+        output="{}",
+        tokens_in=1,
+        tokens_out=1,
+    )
+    out = get_queue_extraction(db_path=db_path, notion_page_id=page_id)
+    assert out is not None
+    assert out["contributors"] == [{"name": "Kyle Cheung", "role": "author"}]
+    assert out["publisher"] == "Orchestra"
+    assert out["delivery"]["shape"] == "different_goals"
+    # The topic-card view it has always served is untouched.
+    assert out["extracted_title"] == "T"
+
+
+def test_get_queue_extraction_metadata_keys_are_present_when_never_extracted(db_path: Path):
+    """A row whose reading card landed but whose metadata call failed must not
+    make the consumer branch on missing keys — the keys exist, holding None."""
+    page_id = "p-meta-absent"
+    _seed_row(db_path, page_id)
+    _record_three_call(db_path, page_id)
+    out = get_queue_extraction(db_path=db_path, notion_page_id=page_id)
+    assert out is not None
+    assert out["contributors"] == []
+    assert out["publisher"] is None
+    assert out["delivery"] == {}
 
 
 def test_record_metadata_round_trips_multiple_contributors(db_path: Path):

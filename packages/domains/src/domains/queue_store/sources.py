@@ -687,6 +687,7 @@ def record_metadata(
     cached_tokens: int | None = None,
     duration_ms: float | None = None,
     content_hash: str | None = None,
+    inputs_sha: str | None = None,
 ) -> None:
     """Persist one metadata extraction: the three `queue_items` columns plus a
     `metadata`-kind `extraction_calls` row, in one transaction so a row can never
@@ -696,11 +697,13 @@ def record_metadata(
     this reads), while the call row is INSERT-not-UPSERT like every other call kind:
     re-runs accumulate and the latest wins.
 
-    `content_hash` is stored in `node_metadata` as the body the extraction actually
-    read. The caller compares it against the row's current hash to decide whether a
-    re-fetch has invalidated the columns — `queue_items` has no per-column
-    extraction timestamp to compare against, and a re-fetch leaves the columns in
-    place."""
+    `inputs_sha` is stored in `node_metadata` and is what the caller compares to
+    decide whether re-running would buy the same answer twice — it covers every
+    input to the call, not just the body. `content_hash` rides alongside it as the
+    human-readable half: the sha tells you a row is stale, the hash tells you
+    whether the body was the reason. Both live on the call row because they are
+    facts about one call, and `queue_items` carries no per-column extraction
+    timestamp to compare against."""
     with _connect(db_path) as conn:
         conn.execute(
             """
@@ -729,7 +732,11 @@ def record_metadata(
                 cached_tokens,
                 duration_ms,
                 _now_iso(),
-                json.dumps({"content_hash": content_hash}) if content_hash else None,
+                (
+                    json.dumps({"content_hash": content_hash, "inputs_sha": inputs_sha})
+                    if (content_hash or inputs_sha)
+                    else None
+                ),
             ),
         )
 
@@ -880,12 +887,17 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
     None when the page hasn't been extracted yet. Composes the flat view from
     the latest `topic_card` row in `extraction_calls`; field shape matches
     what NA's reader has historically consumed (extracted_title /
-    core_mechanism / etc. + provenance keys at top level)."""
+    core_mechanism / etc. + provenance keys at top level).
+
+    `contributors` / `publisher` / `delivery` come from the metadata asset and
+    were added later; they are additive keys, so a reader written against the
+    earlier shape is unaffected."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
             SELECT url, canonical_url, content_type, extraction_model,
-                   extracted_at, content_hash
+                   extracted_at, content_hash,
+                   contributors_json, publisher, delivery_json
             FROM queue_items
             WHERE notion_page_id = ? AND extracted_at IS NOT NULL
             """,
@@ -905,4 +917,13 @@ def get_queue_extraction(*, db_path: Path, notion_page_id: str) -> dict[str, Any
         "extraction_model": row["extraction_model"],
         "extracted_at": row["extracted_at"],
         "content_hash": row["content_hash"],
+        # Written by a different asset than the topic card, so these can be
+        # empty on a row that is otherwise fully extracted. The keys are always
+        # present, holding empty values, so the consumer never branches on a
+        # missing key. Note the view is gated on `extracted_at`, which the
+        # metadata asset does not set: metadata for an item whose reading-card
+        # extraction failed is stored but not visible here.
+        "contributors": json.loads(row["contributors_json"]) if row["contributors_json"] else [],
+        "publisher": row["publisher"],
+        "delivery": json.loads(row["delivery_json"]) if row["delivery_json"] else {},
     }

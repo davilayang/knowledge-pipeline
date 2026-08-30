@@ -497,6 +497,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         cached_tokens: int | None = None,
         duration_ms: float | None = None,
         content_hash: str | None = None,
+        inputs_sha: str | None = None,
     ) -> None:
         queue_db.record_metadata(
             db_path=self._path(),
@@ -513,6 +514,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             cached_tokens=cached_tokens,
             duration_ms=duration_ms,
             content_hash=content_hash,
+            inputs_sha=inputs_sha,
         )
 
     def get_claims(self, notion_page_id: str) -> str | None:
