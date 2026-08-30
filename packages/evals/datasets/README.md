@@ -454,44 +454,69 @@ Every recorded name carries a **verbatim supporting quote from its own item**, a
 programmatically from outside the labellers: all 58 files pass, with every evidence quote and every
 contributor name occurring literally in its source. A name that could not be quoted was not recorded.
 
-**The labelling is single-family, and that is a real limitation.** The intent was two independent
-cross-family labellers, following the precedent in the `narrative_coverage_gold.jsonl` section
-above — a Gemini-backed and a Claude-backed labeller, with the OpenAI family excluded because the
-model that runs the prompt under test is an OpenAI model and a same-vendor rater self-prefers. That
-was not achievable with the available agents: the Gemini-backed advisor returns prose and could not
-produce artefacts, and the OpenAI-backed advisor is hard-scoped to a read-only sandbox and declines
-to write files. A partially-populated OpenAI-labelled directory was **discarded rather than used**,
-because its files could not be shown to have come from the OpenAI model rather than from the
-dispatching wrapper, and a false provenance claim inside a gold set is worse than a missing one.
+**Two independent labellers, from different model families, on all 58 items.** A Claude-family
+labeller and an OpenAI-family labeller, each working only from the codebook and the body. Note the
+OpenAI labeller shares a family with the model that runs the prompt under test, which is weaker than
+the ideal — a same-vendor rater self-prefers, and the `narrative_coverage_gold.jsonl` section above
+excludes the family under test for exactly that reason. A Gemini-backed third family was attempted
+first and abandoned: that advisor returns prose and cannot produce artefacts.
 
-What exists instead is a **within-family duplicate pass**: a second, independent Claude-backed
-labeller relabelled 12 of the 58 items (21%), weighted toward the hard cases rather than sampled at
-random, with no sight of the first pass.
+**Provenance of the cross-family pass was established by construction.** An earlier attempt routed
+the OpenAI labeller through a dispatching agent, and the resulting files were **discarded rather
+than used**, because they could not be shown to have come from the OpenAI model rather than from the
+wrapper that dispatched it — a false provenance claim inside a gold set is worse than a missing one.
+The pass that stands invoked the `codex` CLI directly, one item per call, in a read-only sandbox with
+its stdout captured verbatim, so no intermediary could substitute an answer.
+
+Agreement between the two families, over all 58 items:
 
 | | |
 |---|---|
-| contributor-set exact match | 11/12 |
-| contributor-name Jaccard | 0.92 |
-| publisher exact match | 11/12 |
+| contributor-set exact match | **56/58 (97%)** |
+| contributor-name Jaccard | 0.97 |
+| publisher exact match | **47/58 (81%)** |
 
-**Read that 92% as within-family agreement, not as accuracy.** Same-family raters share priors, so
-they agree partly for reasons unrelated to being right — this repo has already measured that gap
-directly on a different labelling task, where the same items reproduced at 80.6% within one model
-family and 58.8% across vendors. A cross-family pass would very likely score lower and is the single
-highest-value addition to this dataset.
+**The 97% is the load-bearing number, and it is the premise of this dataset.** `contributors` was
+carved out as gateable — while the structural delivery-shape label was dropped — on the claim that
+it is a checkable fact with a right answer rather than a judgement. That claim now has a measurement
+behind it: the same cross-vendor comparison that reproduced the structural label at **58.8%**
+reproduces contributors at **97%**.
+
+**Publisher is markedly less settled, and the disagreement is systematic rather than noisy.** In
+**9 of the 11** publisher disagreements the OpenAI labeller returned `null` where the Claude labeller
+named one. The Claude labeller infers a publisher from first-person organisational voice (`"At
+DataCamp, we offer…"`, `"we're building in at sqlsure"`); the OpenAI labeller requires an explicit
+publication statement. That is a genuine gap in the codebook's publisher definition, not rater
+sloppiness, and it should be closed before the publisher axis is treated as settled.
+
+A **within-family duplicate pass** also ran over 12 of the items (21%), weighted toward the hard
+cases: a second independent Claude-family labeller, blind to the first. It agreed on 11 of 12
+(Jaccard 0.92). Its value is separating genuine ambiguity from single-rater noise — the one item it
+split on, `art_10`, is also one the two families split on, which is what a truly ambiguous item looks
+like. Per-row `within_family_dup_agreed` carries this, and is `null` for items outside that subset.
+Same-family agreement is weaker evidence than cross-family agreement and is kept in its own field so
+the two cannot be conflated.
 
 Per-row `gold_source` says exactly how far each label was corroborated, and it must not be flattened:
 
 | value | rows | meaning |
 |---|---|---|
-| `dual_labelled_agreed` | 11 | two independent labellers produced the same contributor set and publisher |
-| `single_labelled` | 46 | one labeller; not duplicated |
-| `disputed_unresolved` | 1 | the two labellers differed and no human has decided — **not gold, exclude from scoring** |
+| `cross_family_agreed` | 45 | both families produced the same contributor set and publisher, and both labels' evidence quotes verify |
+| `disputed_unresolved` | 12 | the two families differed and no human has decided — **not gold, exclude from scoring** |
+| `single_labelled` | 1 | the cross-family label was discarded because one of its evidence quotes was not found in the body, leaving only the primary label |
+
+That last row is `art_01`, and it is worth noting as a live example of why the evidence check exists:
+the two labellers agreed on the *name*, but the OpenAI labeller's supporting quote had been
+reconstructed rather than copied, so it does not occur in the source. Agreement on a conclusion does
+not license an unverifiable citation.
 
 ### How to read a number off it
 
-- **Exclude `disputed_unresolved` rows.** They carry the first labeller's answer so the row is not
-  empty, but that answer is not gold. Currently this is `art_10`.
+- **Exclude `disputed_unresolved` rows.** They carry the primary labeller's answer so the row is not
+  empty, but that answer is not gold. Currently 12 rows: `art_03`, `art_10`, `arx_01`, `arx_05`,
+  `aud_03`, `gh_01`, `gh_03`, `md_05`, `md_08`, `md_11`, `yt_02`, `yt_13`. Ten of the twelve split on
+  publisher only, so they remain usable for a contributors-only score — filter on
+  `adjudication_note` if you want that larger denominator, and say which denominator you used.
 - **Report per-stratum, never aggregate alone.** `github` and `file_audio` hold 3 rows each — those
   lanes support a read-the-cases verdict and never a percentage. A rate quoted off three items is
   noise wearing a number's clothes.

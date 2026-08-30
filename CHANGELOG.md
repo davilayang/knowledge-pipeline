@@ -12,6 +12,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - **A labelling codebook for those two fields**, written to be handed to a labeller verbatim, defining a contributor from what an entity wiki needs rather than from the prompt's own wording — so the gold can catch the prompt being wrong instead of agreeing with it by construction.
 
+  Labels come from two independent labellers in different model families, reading only the codebook and the body. They agree on the contributor set for 56 of 58 items — worth stating next to the 58.8% at which the recently-dropped structural label reproduced across vendors, since "these are checkable facts with a right answer" was the reason these two fields stayed gateable when that one did not. Publisher is less settled at 47 of 58, and the disagreement is systematic: in nine of eleven cases one labeller inferred a publisher from first-person organisational voice where the other required an explicit statement. The twelve disputed rows are marked and excluded from scoring rather than resolved by picking a side.
+
 ---
 
 ## [0.36.17] — 2026-08-30
