@@ -6,9 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.19] — 2026-08-30
+
 ### Changed
 
-- **`extract_metadata` now captures contributors and publisher only.** The `delivery_shape` / `parts` structural label is dropped — it reproduced at 58.8% across model vendors and made the spoken delivery worse on 2 of 3 items when fed to the narrative prompt. `queue_items.delivery_json` and the `delivery` key on `get_queue_extraction` go with it; substance-loss detection lands separately.
+- **`extract_metadata` now captures only contributors and publisher.** The `delivery_shape`/`parts` label is dropped: 58.8% reproduction across model vendors, and it made the spoken delivery worse on 2 of 3 items when fed to the narrative prompt.
+- **Substance-loss detection (`unreadable`) is deferred to its own change.** It is the only field that would fail a row rather than record one.
+
+### Removed
+
+- **`queue_items.delivery_json` and the `delivery` key on `get_queue_extraction` are gone.** Neither was ever read — the asset has not shipped to production.
 
 ---
 
