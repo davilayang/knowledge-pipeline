@@ -374,3 +374,162 @@ run-to-run (LLM variance — a single run isn't precise to ±5pt and needs N-run
 averaging), and the judge sees the producer's tag while grading, so it's an
 anchored signal, not fully independent. Provenance: gitignored
 `data/shadow_audit/build_gold_review.py` (candidate) → user review.
+
+## `extract_metadata_gold.jsonl`
+
+> Written to the five-heading dataset contract described at the top of this file.
+>
+> **Two documents cover this dataset and the split is deliberate.** This section records what was
+> produced and how to read a number off it. [`extract_metadata_codebook.md`](extract_metadata_codebook.md)
+> holds the labelling instructions and *only* those — it is handed verbatim to a labeller, so it
+> carries no prior labels, no outcomes and no record of earlier rounds, any of which would anchor
+> the next labeller.
+
+### What it decides
+
+**Whether the `contributors` and `publisher` fields produced by `prompts/extraction/metadata_v1.md`
+are trustworthy enough to feed the entity wiki and to retire the `queue_items.author` column.**
+
+Those two columns are written **dark** — nothing reads them today. The decision they feed is made
+by a human reading captured production output; this set replaces that eyeball with a measurement.
+Three consequences ride on it and none currently has any measurement behind it: a contributor is
+destined to become a **person entity in the wiki**, so an organisation written into that field
+propagates as a false attributed claim that nothing downstream can detect; the `author` column is
+scheduled for retirement once `contributors` is trusted, and retiring it removes the only control
+variable that exists; and a backfill re-runs this prompt over the whole stored corpus, where a
+systematic error is cheap to find now and expensive later.
+
+**It is a gate, not a report.** The comparison is paired — both arms score the same items:
+
+| arm | what it is | cost |
+|---|---|---|
+| the `author` column | today's stored byline, passed through unchanged | none — no LLM call |
+| `metadata_v1` | the shipped body-only prompt | one call per item |
+
+The **primary axis is contributors precision with organisation-as-person counted separately**,
+because that specific error is the one the asset exists to fix and the one that corrupts the wiki.
+Recall is reported alongside it and is not optional: **16 of the 58 items (28%) have a correctly
+empty contributors list**, so an arm that returns nothing scores perfectly on precision while being
+useless. Publisher is scored as precision and recall on the scalar.
+
+**Loss is asymmetric, pinned at 5:1** — a false contributor is five times worse than a missed one.
+A missed person leaves the wiki no worse than today; a false one actively corrupts it. Report the
+precision/recall tradeoff or the confusion matrix as the headline and treat any weighted scalar as
+one operating point on it, never as the result.
+
+**No loader and no scorer exist yet.** There is no `eval-*` entry point for this dataset; it is the
+pinned input, and the harness that consumes it is not written. Do not infer a command from the
+sibling sections.
+
+**What it does not decide.** Nothing about `delivery_shape` or `parts` — those fields were dropped
+on evidence and do not exist. Nothing about `unreadable`, which is a separate change with its own
+user-facing failure path. Nothing about **external truth**: this measures whether the prompt
+correctly reported *what the fetched text presents as its own authorship*. A label is not wrong
+because reality disagrees with the byline, and nobody should later "fix" a correct label because
+they know better than the source.
+
+### Provenance
+
+**Items.** 58 rows drawn from the production `queue.db` on 2026-08-30, from the 227 rows that have
+a fetched body. Stratified by `content_type` and ordered within each stratum by `content_hash` —
+deterministic, reproducible, and unrelated to any label-relevant property. The stratification is
+weighted toward the failure region rather than matching production proportions:
+
+| stratum | rows here | why it is its own stratum |
+|---|---|---|
+| youtube | 18 | the person is in the title in four incompatible separator formats, or named only in the speech |
+| medium | 12 | the `author` **column** is empty on all 56 production rows; the body sometimes still carries the byline |
+| article | 10 | one body can carry a platform byline, a different real author, and a publisher |
+| facebook | 6 | the control arm's win region — the fetcher prepends the poster's name |
+| arxiv | 6 | author lists are comma-flattened and frequently multi-person |
+| file_audio | 3 | all of production — the worst-served lane |
+| github | 3 | all of production — fetched as navigation chrome, so an empty list is the right answer |
+
+**Labels.** Authored blind: labellers saw only the `[content_type: ...]` tag and the body — the same
+input the prompt gets. The stored `author`, `title` and `enrichment_json` were **withheld**, because
+`author` is the arm being measured against and showing it would anchor the gold toward the value
+under test. No labeller ever saw any system output; the gold predates any run of the prompt.
+
+Every recorded name carries a **verbatim supporting quote from its own item**, and this was verified
+programmatically from outside the labellers: all 58 files pass, with every evidence quote and every
+contributor name occurring literally in its source. A name that could not be quoted was not recorded.
+
+**The labelling is single-family, and that is a real limitation.** The intent was two independent
+cross-family labellers, following the precedent in the `narrative_coverage_gold.jsonl` section
+above — a Gemini-backed and a Claude-backed labeller, with the OpenAI family excluded because the
+model that runs the prompt under test is an OpenAI model and a same-vendor rater self-prefers. That
+was not achievable with the available agents: the Gemini-backed advisor returns prose and could not
+produce artefacts, and the OpenAI-backed advisor is hard-scoped to a read-only sandbox and declines
+to write files. A partially-populated OpenAI-labelled directory was **discarded rather than used**,
+because its files could not be shown to have come from the OpenAI model rather than from the
+dispatching wrapper, and a false provenance claim inside a gold set is worse than a missing one.
+
+What exists instead is a **within-family duplicate pass**: a second, independent Claude-backed
+labeller relabelled 12 of the 58 items (21%), weighted toward the hard cases rather than sampled at
+random, with no sight of the first pass.
+
+| | |
+|---|---|
+| contributor-set exact match | 11/12 |
+| contributor-name Jaccard | 0.92 |
+| publisher exact match | 11/12 |
+
+**Read that 92% as within-family agreement, not as accuracy.** Same-family raters share priors, so
+they agree partly for reasons unrelated to being right — this repo has already measured that gap
+directly on a different labelling task, where the same items reproduced at 80.6% within one model
+family and 58.8% across vendors. A cross-family pass would very likely score lower and is the single
+highest-value addition to this dataset.
+
+Per-row `gold_source` says exactly how far each label was corroborated, and it must not be flattened:
+
+| value | rows | meaning |
+|---|---|---|
+| `dual_labelled_agreed` | 11 | two independent labellers produced the same contributor set and publisher |
+| `single_labelled` | 46 | one labeller; not duplicated |
+| `disputed_unresolved` | 1 | the two labellers differed and no human has decided — **not gold, exclude from scoring** |
+
+### How to read a number off it
+
+- **Exclude `disputed_unresolved` rows.** They carry the first labeller's answer so the row is not
+  empty, but that answer is not gold. Currently this is `art_10`.
+- **Report per-stratum, never aggregate alone.** `github` and `file_audio` hold 3 rows each — those
+  lanes support a read-the-cases verdict and never a percentage. A rate quoted off three items is
+  noise wearing a number's clothes.
+- **Publisher on `youtube` and `github` does not come from the prompt.** The asset stores
+  `deterministic_publisher or model_publisher`, resolving it from oEmbed's channel for youtube and
+  the URL owner for github. Scoring the prompt's raw publisher on those lanes measures something the
+  pipeline never stores. Each row carries `deterministic_publisher` so the resolved value can be
+  scored instead — decide which question you are asking and say which in the result.
+- **The control arm's floor is already known**: across the full production corpus the `author`
+  column is populated on 72 of 286 rows and holds *the publisher* 76% of the time; genuine
+  person-level attribution is 17 rows in 286, about 6%. That is the number to beat.
+- **Ten rows carry `labeller_flags`** recording genuine ambiguity rather than defects. Six are pieces
+  whose only attribution is a handle or URL slug, where the codebook's "a bare handle is not a name"
+  rule produces an empty list. If that rule is ever revised, these ten rows change and `gold_version`
+  must be bumped.
+
+### Identity and safe changes
+
+- `instance_id` is the join key and is immutable. `body` is the exact `raw_content` the prompt
+  reads and must never be edited — `_meta.content_hash` is the drift alarm, not the pin.
+- Bodies are **inlined** (1.5 MB) rather than referenced. The only other copy lives in
+  `data/shapestudy/`, which is gitignored, laptop-only and unbacked-up; a pointer-based set would
+  not survive the laptop.
+- Bump `gold_version` for any label change: adjudicating a disputed row, revising a codebook rule
+  that moves existing labels, or adding a cross-family pass. Bump `schema_version` only when the row
+  shape changes.
+- Adding rows is a top-up and keeps `gold_version`; re-drawing the sample is a rebuild and does not.
+- Validate a change by re-running the evidence check — every `gold_contributors[].evidence` must
+  still occur verbatim in its row's `body`.
+
+### Refresh policy
+
+Re-draw rather than top-up when the corpus composition moves: the lane mix here reflects a corpus
+that is 52% youtube by fetched rows, and the strata weights are pinned to that. Trigger a rebuild
+when any lane's share of fetched rows changes by more than half, when the fetcher changes what
+`raw_content` contains for a lane (transcript chunking and pasted-article structuring have both
+done this before, so rows carry `provenance_date` to make it visible), or when `contributors`
+acquires a consumer that reads it differently from the wiki.
+
+Top up instead when a lane is simply thin: `file_audio` and `github` are at 3 rows because that is
+all production has, and they should grow as the corpus does.

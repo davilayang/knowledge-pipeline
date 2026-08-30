@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **A gold dataset for the extract-metadata prompt's `contributors` and `publisher` fields.** 58 items drawn from the production queue, stratified by content type toward the lanes that fail for different reasons, with the fetched body inlined and every recorded name carrying a verbatim quote from that body. It replaces "ship the columns dark and eyeball production later" with a measurement, against a control arm — the existing `author` column — whose floor is already known: populated on 72 of 286 rows, holding the publisher 76% of the time, and giving genuine person-level attribution on about 6% of the corpus.
+
+- **A labelling codebook for those two fields**, written to be handed to a labeller verbatim, defining a contributor from what an entity wiki needs rather than from the prompt's own wording — so the gold can catch the prompt being wrong instead of agreeing with it by construction.
+
 ---
 
 ## [0.36.17] — 2026-08-30
