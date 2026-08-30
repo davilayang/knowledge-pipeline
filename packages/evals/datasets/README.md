@@ -14,8 +14,8 @@ Each section should document a **contract**, not the file's contents. Anything d
 JSONL — counts, fixture tables, per-fixture stats — belongs out of the prose: it is duplication
 that goes stale, and it is what has gone stale here before. Five headings:
 
-**Only the `narrative_coverage_gold.jsonl` section follows this yet.** The other six predate it and
-still carry derivable counts; migrating them is tracked in issue #236.
+**Two sections follow this so far** — `narrative_coverage_gold.jsonl` and `extract_metadata_gold.jsonl`.
+The other six predate it and still carry derivable counts; migrating them is tracked in issue #236.
 
 | heading | records |
 |---|---|
@@ -484,10 +484,14 @@ reproduces contributors at **97%**.
 
 **Publisher is markedly less settled, and the disagreement is systematic rather than noisy.** In
 **9 of the 11** publisher disagreements the OpenAI labeller returned `null` where the Claude labeller
-named one. The Claude labeller infers a publisher from first-person organisational voice (`"At
-DataCamp, we offer…"`, `"we're building in at sqlsure"`); the OpenAI labeller requires an explicit
-publication statement. That is a genuine gap in the codebook's publisher definition, not rater
-sloppiness, and it should be closed before the publisher axis is treated as settled.
+named one; **none** went the other way. The two were applying different thresholds for what counts as
+the text identifying a publisher — one accepted a piece speaking in its own organisation's voice, the
+other required a publication statement. That was a genuine gap in the codebook's publisher
+definition, not rater sloppiness, and the definition has since been rewritten as an explicit
+precedence ladder.
+
+Note the 9-of-11 figure describes the **shape** of the disagreements (null versus named). It is not
+the number settled by any one rule — see the adjudication breakdown below.
 
 A **within-family duplicate pass** also ran over 12 of the items (21%), weighted toward the hard
 cases: a second independent Claude-family labeller, blind to the first. It agreed on 11 of 12
@@ -496,6 +500,22 @@ split on, `art_10`, is also one the two families split on, which is what a truly
 like. Per-row `within_family_dup_agreed` carries this, and is `null` for items outside that subset.
 Same-family agreement is weaker evidence than cross-family agreement and is kept in its own field so
 the two cannot be conflated.
+
+**Two known contaminants, both bounded and both stated rather than hidden.**
+
+- *The codebook once quoted the corpus.* An early revision illustrated its bare-handle rule with two
+  handles taken verbatim from items in this set, which handed the labeller those two answers. Both
+  items are among the hardest in the corpus, so their agreement is inflated and their labels are the
+  codebook author's read rather than an independent one. Every example in the codebook has since been
+  replaced with an invented one, but the two affected rows were labelled before that: treat `gh_01`
+  and `art_02` as weaker evidence than their `cross_family_agreed` status suggests.
+- *The gold encodes rules the prompt has never been told.* The codebook now carries a publisher
+  precedence ladder, a sponsor-read exclusion, a personal-site rule and a platform-versus-venue rule.
+  `metadata_v1`'s entire publisher instruction is *"Null when the text does not make it clear — a bare
+  URL host is not a publisher."* So the prompt will systematically under-report publisher against this
+  gold. **That is the eval working, not a gold defect** — but it means the first publisher result will
+  measure a known instruction gap, and the honest first move is to close that gap in the prompt rather
+  than to read the number as a verdict on the model.
 
 Per-row `gold_source` says exactly how far each label was corroborated, and it must not be flattened:
 
@@ -510,32 +530,80 @@ the two labellers agreed on the *name*, but the OpenAI labeller's supporting quo
 reconstructed rather than copied, so it does not occur in the source. Agreement on a conclusion does
 not license an unverifiable citation.
 
-**Every dispute was settled by a rule, not by preferring a labeller.** All twelve happened to resolve
-toward the primary labeller, which is worth stating plainly because it looks like rubber-stamping and
-is not: the cross-family labeller was systematically *conservative*, returning `null` where the other
-named something, so a rule that says "this evidence is sufficient" resolves that way by construction.
-Each rule is written into the codebook, so re-labelling from scratch reaches the same answers. Three
-were added at `gold_version` 2 in response to what the disputes exposed:
+**Every dispute was settled by a rule, not by preferring a labeller.** At `gold_version` 2 all twelve
+resolved toward the primary labeller, which looked like rubber-stamping and mostly was not: the
+cross-family labeller was systematically *conservative*, returning `null` where the other named
+something, so a rule holding that evidence sufficient resolves that way by construction. But one of
+the twelve had in fact been decided on an argument that was never written into the codebook, and at
+`gold_version` 3 it was **corrected toward the cross-family labeller** — the split is now 11–1. Every
+rule now cited is in the codebook, so re-labelling from scratch reaches the same answers. Three were
+added at `gold_version` 2 in response to what the disputes exposed:
 
 - **A personal site named after its owner.** A blog titled with its owner's name puts that name only
   in the site header — furniture, which the codebook otherwise excludes — while the piece is written
   throughout in the first person and names nobody. The header name is the author, and `publisher` is
   null. This one item, `art_10`, produced *three different answers* across three labellers, because
   three existing rules each claimed it.
-- **Writing as an organisation names it.** `"our data warehouse at Booking.com"`, `"At DataCamp, we
-  offer…"` — first-person organisational voice identifies the publisher as well as a masthead would.
-  This settled 9 of the 11 publisher disputes. Requiring an explicit statement would null out the
-  publisher on most company engineering blogs.
+- **Writing as an organisation names it.** First-person organisational voice identifies the publisher
+  as well as a masthead would; requiring an explicit statement would null out the publisher on most
+  company engineering blogs.
 - **Platform versus venue for papers.** A stated venue wins; otherwise the archive is the publisher;
   and *"accepted to"* is not *"published at"*.
 
-The weakest of the twelve is `yt_02`, resolved on course identity — a university lecture addressed to
-that university's own students — where the evidence is contextual rather than first-person publishing
-voice. Revisit it first if the publisher axis is re-examined.
+**Eight distinct rules settled the twelve rows, not three.** The three above were *new*; they account
+for 7 of the 12. The rest were settled by rules the codebook already carried — the repository owner
+for code, a publication named outright, a stated channel line, preferring a named publication over a
+copyright-holding parent company, and writing a name as the text gives it rather than shortening it
+to a surname. Each row's `adjudication_note` names its own rule; that field is the authority, not
+this summary.
+
+Counting the same twelve by which rule decided them: organisational voice 4, platform-versus-venue 2,
+and one each for repository owner, publication named outright, channel line, named-publication-over-
+parent-company plus name form, the personal-site exception, and the venue-is-not-a-publisher rule.
+
+That last row is `yt_02`, and it is the clearest illustration of why the rule-not-ruling discipline
+matters. At `gold_version` 2 it was given the publisher `Stanford`, on the reasoning that a
+university course lecture is published by that university — an argument that appears nowhere in the
+codebook. Reviewed against the corpus, three sibling rows carrying the same evidence shape are null,
+including one where the speaker uses first-person voice about her own employer and it is still
+correctly refused. The body has no channel line; what it has is a venue and an audience. Corrected to
+`null` at `gold_version` 3, and the codebook now states outright that a venue is not a publisher.
 
 ### How to read a number off it
 
-- **All 58 rows are scorable at `gold_version` 2.** No row is `disputed_unresolved`. If a future
+- **Pass `body` as the prompt content unchanged, and nothing else.** `body` is exactly `raw_content`,
+  with **no** `[content_type: …]` tag — the runtime prepends that itself
+  (`shared_prefix.structured_messages`), so a scorer that adds one sends it twice, changes the input
+  from what production sends, and breaks the shared cache prefix. `sha256(body)` equals
+  `_meta.content_hash` on all 58 rows; assert it per row as the drift guard.
+- **Match names by casefold, whitespace-collapse, strip, then exact.** No titlecase (two gold names
+  break it), no substring, no fuzzy, no token overlap. Match on `name` alone — the gold contributor
+  dicts carry an `evidence` key the model's schema has no field for, so dict equality matches
+  nothing. Exact matching is load-bearing here: **9 gold names are a single token**, and no fuller
+  form of any of them appears anywhere in its body, so a model emitting a surname is inventing one
+  from world knowledge. A lenient matcher forgives exactly the error the wiki cannot detect.
+- **Report contributors macro, with micro alongside.** 28 of the 72 gold contributors — 39% — come
+  from just 6 arXiv rows. A micro-averaged (pooled) recall is therefore largely "does it copy an
+  author list", a lane where every arm does well. Macro (per-item, then mean) and micro will diverge;
+  choosing silently yields two different headline numbers from one run.
+- **Give the empty cases their own cell, not a precision denominator.** 16 rows have an empty gold
+  contributor list and 22 have a null gold publisher. Empty-versus-empty is 0/0 — report a
+  **correct-empty rate** over those rows instead of folding them into precision, and say which
+  convention you used. This matters because org-as-person shows up precisely as a non-empty answer
+  on those rows.
+- **`group_id` is derived from the gold label — never pass it to an arm.** It is the clustering key,
+  not a feature: 7 of the 18 youtube rows share `AI Engineer`, so getting that one publisher right
+  wins 7 rows at once. A confidence interval computed over 58 independent items is too tight;
+  cluster on `group_id`.
+- **Do not grade `role` or `affiliation`.** All 72 gold contributors carry a non-null role, but the
+  codebook permits null and the model's schema defaults to it — so scoring role as equality penalises
+  a correct null and rewards a guess. The zero-null distribution also suggests labellers inferred
+  role from the lane. Report these, do not grade them, until that is fixed.
+- **The organisation-as-person split is not mechanically computable from this file**, despite being
+  the primary axis. Classifying a false-positive name as *organisation* versus *wrong person* needs a
+  judge or a human pass; 7 rows carry no organisation string at all, four of them correctly-empty
+  rows where the error is most likely. Do not report it as a mechanical metric.
+- **All 58 rows are scorable at `gold_version` 3.** No row is `disputed_unresolved`. If a future
   round reopens a label, that value returns and those rows must be excluded — check for it rather
   than assuming the set is always fully usable.
 - **The 12 `human_adjudicated` rows are gold, but they are the softest gold here.** They are where
@@ -548,19 +616,39 @@ voice. Revisit it first if the publisher axis is re-examined.
   `deterministic_publisher or model_publisher`, resolving it from oEmbed's channel for youtube and
   the URL owner for github. Scoring the prompt's raw publisher on those lanes measures something the
   pipeline never stores. Each row carries `deterministic_publisher` so the resolved value can be
-  scored instead — decide which question you are asking and say which in the result.
-- **The control arm's floor is already known**: across the full production corpus the `author`
-  column is populated on 72 of 286 rows and holds *the publisher* 76% of the time; genuine
-  person-level attribution is 17 rows in 286, about 6%. That is the number to beat.
-- **Ten rows carry `labeller_flags`** recording genuine ambiguity rather than defects. Six are pieces
-  whose only attribution is a handle or URL slug, where the codebook's "a bare handle is not a name"
-  rule produces an empty list. If that rule is ever revised, these ten rows change and `gold_version`
-  must be bumped.
+  scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
+  and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
+  model).
+- **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
+  `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
+  slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where
+  gold is null). The override wins on all three regardless of which prompt runs; reporting them as
+  prompt failures measures the fetcher.
+- **The control arm is scorable from this file, and its result is already derivable.** Convert
+  `author_column` with `[] if None else [s.strip() for s in value.split(", ")]` — the fetcher joins
+  its author list that way — then apply the same set comparison. Do **not** apply that split to
+  `affiliation`, which legitimately contains commas. 44 of 58 rows are null, so the arm's headline
+  cannot be an aggregate precision; of the 14 populated rows, **7 are exact person matches and 7 emit
+  an organisation or handle**, five of those the literal string `AI Engineer`. Give this arm no
+  publisher metric — it proposes none.
+- **Ten rows carry `labeller_flags`** recording genuine ambiguity rather than defects. **Six** turn on
+  the codebook's "a bare handle is not a name" rule, which gives them an empty contributor list; if
+  that rule is revised, those six change and `gold_version` must be bumped. The other four are
+  flagged for unrelated reasons — a personal-site name, a paper's author list, a first-name-only
+  speaker, and one page whose only names sit in site chrome — and would not move.
 
 ### Identity and safe changes
 
-- `instance_id` is the join key and is immutable. `body` is the exact `raw_content` the prompt
-  reads and must never be edited — `_meta.content_hash` is the drift alarm, not the pin.
+- `instance_id` is the join key and is immutable. Note the id field is spelled `instance_id` here
+  while sibling datasets in this directory use `fixture_id`, `id` and `source_id` — a loader copied
+  from a sibling will `KeyError`.
+- `body` is exactly `raw_content` and must never be edited — `_meta.content_hash` is the drift alarm,
+  not the pin, and it verifies against `body` directly.
+- **Revision history.** `gold_version` 1 was the first labelled build; 2 adjudicated the twelve
+  cross-family disputes; **3** corrected one publisher label (`yt_02`, which had been settled on an
+  argument never written into the codebook and was inconsistent with three sibling rows carrying the
+  same evidence shape), carried the publisher evidence quote into every row, and removed the
+  `[content_type: …]` tag that earlier revisions had left prepended to `body`.
 - Bodies are **inlined** (1.5 MB) rather than referenced. The only other copy lives in
   `data/shapestudy/`, which is gitignored, laptop-only and unbacked-up; a pointer-based set would
   not survive the laptop.

@@ -7,8 +7,13 @@ depends on.
 
 You will be given one file per item. Each file contains a `[content_type: ...]`
 tag and then the fetched text of one piece of content. **The text in that file
-is the entire evidence base.** You are not given the URL, the page title, or any
-stored metadata, and you must not go looking for them. Label only from the text.
+is the entire evidence base.** You are given no stored metadata alongside it and
+must not go looking for any. Label only from the text.
+
+The fetched text often contains URLs, link targets and image filenames. **You may
+read them, but a name that appears only inside a URL or a filename is never
+enough on its own.** It can corroborate a name the prose already gives; it cannot
+supply one.
 
 ---
 
@@ -68,7 +73,7 @@ Three tests, all of which must pass:
 |---|---|
 | `name` | The person's name **as the text gives it**. Do not normalise, expand initials, correct spelling, or reorder to Western name order. |
 | `role` | One of: `presenter`, `guest`, `host`, `author`, `maintainer`, `poster`. Use `null` when the text does not make the role clear — do not infer it from the content type. |
-| `affiliation` | The organisation the text states they belong to. `null` when the text does not state one. Do not supply one you happen to know. |
+| `affiliation` | The organisation the text states they belong to — the institution or company, **not** the department, lab, or country. From "School of Computer Science, Example University, Germany" record `Example University`. Where a paper maps authors to affiliations by superscript number, resolve the number. `null` when the text states none. Do not supply one you happen to know. |
 | `evidence` | **A verbatim quote from the text** that shows this person made this piece. Copy it exactly, including any odd spacing. This is what makes the label checkable — a name without a supporting quote is not a label. |
 
 ### An empty list is frequently the correct answer
@@ -119,7 +124,7 @@ elsewhere, someone thanked in the acknowledgements — none of these are
 contributors to this piece.
 
 **A bare handle is not a name.** Usernames, account handles and login slugs
-(`kvlonge`, `Grandimam`, a handle appearing inside a URL) are not personal names
+(`b_treadwell`, `pixelmonger`, a handle appearing inside a URL) are not personal names
 and do not go in `contributors`, even when a real person is obviously behind
 them. Record a person only when the text gives something that reads as a human
 name. If a handle is the only attribution the text offers, `contributors` is
@@ -129,13 +134,25 @@ empty and you flag `uncertain_person_or_org`.
 marked as such (`github-actions[bot]`, `dependabot`) are excluded outright, even
 where the text lists them alongside people.
 
-**Names in site furniture do not count.** Many fetched pages carry the site's
-own navigation, sidebars, footers, "contributors" widgets, related-article
-strips and cookie banners. Names appearing **only** in that furniture are not
-contributors to the piece — the piece is the article, README or transcript
-itself. If the piece's own text names nobody and the only names are in the
-surrounding page chrome, `contributors` is empty; flag `text_unusable` when the
-chrome has evidently replaced the content altogether.
+**Furniture is defined by what it does, not by where it sits.** Fetched pages
+carry a lot of the surrounding site along with the piece, and the test is which
+way a block points:
+
+- **Attribution** — a block that attributes *this* piece. A byline, a "Written
+  by" card, an "About the author" box, a speaker credit. **These count**, wherever
+  on the page they appear, including at the very bottom next to share buttons.
+- **Furniture** — a block that points *away* from the piece: navigation, related
+  articles, recommended reading, subscribe and cookie banners, sign-in prompts,
+  legal boilerplate, "Related jobs". Names appearing **only** there are not
+  contributors.
+
+So a Medium footer reading "Written by <name>", sandwiched between Follow buttons
+and a related-posts strip, **is a byline** and the person is a contributor. A name
+that appears only in a "you might also like" strip is not.
+
+If the piece's own text names nobody and every name on the page points away from
+it, `contributors` is empty; flag `text_unusable` when furniture has evidently
+replaced the content altogether.
 
 **Except a personal site named after its owner.** The rule above has one
 deliberate exception, because otherwise it swallows a common and clear case. A
@@ -152,9 +169,34 @@ writing is absent — a link roll, an aggregator, a company site that happens to
 carry a person's name — this exception does not apply and the name stays
 furniture.
 
+**Apply the handle test first.** If the site name reads as a handle or a bare
+domain rather than a human name, this exception does not apply at all:
+`contributors` is empty, the handle is the `publisher`, and you flag
+`uncertain_person_or_org`. Only a name that reads as a person's reaches the
+exception above.
+
 **Write the name as the text gives it.** Do not shorten a full name to a
-surname, expand initials, or reorder it. If the text says `Shutaro Hashimoto`,
-the label is `Shutaro Hashimoto`, not `Hashimoto`.
+surname, expand initials, or reorder it. If the text says `Takeshi Yamamoto`,
+the label is `Takeshi Yamamoto`, not `Yamamoto`.
+
+**When the text renders a name two ways, take the piece's own rendering.** A
+title and a spoken self-introduction often disagree on capitalisation or a
+particle (`Van Der Berg` vs `van der Berg`), and an image filename or an
+all-caps header is not a rendering at all. Prefer, in order: how the person
+introduces themselves, how the body prose writes it, then the title. Note the
+variant in `notes`. This matters because the label decides whether the wiki gets
+one person page or two.
+
+**A first name alone is still a name — record it, and never complete it.**
+Interviews and podcasts often name their people only by first name: a host
+addressed as "Dan", a guest introduced as "Matt, welcome to the show". Record
+that person with the name the text gives and flag `unsure`.
+
+**Under no circumstances supply a surname the text does not contain.** If you
+find yourself confident that "Matt" is a particular well-known person, that
+confidence came from outside the text and the codebook's scope rule forbids it.
+A completed name is indistinguishable from a correct one downstream, and it is
+the single hardest error for anything later in the pipeline to detect.
 
 **More than one affiliation for one person.** Where someone states several
 organisations, record the one they give **for their role in this piece**. If the
@@ -178,39 +220,84 @@ is genuinely ambiguous, put the person most central to making the piece first.
 ### Definition
 
 **One value.** The channel, publication, show, repository owner, or organisation
-that put this piece out. `null` when the text does not make it clear.
+that **distributed** this piece — who put it out, not who the maker works for.
+`null` when the text does not identify one.
 
-- A bare web address is **not** a publisher. Do not convert a host name into a
-  publisher; if the only evidence is a URL fragment, the answer is `null`.
-- Where a piece appears under both a platform and a publication — a post on a
-  blogging platform that belongs to a named publication — prefer **the named
-  publication**, because that is the entity a wiki page would be about. The
-  platform is infrastructure.
-- A self-published piece by an individual has **`null`** as its publisher, not
-  the person's name repeated. The person is already in `contributors`; copying
-  them into `publisher` creates a false organisation entity.
-- Record it **as the text gives it**, without expanding abbreviations or adding
-  legal suffixes.
+`null` is a common and correct answer. Most personal blog posts, most posts on a
+bare platform, and most transcripts with no channel line have no publisher.
 
-### Writing *as* an organisation counts as naming it
+### Work down this ladder and stop at the first rung that applies
+
+The rungs are in order **because several of them can fire on the same document**,
+and the field takes one value. Do not skip to the rung you find most interesting.
+
+1. **A stated channel, show, publication or masthead.** A `**Channel:** …` line,
+   a show name in the opening (*"welcome back to the <name> podcast"*), a named
+   publication a post appears under. This outranks everything below it, including
+   the maker's own employer.
+2. **A named venue, for papers.** See the papers rung below.
+3. **The organisation the piece speaks as** — see the next section.
+4. **The repository owner or project name, for code**, when it appears in the
+   repo heading or the prose. Not when it appears only inside a URL.
+5. **Otherwise `null`.**
+
+**A speaker's employer is an `affiliation`, not a publisher.** A conference talk
+carried by a channel is published by the channel; the fact that the speaker says
+*"what we do at <their employer>"* puts that employer in their `affiliation`
+field and nowhere else. Rung 1 exists to settle exactly this case, which is the
+single most common collision in this corpus.
+
+**A venue is not a publisher.** Where a talk happened, which university ran the
+course, which conference hosted the session — that is a location, not the entity
+that put the recording out. With no channel line and no publishing voice, a
+recorded lecture has `publisher: null` even when it plainly took place somewhere.
+
+### Two things that are never the publisher
+
+- **A bare platform.** Medium, Facebook, Substack, YouTube-the-website, a
+  personal domain. These are infrastructure. Where a piece appears under **both**
+  a platform and a named publication, take the publication; where the platform is
+  the only candidate, the answer is `null`. (Papers are the one exception — see
+  the papers rung.)
+- **A person's own name, as a self-published byline.** The person is already in
+  `contributors`; repeating them in `publisher` mints a false organisation entity.
+  Note this does *not* apply when a **named channel or show** happens to carry a
+  person's name — a channel is a distributor, so it goes in `publisher` under
+  rung 1 even if it is named after its presenter.
+
+### Writing *as* an organisation counts as naming it — rung 3
 
 A piece written from inside a company often never says "published by X" — it
-simply speaks as X: *"our data warehouse at Booking.com"*, *"At DataCamp, we
-offer…"*, *"we're building in at sqlsure"*, *"pushing us beyond our traditional
-Homes"*. **Treat that as naming the publisher.** First-person organisational
-voice identifies who put the piece out just as well as a masthead would, and
-requiring an explicit statement would null out the publisher on most company
-engineering blogs.
+simply speaks as X: *"we shipped this to our own warehouse first"*, *"our
+platform team owns the rollout"*. **Treat that as naming the publisher**, but only
+after rung 1 has found nothing. First-person organisational voice identifies who
+put the piece out as well as a masthead would, and requiring an explicit statement
+would null out the publisher on most company engineering blogs.
 
-The voice must be the *maker's*, not a mention. A piece that discusses Booking.com
-in the third person has not told you who published it.
+Two exclusions, both of which produce wrong publishers otherwise:
 
-### Channels and shows are publishers even when the name looks like a handle
+- **The voice must be the maker's, not a mention.** A piece that discusses a
+  company in the third person has not told you who published it.
+- **Sponsor reads and advertising never establish the publisher.** *"Today's
+  episode is brought to you by…"*, *"thanks to <company> for supporting the
+  show"*, and the promotional passage that follows are about a third party who
+  paid for the slot. In a bare transcript the sponsor is often the *only*
+  organisation named — that is a trap, not evidence.
+
+### Channels and shows keep their name even when it looks like a handle
 
 The rule that a bare handle is not a *name* governs `contributors`, which holds
-people. It does not govern `publisher`. A channel called `dreadjordan` is still
-the channel that published the video, and a channel line in the text
-(`**Channel:** …`) states the publisher outright. Record it.
+people. It does not govern `publisher`. A channel whose name is a lowercase
+handle is still the channel that published the video, and a channel line in the
+text states it outright. Record it under rung 1.
+
+### When the byline names an organisation
+
+A byline slot sometimes holds an organisation rather than a person — a company
+account, a publication posting under its own name. **`contributors` is empty and
+that organisation is the `publisher`.** Never carry a byline into `contributors`
+without applying the person test to it; this is the single shape most likely to
+produce the org-in-a-person-field error this whole codebook exists to prevent.
 
 ### Platform versus venue, for papers and preprints
 
@@ -224,8 +311,13 @@ published or will publish it.
 - *"Accepted to"* a venue is **not** *"published at"* it. A paper announcing
   future acceptance is still published by the archive today.
 
+Record the publisher **as the text gives it**, without expanding abbreviations or
+adding legal suffixes.
+
 Give a verbatim `evidence` quote for the publisher too, on the same terms as for
-contributors.
+contributors. It is required whenever `publisher` is non-null, and it is checked
+against the body — publisher is the field with the weaker agreement between
+labellers, so it is the one that most needs a citation.
 
 ---
 
