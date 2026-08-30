@@ -8,6 +8,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.17] — 2026-08-30
+
+### Changed
+
+- **Triage keeps the page metadata it was already fetching and discarding.** The article path parsed a byline, date, site name, keywords and `og:type` off every page and kept only title + description; the arXiv path walked past the paper's authors and publication date. All now land in `enrichment_json`, with no new requests.
+
+- **arXiv enrichment returns data again.** `export.arxiv.org` 301s http to https; unfollowed, the empty redirect body parsed as an empty feed, so every paper enriched to nothing — invisibly, since empty is also a valid result.
+
+- **Dates are validated on capture.** A timestamp is stored as its `YYYY-MM-DD` day and an unparseable value is dropped, so consumers can call `date.fromisoformat` on the field directly.
+
+- **The `content_shape` classifier's prompt is pinned to the fields it already read.** It builds from whatever enrichment holds, so the newly kept fields would have silently entered it — and `content_shape` selects the extraction prompt bundle.
+
+---
+
 ## [0.36.16] — 2026-08-29
 
 ### Changed

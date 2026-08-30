@@ -1,12 +1,12 @@
-"""Best-effort URL → (redirected_url, title, description) for triage display.
+"""Best-effort URL → page metadata, from one HTTP GET parsed by trafilatura.
 
-Used by the `triaged` asset to seed Notion's Name (if user left it blank) and
-Description fields. Never raises — network errors, non-HTML responses, or
-missing tags collapse to an empty UrlMeta with redirected_url = input_url.
-Triage must not fail on enrichment.
+`title` / `description` seed Notion's Name and Description; the rest of what
+the same parse yields is kept as evidence for later stages. Never raises —
+any failure collapses to a UrlMeta holding only redirected_url = input_url.
 """
 
 from dataclasses import dataclass
+from datetime import datetime
 
 import httpx
 import trafilatura
@@ -37,6 +37,33 @@ class UrlMeta:
     redirected_url: str
     title: str | None
     description: str | None
+    author: str | None = None
+    date: str | None = None
+    sitename: str | None = None
+    categories: tuple[str, ...] = ()
+    tags: tuple[str, ...] = ()
+    pagetype: str | None = None
+
+
+def normalize_iso_day(value: str | None) -> str | None:
+    """Any ISO 8601 date or timestamp → its `YYYY-MM-DD` day; anything else →
+    None. Publishers and APIs claim many things are dates; dropping the
+    unparseable ones keeps a downstream `date.fromisoformat` safe."""
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.strip()).date().isoformat()
+    except ValueError:
+        return None
+
+
+def normalize_terms(values: object) -> tuple[str, ...]:
+    """Untrusted list of keyword strings → tuple, dropping blanks and
+    non-strings. Terms are kept verbatim: splitting a publisher's
+    comma-joined keyword string is a guess this layer can't make."""
+    if not isinstance(values, list):
+        return ()
+    return tuple(term for v in values if isinstance(v, str) and (term := v.strip()))
 
 
 def _normalize(value: str | None, *, max_chars: int | None = None) -> str | None:
@@ -75,4 +102,14 @@ def fetch_url_meta(url: str, *, timeout: float = _TIMEOUT_S) -> UrlMeta:
         getattr(metadata, "description", None) if metadata else None,
         max_chars=_DESCRIPTION_MAX_CHARS,
     )
-    return UrlMeta(redirected_url=redirected_url, title=title, description=description)
+    return UrlMeta(
+        redirected_url=redirected_url,
+        title=title,
+        description=description,
+        author=_normalize(getattr(metadata, "author", None) if metadata else None),
+        date=normalize_iso_day(getattr(metadata, "date", None) if metadata else None),
+        sitename=_normalize(getattr(metadata, "sitename", None) if metadata else None),
+        categories=normalize_terms(getattr(metadata, "categories", None) if metadata else None),
+        tags=normalize_terms(getattr(metadata, "tags", None) if metadata else None),
+        pagetype=_normalize(getattr(metadata, "pagetype", None) if metadata else None),
+    )
