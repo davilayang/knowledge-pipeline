@@ -369,7 +369,8 @@ def _damaged_fetch_message(damaged: list[dict]) -> str:
         "Refetch this item, or queue a source that carries the full text."
     ]
     for u in damaged:
-        lines.append(f"- {u['cause']}: {u['missing']} (text says: \"{u['evidence'][:200]}\")")
+        evidence = str(u.get("evidence") or "")[:200]
+        lines.append(f"- {u.get('cause')}: {u.get('missing')} (text says: \"{evidence}\")")
     return "\n".join(lines)
 
 
@@ -494,7 +495,10 @@ def extract_metadata(
             content_hash=row.get("content_hash"),
             inputs_sha=inputs_sha,
         )
-        store.checkpoint_wal()
+        try:
+            store.checkpoint_wal()
+        except Exception as exc:
+            context.log.warning("wal checkpoint failed for %s: %r", page_id, exc)
     except _DamagedFetch:
         pass
     except Exception as exc:

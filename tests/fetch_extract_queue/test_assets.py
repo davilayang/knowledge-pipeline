@@ -7,6 +7,7 @@ rows + updates queue_items cohort fields, published flips Notion only when
 extraction is complete and reads core_mechanism via the latest topic_card row."""
 
 import json
+import sqlite3
 from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -1446,6 +1447,10 @@ def test_extract_metadata_does_not_fail_on_a_major_that_no_refetch_would_fix(tmp
         )
 
     assert result.success
+    # Not failing is half the behaviour; the entry still has to be recorded, or
+    # a regression that dropped the write would pass this test.
+    row = store.get_row("p-1")
+    assert json.loads(row["unreadable_json"])[0]["cause"] == "unspeakable"
 
 
 def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_path: Path):
@@ -1486,3 +1491,48 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
     assert "the repository README" in exc.value.description
     # The second run re-read the verdict rather than paying for it again.
     assert call.call_count == 1
+
+
+def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trips(tmp_path: Path):
+    """The columns are already committed by the time the WAL is checkpointed, so
+    a busy-database hiccup there says nothing about whether the body was
+    readable. Routing it through the catch-all handler would return past the
+    gate and release the reading card onto navigation chrome — the one thing
+    this asset exists to stop."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+    from workflows.extraction.metadata import Unreadable
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload(
+        unreadable=[
+            Unreadable(
+                cause="chrome",
+                severity="major",
+                missing="the repository README",
+                evidence="There was an error while loading. Please reload this page",
+            )
+        ]
+    )
+    with (
+        patch(
+            "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+            return_value=(payload, _metadata_call(payload)),
+        ),
+        patch.object(
+            QueueStoreResource,
+            "checkpoint_wal",
+            side_effect=sqlite3.OperationalError("database is locked"),
+        ),
+    ):
+        with pytest.raises(dg.Failure) as exc:
+            _materialize(
+                extract_metadata,
+                partition_key="p-1",
+                resources={"extractor": extractor, "store": store},
+            )
+
+    assert "the repository README" in exc.value.description
