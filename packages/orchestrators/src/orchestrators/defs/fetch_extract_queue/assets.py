@@ -340,10 +340,9 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
 
 
 # The two causes that mean the text arrived damaged, and so the only two a
-# refetch can repair. `screen_reference` / `images` / `unspeakable` describe
-# material that was never text — a talk pointing at a slide, a paper referencing
-# a figure — so failing on them would fail the normal shape of those sources:
-# measured over the 227-body production corpus, 41% of rows, half of all YouTube.
+# refetch can repair. The others describe material that was never text — a talk
+# pointing at a slide, a paper referencing a figure — which is the normal shape
+# of those sources: failing on them would fail 41% of the production corpus.
 DAMAGED_CAUSES = frozenset({"chrome", "truncation"})
 
 
@@ -519,12 +518,11 @@ def extract_metadata(
         return
 
     if damaged:
-        # Outside the try above, deliberately: that block exists so a failed
-        # metadata *call* cannot gate the two extraction branches, and a call
-        # that failed cannot know whether the body was readable. This is the
-        # opposite case — the call succeeded and reported the body damaged.
-        # The columns are already written, so the failed row still shows what
-        # was missing.
+        # Outside the try deliberately: that block keeps a failed metadata *call*
+        # from gating the extraction branches, and a call that failed cannot know
+        # whether the body was readable. Here the call succeeded and reported the
+        # body damaged. The columns are already written, so the failed row still
+        # shows what was missing.
         raise dg.Failure(description=_damaged_fetch_message(damaged))
 
     yield dg.MaterializeResult(
