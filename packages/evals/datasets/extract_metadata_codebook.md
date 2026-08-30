@@ -72,8 +72,8 @@ Three tests, all of which must pass:
 | field | what to write |
 |---|---|
 | `name` | The person's name **as the text gives it**. Do not normalise, expand initials, correct spelling, or reorder to Western name order. |
-| `role` | One of: `presenter`, `guest`, `host`, `author`, `maintainer`, `poster`. Use `null` when the text does not make the role clear — do not infer it from the content type. |
-| `affiliation` | The organisation the text states they belong to — the institution or company, **not** the department, lab, or country. From "School of Computer Science, Example University, Germany" record `Example University`. Where a paper maps authors to affiliations by superscript number, resolve the number. `null` when the text states none. Do not supply one you happen to know. |
+| `role` | `presenter`, `guest`, `host`, `author`, `maintainer`, or `poster`. Take the role the text names ("I'm your host…"). Where it names none, read it off how the piece attributes them: a byline on written text is `author`, a post header on a social platform is `poster`, a named on-mic or on-camera speaker is `presenter`. Reserve `null` for a person whose relation to the piece the text genuinely leaves open — a second voice in a transcript who is never introduced. |
+| `affiliation` | The **largest organisation the text itself names** in that credit — the institution or company, not the department, lab, or country. From "School of Computer Science, Example University, Germany" record `Example University`. Never substitute a parent organisation the text does not name: if the credit says only a named school or division, record that; if it says only "the CS department", record `null`. Where a paper maps authors to affiliations by superscript number, resolve the number. Where a piece speaks in first-person-plural as an organisation, its named authors take that organisation. `null` when the text states none, and never one you happen to know. |
 | `evidence` | **A verbatim quote from the text** that shows this person made this piece. Copy it exactly, including any odd spacing. This is what makes the label checkable — a name without a supporting quote is not a label. |
 
 ### An empty list is frequently the correct answer
@@ -143,7 +143,7 @@ way a block points:
   on the page they appear, including at the very bottom next to share buttons.
 - **Furniture** — a block that points *away* from the piece: navigation, related
   articles, recommended reading, subscribe and cookie banners, sign-in prompts,
-  legal boilerplate, "Related jobs". Names appearing **only** there are not
+  legal boilerplate, an open-roles strip. Names appearing **only** there are not
   contributors.
 
 So a Medium footer reading "Written by <name>", sandwiched between Follow buttons
@@ -171,9 +171,15 @@ furniture.
 
 **Apply the handle test first.** If the site name reads as a handle or a bare
 domain rather than a human name, this exception does not apply at all:
-`contributors` is empty, the handle is the `publisher`, and you flag
+`contributors` is empty, `publisher` is `null`, and you flag
 `uncertain_person_or_org`. Only a name that reads as a person's reaches the
 exception above.
+
+Note this differs from a **channel line**, which states a publisher outright even
+when the channel's name is handle-shaped. A site simply being *titled* with a
+handle states nothing; a line naming the channel that carried the piece does. The
+flag routes the ambiguous case to a human, which is better than minting an
+organisation page named after a username or a domain.
 
 **Write the name as the text gives it.** Do not shorten a full name to a
 surname, expand initials, or reorder it. If the text says `Takeshi Yamamoto`,
@@ -230,42 +236,65 @@ bare platform, and most transcripts with no channel line have no publisher.
 
 The rungs are in order **because several of them can fire on the same document**,
 and the field takes one value. Do not skip to the rung you find most interesting.
+This ladder is the whole rule: nothing below it overrides a rung, and there is no
+sixth candidate hiding in the prose.
 
+0. **Two things are never the publisher, whatever else fires.** Check these
+   first and, if either applies, skip that candidate and keep descending:
+   a bare **platform** (Medium, Facebook, Substack, YouTube-the-website, a
+   personal domain), and a **person's own name that you have already recorded as
+   a contributor** — see "the same name twice" below.
 1. **A stated channel, show, publication or masthead.** A `**Channel:** …` line,
    a show name in the opening (*"welcome back to the <name> podcast"*), a named
-   publication a post appears under. This outranks everything below it, including
-   the maker's own employer.
-2. **A named venue, for papers.** See the papers rung below.
-3. **The organisation the piece speaks as** — see the next section.
-4. **The repository owner or project name, for code**, when it appears in the
-   repo heading or the prose. Not when it appears only inside a URL.
-5. **Otherwise `null`.**
+   publication a post appears under, or a site identity stated in its own
+   furniture — a masthead, a logo's alt text, or a copyright line naming an
+   organisation that recurs across the page. This outranks everything below it,
+   including the maker's own employer.
+2. **For a repository**, the owner as it appears in an `owner/repo` heading. Use
+   the project name only when no owner is shown. Not a name that appears only
+   inside a URL.
+3. **For a paper**, a stated venue — *"Published as a conference paper at
+   <VENUE>"*, or a copyright line assigning publication rights to a named
+   publisher. Failing that, **the archive the paper sits on** (a bare `arXiv:`
+   identifier means the publisher is `arXiv`). *"Accepted to"* a venue is **not**
+   *"published at"* it: a paper announcing future acceptance is published by the
+   archive today.
+4. **The organisation the piece speaks as** — see the next section.
+5. **Otherwise `null`.** This is a common and correct answer.
 
-**A speaker's employer is an `affiliation`, not a publisher.** A conference talk
-carried by a channel is published by the channel; the fact that the speaker says
-*"what we do at <their employer>"* puts that employer in their `affiliation`
-field and nowhere else. Rung 1 exists to settle exactly this case, which is the
-single most common collision in this corpus.
+**A speaker's employer reaches `publisher` only through rung 4.** A conference
+talk carried by a channel is published by the channel, and the speaker saying
+*"what we do at <their employer>"* puts that employer in `affiliation`. But where
+**no** rung above fires — a transcript with no channel line, a post on a
+company's own site — the organisation the piece speaks as *is* the publisher, and
+it may legitimately be both the publisher and the author's `affiliation`. The two
+fields answer different questions and are allowed to hold the same organisation.
 
 **A venue is not a publisher.** Where a talk happened, which university ran the
 course, which conference hosted the session — that is a location, not the entity
-that put the recording out. With no channel line and no publishing voice, a
-recorded lecture has `publisher: null` even when it plainly took place somewhere.
+that put the recording out, and it is not "speaking as" anything under rung 4.
+With no channel line and no publishing voice, a recorded lecture has
+`publisher: null` even when it plainly took place somewhere. (A paper's *venue*
+under rung 3 is different: a journal or conference that publishes proceedings is
+a publisher, a lecture theatre is not.)
 
-### Two things that are never the publisher
+**The same name twice.** When the channel, publication, or site name is identical
+to a person you have already recorded in `contributors`, `publisher` is `null`.
+A self-published piece has one human behind it, and recording that human as both
+a person and an organisation mints two wiki entities for one entity — the exact
+class confusion this codebook exists to prevent. This covers a personal blog
+titled with its owner's name, a Substack under a person's name, and a video
+channel named after its presenter, all of which are the same shape.
 
-- **A bare platform.** Medium, Facebook, Substack, YouTube-the-website, a
-  personal domain. These are infrastructure. Where a piece appears under **both**
-  a platform and a named publication, take the publication; where the platform is
-  the only candidate, the answer is `null`. (Papers are the one exception — see
-  the papers rung.)
-- **A person's own name, as a self-published byline.** The person is already in
-  `contributors`; repeating them in `publisher` mints a false organisation entity.
-  Note this does *not* apply when a **named channel or show** happens to carry a
-  person's name — a channel is a distributor, so it goes in `publisher` under
-  rung 1 even if it is named after its presenter.
+### On the platform exclusion at rung 0
 
-### Writing *as* an organisation counts as naming it — rung 3
+A platform is infrastructure, not a publisher. Where a piece appears under
+**both** a platform and a named publication, the publication is what rung 1
+finds; where the platform is the only candidate, keep descending and the answer
+is `null`. A paper's archive is the one thing that looks like a platform and is
+not one — rung 3 covers it explicitly.
+
+### Writing *as* an organisation counts as naming it — rung 4
 
 A piece written from inside a company often never says "published by X" — it
 simply speaks as X: *"we shipped this to our own warehouse first"*, *"our
@@ -289,30 +318,30 @@ Two exclusions, both of which produce wrong publishers otherwise:
 The rule that a bare handle is not a *name* governs `contributors`, which holds
 people. It does not govern `publisher`. A channel whose name is a lowercase
 handle is still the channel that published the video, and a channel line in the
-text states it outright. Record it under rung 1.
+text states it outright. Record it under rung 1, and **do not flag it** — a
+handle in a channel line is a publisher stated outright, not an ambiguous
+attribution. Flag a handle only when it is the sole candidate for a *person*.
 
 ### When the byline names an organisation
 
 A byline slot sometimes holds an organisation rather than a person — a company
-account, a publication posting under its own name. **`contributors` is empty and
-that organisation is the `publisher`.** Never carry a byline into `contributors`
-without applying the person test to it; this is the single shape most likely to
-produce the org-in-a-person-field error this whole codebook exists to prevent.
+account, a publication posting under its own name. **That organisation is the
+`publisher`, and it does not go in `contributors`.** Never carry a byline into
+`contributors` without applying the person test to it; this is the single shape
+most likely to produce the org-in-a-person-field error this whole codebook exists
+to prevent.
 
-### Platform versus venue, for papers and preprints
+This does not empty `contributors` on its own. If the body also names a human who
+wrote the piece, that person is still a contributor — an organisation in the
+byline slot and a person named in the text are two facts, not a contradiction.
 
-A paper carries two candidates: the archive hosting the file, and the venue that
-published or will publish it.
+### Recording the publisher's name
 
-- A **stated venue wins**: *"Published as a conference paper at ICLR 2026"*, or a
-  copyright line assigning publication rights to a named publisher.
-- **Otherwise the archive is the publisher** — a bare `arXiv:` identifier with no
-  venue named means the publisher is `arXiv`.
-- *"Accepted to"* a venue is **not** *"published at"* it. A paper announcing
-  future acceptance is still published by the archive today.
-
-Record the publisher **as the text gives it**, without expanding abbreviations or
-adding legal suffixes.
+Record it **as the text gives it**, without expanding abbreviations or adding
+legal suffixes — but where the text renders it more than one way, prefer the
+prose rendering over a URL slug or a heading slug, and **drop a year or edition
+number from a venue name**. A venue is one durable entity; recording its year
+mints a fresh organisation page annually.
 
 Give a verbatim `evidence` quote for the publisher too, on the same terms as for
 contributors. It is required whenever `publisher` is non-null, and it is checked

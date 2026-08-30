@@ -457,10 +457,10 @@ weighted toward the failure region rather than matching production proportions:
 | youtube | 18 | the person is in the title in four incompatible separator formats, or named only in the speech |
 | medium | 12 | the `author` **column** is empty on all 56 production rows; the body sometimes still carries the byline |
 | article | 10 | one body can carry a platform byline, a different real author, and a publisher |
-| facebook | 6 | the control arm's win region — the fetcher prepends the poster's name |
+| facebook | 6 | the control arm's best lane — the fetcher prepends the poster's name, populating `author_column` on 4 of these 6 |
 | arxiv | 6 | author lists are comma-flattened and frequently multi-person |
 | file_audio | 3 | all of production — the worst-served lane |
-| github | 3 | all of production — fetched as navigation chrome, so an empty list is the right answer |
+| github | 3 | all of production — heavy site chrome, and an empty contributor list is right on 2 of the 3 |
 
 **Labels.** Authored blind: labellers saw only the `[content_type: ...]` tag and the body — the same
 input the prompt gets. The stored `author`, `title` and `enrichment_json` were **withheld**, because
@@ -490,8 +490,12 @@ Agreement between the two families, over all 58 items:
 | | |
 |---|---|
 | contributor-set exact match | **56/58 (97%)** |
-| contributor-name Jaccard | 0.97 |
+| contributor-name Jaccard, mean per item | 0.97 |
 | publisher exact match | **47/58 (81%)** |
+
+(Jaccard is the mean of per-item scores. Pooled across all names it is 0.93 — stated because this
+section tells a scorer to say which averaging convention it used, and the same obligation applies
+here. These figures are between the two labellers and are unaffected by later gold corrections.)
 
 **The 97% is the load-bearing number, and it is the premise of this dataset.** `contributors` was
 carved out as gateable — while the structural delivery-shape label was dropped — on the claim that
@@ -525,7 +529,9 @@ the two cannot be conflated.
   items are among the hardest in the corpus, so their agreement is inflated and their labels are the
   codebook author's read rather than an independent one. Every example in the codebook has since been
   replaced with an invented one, but the two affected rows were labelled before that: treat `gh_01`
-  and `art_02` as weaker evidence than their `cross_family_agreed` status suggests.
+  (`human_adjudicated`) and `art_02` (`cross_family_agreed`) as weaker evidence than their status
+  suggests. A third leak, a venue string that was also one row's exact publisher evidence, was found
+  later and removed — `arx_04` carries the same caveat.
 - *The gold encodes rules the prompt has never been told.* The codebook now carries a publisher
   precedence ladder, a sponsor-read exclusion, a personal-site rule and a platform-versus-venue rule.
   `metadata_v1`'s entire publisher instruction is *"Null when the text does not make it clear — a bare
@@ -538,8 +544,8 @@ Per-row `gold_source` says exactly how far each label was corroborated, and it m
 
 | value | rows | meaning |
 |---|---|---|
-| `cross_family_agreed` | 45 | both families produced the same contributor set and publisher, and both labels' evidence quotes verify |
-| `human_adjudicated` | 12 | the two families differed and a human decided, against a rule now written into the codebook — `adjudication_note` names the rule |
+| `cross_family_agreed` | 44 | both families produced the same contributor set and publisher, and both labels' evidence quotes verify |
+| `human_adjudicated` | 13 | a human decided the value against a rule now written into the codebook — `adjudication_note` names the rule. Twelve of these were genuine cross-family disagreements; one (`arx_04`) is a naming normalisation applied to an answer both families agreed on |
 | `single_labelled` | 1 | the cross-family label was discarded because one of its evidence quotes was not found in the body, leaving only the primary label |
 
 That last row is `art_01`, and it is worth noting as a live example of why the evidence check exists:
@@ -567,16 +573,15 @@ added at `gold_version` 2 in response to what the disputes exposed:
 - **Platform versus venue for papers.** A stated venue wins; otherwise the archive is the publisher;
   and *"accepted to"* is not *"published at"*.
 
-**Eight distinct rules settled the twelve rows, not three.** The three above were *new*; they account
-for 7 of the 12. The rest were settled by rules the codebook already carried — the repository owner
+**More rules were involved than the three new ones**, which between them account for 7 of the
+adjudicated rows. The rest were settled by rules the codebook already carried — the repository owner
 for code, a publication named outright, a stated channel line, preferring a named publication over a
-copyright-holding parent company, and writing a name as the text gives it rather than shortening it
-to a surname. Each row's `adjudication_note` names its own rule; that field is the authority, not
-this summary.
+copyright-holding parent company, writing a name as the text gives it rather than shortening it to a
+surname, the venue-is-not-a-publisher rule, and the publisher-naming rule that drops an edition year.
 
-Counting the same twelve by which rule decided them: organisational voice 4, platform-versus-venue 2,
-and one each for repository owner, publication named outright, channel line, named-publication-over-
-parent-company plus name form, the personal-site exception, and the venue-is-not-a-publisher rule.
+**Read `adjudication_note` per row rather than any summary count here.** That field is the authority.
+An earlier revision of this section quoted a total, got it wrong twice as rules were added, and the
+count is not worth maintaining — every row carries its own reason and they are individually checkable.
 
 That last row is `yt_02`, and it is the clearest illustration of why the rule-not-ruling discipline
 matters. At `gold_version` 2 it was given the publisher `Stanford`, on the reasoning that a
@@ -604,28 +609,34 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   author list", a lane where every arm does well. Macro (per-item, then mean) and micro will diverge;
   choosing silently yields two different headline numbers from one run.
 - **Give the empty cases their own cell, not a precision denominator.** 16 rows have an empty gold
-  contributor list and 22 have a null gold publisher. Empty-versus-empty is 0/0 — report a
+  contributor list and 23 have a null gold publisher. Empty-versus-empty is 0/0 — report a
   **correct-empty rate** over those rows instead of folding them into precision, and say which
   convention you used. This matters because org-as-person shows up precisely as a non-empty answer
   on those rows.
-- **`group_id` is derived from the gold label — never pass it to an arm.** It is the clustering key,
-  not a feature: 7 of the 18 youtube rows share `AI Engineer`, so getting that one publisher right
-  wins 7 rows at once. A confidence interval computed over 58 independent items is too tight;
-  cluster on `group_id`.
+- **`group_id` is derived from the labels — never pass it to an arm.** It is `deterministic_publisher
+  or gold_publisher`, falling back to a per-row sentinel, so on three rows (`gh_02`, `gh_03`, `yt_09`)
+  it differs from `gold_publisher`. It is the clustering key, not a feature: 7 of the 18 youtube rows
+  share `AI Engineer`, so getting that one publisher right wins 7 rows at once. A confidence interval
+  computed over 58 independent items is too tight; cluster on `group_id`. Note the derivation means
+  `gh_02` sits in its own cluster despite sharing a gold publisher with two article rows.
 - **Do not grade `role` or `affiliation`.** All 72 gold contributors carry a non-null role, but the
   codebook permits null and the model's schema defaults to it — so scoring role as equality penalises
   a correct null and rewards a guess. The zero-null distribution also suggests labellers inferred
   role from the lane. Report these, do not grade them, until that is fixed.
 - **The organisation-as-person split is not mechanically computable from this file**, despite being
   the primary axis. Classifying a false-positive name as *organisation* versus *wrong person* needs a
-  judge or a human pass; 7 rows carry no organisation string at all, four of them correctly-empty
-  rows where the error is most likely. Do not report it as a mechanical metric.
-- **All 58 rows are scorable at `gold_version` 3.** No row is `disputed_unresolved`. If a future
+  judge or a human pass; 7 rows carry no organisation string anywhere in their label — no publisher,
+  no affiliation, no contributor — and **all seven** are correctly-empty rows, which is exactly where
+  an organisation-as-person error is most likely. Do not report it as a mechanical metric.
+- **All 58 rows are scorable at `gold_version` 4.** No row is `disputed_unresolved`. If a future
   round reopens a label, that value returns and those rows must be excluded — check for it rather
   than assuming the set is always fully usable.
-- **The 12 `human_adjudicated` rows are gold, but they are the softest gold here.** They are where
+- **The 13 `human_adjudicated` rows are gold, but they are the softest gold here.** Twelve are where
   two model families read the same text differently, so they are the rows most likely to move if the
   codebook changes. When an arm loses on one of them, read the case before believing the score.
+- **`adjudication_note` is populated on 14 rows, not 13.** The extra one is `art_01`, whose note
+  records why its cross-family label was discarded. Key on `gold_source`, not on the presence of a
+  note.
 - **Report per-stratum, never aggregate alone.** `github` and `file_audio` hold 3 rows each — those
   lanes support a read-the-cases verdict and never a percentage. A rate quoted off three items is
   noise wearing a number's clothes.
@@ -636,12 +647,15 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
   and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
   model).
-- **Exclude the two rows the `unreadable` gate rejects.** `gh_01` and `gh_02` both fetched as
-  GitHub's error page — their bodies contain the literal failure string the gate raises on — so in
-  production those items fail before `publish_item` and never yield a contributors/publisher value at
-  all. Scoring a prompt on them measures output the pipeline discards. `expected_unreadable_gate_reject`
-  marks them. This leaves the `github` stratum with **one** gate-survivable row, so that lane cannot
-  carry even a read-the-cases verdict on its own any more.
+- **Treat the two `expected_unreadable_gate_reject` rows with care.** `gh_01` and `gh_02` both carry
+  GitHub's signed-out failure text, which is what the gate added alongside this work is meant to catch;
+  in production such an item fails before `publish_item` and never yields a contributors/publisher
+  value, so scoring a prompt on it measures output the pipeline discards. **The flag is an
+  expectation, not a guarantee** — the gate reads the model's own `unreadable` output rather than
+  matching a string, so it may not fire. And the two rows are not alike: `gh_01` is 25k of pure
+  navigation chrome with no article in it, while `gh_02` carries the complete article and is merely
+  *wrapped* in chrome, so a model applying the refetch test could reasonably pass it. Check the rows
+  before excluding them, and if both are excluded the `github` stratum drops to one row.
 - **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
   `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
   slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where
@@ -671,7 +685,14 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   cross-family disputes; **3** corrected one publisher label (`yt_02`, which had been settled on an
   argument never written into the codebook and was inconsistent with three sibling rows carrying the
   same evidence shape), carried the publisher evidence quote into every row, and removed the
-  `[content_type: …]` tag that earlier revisions had left prepended to `body`.
+  `[content_type: …]` tag that earlier revisions had left prepended to `body`; **4** brought two
+  labels into line with codebook rules written after they were made — a venue publisher recorded
+  without its edition year, and affiliations stripped of their trailing country.
+
+  Both changes at 4 are normalisations of answers the labellers agreed on, not new judgements. That
+  pattern is worth watching: every time a rule is added after labelling, some existing label may stop
+  obeying its own codebook, and the set has to be re-checked against it rather than assumed still
+  valid.
 - Bodies are **inlined** (1.5 MB) rather than referenced. The only other copy lives in
   `data/shapestudy/`, which is gitignored, laptop-only and unbacked-up; a pointer-based set would
   not survive the laptop.
