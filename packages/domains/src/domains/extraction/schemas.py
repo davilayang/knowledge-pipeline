@@ -103,11 +103,9 @@ class Followups(BaseModel):
     )
 
 
-# Every narrative field is prose the voice agent reads aloud, so a blank one is
-# worse than a missing one: it renders as a section header with nothing under it,
-# and the agent reads that as a source with nothing to say rather than as a
-# failed extraction. `min_length` counts characters and "   " is three of them,
-# so stripping first is what makes the constraint mean "not blank".
+# A blank field renders as a header with nothing under it, which the agent reads
+# as a source with nothing to say rather than a failed extraction. `min_length`
+# counts characters and "   " is three, so the strip is what means "not blank".
 NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
@@ -119,9 +117,9 @@ class Narrative(BaseModel):
     Rendered back to headed text by `domains.extraction.render.render_narrative`
     for the voice agent, which reads prose rather than json.
 
-    Each field's `title` IS the header the renderer emits and the model is asked
-    for, so the two can never drift apart. `schema_block()` dumps the titles into
-    the prompt's task tail, which is how the model learns them."""
+    Each field's `title` is the header the renderer emits, and `schema_block()`
+    dumps the titles into the prompt's task tail, so the model is asked for the
+    same names the renderer writes."""
 
     salient_threads: list[NarrativeProse] = Field(
         title="Salient threads",

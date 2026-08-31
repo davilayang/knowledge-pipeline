@@ -327,27 +327,22 @@ class ThreeCallOpenAIExtractor:
                 # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"{call_kind}: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
-                # Checked before the empty-reply path below: a reasoning model can
-                # spend the whole budget on thinking and return nothing, which is
-                # truncation rather than the transient empty reply, and retrying it
-                # burns another full budget before reporting the wrong fault.
+                # Before the empty-reply path: a reasoning model can spend the
+                # whole budget thinking and return nothing, and retrying that
+                # burns another budget before reporting the wrong fault. Storing
+                # it is worse — a cut-short reply carries no marker saying so.
                 raise RuntimeError(
-                    f"{call_kind}: the reply hit the {self._max_tokens}-token "
-                    f"completion ceiling on this {content_type} item and was cut "
-                    "off. Nothing was stored — a cut-short reply carries no marker "
-                    "saying so, and the voice agent would read it out as complete. "
-                    "On a reasoning model the ceiling covers thinking tokens as "
-                    f"well as the reply, so the {tokens_out} spent here is not the "
-                    "reply's length. Re-asking under the same ceiling truncates "
-                    "again, so a maintainer has to raise it or shorten the prompt."
+                    f"{call_kind}: hit the {self._max_tokens}-token completion "
+                    f"ceiling on this {content_type} item. Nothing was stored. The "
+                    f"ceiling covers thinking tokens, so the {tokens_out} spent is "
+                    "not the reply's length; a maintainer has to raise it or "
+                    "shorten the prompt."
                 )
             try:
                 body = (resp.choices[0].message.content or "").strip()
                 if not body:
-                    # Named rather than left to json.loads, whose "Expecting value:
-                    # line 1 column 1" is the message an operator would otherwise
-                    # read in the failed row. Observed as transient on this API, so
-                    # it goes through the retry rather than failing the item.
+                    # Named, or the failed row reads "Expecting value: line 1
+                    # column 1". Transient on this API, so it retries.
                     raise ValueError("the model returned an empty reply")
                 parsed = validate_strict(schema, body)
                 break
@@ -355,9 +350,8 @@ class ThreeCallOpenAIExtractor:
             # JSON, and the undeclared-field rejection.
             except ValueError as exc:
                 if attempt == _MAX_STRUCTURED_ATTEMPTS - 1:
-                    # Re-raising the bare ValueError puts a pydantic or json-decoder
-                    # message in the failed row, which names our data model rather
-                    # than what went wrong and leaves the reader no next step.
+                    # A bare ValueError puts a pydantic/json message in the
+                    # failed row: names our data model, offers no next step.
                     raise RuntimeError(
                         f"{call_kind}: no reply matched the schema on any of "
                         f"{_MAX_STRUCTURED_ATTEMPTS} attempts for this "

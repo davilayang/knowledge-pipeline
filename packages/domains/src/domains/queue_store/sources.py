@@ -13,23 +13,18 @@ inside the ``_SCHEMA`` block below:
   ``model``) + usage (``tokens_in/out``, ``cached_tokens``, ``duration_ms``)
   + the ``node_metadata`` JSON slot for future LangGraph nodes.
 
-**Three assets write ``extraction_calls``, not one**, so ``call_kind`` spans
-six values: ``narrative`` / ``topic_card`` / ``followups`` from the three-call
-extractor, ``extract_claims`` / ``extract_entities`` from the attributed-lane
-assets, and ``metadata`` from ``extract_metadata``. Two consequences worth
-stating because both are easy to get wrong:
+**Three assets write ``extraction_calls``, not one.** ``call_kind`` spans six
+values: ``narrative`` / ``topic_card`` / ``followups`` from the three-call
+extractor, ``extract_claims`` / ``extract_entities`` from the attributed lane,
+``metadata`` from ``extract_metadata``. So there is no single row per page — a
+reader must filter by ``call_kind`` — and ``queue_items.tokens_in/out_total``
+cover the three-call cohort only, which a ``SUM`` over this table does not
+reproduce.
 
-- ``queue_items.tokens_in/out_total`` cover the **three-call cohort only**.
-  ``SUM(tokens_in)`` over this table is a larger, different number — it sweeps
-  in the claims / entities / metadata calls. Reconstructing the totals means
-  filtering to the three cohort kinds and taking the latest row per kind.
-- A reader after "the" output for a page must filter by ``call_kind``. There is
-  no single row per page.
-
-``output`` is ``model_dump_json()`` wherever ``schema_name`` is set, and plain
-text where it is NULL. Only the narrative was ever stored as text, and only
-before it moved to a schema; ``schema_name`` is how a reader — including
-newsletter-assistant, across the repo boundary — tells the two apart.
+``output`` is ``model_dump_json()`` where ``schema_name`` is set and plain text
+where it is NULL. Only the narrative was ever text, and only before it moved to
+a schema; ``schema_name`` is how any reader, newsletter-assistant included,
+tells the two apart.
 
 Multiple rows per ``(notion_page_id, call_kind)`` are allowed — future
 LangGraph refinement loops accumulate history; readers take the most-recent

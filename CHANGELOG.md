@@ -6,21 +6,20 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.21] — 2026-08-31
+
 ### Changed
 
-- **The narrative extraction call now shares the article's prompt cache with the other two, so an article is billed once per extraction instead of twice.** It used to send markdown with no `response_format` and lead with its own prompt file, which put it in a cache partition of its own — OpenAI matches a prefix front-to-back and partitions by `response_format`, so neither the narrative nor the topic card could read the article the other had just paid for. The narrative now returns one field per section (`Narrative`) through the same shared-prefix path as `TopicCard` and `Followups`, and is rendered back to the same headed text for the voice agent. Measured on a 5,028-token article: `topic_card` and `followups` each read 4,864 cached tokens where `topic_card` previously read none.
-- **`extraction_calls` rows now have one shape across all three calls.** The narrative row stored raw markdown with a null `schema_name`; it now stores `model_dump_json()` and names its schema, like its siblings. `schema_name` is the discriminator a reader uses to tell the two formats apart — it is null on every row written before this change, so old rows stay readable without a backfill.
-- **A structured call that gives up now says what happened.** All three re-raised the bare pydantic or json-decoder error, which named our data model rather than the fault and left no next step in the failed row. They now name the call, the content type, the attempt count, the last rejection, and what to retry. An empty reply is also called an empty reply rather than surfacing as `Expecting value: line 1 column 1`.
-- **A truncated reply names the ceiling it hit, the item, and who can act.** Previously only the narrative carried that explanation; `topic_card` and `followups` got a one-line message. All three now share it, including the caveat that on a reasoning model the spent-token count is not the reply's length.
-
-- **Dropped four indexes on `queue.db` that no query uses.** `idx_extraction_calls_page(notion_page_id)` and `idx_extraction_calls_call_kind(call_kind)` each duplicate the leading column of a composite index that already exists, and SQLite reads a composite from its leading column — so they were write cost with no read. `idx_queue_items_content_type` and `idx_queue_items_extractor_label` index columns nothing filters or orders by; both appear only in SELECT lists. `create_schema` drops them on bring-up, since `CREATE INDEX IF NOT EXISTS` cannot remove what an older deploy created. The five remaining indexes each serve a live query.
-- **Documented that three assets write `extraction_calls`, not one.** The `call_kind` column comment listed only `narrative` / `topic_card` / `followups`; production also holds `extract_claims` and `extract_entities` rows (223 each, against 225 per cohort kind) and the schema reserves `metadata`. The omission actively misleads: `queue_items.tokens_in_total` covers the three-call cohort only, so `SUM(tokens_in)` over the table is a larger and different number — measured against production, 221 of 223 rows "disagree" with a naive SUM and 3 with the correctly-scoped one. Both facts are now in the module docstring, along with the rule that `schema_name` is what distinguishes a json `output` from a plain-text one across the repo boundary.
+- **The narrative extraction call now shares the article's prompt cache with the topic-card and follow-ups calls, so an article is billed once per extraction instead of twice.** It returns one field per section through the same shared-prefix path; a standalone markdown prompt could never match the others' cache prefix.
+- **`extraction_calls` rows are uniform across the three calls.** The narrative row stores `model_dump_json()` and names its schema, where it stored raw markdown with a null `schema_name`. Readers tell the two shapes apart by that column.
+- **A failed structured call now names the call, item, attempt count and last rejection**, instead of surfacing a bare pydantic or JSON-decoder error. All three calls share the truncation message that was previously narrative-only.
+- **Dropped four unused `queue.db` indexes** — two redundant with existing composites, two on columns nothing filters or orders by. `create_schema` removes them from databases that already have them.
 
 ### Added
 
-- `domains.extraction.schemas.Narrative` — the narrative's sections as one field each. Every field is stripped and rejected when blank: `min_length` counts characters, so `"   "` would otherwise validate and render as a section header with nothing under it, which the voice agent reads as a source that had nothing to say rather than as a failed extraction. The markdown path caught this by stripping the whole completion; the schema has to do it per field.
-- `domains.extraction.render.render_narrative` — turns a `Narrative` back into headed text, walking the model's fields in order and taking each header from the field's `title`. It holds no list of section names, so adding a section is a model edit and nothing else.
-- `prompts/extraction/narrative_v2.md` — `narrative_v2`'s three sections and rules word for word, in a json container. Held fixed deliberately: the coverage gold can only attribute a change to the container if the instructions do not move at the same time.
+- **`domains.extraction.schemas.Narrative` and `domains.extraction.render.render_narrative`** — the narrative's sections as typed fields, plus the renderer that turns them back into the headed text the voice agent reads. Blank fields are rejected rather than rendered as empty headers.
 
 ---
 
