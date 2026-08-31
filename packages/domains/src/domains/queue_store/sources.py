@@ -88,7 +88,7 @@ CREATE TABLE IF NOT EXISTS extraction_calls (
     prompt_label      TEXT NOT NULL,                      -- e.g. "topic_card_v1"
     prompt_sha256     TEXT NOT NULL,                      -- per-call staleness
     prompt_set_shape  TEXT,                               -- bundle shape; NULL→"unknown"
-    schema_name       TEXT,                               -- "TopicCard"/"Followups"/NULL
+    schema_name       TEXT,                               -- pydantic model name, or NULL
     model             TEXT NOT NULL,                      -- per-call model
     output            TEXT NOT NULL,                      -- markdown or pydantic-JSON
     tokens_in         INTEGER NOT NULL,
