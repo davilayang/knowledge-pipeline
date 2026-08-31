@@ -75,7 +75,7 @@ What fails the test, in the shapes that recur:
 - **Handles, usernames and URL slugs.** A login name, an @-handle, a repository account, a name sitting inside a link. Record a person only when the text gives something that reads as a human name.
 - **Never expand a handle or slug into a name.** If the only trace of someone is `example.com` or `@some.person`, you do not know their name — you would be inventing one. Do not write a spaced, capitalised human name that does not appear in the text.
 - **Automated accounts.** Bots and CI accounts, however they are listed.
-- **Placeholders.** Never write "unknown", "(unknown)", "unknown author", "n/a" or anything similar into a name field. If nobody is named, the answer is the empty list.
+- **A stand-in for a name is not a name.** Where the text names nobody, the answer is the empty list — that is the whole answer, and it needs no filler in it.
 
 How to find the ones that do pass:
 
@@ -94,7 +94,7 @@ Report the **masthead, not the address**: the named publication, show, channel o
 
 - The site a piece is hosted on is not, by itself, its publisher. Where the piece runs under a named publication, show or channel, give that name. Where the only candidate is the website or domain hosting it, there is no publisher to report and the answer is null.
 - A self-published piece by an individual is null, not the person's name repeated — they are already in contributors.
-- Give the value alone, as the text gives it. Not a URL or domain, not a parenthetical, not two candidates joined by a slash, not an explanation of your reasoning.
+- Give the publication's name exactly as the text spells it, and nothing else — one name, no qualifier, no address, no reasoning.
 - Null when the text does not identify one. **This is common — roughly two in five pieces have no publisher to report**, and reporting one anyway is worse than reporting none. A personal post, a blog post running under nobody's masthead, a transcript naming no channel: all null. Do not fill the field because it is there.
 
 UNREADABLE — substance the text refers to but does not contain

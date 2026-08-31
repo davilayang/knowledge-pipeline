@@ -57,15 +57,17 @@ class Contributor(BaseModel):
     )
 
 
+# Nested-model docstrings and field descriptions survive into the generated
+# schema's `$defs`, which is appended after the prompt body — the last thing the
+# model reads before answering. Two consequences, both learned the hard way.
+# Nothing here may contradict the prompt: an earlier revision described severity
+# by the superseded unverifiable-claim test, which reinstated it from the
+# strongest position in the message and cost the calibration the prompt exists to
+# apply. And nothing here should spend that position on repo history — a note
+# explaining what a rule replaced is text the model must read and reconcile, so
+# it belongs in a comment like this one rather than in a docstring.
 class Unreadable(BaseModel):
-    """One piece of substance the fetched text references but does not contain.
-
-    These descriptions are appended to the prompt and are the last thing the
-    model reads before answering, so they must agree with it. An earlier version
-    described severity as "does a claim become unverifiable" — the reading that
-    called 41% of production bodies major, against 1.8% for the refetch reading
-    the prompt now uses. Stating the superseded test here reinstated it from the
-    strongest position in the message."""
+    """One piece of substance the fetched text references but does not contain."""
 
     cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
         description=(
