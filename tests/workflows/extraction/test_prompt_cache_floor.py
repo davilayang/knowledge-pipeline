@@ -31,6 +31,13 @@ on that cut rather than letting it ship a prompt that silently never caches.
 Counting the prompt body alone under-counts the rendered prefix, which also
 carries message framing, so a body over the threshold guarantees a rendered
 prefix over it.
+
+This whole rule is contingent on the narrative call leading with its prompt. If
+it is ever moved onto the same shared prefix `topic_card` and `followups` use --
+`shared_prefix.structured_messages` plus the same `{"type": "json_object"}`
+response format, which is what puts those two in one cache partition -- then the
+article becomes the cached prefix, the prompt moves to the task tail where its
+length no longer matters, and this test should be deleted rather than updated.
 """
 
 import tiktoken
