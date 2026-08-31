@@ -17,7 +17,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 - `domains.extraction.schemas.Narrative` — the narrative's sections as one field each. Every field is stripped and rejected when blank: `min_length` counts characters, so `"   "` would otherwise validate and render as a section header with nothing under it, which the voice agent reads as a source that had nothing to say rather than as a failed extraction. The markdown path caught this by stripping the whole completion; the schema has to do it per field.
 - `domains.extraction.render.render_narrative` — turns a `Narrative` back into headed text, walking the model's fields in order and taking each header from the field's `title`. It holds no list of section names, so adding a section is a model edit and nothing else.
-- `prompts/extraction/narrative_v2_json.md` — `narrative_v2`'s three sections and rules word for word, in a json container. Held fixed deliberately: the coverage gold can only attribute a change to the container if the instructions do not move at the same time.
+- `prompts/extraction/narrative_v2.md` — `narrative_v2`'s three sections and rules word for word, in a json container. Held fixed deliberately: the coverage gold can only attribute a change to the container if the instructions do not move at the same time.
 
 ---
 

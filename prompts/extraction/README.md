@@ -18,7 +18,7 @@ Prompt assets consumed by `workflows.extraction`. Each file has its own header e
 
 | Label (`def_config.py`) | File | Call |
 |---|---|---|
-| `PROMPT_LABEL_NARRATIVE = "narrative_v2_json"` | `narrative_v2_json.md` | 1 — structured `Narrative`, JSON mode (writes the shared article prefix the other two read) |
+| `PROMPT_LABEL_NARRATIVE = "narrative_v2"` | `narrative_v2.md` | 1 — structured `Narrative`, JSON mode (writes the shared article prefix the other two read) |
 | `PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"` | `topic_card_v1.md` | 2 — structured `TopicCard`, JSON mode |
 | `PROMPT_LABEL_FOLLOWUPS = "followups_v1"` | `followups_v1.md` | 3 — structured `Followups`, JSON mode |
 
@@ -34,8 +34,7 @@ Also active in production, but read directly via `read_extraction_prompt` rather
 
 | File | Notes |
 |---|---|
-| `narrative_v3.md` | **Candidate, not yet active, and still written for the old markdown container.** Carries `narrative_v2`'s three sections plus four delivery-layer sections (speakers, structure, load-bearing subset, ordered beats) and an explicit output-language rule. Activating it now means porting it the way `narrative_v2_json.md` was ported: the four extra sections become four more fields on `Narrative`, and its verbatim-header output block is dropped. |
-| `narrative_v2.md` | Superseded by `narrative_v2_json.md` — same three sections and the same rules, in a markdown container that could not share the article's prompt cache. Kept as the eval baseline the json port is measured against. |
+| `narrative_v3.md` | **Candidate, not yet active, and still written for the old markdown container.** Carries `narrative_v2`'s three sections plus four delivery-layer sections (speakers, structure, load-bearing subset, ordered beats) and an explicit output-language rule. Activating it now means porting it the way `narrative_v2.md` was: the four extra sections become four more fields on `Narrative`, and its verbatim-header output block is dropped. |
 | `narrative_v1.md` | Superseded by `narrative_v2.md` (fixed-section basket, replaced by threads-first coverage) — kept as reference / eval baseline. |
 | `v5_article_kp_copy_2026_05_31.md` | Original single-shot v5 prompt (Article path) — kept as reference / future eval variant input. |
 | `v5_arxiv_kp_copy_2026_06_01.md` | Same, arXiv path. |

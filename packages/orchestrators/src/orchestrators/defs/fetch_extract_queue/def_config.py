@@ -33,7 +33,7 @@ SUPPORTED_CONTENT_TYPES: tuple[str, ...] = (
 # per-deployment: dev and prod ship the same prompt until somebody bumps
 # the version here. Same pattern as the `_DAG_VERSION` constants in
 # orchestrators/config.py — manual bump on a prompt-shape change.
-PROMPT_LABEL_NARRATIVE = "narrative_v2_json"
+PROMPT_LABEL_NARRATIVE = "narrative_v2"
 PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"
 PROMPT_LABEL_FOLLOWUPS = "followups_v1"
 PROMPT_LABEL_METADATA = "metadata_v1"

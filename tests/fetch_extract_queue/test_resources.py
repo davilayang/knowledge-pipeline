@@ -309,7 +309,7 @@ def test_extractor_uses_real_prompt_labels():
         PROMPT_LABEL_TOPIC_CARD,
     )
 
-    assert PROMPT_LABEL_NARRATIVE == "narrative_v2_json"
+    assert PROMPT_LABEL_NARRATIVE == "narrative_v2"
     assert PROMPT_LABEL_TOPIC_CARD == "topic_card_v1"
     assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
 
