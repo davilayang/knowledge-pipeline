@@ -13,6 +13,24 @@ inside the ``_SCHEMA`` block below:
   ``model``) + usage (``tokens_in/out``, ``cached_tokens``, ``duration_ms``)
   + the ``node_metadata`` JSON slot for future LangGraph nodes.
 
+**Three assets write ``extraction_calls``, not one**, so ``call_kind`` spans
+six values: ``narrative`` / ``topic_card`` / ``followups`` from the three-call
+extractor, ``extract_claims`` / ``extract_entities`` from the attributed-lane
+assets, and ``metadata`` from ``extract_metadata``. Two consequences worth
+stating because both are easy to get wrong:
+
+- ``queue_items.tokens_in/out_total`` cover the **three-call cohort only**.
+  ``SUM(tokens_in)`` over this table is a larger, different number — it sweeps
+  in the claims / entities / metadata calls. Reconstructing the totals means
+  filtering to the three cohort kinds and taking the latest row per kind.
+- A reader after "the" output for a page must filter by ``call_kind``. There is
+  no single row per page.
+
+``output`` is ``model_dump_json()`` wherever ``schema_name`` is set, and plain
+text where it is NULL. Only the narrative was ever stored as text, and only
+before it moved to a schema; ``schema_name`` is how a reader — including
+newsletter-assistant, across the repo boundary — tells the two apart.
+
 Multiple rows per ``(notion_page_id, call_kind)`` are allowed — future
 LangGraph refinement loops accumulate history; readers take the most-recent
 via ``ORDER BY extracted_at DESC, id DESC``.
@@ -73,22 +91,21 @@ CREATE INDEX IF NOT EXISTS idx_queue_items_url
     ON queue_items(url);
 CREATE INDEX IF NOT EXISTS idx_queue_items_canonical_url
     ON queue_items(canonical_url);
-CREATE INDEX IF NOT EXISTS idx_queue_items_content_type
-    ON queue_items(content_type);
 CREATE INDEX IF NOT EXISTS idx_queue_items_extracted_at
     ON queue_items(extracted_at);
-CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
-    ON queue_items(extractor_label);
 
 CREATE TABLE IF NOT EXISTS extraction_calls (
     id                INTEGER PRIMARY KEY AUTOINCREMENT,  -- latest-tiebreaker
     notion_page_id    TEXT NOT NULL                       -- FK; cohort link
                       REFERENCES queue_items(notion_page_id) ON DELETE CASCADE,
-    call_kind         TEXT NOT NULL,                      -- narrative/topic_card/followups
+    call_kind         TEXT NOT NULL,                      -- see the docstring: SIX kinds,
+                                                          -- three writers, one table
     prompt_label      TEXT NOT NULL,                      -- e.g. "topic_card_v1"
     prompt_sha256     TEXT NOT NULL,                      -- per-call staleness
     prompt_set_shape  TEXT,                               -- bundle shape; NULL→"unknown"
-    schema_name       TEXT,                               -- pydantic model name, or NULL
+    schema_name       TEXT,                               -- pydantic model name; NULL on
+                                                          -- rows stored as plain text. The
+                                                          -- consumer branches on it
     model             TEXT NOT NULL,                      -- per-call model
     output            TEXT NOT NULL,                      -- markdown or pydantic-JSON
     tokens_in         INTEGER NOT NULL,
@@ -99,10 +116,11 @@ CREATE TABLE IF NOT EXISTS extraction_calls (
     node_metadata     TEXT                                -- nullable JSON; LangGraph
 );
 
-CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
-    ON extraction_calls(notion_page_id);
-CREATE INDEX IF NOT EXISTS idx_extraction_calls_call_kind
-    ON extraction_calls(call_kind);
+-- Each index below is here because a query needs it; nothing is indexed
+-- speculatively. `(call_kind, prompt_label)` also serves call_kind-only
+-- lookups and `(notion_page_id, extracted_at DESC)` also serves the
+-- page-only ones, so no single-column index on either leading column is
+-- needed — SQLite reads a composite from its leading column.
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_prompt_label
     ON extraction_calls(call_kind, prompt_label);
 CREATE INDEX IF NOT EXISTS idx_extraction_calls_extracted_at
@@ -120,9 +138,22 @@ _LEGACY_COLUMNS_TO_DROP = (
     "tokens_out",
 )
 
-# Indexes on legacy columns must be dropped before SQLite will let us drop the
-# columns themselves (SQLite ≥3.35 refuses DROP COLUMN on indexed columns).
-_LEGACY_INDEXES_TO_DROP = ("idx_queue_items_prompt_label",)
+# Indexes no longer in `_SCHEMA`, dropped on every bring-up because
+# `CREATE INDEX IF NOT EXISTS` cannot remove what an older deploy created.
+#
+# `idx_queue_items_prompt_label` sat on a legacy column and had to go first —
+# SQLite ≥3.35 refuses DROP COLUMN on an indexed column. The other four are
+# pure write cost: nothing filters or orders by `content_type` or
+# `extractor_label` (they only appear in SELECT lists), and the two
+# single-column ones on `extraction_calls` are each covered by a composite
+# that leads with the same column.
+_LEGACY_INDEXES_TO_DROP = (
+    "idx_queue_items_prompt_label",
+    "idx_queue_items_content_type",
+    "idx_queue_items_extractor_label",
+    "idx_extraction_calls_page",
+    "idx_extraction_calls_call_kind",
+)
 
 
 def _connect(db_path: Path) -> sqlite3.Connection:

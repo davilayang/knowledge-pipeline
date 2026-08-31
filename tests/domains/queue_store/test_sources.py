@@ -1334,3 +1334,57 @@ def test_record_metadata_persists_unreadable(db_path: Path):
     row = get_row(db_path=db_path, notion_page_id=page_id)
     assert row is not None
     assert json.loads(row["unreadable_json"]) == unreadable
+
+
+def test_create_schema_drops_indexes_a_composite_already_covers(tmp_path: Path):
+    """SQLite serves a single-column index's queries from any composite index
+    that leads with the same column, so `(notion_page_id)` beside
+    `(notion_page_id, extracted_at DESC)` — and `(call_kind)` beside
+    `(call_kind, prompt_label)` — are pure write cost. The two queue_items
+    indexes go for a different reason: nothing filters or orders by
+    `content_type` or `extractor_label`, they only ever appear in SELECT lists.
+
+    A DB created before this change carries all four, so `create_schema` has to
+    remove them rather than merely stop creating them.
+    """
+    import sqlite3
+
+    from domains.queue_store.sources import create_schema
+
+    db = tmp_path / "queue.db"
+    create_schema(db_path=db)
+    # Re-create them as an older deploy would have left them behind.
+    with sqlite3.connect(db) as conn:
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_extraction_calls_page
+                ON extraction_calls(notion_page_id);
+            CREATE INDEX IF NOT EXISTS idx_extraction_calls_call_kind
+                ON extraction_calls(call_kind);
+            CREATE INDEX IF NOT EXISTS idx_queue_items_content_type
+                ON queue_items(content_type);
+            CREATE INDEX IF NOT EXISTS idx_queue_items_extractor_label
+                ON queue_items(extractor_label);
+            """
+        )
+
+    create_schema(db_path=db)
+
+    with sqlite3.connect(db) as conn:
+        names = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type = 'index'")}
+    for superseded in (
+        "idx_extraction_calls_page",
+        "idx_extraction_calls_call_kind",
+        "idx_queue_items_content_type",
+        "idx_queue_items_extractor_label",
+    ):
+        assert superseded not in names, f"{superseded} should have been dropped"
+    # The indexes that actually serve a query must survive the prune.
+    for kept in (
+        "idx_extraction_calls_extracted_at",
+        "idx_extraction_calls_prompt_label",
+        "idx_queue_items_url",
+        "idx_queue_items_canonical_url",
+        "idx_queue_items_extracted_at",
+    ):
+        assert kept in names, f"{kept} is used by a live query and must remain"
