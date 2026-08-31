@@ -444,10 +444,11 @@ fail — so that is what the gold answers:
 | `gold_references_unshown` | does the piece lean on material that was never text — slides, figures, charts? Reported, never a failure. `null` on the 7 rows where the labellers split |
 | `unreadable_gold_source` | `cross_family_agreed` (57) or `disputed_unresolved` (1) |
 
-Labelled against a separate codebook, [`extract_metadata_unreadable_codebook.md`](extract_metadata_unreadable_codebook.md),
-by the same two model families working independently. It is deliberately a second document: a
-labeller deciding whether a fetch survived does not need three hundred lines about publishers, and
-nothing in that decision depends on this one.
+Labelled by the same two model families working independently, against the same
+[`extract_metadata_codebook.md`](extract_metadata_codebook.md) as the other two fields — it carries
+both questions, and says so, because a full re-labelling round needs both and a dataset with two
+codebooks invites one of them to go stale. The damage question is self-contained within it, so a
+round covering only that half can be pointed at that section alone.
 
 **Cross-family agreement on `damaged` was 57/58** — higher than either of the other two fields, which
 is what you would expect from a more objective question. **Neither labeller found a single damaged

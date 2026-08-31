@@ -19,20 +19,37 @@ supply one.
 
 ## What you are producing, and why
 
-The pipeline that consumes these labels builds **entity wiki pages** — one page
-per named thing, accumulating claims across everything the owner reads, with
-each claim attributed to who said it. Two fields feed that:
+You are answering **two independent questions** about the same piece of text, and
+they feed different consequences. Answer both for every item; nothing in one
+depends on the other.
+
+**Question 1 — who made this, and who put it out?** These labels build **entity
+wiki pages**: one page per named thing, accumulating claims across everything the
+owner reads, each attributed to who said it.
 
 - **`contributors`** — the **people** who made this piece. These become person
   entities, and a claim in the piece gets attributed to them.
 - **`publisher`** — the **organisation** that put it out. This becomes an
   organisation entity and is deliberately kept in a separate field.
 
-The failure that matters most is putting an **organisation into the person
-field**. A wiki that records a company as a human, and attributes opinions to
-it as if it had spoken them, is wrong in a way nothing downstream can detect or
-repair. When you are unsure whether a name is a person or an organisation,
-that uncertainty is worth flagging (see *Flagging*, below) rather than guessing.
+The failure that matters most here is putting an **organisation into the person
+field**. A wiki that records a company as a human, and attributes opinions to it
+as if it had spoken them, is wrong in a way nothing downstream can detect or
+repair. When you are unsure whether a name is a person or an organisation, flag
+it (see *Flagging*) rather than guessing.
+
+**Question 2 — did this text survive being fetched?**
+
+- **`damaged`** — whether the body arrived broken, such that fetching it again
+  would recover substance.
+
+This one has a sharper consequence: a `damaged` item is **failed and sent back to
+its owner** with "this needs refetching". Getting it wrong in one direction reads
+navigation aloud as though it were an article; in the other it fails perfectly
+good readings until the warning stops being read.
+
+The two questions are answered from the same text but are otherwise unrelated. A
+piece can be perfectly attributed and badly broken, or anonymous and intact.
 
 ---
 
@@ -350,19 +367,89 @@ labellers, so it is the one that most needs a citation.
 
 ---
 
+## `damaged` — did the body arrive broken?
+
+Something is missing from almost every text, so "is anything missing?" is not the
+question. The question is **actionable**: *if this were fetched again, or from a
+better source, would more of the piece come back?*
+
+Two things can be wrong with a fetched text and only one is worth failing:
+
+- **The text arrived broken.** A refetch could fix it. → `damaged: true`.
+- **The piece leans on things that were never text** — slides, charts, a screen
+  recording, figures in a paper. No refetch produces them, because they were
+  never words. → `damaged: false`, and see `references_unshown` below.
+
+A talk that constantly points at slides is *normal*, not broken. A paper that
+references Figure 4 is *normal*, not broken. Failing those would fail a large
+share of everything the owner reads, and the warning would stop being read.
+
+### True when the text is not the piece, or not all of it
+
+- **The content was replaced.** The body is navigation, a menu, a cookie or
+  consent wall, a sign-in prompt, or an error message where the article should
+  be. The give-away is that you can read the whole file and never reach the thing
+  it claims to be.
+- **The text stops.** It ends mid-sentence, mid-word, or mid-section, with no
+  ending. Also: an explicit marker that a span was removed.
+- **A section is announced and then empty.** Headings with nothing under them.
+- **Two different pieces are run together** with no boundary.
+- **It is a stub.** A summary or opening fragment of something the text itself
+  says exists in full elsewhere.
+
+### False when the piece is there, even if
+
+- it refers to slides, images, charts, figures, diagrams or a screen recording;
+- a speaker says "as you can see here" about something you cannot see;
+- it contains tables or code that would be awkward read aloud;
+- it is wrapped in site furniture — navigation, footers, related links — **but
+  the piece itself is also there**.
+
+**That last one is the distinction most often got wrong**, and it is the same
+furniture test the contributors section uses: chrome *around* a complete article
+is not damage, chrome *instead of* the article is. Read far enough to find out
+whether the content is present before deciding.
+
+### `cause`, only when damaged
+
+- **`chrome`** — the content was replaced by the site's own furniture: menus, an
+  error page, a paywall or consent wall, a sign-in screen.
+- **`truncation`** — the content is there but cut: stops mid-thought, an elided
+  span, an announced section left empty, a stub of a longer piece.
+
+Where both could apply, choose the one that describes **why the substance is
+missing**. `null` when `damaged` is false.
+
+### `references_unshown`
+
+Independent of the other two, and **never a reason to call something damaged**.
+True when the piece depends on material that was never text — slides pointed at,
+figures referenced, a chart read from, on-screen steps, a diagram gestured at.
+Recorded because it tells a reader the piece leans on visuals. Most conference
+talks and most papers are `references_unshown: true`, `damaged: false`.
+
+### Reading a long file for this
+
+You cannot decide `damaged` from the opening. An article that starts with a menu
+very often has its content further down, and a text that reads fine for 40,000
+characters may still stop mid-sentence at the end. **Read the beginning and the
+end of every file**, and enough of the middle to know whether the piece is there.
+
+---
+
 ## Flagging
 
-Three things get flagged rather than silently decided. Flagged items go to a
-human; they are not failures.
+Two things get flagged rather than silently decided. Flagged items go to a human;
+they are not failures.
 
 - **`uncertain_person_or_org`** — you cannot tell from the text whether a name
   is a human or an organisation.
-- **`text_unusable`** — the file's content is not the piece it claims to be:
-  navigation boilerplate instead of an article, a body that stops mid-sentence
-  before any attribution, two different pieces concatenated together, or an
-  explicit marker that a span of the file was removed. Say which.
 - **`unsure`** — anything else that stopped you giving a confident answer, with
   one line saying what.
+
+There is no flag for a body that is not the piece it claims to be — that is what
+`damaged` records, and it is a field rather than a flag because something acts
+on it.
 
 ---
 
@@ -383,10 +470,32 @@ One JSON object per item, written to the path you are given. No prose around it.
   ],
   "publisher": "... or null",
   "publisher_evidence": "verbatim quote from the text, or null",
+  "damaged": false,
+  "cause": null,
+  "references_unshown": true,
+  "damaged_evidence": "verbatim quote from the text, or null",
   "flags": [],
   "notes": "one line, only if something needs saying"
 }
 ```
 
-`contributors` is `[]` when the text names nobody who made the piece. `flags` is
-`[]` when nothing needed flagging.
+`contributors` is `[]` when the text names nobody who made the piece, and `flags`
+is `[]` when nothing needed flagging — both are common, correct answers.
+
+`damaged_evidence` is the line showing the damage when `damaged` is true; the
+line depending on unshown material when only `references_unshown` is true; `null`
+when neither.
+
+**Every quote in every `evidence` field must appear in the file character for
+character.** They are checked programmatically against the source, and a quote
+that is not a real substring invalidates its label — including when the verdict
+itself is right. Copy, never retype from memory.
+
+---
+
+## If you were asked for only part of this
+
+A labelling round may cover the attribution questions or the damage question
+alone. If so, you were told which; fill only those fields and omit the rest.
+Nothing in either answer depends on the other, so a partial round is not a
+degraded one.
