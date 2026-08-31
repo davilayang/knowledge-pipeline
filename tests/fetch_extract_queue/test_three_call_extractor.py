@@ -7,6 +7,7 @@ exercised end-to-end via the sync `.extract()` entry point (which wraps
 `asyncio.run`).
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -966,3 +967,24 @@ def test_narrative_sends_the_same_cached_prefix_as_the_structured_calls(extracto
         extractor.extract(content="raw", content_type="Article", content_shape="unknown")
 
     assert capture["narrative"][:2] == capture["topic_card"][:2]
+
+
+def test_a_blank_field_narrative_is_retried_not_stored(extractor):
+    """`min_length=1` counts characters, so `"   "` clears it. The old narrative
+    call stripped the whole completion before accepting it, which caught this;
+    routing through the schema does not, and a narrative whose fields are blank
+    renders as headed sections with nothing under them — which the voice agent
+    reads as a source that had nothing to say."""
+    blank = json.dumps(
+        {
+            "salient_threads": ["   "],
+            "core_idea": " ",
+            "named_concepts_and_entities": "\n ",
+        }
+    )
+    client = _narrative_client([blank, _narrative_obj().model_dump_json()])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.narrative_md == render_narrative(_narrative_obj())

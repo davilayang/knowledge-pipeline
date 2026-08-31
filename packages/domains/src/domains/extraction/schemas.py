@@ -24,7 +24,9 @@ narrative row written before that change; until NA branches on it and ships,
 this shape must not reach production.
 """
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class TopicCard(BaseModel):
@@ -101,6 +103,14 @@ class Followups(BaseModel):
     )
 
 
+# Every narrative field is prose the voice agent reads aloud, so a blank one is
+# worse than a missing one: it renders as a section header with nothing under it,
+# and the agent reads that as a source with nothing to say rather than as a
+# failed extraction. `min_length` counts characters and "   " is three of them,
+# so stripping first is what makes the constraint mean "not blank".
+NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
 class Narrative(BaseModel):
     """The narrative call's sections, one field each.
 
@@ -113,7 +123,7 @@ class Narrative(BaseModel):
     for, so the two can never drift apart. `schema_block()` dumps the titles into
     the prompt's task tail, which is how the model learns them."""
 
-    salient_threads: list[str] = Field(
+    salient_threads: list[NarrativeProse] = Field(
         title="Salient threads",
         min_length=1,
         description=(
@@ -124,16 +134,14 @@ class Narrative(BaseModel):
             "specific content with its anchor(s)."
         ),
     )
-    core_idea: str = Field(
+    core_idea: NarrativeProse = Field(
         title="Core idea",
-        min_length=1,
         description=(
             "1-2 sentences. The single thing worth knowing if you remember " "nothing else."
         ),
     )
-    named_concepts_and_entities: str = Field(
+    named_concepts_and_entities: NarrativeProse = Field(
         title="Named concepts and entities",
-        min_length=1,
         description=(
             "Comma-separated. Named individuals (creator / host / guest / "
             "author) first, then companies, products, techniques."
