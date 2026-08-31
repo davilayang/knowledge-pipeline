@@ -1,5 +1,13 @@
 # `prompts/extraction/`
 
+> **Cross-repo contract.** The `narrative` output is consumed by
+> `newsletter-assistant`'s voice agent, whole and unparsed — the section headers
+> are the entire interface between the two repos. Before changing them, read
+> [`knowledge-os/contracts/narrative.md`](https://github.com/davilayang/data-context-builder/blob/main/documents/knowledge-os/contracts/narrative.md) in the shared hub repo `davilayang/data-context-builder`
+> (locally: `~/GitHub/data-context-builder/documents/knowledge-os/contracts/narrative.md`).
+> It carries the section shape, the completeness guarantees, and both sides'
+> obligations.
+
 Prompt assets consumed by `workflows.extraction`. Each file has its own header explaining what it does and how it's called — read those for the per-prompt contract. This README only documents which file plays which role.
 
 **Header/body convention.** Each prompt file opens with a design-notes / change-history header, then a `---` horizontal rule, then the model-facing body. Everything above the first `---` is stripped at load by `domains.extraction.strip_design_notes` — applied at every read site (production `ExtractorRegistry` + the eval harness/notebooks) so what ships equals what's evaluated. Record what changed each iteration (and why) in that header; it never reaches the model. A file with no `---` is treated as body-only.
