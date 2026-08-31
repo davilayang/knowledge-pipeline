@@ -60,23 +60,42 @@ class Contributor(BaseModel):
 class Unreadable(BaseModel):
     """One piece of substance the fetched text references but does not contain.
 
-    The severity test: remove the unshown material — does a claim become
-    unverifiable, or a section become empty? Then `major`. A pointing gesture
-    attached to something also said aloud is `minor`."""
+    These descriptions are appended to the prompt and are the last thing the
+    model reads before answering, so they must agree with it. An earlier version
+    described severity as "does a claim become unverifiable" — the reading that
+    called 41% of production bodies major, against 1.8% for the refetch reading
+    the prompt now uses. Stating the superseded test here reinstated it from the
+    strongest position in the message."""
 
     cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
         description=(
-            "screen_reference: points at something on screen. images: the text "
-            "refers to figures not captured. chrome: navigation/boilerplate "
-            "replaced the content. truncation: the text stops mid-thought. "
-            "unspeakable: present but unreadable aloud, e.g. raw tables."
+            "Why the material is missing. chrome: site furniture, a wall or an "
+            "error page stands where the content should be. truncation: the "
+            "content is cut — stops mid-thought, an elided span, an announced "
+            "section left empty, a stub of a longer piece. Those two mean the "
+            "text arrived damaged. The rest never were text and no refetch "
+            "recovers them: screen_reference points at something on screen, "
+            "images refers to figures not captured, unspeakable is present but "
+            "cannot be read aloud, e.g. a raw table."
         )
     )
     severity: Literal["major", "minor"] = Field(
-        description="major when a claim becomes unverifiable or a section empty."
+        description=(
+            "major only when a refetch, or a better source, would recover the "
+            "missing material — the text arrived broken. minor when the material "
+            "was never text, however central it is to the piece. A claim you "
+            "cannot verify from the text alone is not by itself major."
+        )
     )
     missing: str = Field(description="What is not in the text, specifically.")
-    evidence: str = Field(description="The quote from the text that depends on it.")
+    evidence: str = Field(
+        description=(
+            "A quote from the text. For screen_reference, images and unspeakable, "
+            "the line that depends on the unshown material; for chrome and "
+            "truncation, the damage itself — the wall or error text, or the last "
+            "words before the text stops."
+        )
+    )
 
 
 class MetadataPayload(BaseModel):
