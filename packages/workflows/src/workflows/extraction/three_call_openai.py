@@ -2,15 +2,21 @@
 
 Replaces the single-shot extractor with three focused calls:
 
-1. **narrative** — unstructured markdown, no `response_format`.
+1. **narrative** — JSON mode, validated against `Narrative`.
 2. **topic_card** — JSON mode, validated against `TopicCard`.
 3. **followups** — JSON mode, validated against `Followups`.
 
-Calls 2 and 3 run in sequence so 3 reads the article from the cache 2 writes.
-Both conditions are load-bearing: they share one `response_format` value (OpenAI
-partitions the prefix cache by it, which is why two pydantic schemas never
-could), and `shared_prefix.structured_messages` keeps everything ahead of the
-task tail byte-identical. Call 1 has no response format, so it caches alone.
+The three run in sequence so each reads the article from the cache the one
+before it wrote. Both conditions are load-bearing: they share one
+`response_format` value (OpenAI partitions the prefix cache by it, which is why
+two pydantic schemas never could — the schema travels in the task tail instead),
+and `shared_prefix.structured_messages` keeps everything ahead of that tail
+byte-identical.
+
+The narrative used to send markdown with no `response_format`, which put it in a
+partition of its own and made the article a cache miss on every item — billing
+it twice per run. It now returns one field per section and is rendered back to
+the headed text the voice agent reads by `domains.extraction.render`.
 
 Returns the composed `ExtractionPayload` (in-memory) + a list of
 `ExtractionCallRecord` (one per call) — the writer in queue_store turns
@@ -41,7 +47,8 @@ from typing import Any
 
 import openai
 from domains.extraction.records import ExtractionCallRecord
-from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+from domains.extraction.render import render_narrative
+from domains.extraction.schemas import ExtractionPayload, Followups, Narrative, TopicCard
 
 from workflows.extraction.shared_prefix import (
     effective_prompt_sha,
@@ -66,12 +73,6 @@ EXTRACTION_CACHE_KEY = "kp-extraction"
 # insurance rather than the main path, and a model that has missed the schema
 # twice is unlikely to find it on a fourth try.
 _MAX_STRUCTURED_ATTEMPTS = 3
-
-# The narrative call intermittently returns an empty completion — `finish_reason`
-# still "stop", no refusal, nothing near the token ceiling, and the same content
-# succeeds on a rerun. Transient rather than content-specific, so one retry
-# clears most of them.
-_MAX_NARRATIVE_ATTEMPTS = 2
 
 # Appended to the followups task tail only when the caller supplies user_notes.
 _READER_THREADS_FOLD = (
@@ -230,13 +231,17 @@ class ThreeCallOpenAIExtractor:
         resolved_shape = content_shape if content_shape in self._prompt_sets else _GENERIC_SHAPE
         bundle = self._prompt_sets[resolved_shape]
         try:
-            narrative_record = await self._narrative_call(
-                content, content_type, bundle["narrative"], resolved_shape
+            # Sequential, not concurrent: each call reads the article body from
+            # the prompt cache the one before it wrote, which cannot happen while
+            # they are in flight together. The narrative runs first and writes it.
+            narrative, narrative_record = await self._structured_call(
+                content,
+                content_type,
+                bundle["narrative"],
+                Narrative,
+                "narrative",
+                resolved_shape,
             )
-
-            # Sequential, not concurrent: `followups` reads the article body from
-            # the prompt cache that `topic_card` writes, which cannot happen while
-            # the two are in flight together.
             topic_card, topic_record = await self._structured_call(
                 content,
                 content_type,
@@ -256,7 +261,7 @@ class ThreeCallOpenAIExtractor:
             )
 
             payload = ExtractionPayload(
-                narrative_md=narrative_record.output,
+                narrative_md=render_narrative(narrative),
                 topic_card=topic_card,
                 followups=followups,
             )
@@ -268,104 +273,6 @@ class ThreeCallOpenAIExtractor:
             # leak (Python's async-destructor can't fire on a dead loop).
             # Extractor is single-use as a result — see class docstring.
             await self._client.close()
-
-    async def _narrative_call(
-        self,
-        content: str,
-        content_type: str,
-        prompt_triple: _RoleTriple,
-        resolved_shape: str,
-    ) -> ExtractionCallRecord:
-        prompt_text, prompt_label, prompt_sha = prompt_triple
-        t0 = time.monotonic()
-        tokens_in = tokens_out = 0
-        cached: int | None = None
-        for attempt in range(_MAX_NARRATIVE_ATTEMPTS):
-            resp = await self._client.chat.completions.create(
-                model=self._model,
-                prompt_cache_key=EXTRACTION_CACHE_KEY,
-                **self._token_kwargs,
-                messages=[
-                    {"role": "system", "content": prompt_text},
-                    {
-                        "role": "user",
-                        "content": f"[content_type: {content_type}]\n\n{content}",
-                    },
-                ],
-            )
-            # Summed across attempts so a retry's cost is not invisible.
-            tokens_in += resp.usage.prompt_tokens
-            tokens_out += resp.usage.completion_tokens
-            attempt_cached = _cached_tokens(resp.usage)
-            if attempt_cached is not None:
-                cached = (cached or 0) + attempt_cached
-            refusal = getattr(resp.choices[0].message, "refusal", None)
-            if refusal is not None:
-                # A refusal also arrives as empty content — without this it
-                # retries, then reports "empty narrative", which is just wrong.
-                # `is not None`, not truthiness: the contract is null-or-string.
-                raise RuntimeError(f"narrative: model refused — {refusal}")
-            if resp.choices[0].finish_reason == "length":
-                # Checked before the empty test below: hitting the limit can leave
-                # zero visible bytes (reasoning models spend the same budget on
-                # thinking), and that is truncation, not the transient empty reply
-                # the retry exists for — which arrives with finish_reason "stop".
-                raise RuntimeError(
-                    f"The narrative reached the {self._max_tokens}-token completion "
-                    f"limit before finishing, on this {content_type} item "
-                    f"({len(content):,} chars; {resp.usage.completion_tokens} "
-                    "completion tokens spent — on reasoning models that counts "
-                    "thinking, not just written output). Nothing was stored: a "
-                    "cut-short narrative carries no marker saying so, and the voice "
-                    "agent would read it out as complete. The topic card and "
-                    "follow-ups were not attempted — the narrative runs first. A "
-                    "retry sometimes fits under the limit; if it fails again the "
-                    "source needs a higher ceiling, which is a maintainer change."
-                )
-            output = (resp.choices[0].message.content or "").strip()
-            if output:
-                break
-            # Nothing is persisted when the call ultimately raises — the writer
-            # only runs on a returned record — so this is the sole surviving
-            # evidence of an empty attempt. Keep it until the cause is known.
-            _log.warning(
-                "empty narrative: attempt=%d/%d content_type=%s chars=%d "
-                "finish_reason=%s tokens_in=%d tokens_out=%d",
-                attempt + 1,
-                _MAX_NARRATIVE_ATTEMPTS,
-                content_type,
-                len(content),
-                resp.choices[0].finish_reason,
-                resp.usage.prompt_tokens,
-                resp.usage.completion_tokens,
-            )
-        else:
-            # Written for whoever reads the Notion row: a run-failure sensor
-            # copies the innermost exception message into that row's Error field,
-            # where pydantic's `narrative_md` complaint named our data model
-            # rather than the failure.
-            raise RuntimeError(
-                f"OpenAI returned an empty narrative on all {_MAX_NARRATIVE_ATTEMPTS} "
-                f"attempts for this {content_type} item ({len(content):,} chars). "
-                "The topic card and follow-ups were not attempted — the narrative "
-                "runs first — so nothing else was spent on this item. The cause is "
-                "not yet known; a retry has cleared it before. Retry by setting "
-                "Status back to Fetching."
-            )
-        duration_ms = (time.monotonic() - t0) * 1000
-        return ExtractionCallRecord(
-            call_kind="narrative",
-            prompt_label=prompt_label,
-            prompt_sha256=prompt_sha,
-            schema_name=None,
-            output=output,
-            tokens_in=tokens_in,
-            tokens_out=tokens_out,
-            cached_tokens=cached,
-            duration_ms=duration_ms,
-            extracted_at=_now_iso(),
-            prompt_set_shape=resolved_shape,
-        )
 
     async def _structured_call(
         self,
@@ -420,20 +327,43 @@ class ThreeCallOpenAIExtractor:
                 # `is not None`, not truthiness: the contract is null-or-string.
                 raise RuntimeError(f"{call_kind}: model refused — {refusal}")
             if resp.choices[0].finish_reason == "length":
-                # Re-asking under the same ceiling truncates again. On gpt-5 the
-                # ceiling covers reasoning tokens too, not just the reply.
+                # Checked before the empty-reply path below: a reasoning model can
+                # spend the whole budget on thinking and return nothing, which is
+                # truncation rather than the transient empty reply, and retrying it
+                # burns another full budget before reporting the wrong fault.
                 raise RuntimeError(
-                    f"{call_kind}: reply truncated at max_tokens={self._max_tokens} "
-                    f"(attempt {attempt + 1}) — raise the ceiling or shorten the schema"
+                    f"{call_kind}: the reply hit the {self._max_tokens}-token "
+                    f"completion ceiling on this {content_type} item and was cut "
+                    "off. Nothing was stored — a cut-short reply carries no marker "
+                    "saying so, and the voice agent would read it out as complete. "
+                    "On a reasoning model the ceiling covers thinking tokens as "
+                    f"well as the reply, so the {tokens_out} spent here is not the "
+                    "reply's length. Re-asking under the same ceiling truncates "
+                    "again, so a maintainer has to raise it or shorten the prompt."
                 )
             try:
-                parsed = validate_strict(schema, resp.choices[0].message.content or "")
+                body = (resp.choices[0].message.content or "").strip()
+                if not body:
+                    # Named rather than left to json.loads, whose "Expecting value:
+                    # line 1 column 1" is the message an operator would otherwise
+                    # read in the failed row. Observed as transient on this API, so
+                    # it goes through the retry rather than failing the item.
+                    raise ValueError("the model returned an empty reply")
+                parsed = validate_strict(schema, body)
                 break
             # ValueError covers pydantic.ValidationError (a subclass), malformed
             # JSON, and the undeclared-field rejection.
             except ValueError as exc:
                 if attempt == _MAX_STRUCTURED_ATTEMPTS - 1:
-                    raise
+                    # Re-raising the bare ValueError puts a pydantic or json-decoder
+                    # message in the failed row, which names our data model rather
+                    # than what went wrong and leaves the reader no next step.
+                    raise RuntimeError(
+                        f"{call_kind}: no reply matched the schema on any of "
+                        f"{_MAX_STRUCTURED_ATTEMPTS} attempts for this "
+                        f"{content_type} item. Last rejection: {exc}. Retry by "
+                        "setting Status back to Fetching."
+                    ) from exc
                 # Appended to the tail, never the prefix — a correction written
                 # ahead of the article body would cost the cache on every retry.
                 # It also supplies the between-attempt variation that sampling

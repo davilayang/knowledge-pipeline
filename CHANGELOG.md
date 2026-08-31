@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The narrative extraction call now shares the article's prompt cache with the other two, so an article is billed once per extraction instead of twice.** It used to send markdown with no `response_format` and lead with its own prompt file, which put it in a cache partition of its own — OpenAI matches a prefix front-to-back and partitions by `response_format`, so neither the narrative nor the topic card could read the article the other had just paid for. The narrative now returns one field per section (`Narrative`) through the same shared-prefix path as `TopicCard` and `Followups`, and is rendered back to the same headed text for the voice agent. Measured on a 5,028-token article: `topic_card` and `followups` each read 4,864 cached tokens where `topic_card` previously read none.
+- **`extraction_calls` rows now have one shape across all three calls.** The narrative row stored raw markdown with a null `schema_name`; it now stores `model_dump_json()` and names its schema, like its siblings. `schema_name` is the discriminator a reader uses to tell the two formats apart — it is null on every row written before this change, so old rows stay readable without a backfill.
+- **A structured call that gives up now says what happened.** All three re-raised the bare pydantic or json-decoder error, which named our data model rather than the fault and left no next step in the failed row. They now name the call, the content type, the attempt count, the last rejection, and what to retry. An empty reply is also called an empty reply rather than surfacing as `Expecting value: line 1 column 1`.
+- **A truncated reply names the ceiling it hit, the item, and who can act.** Previously only the narrative carried that explanation; `topic_card` and `followups` got a one-line message. All three now share it, including the caveat that on a reasoning model the spent-token count is not the reply's length.
+
+### Added
+
+- `domains.extraction.render.render_narrative` — turns a `Narrative` back into headed text, walking the model's fields in order and taking each header from the field's `title`. It holds no list of section names, so adding a section is a model edit and nothing else.
+- `prompts/extraction/narrative_v2_json.md` — `narrative_v2`'s three sections and rules word for word, in a json container. Held fixed deliberately: the coverage gold can only attribute a change to the container if the instructions do not move at the same time.
+
 ---
 
 ## [0.36.20] — 2026-08-30
