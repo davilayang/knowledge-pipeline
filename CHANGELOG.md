@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.21] — 2026-08-31
+
+### Changed
+
+- **The narrative extraction call now shares the article's prompt cache with the topic-card and follow-ups calls, so an article is billed once per extraction instead of twice.** It returns one field per section through the same shared-prefix path; a standalone markdown prompt could never match the others' cache prefix.
+- **`extraction_calls` rows are uniform across the three calls.** The narrative row stores `model_dump_json()` and names its schema, where it stored raw markdown with a null `schema_name`. Readers tell the two shapes apart by that column.
+- **A failed structured call now names the call, item, attempt count and last rejection**, instead of surfacing a bare pydantic or JSON-decoder error. All three calls share the truncation message that was previously narrative-only.
+- **Dropped four unused `queue.db` indexes** — two redundant with existing composites, two on columns nothing filters or orders by. `create_schema` removes them from databases that already have them.
+
+### Added
+
+- **`domains.extraction.schemas.Narrative` and `domains.extraction.render.render_narrative`** — the narrative's sections as typed fields, plus the renderer that turns them back into the headed text the voice agent reads. Blank fields are rejected rather than rendered as empty headers.
+
+---
+
 ## [0.36.20] — 2026-08-30
 
 ### Added

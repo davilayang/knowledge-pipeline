@@ -14,9 +14,19 @@ When updating: record the NA commit hash you mirrored from in this docstring
 and in the corresponding CHANGELOG entry.
 
 Last sync: <pending NA-side ship — kp leads with the duplicated shape>
+
+`Narrative` is kp-only so far. It is added here rather than beside the extractor
+because it is the same kind of contract as `TopicCard` and `Followups` — the
+narrative call now stores `model_dump_json()` in `extraction_calls.output` like
+its siblings, so newsletter-assistant reads json where it used to read markdown.
+NA tells the two apart by `extraction_calls.schema_name`, which is null on every
+narrative row written before that change; until NA branches on it and ships,
+this shape must not reach production.
 """
 
-from pydantic import BaseModel, Field
+from typing import Annotated
+
+from pydantic import BaseModel, Field, StringConstraints
 
 
 class TopicCard(BaseModel):
@@ -89,6 +99,50 @@ class Followups(BaseModel):
             "asked for, an open-loop/action, or context they gave. Empty "
             "when no reader notes are present. Never source claims; never "
             "invented; never treat a note as a fact stated by the source."
+        ),
+    )
+
+
+# A blank field renders as a header with nothing under it, which the agent reads
+# as a source with nothing to say rather than a failed extraction. `min_length`
+# counts characters and "   " is three, so the strip is what means "not blank".
+NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+class Narrative(BaseModel):
+    """The narrative call's sections, one field each.
+
+    Persisted as one row in `extraction_calls` with `call_kind='narrative'`
+    and `output` = `model_dump_json()`, matching `TopicCard` and `Followups`.
+    Rendered back to headed text by `domains.extraction.render.render_narrative`
+    for the voice agent, which reads prose rather than json.
+
+    Each field's `title` is the header the renderer emits, and `schema_block()`
+    dumps the titles into the prompt's task tail, so the model is asked for the
+    same names the renderer writes."""
+
+    salient_threads: list[NarrativeProse] = Field(
+        title="Salient threads",
+        min_length=1,
+        description=(
+            "Every distinct thread in the source — a claim, finding, argument, "
+            "method, result, story beat, comparison, objection, statistic, or "
+            "framing a listener could ask a SEPARATE follow-up question about. "
+            "One entry per DISTINCT point: a short label, a dash, then the "
+            "specific content with its anchor(s)."
+        ),
+    )
+    core_idea: NarrativeProse = Field(
+        title="Core idea",
+        description=(
+            "1-2 sentences. The single thing worth knowing if you remember " "nothing else."
+        ),
+    )
+    named_concepts_and_entities: NarrativeProse = Field(
+        title="Named concepts and entities",
+        description=(
+            "Comma-separated. Named individuals (creator / host / guest / "
+            "author) first, then companies, products, techniques."
         ),
     )
 

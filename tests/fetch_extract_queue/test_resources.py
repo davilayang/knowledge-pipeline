@@ -314,7 +314,7 @@ def test_extractor_uses_real_prompt_labels():
     assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
 
     registry = ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
-    assert "Core idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
+    assert "core_idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
     assert "PER-FIELD CONTRACTS" in registry._prompt_text(PROMPT_LABEL_TOPIC_CARD)
     assert "follow-up questions" in registry._prompt_text(PROMPT_LABEL_FOLLOWUPS)
     assert len(registry.build().bundle_sha256("unknown")) == 64
