@@ -1,6 +1,6 @@
 """Three-metric narrative-fidelity scorer + conservative two-juror aggregation.
 
-Scores narrative_v2's summary on three orthogonal failure modes, cost-ranked
+Scores the narrative summary on three orthogonal failure modes, cost-ranked
 invention > corruption > omission (see the estimand card):
 
 - faithful_recall  (omission)   — of gold threads, how many landed faithfully

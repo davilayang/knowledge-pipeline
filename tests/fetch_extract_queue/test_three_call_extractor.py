@@ -54,9 +54,12 @@ def _followups_obj() -> Followups:
 
 def _narrative_obj() -> Narrative:
     return Narrative(
-        salient_threads=["Thread one - anchor", "Thread two - anchor"],
+        speakers_and_author="Alice Nkemdirim (Acme)",
+        structure="one throughline - argues the core idea",
         core_idea="The core idea.",
-        named_concepts_and_entities="Alice, Acme",
+        load_bearing_claims=["Claim one - anchor", "Claim two - anchor"],
+        delivery_beats=["Beat one\nAnchor: a figure"],
+        named_concepts_and_entities="Alice Nkemdirim, Acme",
     )
 
 
@@ -977,8 +980,11 @@ def test_a_blank_field_narrative_is_retried_not_stored(extractor):
     reads as a source that had nothing to say."""
     blank = json.dumps(
         {
-            "salient_threads": ["   "],
+            "speakers_and_author": " ",
+            "structure": "\n ",
             "core_idea": " ",
+            "load_bearing_claims": ["   "],
+            "delivery_beats": ["  "],
             "named_concepts_and_entities": "\n ",
         }
     )

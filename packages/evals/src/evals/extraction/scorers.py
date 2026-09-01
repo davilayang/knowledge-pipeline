@@ -251,7 +251,7 @@ Return a JSON object mapping each thread's number (as a string) to a boolean:
 
 
 class NarrativeFidelityScorer:
-    """Three-metric fidelity floor over `narrative_v2`'s threads.
+    """Three-metric fidelity floor over the narrative summary.
 
     Reads `gold_threads` + `critical_threads` and scores omission
     (`faithful_recall`), corruption (`distortion_rate`), and invention

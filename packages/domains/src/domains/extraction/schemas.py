@@ -15,18 +15,26 @@ and in the corresponding CHANGELOG entry.
 
 Last sync: <pending NA-side ship — kp leads with the duplicated shape>
 
-`Narrative` is kp-only so far. It is added here rather than beside the extractor
-because it is the same kind of contract as `TopicCard` and `Followups` — the
-narrative call now stores `model_dump_json()` in `extraction_calls.output` like
-its siblings, so newsletter-assistant reads json where it used to read markdown.
-NA tells the two apart by `extraction_calls.schema_name`, which is null on every
-narrative row written before that change; until NA branches on it and ships,
-this shape must not reach production.
+`Narrative` is kp-only, and the three drift detectors above do NOT cover it.
+There is no mirrored class on the NA side and deliberately so: NA renders the
+stored json generically from its keys, precisely so a section can be added here
+without a release there. `test_schema_drift.py` pins `ExtractionPayload`
+fixtures, not this model, and NA's read path does not validate the narrative, so
+detector 2 cannot fire for it.
+
+What guards it instead is `tests/domains/extraction/test_render.py`, which pins
+the two properties NA's generic renderer depends on: every field's `title`
+equals what NA derives from the json key, and every field is a plain string or a
+plain list. Break either and the two repos emit different text for one narrative.
+
+NA tells the json rows from the older markdown ones by
+`extraction_calls.schema_name`, null on every narrative row written before the
+call became structured. NA's branch for that is already on its main.
 """
 
 from typing import Annotated
 
-from pydantic import BaseModel, Field, StringConstraints
+from pydantic import BaseModel, Field, StringConstraints, model_validator
 
 
 class TopicCard(BaseModel):
@@ -119,32 +127,98 @@ class Narrative(BaseModel):
 
     Each field's `title` is the header the renderer emits, and `schema_block()`
     dumps the titles into the prompt's task tail, so the model is asked for the
-    same names the renderer writes."""
+    same names the renderer writes. That coupling is why there is one class here
+    rather than one per prompt version: the prompt body and this model generate
+    each other's field list, so a prompt version and this shape have to change in
+    the same commit. The superseded prompt file stays on disk as history and can
+    no longer be run.
 
-    salient_threads: list[NarrativeProse] = Field(
-        title="Salient threads",
-        min_length=1,
+    Field order is generation order — the model writes top to bottom — and two
+    positions are load-bearing. `structure` precedes `core_idea` so the shape is
+    committed before any content is written; a mandatory first-position core idea
+    was measured flattening distinct shapes into one, with four labels collapsing
+    to two. `load_bearing_claims` precedes `delivery_beats` because the beats are
+    selected from it."""
+
+    speakers_and_author: NarrativeProse = Field(
+        title="Speakers and author",
         description=(
-            "Every distinct thread in the source — a claim, finding, argument, "
-            "method, result, story beat, comparison, objection, statistic, or "
-            "framing a listener could ask a SEPARATE follow-up question about. "
-            "One entry per DISTINCT point: a short label, a dash, then the "
-            "specific content with its anchor(s)."
+            "Who produced this, by name, with affiliation. Guest or speaker "
+            "first, then the host. Never a bare role in place of a name, and "
+            "never a channel or publication; `the host` is allowed only "
+            "alongside a named guest, when the source does not name the host. "
+            "Exactly `not named in the source` if it names nobody."
+        ),
+    )
+    structure: NarrativeProse = Field(
+        title="Structure",
+        description=(
+            "The shape of the source. Exactly one of `one throughline`, "
+            "`a sequence`, or `N independent threads` (with the number), then "
+            "a dash and one sentence describing that shape. Description only — "
+            "instructions placed here were measured being ignored."
         ),
     )
     core_idea: NarrativeProse = Field(
         title="Core idea",
         description=(
-            "1-2 sentences. The single thing worth knowing if you remember " "nothing else."
+            "1-2 sentences, conditioned on `structure`. For a throughline or a "
+            "sequence, the single thing worth knowing. For independent "
+            "threads, what the set is OF — do not manufacture a thesis over a "
+            "bundle."
+        ),
+    )
+    load_bearing_claims: list[NarrativeProse] = Field(
+        title="Load bearing claims",
+        min_length=1,
+        description=(
+            "The complete set of claims the piece collapses without — not the "
+            "main point, and not everything it says. Typically 9-28. One claim "
+            "per entry, each carrying its own anchor: a figure, a named "
+            "entity, a mechanism, or a short quote."
+        ),
+    )
+    delivery_beats: list[NarrativeProse] = Field(
+        title="Delivery beats",
+        min_length=1,
+        description=(
+            "Usually 4-6 beats selected from `load_bearing_claims`, ordered "
+            "for a listener hearing this cold — fewer when the source carries "
+            "fewer distinct ideas, never padded to reach four. One idea each, "
+            "chained so every beat "
+            "reuses a name, term or figure from the one before. Each entry is "
+            "the idea, then an `Anchor:` line, then a `bridge_to:` line naming "
+            "what comes next — omitted on the last beat."
         ),
     )
     named_concepts_and_entities: NarrativeProse = Field(
         title="Named concepts and entities",
         description=(
-            "Comma-separated. Named individuals (creator / host / guest / "
-            "author) first, then companies, products, techniques."
+            "One comma-separated string, not a list: it is read aloud as one "
+            "phrase rather than walked as an inventory, and the renderer counts "
+            "and numbers every list it is given. Named individuals first, then "
+            "companies, products, techniques."
         ),
     )
+
+    @model_validator(mode="after")
+    def _beats_do_not_outnumber_claims(self) -> "Narrative":
+        """The beats are a selection from the claims, so more beats than claims
+        is an impossible reply rather than a thin one.
+
+        This is the one relationship between the two lists that deriving their
+        counts does not make true. It matters because the consumer subtracts one
+        rendered count from the other and speaks the result: four beats over
+        three claims becomes "that is four of the three", said confidently into a
+        channel where the listener has nothing to check it against. Failing here
+        costs a retry; not failing costs the user's trust in every count."""
+        if len(self.delivery_beats) > len(self.load_bearing_claims):
+            raise ValueError(
+                f"more delivery beats ({len(self.delivery_beats)}) than "
+                f"load-bearing claims ({len(self.load_bearing_claims)}); the beats "
+                "are selected from the claims, so this reply cannot be right"
+            )
+        return self
 
 
 class ExtractionPayload(BaseModel):

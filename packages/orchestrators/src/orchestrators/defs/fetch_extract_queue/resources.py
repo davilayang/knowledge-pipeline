@@ -205,9 +205,11 @@ class ExtractorRegistry(dg.ConfigurableResource):
 
     openai_api_key: str
     model: str
-    # 4096 (was 2048): the threads-first narrative_v2 enumerates every distinct
-    # thread and hit the 2048 ceiling on the richest prose; structured calls
-    # self-limit, so the extra headroom only costs tokens on genuinely rich sources.
+    # 4096 (was 2048): the threads-first narrative that preceded the claim
+    # inventory enumerated every distinct thread and hit 2048 on rich prose.
+    # Measured on gpt-5-mini against the current prompt, the worst of three
+    # real long sources (70k-233k characters) spends 2,131 of 4,096 — the
+    # inventory caps where threads did not. Re-measure before adding a section.
     max_tokens: int = 4096
 
     def _prompt_text(self, label: str) -> str:

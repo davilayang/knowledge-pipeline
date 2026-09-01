@@ -25,10 +25,12 @@ class ExtractionCallRecord:
     prompt_label: str
     prompt_sha256: str
     schema_name: str | None
-    """`TopicCard` / `Followups` for structured calls; None for narrative (plain text)."""
+    """The pydantic model the output was validated against; None on rows
+    written before the call became structured."""
 
     output: str
-    """Markdown for narrative; pydantic-JSON (`model_dump_json()`) for structured."""
+    """`model_dump_json()` wherever `schema_name` is set; plain markdown on
+    the pre-structured narrative rows where it is null."""
 
     tokens_in: int
     tokens_out: int

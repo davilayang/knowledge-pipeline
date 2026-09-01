@@ -261,7 +261,7 @@ generations is what produced the density spread in point 2 above.
 ## `narrative_fidelity_gold_seed.jsonl`
 
 Gold for the **narrative-fidelity** scorer (`evals.extraction.scorers.NarrativeFidelityScorer`,
-metric substrate in `evals.extraction.fidelity`) — scores `narrative_v2`'s `narrative_md` for
+metric substrate in `evals.extraction.fidelity`) — scores the narrative's `narrative_md` for
 omission (`faithful_recall`), corruption (`distortion_rate`), and invention (`fabrication_rate`)
 against gold threads, via two single-purpose injected judges (one fidelity, one fabrication —
 not merged; `evals.extraction.fidelity`'s conservative false-pass-averse merge helpers are for

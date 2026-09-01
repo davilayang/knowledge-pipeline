@@ -16,7 +16,7 @@
 # %% [markdown] tags=["header"]
 # # `ab_narrative__content` — Narrative prompt A/B on one content
 #
-# Iterate the `narrative_v1.md` prompt against one fixture. Narrative output
+# Iterate the `narrative_v3.md` prompt against one fixture. Narrative output
 # is unstructured markdown — the render is a two-column side-by-side of the
 # raw narrative_md output, so prose differences are immediately visible.
 #
@@ -28,8 +28,11 @@
 NOTEBOOK_STEM = "ab_narrative__content"
 FIXTURE_SET = "packages/evals/datasets/extraction_eval.jsonl"
 CONTENT_ID_INDEX = 0
-BASELINE_NARRATIVE = "narrative_v1.md"
-CANDIDATE_NARRATIVE = "narrative_v1.md"  # override to candidate when iterating
+BASELINE_NARRATIVE = "narrative_v3.md"
+CANDIDATE_NARRATIVE = "narrative_v3.md"  # override to candidate when iterating
+# Both must be prompts written against the current `Narrative`: the extractor
+# generates the field list from that model, so an older body would be sent
+# with a schema it does not describe. `make_three_call_variant` refuses it.
 MAX_COST_USD_PER_RUN = 0.25
 MODEL = "gpt-4o-mini"
 
