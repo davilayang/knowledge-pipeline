@@ -113,7 +113,7 @@ packages/
     raw_store/     # raw_store.db SQLite layer
     queue_store/   # queue.db SQLite layer (sources.py)
     fetches_store/ # fetches.db SQLite layer — cache_lookup/upsert, insert_job, update_job, get_job, get_job_status, canonicalize_lookup/upsert, mark_orphans_failed, create_schema
-    extraction/    # Extraction schemas + records (schemas.py, records.py)
+    extraction/    # Payload models, narrative rendering, call records (schemas.py, render.py, records.py, prompts.py)
     sessions/
     notes/
     wiki/
