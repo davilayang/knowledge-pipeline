@@ -26,7 +26,7 @@
 NOTEBOOK_STEM = "ab_narrative_coverage__content"
 FIXTURE_SET = "packages/evals/datasets/narrative_coverage_gold.jsonl"
 CONTENT_ID_INDEX = 0
-NARRATIVE = "narrative_v2.md"  # the prompt under test
+NARRATIVE = "narrative_v3.md"  # the prompt under test
 MODEL = "gpt-4.1-mini"
 MAX_TOKENS = 4096
 MAX_COST_USD_PER_RUN = 0.50

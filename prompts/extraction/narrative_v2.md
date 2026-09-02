@@ -1,5 +1,10 @@
 # narrative_v2 — anchored threads-first extraction (call 1 of 3)
 
+**Superseded by `narrative_v3.md`, and no longer runnable.** This prompt's field list was
+generated from `domains.extraction.schemas.Narrative`, and that model now carries v3's six
+sections — so sending this body would ask the model for `salient_threads` while handing it a
+schema without one. Kept as the record of what the threads-first shape said and why.
+
 Produces the *narrative* output the live voice agent reads for "tell me about
 this content." Topic Card and follow-ups are separate calls
 (`topic_card_v1.md`, `followups_v1.md`).

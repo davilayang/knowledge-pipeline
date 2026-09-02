@@ -33,6 +33,6 @@ def test_dry_run_reads_gold_and_estimates(capsys):
 
 def test_missing_api_key_exits_cleanly(monkeypatch, capsys):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
-    rc = main(["--narrative", "narrative_v2"])
+    rc = main(["--narrative", "narrative_v3"])
     assert rc == 2
     assert "OPENAI_API_KEY" in capsys.readouterr().out

@@ -74,7 +74,7 @@ print(f"using fixture {fixture.fixture_id} ({fixture.content_type})")
 
 # %% tags=["adapter"]
 PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative_text = strip_design_notes((PROMPTS / "narrative_v1.md").read_text())
+narrative_text = strip_design_notes((PROMPTS / "narrative_v3.md").read_text())
 followups_text = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
 baseline_text = strip_design_notes((PROMPTS / BASELINE_TOPIC_CARD).read_text())
 candidate_text = strip_design_notes((PROMPTS / CANDIDATE_TOPIC_CARD).read_text())

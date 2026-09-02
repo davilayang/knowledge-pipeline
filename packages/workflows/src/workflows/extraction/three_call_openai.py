@@ -134,7 +134,13 @@ class ThreeCallOpenAIExtractor:
         api_key: str,
         model: str,
         prompt_sets: dict[str, PromptBundle],
-        max_tokens: int = 2048,
+        # Both callers pass 4096 explicitly — the Dagster resource and the eval
+        # harness — and the widest narrative measured spends 2,131 of it, so a
+        # 2048 default sat under the observed worst case and matched nothing
+        # that constructs this. That figure is the worst of the three real
+        # sources tabulated in `prompts/extraction/narrative_v3.md`; re-measure
+        # there before trusting a smaller ceiling.
+        max_tokens: int = 4096,
     ):
         if _GENERIC_SHAPE not in prompt_sets:
             raise ValueError(
@@ -171,12 +177,14 @@ class ThreeCallOpenAIExtractor:
         """Cohort staleness signal for the SELECTED bundle, written to
         `queue_items.extractor_sha256`.
 
-        Covers everything static the three calls send: the model, the narrative
-        prompt, and — via `effective_prompt_sha` — the shared system message,
-        each structured role prompt, and the schema generated from each pydantic
-        model. Hashing the prompt markdown alone would leave every existing row
-        reading as fresh after an edit to the shared system or a field added to
-        `TopicCard`, even though both change what the model is asked for.
+        Covers everything static the three calls send: the model and — via
+        `effective_prompt_sha` on all three legs — the shared system message,
+        each role prompt, and the schema generated from each pydantic model.
+        Hashing the prompt markdown alone would leave every existing row reading
+        as fresh after an edit to the shared system or a field added to a model,
+        even though both change what the model is asked for. The narrative leg
+        is hashed this way too now that it is a structured call; hashing its
+        markdown raw meant a narrative schema change moved nothing.
 
         The reader-notes fold is folded into the followups leg unconditionally.
         That over-fires slightly — editing it marks even note-free rows stale —
@@ -190,7 +198,7 @@ class ThreeCallOpenAIExtractor:
             "\n".join(
                 (
                     self._model,
-                    bundle["narrative"][0],
+                    effective_prompt_sha(bundle["narrative"][0], Narrative),
                     effective_prompt_sha(bundle["topic_card"][0], TopicCard),
                     effective_prompt_sha(bundle["followups"][0] + _READER_THREADS_FOLD, Followups),
                 )

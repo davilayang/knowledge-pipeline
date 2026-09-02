@@ -16,6 +16,7 @@ import time
 from collections.abc import Callable
 from typing import Any
 
+from domains.extraction.schemas import Narrative
 from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
 from evals.core import FixtureRun, RunStatus, Variant, VariantProvenance
@@ -46,6 +47,31 @@ def _call_extractor(
             content_type=content_type,
             content_shape=content_shape,
         ).result()
+
+
+def _reject_prompt_written_for_another_schema(narrative_prompt_text: str, label: str) -> None:
+    """Refuse a narrative prompt that does not name every field of `Narrative`.
+
+    `shared_prefix.schema_block()` generates the field list from the model and
+    appends it at call time, so an older prompt body still *runs*: the model is
+    told to emit today's fields while the body describes yesterday's. The output
+    then gets scored and tabulated as that prompt's result, which is a wrong
+    number that looks like a measurement — worse than an error.
+
+    Checking that the body mentions each field name is crude, but it separates a
+    candidate prompt written against the current schema from one that was not,
+    which is the only distinction that matters here.
+    """
+    missing = [f for f in Narrative.model_fields if f not in narrative_prompt_text]
+    if missing:
+        raise ValueError(
+            f"narrative prompt {label!r} never mentions {', '.join(missing)}, so it was "
+            f"written for a different `Narrative` shape. The extractor generates the field "
+            f"list from the current model, so running this would ask the model for today's "
+            f"fields while the prompt describes another set, and score the result as if it "
+            f"were this prompt's. To compare against an older prompt, run it from a checkout "
+            f"of the release that carried it and compare the recorded means."
+        )
 
 
 def make_three_call_variant(
@@ -90,6 +116,10 @@ def make_three_call_variant(
         output_schema_version=output_schema_version,
     )
     cost_fn = cost_estimator or (lambda _in, _out: 0.0)
+
+    _reject_prompt_written_for_another_schema(
+        narrative_prompt_text, prompt_versions.get("narrative", name)
+    )
 
     def _run(fixture: ExtractionFixture) -> FixtureRun:
         bundle = PromptBundle(

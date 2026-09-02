@@ -6,6 +6,42 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The narrative extraction now runs `narrative_v3`: six sections in place of
+  v2's three.** `Salient threads` is cut for a measured padding failure and
+  `load_bearing_claims` becomes the inventory, with speakers, structure and
+  ordered delivery beats added. `core_idea` moves off first position and is
+  conditioned on `structure`, which was measured flattening distinct source
+  shapes into one.
+- **A rendered narrative now numbers its list sections and states their size** —
+  `Load bearing claims (15):`. The count is what lets the voice agent say how
+  much is left after walking the beats; deriving it from the array means the
+  model reports no arithmetic that could disagree with the list.
+- **One `Narrative` schema, not one per prompt version**, matching `TopicCard`
+  and `Followups`. The prompt's field list is generated from the model, so the
+  two cannot be versioned apart — a narrative prompt and its schema change in
+  one commit, and superseded prompt files are history rather than alternatives.
+  `eval-narrative-coverage` can therefore no longer diff two narrative prompts
+  in one pass; run the prior one from the release that carried it.
+- **`FETCH_EXTRACT_QUEUE_DAG_VERSION` 7 → 8** — the narrative asset's output
+  shape changed.
+- **A narrative with more delivery beats than load-bearing claims is now
+  rejected and retried.** The beats are selected from the claims, so more beats
+  than claims is impossible rather than thin — and the voice agent subtracts one
+  rendered count from the other and speaks the result, so it would have said
+  "that is four of the three" with nothing for the listener to check it against.
+- **The extractor's staleness signal now covers the narrative's schema.** It
+  hashed the narrative prompt raw, correct while that call returned markdown but
+  not since it became structured: a change to `Narrative` alone left every
+  existing row reading as fresh. `queue_items.extractor_sha256` moves for all
+  rows as a result.
+- **`eval-narrative-coverage` refuses a narrative prompt written for an older
+  schema** instead of running it. The extractor generates the field list from
+  `Narrative`, so a superseded prompt body still ran — asking the model for
+  today's fields while describing another set, then scoring the result as that
+  prompt's. A wrong number that looks like a measurement.
+
 ---
 
 ## [0.36.21] — 2026-08-31
