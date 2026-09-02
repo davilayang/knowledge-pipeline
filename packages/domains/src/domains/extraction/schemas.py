@@ -27,6 +27,14 @@ the two properties NA's generic renderer depends on: every field's `title`
 equals what NA derives from the json key, and every field is a plain string or a
 plain list. Break either and the two repos emit different text for one narrative.
 
+Which sections may exist at all, what each one guarantees, and what the consumer
+is obliged to do with it are not decided here — they are the narrative contract
+in the `data-context-builder` hub, at
+`documents/knowledge-os/contracts/narrative.md`. It requires every field on the
+wire to carry a consumer decision, and puts that enforcement on this side, so
+adding a field below means adding its row there first. Nothing fails if you skip
+it: the field reaches a reading model that was told nothing about it.
+
 NA tells the json rows from the older markdown ones by
 `extraction_calls.schema_name`, null on every narrative row written before the
 call became structured. NA's branch for that is already on its main.
