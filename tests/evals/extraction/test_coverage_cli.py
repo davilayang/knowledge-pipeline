@@ -2,7 +2,7 @@
 
 import json
 
-from evals.extraction.coverage_cli import _DEFAULT_GOLD, _repo_root, main
+from evals.extraction.coverage_cli import _DEFAULT_GOLD, _make_judge, _repo_root, main
 
 
 def test_dry_run_reads_gold_and_estimates(capsys):
@@ -36,3 +36,43 @@ def test_missing_api_key_exits_cleanly(monkeypatch, capsys):
     rc = main(["--narrative", "narrative_v3"])
     assert rc == 2
     assert "OPENAI_API_KEY" in capsys.readouterr().out
+
+
+def test_judge_sends_reasoning_models_the_token_param_they_accept(monkeypatch):
+    """gpt-5 rejects `max_tokens` outright, so a judge that hardcodes it cannot
+    score a run against the model production actually uses."""
+    sent = {}
+
+    class _Stub:
+        def __init__(self, api_key):
+            self.chat = self
+
+        @property
+        def completions(self):
+            return self
+
+        def create(self, **kw):
+            sent.update(kw)
+            raise AssertionError("stop after capturing kwargs")
+
+    import openai
+
+    monkeypatch.setattr(openai, "OpenAI", _Stub)
+    judge = _make_judge("k", "gpt-5-mini")
+    try:
+        judge("prompt")
+    except AssertionError:
+        pass
+
+    assert "max_tokens" not in sent
+    assert sent["max_completion_tokens"] == 2048
+
+
+def test_judge_model_defaults_away_from_the_extraction_model(capsys):
+    """A judge drawn from the model under test grades its own output. The
+    manifest carries `subject_model` and `judge_model` as separate fields; the
+    CLI has to be able to make them differ."""
+    rc = main(["--model", "gpt-5-mini", "--dry-run"])
+    assert rc == 0
+    out = capsys.readouterr().out
+    assert "judge=gpt-4.1-mini" in out

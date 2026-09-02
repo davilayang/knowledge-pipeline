@@ -20,6 +20,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **`eval-narrative-coverage` can score the model production actually runs.** Its
+  present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
+  outright, and a single `--model` flag set both the extractor and the judge — so
+  a reasoning model could not be scored, and the supported configuration had the
+  model under test grading its own output. The judge now shares the extraction
+  call's `token_kwargs`, and `--judge-model` is separate, defaulting away from the
+  subject. The gold threads it scores against were labelled cross-family with
+  OpenAI deliberately excluded; the scorer had been putting that family back in at
+  the last step.
 - **The metadata prompt now leads with a test a name must pass, not with
   instructions for finding names.** Scored over the 58 gold rows, the previous
   wording missed nobody and emitted 36 people who had not made the piece — the
