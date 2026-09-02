@@ -256,7 +256,7 @@ def test_non_reasoning_model_sends_max_tokens(extractor):
     with patch.object(extractor, "_client", client):
         extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     narr = _narrative_kwargs(client)
-    assert narr["max_tokens"] == 2048  # fixture uses the constructor default
+    assert narr["max_tokens"] == 4096  # fixture uses the constructor default
     assert "max_completion_tokens" not in narr
     assert "reasoning_effort" not in narr
 
@@ -878,8 +878,10 @@ def test_a_whitespace_only_narrative_counts_as_empty(extractor):
 
 def test_a_truncated_narrative_is_not_stored_as_a_whole_one(extractor):
     """`finish_reason="length"` means the model was cut off at the output ceiling.
-    What came back still reads as a finished narrative, and the voice agent would
-    speak it as one, so storing it is silent corruption rather than a short answer."""
+
+    The reply is checked for it before being parsed, so the item fails naming the
+    ceiling rather than burning every retry on a schema rejection that never says
+    the budget ran out."""
     client = MagicMock()
     client.close = AsyncMock()
 
@@ -888,7 +890,7 @@ def test_a_truncated_narrative_is_not_stored_as_a_whole_one(extractor):
             is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
             obj = _topic_card_obj() if is_topic else _followups_obj()
             return _create_resp(obj.model_dump_json())
-        resp = _create_resp("Salient threads:\n- one thing\n- a second thing, cut off mid-")
+        resp = _create_resp('{"speakers_and_author": "Nick Nisi (WorkOS)", "structure": "one thr')
         resp.choices[0].finish_reason = "length"
         return resp
 
@@ -911,7 +913,7 @@ def test_a_truncated_narrative_message_names_the_limit_and_the_next_step(extract
             is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
             obj = _topic_card_obj() if is_topic else _followups_obj()
             return _create_resp(obj.model_dump_json())
-        resp = _create_resp("Salient threads:\n- one thing, cut off mid-")
+        resp = _create_resp('{"speakers_and_author": "Nick Nisi (WorkOS)", "struct')
         resp.choices[0].finish_reason = "length"
         return resp
 
@@ -920,7 +922,7 @@ def test_a_truncated_narrative_message_names_the_limit_and_the_next_step(extract
         with pytest.raises(RuntimeError) as exc:
             extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
     message = str(exc.value)
-    assert "2048" in message  # the limit that was hit, not a bare "too long"
+    assert "4096" in message  # the limit that was hit, not a bare "too long"
     assert "YouTube" in message  # the item, so the row is identifiable
     assert "Nothing was stored" in message  # what became of the half narrative
     assert "maintainer" in message  # who can act, since the reader cannot

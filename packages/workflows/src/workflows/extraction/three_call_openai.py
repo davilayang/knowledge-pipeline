@@ -134,7 +134,11 @@ class ThreeCallOpenAIExtractor:
         api_key: str,
         model: str,
         prompt_sets: dict[str, PromptBundle],
-        max_tokens: int = 2048,
+        # Both callers pass 4096 explicitly — the Dagster resource and the eval
+        # harness — and the widest narrative measured spends 2,106, so the old
+        # 2048 default sat under the observed worst case and matched nothing
+        # that constructs this.
+        max_tokens: int = 4096,
     ):
         if _GENERIC_SHAPE not in prompt_sets:
             raise ValueError(
