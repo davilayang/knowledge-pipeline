@@ -6,7 +6,7 @@ caught by `test_schema_drift.py` against a pinned JSON fixture.
 """
 
 import pytest
-from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+from domains.extraction.schemas import ExtractionPayload, Followups, Narrative, TopicCard
 from pydantic import ValidationError
 
 
@@ -94,3 +94,28 @@ def test_followups_reader_threads_defaults_empty():
 def test_followups_accepts_reader_threads():
     f = Followups(questions=_Q, reader_threads=["compare with dbt"])
     assert f.reader_threads == ["compare with dbt"]
+
+
+def test_beats_may_not_outnumber_the_claims_they_are_selected_from():
+    """The voice agent subtracts one rendered count from the other and speaks it.
+
+    The beats are a selection from the claims, so more beats than claims is not
+    a thin extraction, it is an impossible one — and the failure is not silent:
+    newsletter-assistant's prompt turns the two counts into "that is five of the
+    fifteen this piece rests on". Four beats over three claims makes the agent
+    say "that is four of the three", confidently, into a channel where the
+    listener has nothing to check it against.
+
+    Deriving the counts from the arrays removed the arithmetic slip; it did not
+    make the relationship between the two lists true, which is why this is
+    enforced rather than assumed.
+    """
+    with pytest.raises(ValidationError, match="more delivery beats"):
+        Narrative(
+            speakers_and_author="Priya Raghunathan (Latchkey)",
+            structure="one throughline - routing beats scale",
+            core_idea="Measure the traffic first.",
+            load_bearing_claims=["Claim one - anchor", "Claim two - anchor"],
+            delivery_beats=["Beat one", "Beat two", "Beat three"],
+            named_concepts_and_entities="Priya Raghunathan, Latchkey",
+        )

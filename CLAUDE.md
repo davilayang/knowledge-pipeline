@@ -26,6 +26,16 @@ sequencing across repos): see
 `~/GitHub/data-context-builder/documents/knowledge-os/architecture.md`.
 Loaded on demand, not auto-imported.
 
+For the shape of an artefact this repo produces and `newsletter-assistant`
+consumes — the sections, their completeness guarantees, and each side's
+obligations: see
+`~/GitHub/data-context-builder/documents/knowledge-os/contracts/`, in
+the shared hub repo `davilayang/data-context-builder` (the same hub as `framing.md` and
+`architecture.md` above; on GitHub at
+`davilayang/data-context-builder`, path `documents/knowledge-os/contracts/`).
+Read the relevant contract before changing either end. Loaded on demand, not
+auto-imported.
+
 ## Decision rubric for future work
 
 When evaluating a PR, feature, pipeline change, or architectural decision, ask:
@@ -103,7 +113,7 @@ packages/
     raw_store/     # raw_store.db SQLite layer
     queue_store/   # queue.db SQLite layer (sources.py)
     fetches_store/ # fetches.db SQLite layer — cache_lookup/upsert, insert_job, update_job, get_job, get_job_status, canonicalize_lookup/upsert, mark_orphans_failed, create_schema
-    extraction/    # Extraction schemas + records (schemas.py, records.py)
+    extraction/    # Payload models, narrative rendering, call records (schemas.py, render.py, records.py, prompts.py)
     sessions/
     notes/
     wiki/

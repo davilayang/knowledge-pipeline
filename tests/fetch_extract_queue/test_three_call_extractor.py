@@ -7,12 +7,13 @@ exercised end-to-end via the sync `.extract()` entry point (which wraps
 `asyncio.run`).
 """
 
+import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
-import pydantic
 import pytest
 from domains.extraction.records import ExtractionCallRecord
-from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+from domains.extraction.render import render_narrative
+from domains.extraction.schemas import ExtractionPayload, Followups, Narrative, TopicCard
 from workflows.extraction import PromptBundle
 from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.extraction.three_call_openai import (
@@ -51,6 +52,17 @@ def _followups_obj() -> Followups:
     return Followups(questions=["a?", "b?", "c?", "d?"])
 
 
+def _narrative_obj() -> Narrative:
+    return Narrative(
+        speakers_and_author="Alice Nkemdirim (Acme)",
+        structure="one throughline - argues the core idea",
+        core_idea="The core idea.",
+        load_bearing_claims=["Claim one - anchor", "Claim two - anchor"],
+        delivery_beats=["Beat one\nAnchor: a figure"],
+        named_concepts_and_entities="Alice Nkemdirim, Acme",
+    )
+
+
 def _usage(prompt_tokens=100, completion_tokens=50, cached=80):
     usage = MagicMock()
     usage.prompt_tokens = prompt_tokens
@@ -73,16 +85,20 @@ def _create_resp(text: str):
     return resp
 
 
-def _wire_client(create_text: str, topic_obj, followups_obj, *, capture=None):
+def _wire_client(create_text=None, topic_obj=None, followups_obj=None, *, capture=None):
     """Mock client for all three calls. Accepts any kwargs, so a call may send
     either `max_tokens` or `max_completion_tokens` without the mock rejecting the
     keyword. `capture`, when given, collects each call's `messages` by kind."""
+    create_text = _narrative_obj().model_dump_json() if create_text is None else create_text
+    topic_obj = topic_obj if topic_obj is not None else _topic_card_obj()
+    followups_obj = followups_obj if followups_obj is not None else _followups_obj()
     client = MagicMock()
     client.close = AsyncMock()
 
     async def _create(**kwargs):
         messages = kwargs["messages"]
-        if kwargs.get("response_format") is None:
+        joined = "".join(m["content"] for m in messages)
+        if "NARRATIVE" in joined:
             if capture is not None:
                 capture["narrative"] = messages
             return _create_resp(create_text)
@@ -96,19 +112,21 @@ def _wire_client(create_text: str, topic_obj, followups_obj, *, capture=None):
 
 
 def _narrative_kwargs(client) -> dict:
-    """The narrative call is the one sending no `response_format`."""
+    """All three calls send json now, so the narrative is told apart by its
+    prompt text in the trailing task message."""
     return next(
         c.kwargs
         for c in client.chat.completions.create.await_args_list
-        if c.kwargs.get("response_format") is None
+        if "NARRATIVE" in c.kwargs["messages"][-1]["content"]
     )
 
 
 def _structured_kwargs(client) -> list[dict]:
+    """The topic-card and follow-ups calls — the narrative sends json too now."""
     return [
         c.kwargs
         for c in client.chat.completions.create.await_args_list
-        if c.kwargs.get("response_format") is not None
+        if "NARRATIVE" not in c.kwargs["messages"][-1]["content"]
     ]
 
 
@@ -122,19 +140,19 @@ def extractor() -> ThreeCallOpenAIExtractor:
 
 
 def test_extract_returns_extraction_payload_with_three_call_outputs(extractor):
-    client = _wire_client("# narrative body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         payload, calls = extractor.extract(
             content="raw", content_type="Article", content_shape="unknown"
         )
     assert isinstance(payload, ExtractionPayload)
-    assert payload.narrative_md == "# narrative body"
+    assert payload.narrative_md == render_narrative(_narrative_obj())
     assert payload.topic_card.extracted_title == "t"
     assert len(payload.followups.questions) == 4
 
 
 def test_extract_returns_one_call_record_per_call(extractor):
-    client = _wire_client("# narrative body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(calls) == 3
@@ -145,7 +163,7 @@ def test_extract_returns_one_call_record_per_call(extractor):
 
 
 def test_extract_records_carry_prompt_label_and_sha(extractor):
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
@@ -158,18 +176,18 @@ def test_extract_records_carry_prompt_label_and_sha(extractor):
         assert c.tokens_out == 50
 
 
-def test_narrative_record_has_schema_name_none(extractor):
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+def test_every_call_record_names_the_schema_it_was_validated_against(extractor):
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
-    assert by_kind["narrative"].schema_name is None
+    assert by_kind["narrative"].schema_name == "Narrative"
     assert by_kind["topic_card"].schema_name == "TopicCard"
     assert by_kind["followups"].schema_name == "Followups"
 
 
 def test_structured_calls_store_pydantic_json_output(extractor):
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         _, calls = extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     by_kind = {c.call_kind: c for c in calls}
@@ -180,7 +198,7 @@ def test_structured_calls_store_pydantic_json_output(extractor):
 def test_extract_passes_content_type_tag_in_user_message(extractor):
     """Each call receives `[content_type: …]` in the user message so the prompt's
     content-type routing block can branch."""
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         extractor.extract(content="raw content", content_type="YouTube", content_shape="unknown")
     create_call = client.chat.completions.create.await_args
@@ -196,7 +214,7 @@ def test_gpt5_model_sends_reasoning_params_not_max_tokens():
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model="gpt-5-mini", prompt_sets={"unknown": _bundle()}, max_tokens=4096
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
     narr = _narrative_kwargs(client)
@@ -220,7 +238,7 @@ def test_dotted_gpt5_models_send_none_effort_not_minimal(model):
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model=model, prompt_sets={"unknown": _bundle()}, max_tokens=4096
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
     narr = _narrative_kwargs(client)
@@ -234,11 +252,11 @@ def test_dotted_gpt5_models_send_none_effort_not_minimal(model):
 def test_non_reasoning_model_sends_max_tokens(extractor):
     """gpt-4.1-family keep the classic `max_tokens` param (they reject
     `reasoning_effort`)."""
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     narr = _narrative_kwargs(client)
-    assert narr["max_tokens"] == 2048  # fixture uses the constructor default
+    assert narr["max_tokens"] == 4096  # fixture uses the constructor default
     assert "max_completion_tokens" not in narr
     assert "reasoning_effort" not in narr
 
@@ -252,8 +270,8 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
 
     async def _create(**kwargs):
         messages = kwargs["messages"]
-        if kwargs.get("response_format") is None:
-            return _create_resp("narrative")
+        if "NARRATIVE" in messages[-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
             raise RuntimeError("topic_card OpenAI 500")
         return _create_resp(_followups_obj().model_dump_json())
@@ -268,7 +286,7 @@ def test_extract_raises_when_topic_card_call_fails(extractor):
 def test_extract_closes_async_client_on_success(extractor):
     """Client must be closed in the same event loop that opened it — the
     asyncio.run loop dies on return, taking any unclosed httpx pool with it."""
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(extractor, "_client", client):
         extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     client.close.assert_awaited_once()
@@ -373,14 +391,14 @@ def test_extract_selects_shape_specific_bundle_when_present():
             ),
         },
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         _, calls = ex.extract(
             content="raw", content_type="YouTube", content_shape="conference_talk"
         )
     by_kind = {c.call_kind: c for c in calls}
     assert by_kind["narrative"].prompt_label == "narrative_ct_v1"
-    assert _narrative_kwargs(client)["messages"][0]["content"] == "CT_NARRATIVE"
+    assert _narrative_kwargs(client)["messages"][-1]["content"].startswith("CT_NARRATIVE")
 
 
 def test_extract_falls_back_to_unknown_for_unregistered_shape():
@@ -396,7 +414,7 @@ def test_extract_falls_back_to_unknown_for_unregistered_shape():
             ),
         },
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         _, calls = ex.extract(content="raw", content_type="YouTube", content_shape="tutorial")
     by_kind = {c.call_kind: c for c in calls}
@@ -415,7 +433,7 @@ def test_extract_records_carry_prompt_set_shape_for_registered_shape():
             "conference_talk": _bundle(narrative_label="narrative_ct_v1"),
         },
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         _, calls = ex.extract(
             content="raw", content_type="YouTube", content_shape="conference_talk"
@@ -433,7 +451,7 @@ def test_extract_records_prompt_set_shape_as_unknown_on_fallback():
         model="gpt-4.1-mini",
         prompt_sets={"unknown": _bundle()},
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         _, calls = ex.extract(content="raw", content_type="YouTube", content_shape="tutorial")
     for c in calls:
@@ -457,7 +475,7 @@ def test_bundle_sha256_falls_back_to_unknown_for_unregistered_shape():
 
 def _followups_sha(extractor, *, user_notes):
     captured = {}
-    client = _wire_client("# n", _topic_card_obj(), _followups_obj(), capture=captured)
+    client = _wire_client(capture=captured)
     with patch.object(extractor, "_client", client):
         _payload, calls = extractor.extract(
             content="raw",
@@ -521,7 +539,7 @@ def test_every_call_declares_the_same_prompt_cache_key():
     ex = ThreeCallOpenAIExtractor(
         api_key="t", model="gpt-4.1-mini", prompt_sets={"unknown": _bundle()}
     )
-    client = _wire_client("body", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
     with patch.object(ex, "_client", client):
         ex.extract(content="raw", content_type="Article", content_shape="unknown")
 
@@ -540,8 +558,8 @@ def _json_mode_client(topic_json: str, followups_json: str):
     client.close = AsyncMock()
 
     async def _create(*, messages, response_format=None, **_):
-        if response_format is None:
-            return _create_resp("# narrative body")
+        if "NARRATIVE" in messages[-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         tail = messages[-1]["content"]
         return _create_resp(topic_json if "TOPIC_CARD_PROMPT" in tail else followups_json)
 
@@ -570,8 +588,8 @@ def test_the_structured_pair_does_not_overlap(extractor):
 
     async def _create(**kwargs):
         messages = kwargs["messages"]
-        if kwargs.get("response_format") is None:
-            return _create_resp("# n")
+        if "NARRATIVE" in messages[-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         kind = "topic_card" if "TOPIC_CARD_PROMPT" in messages[-1]["content"] else "followups"
         events.append(f"start {kind}")
         await asyncio.sleep(0)
@@ -602,8 +620,8 @@ def _retrying_client(topic_bodies: list[str]):
 
     async def _create(**kwargs):
         messages = kwargs["messages"]
-        if kwargs.get("response_format") is None:
-            return _create_resp("# n")
+        if "NARRATIVE" in messages[-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
             return _create_resp(pending.pop(0))
         return _create_resp(_followups_obj().model_dump_json())
@@ -630,7 +648,9 @@ def test_structured_call_gives_up_after_three_attempts(extractor):
     retrying forever or shipping a partial extraction."""
     client = _retrying_client(['{"extracted_title": "no"}'] * 3)
     with patch.object(extractor, "_client", client):
-        with pytest.raises(pydantic.ValidationError):
+        # Not the bare pydantic error: the reason and the next step are what a
+        # reader of the failed row gets, and pydantic names our data model.
+        with pytest.raises(RuntimeError, match="no reply matched the schema"):
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(_structured_kwargs(client)) == 3
 
@@ -654,15 +674,15 @@ def test_a_truncated_reply_fails_immediately_rather_than_retrying(extractor):
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is None:
-            return _create_resp("# n")
+        if "NARRATIVE" in kwargs["messages"][-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         resp = _create_resp('{"extracted_title": "cut off here')
         resp.choices[0].finish_reason = "length"
         return resp
 
     client.chat.completions.create = AsyncMock(side_effect=_create)
     with patch.object(extractor, "_client", client):
-        with pytest.raises(RuntimeError, match="truncated"):
+        with pytest.raises(RuntimeError, match="completion ceiling"):
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     assert len(_structured_kwargs(client)) == 1
 
@@ -681,8 +701,8 @@ def test_an_undeclared_field_is_rejected_rather_than_silently_dropped(extractor)
 
     async def _create(**kwargs):
         messages = kwargs["messages"]
-        if kwargs.get("response_format") is None:
-            return _create_resp("# n")
+        if "NARRATIVE" in messages[-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         if "TOPIC_CARD_PROMPT" in messages[-1]["content"]:
             return _create_resp(_topic_card_obj().model_dump_json())
         return _create_resp(replies.pop(0))
@@ -719,8 +739,8 @@ def test_a_refusal_fails_immediately_rather_than_retrying(extractor):
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is None:
-            return _create_resp("# n")
+        if "NARRATIVE" in kwargs["messages"][-1]["content"]:
+            return _create_resp(_narrative_obj().model_dump_json())
         resp = _create_resp("")
         resp.choices[0].message.refusal = "I can't help with that."
         return resp
@@ -749,12 +769,12 @@ def test_cached_tokens_stays_none_when_the_api_reports_no_cache_details(extracto
     prefix-cache details at all — distinct from a reported zero. The narrative
     call preserves that; the structured pair must not flatten it to 0, or the
     two call kinds disagree about what an unreported value looks like."""
-    client = _wire_client("# n", _topic_card_obj(), _followups_obj())
+    client = _wire_client()
 
     async def _create(**kwargs):
         resp = _create_resp(
-            "# n"
-            if kwargs.get("response_format") is None
+            _narrative_obj().model_dump_json()
+            if "NARRATIVE" in kwargs["messages"][-1]["content"]
             else (
                 _topic_card_obj().model_dump_json()
                 if "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
@@ -782,7 +802,7 @@ def _narrative_client(narrative_bodies: list[str]):
     pending = list(narrative_bodies)
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is None:
+        if "NARRATIVE" in kwargs["messages"][-1]["content"]:
             return _create_resp(pending.pop(0))
         obj = (
             _topic_card_obj()
@@ -799,12 +819,12 @@ def test_an_empty_narrative_is_retried(extractor):
     """The narrative call intermittently returns an empty completion. One retry
     recovers most of them; without it the whole item fails and the two
     structured results are discarded along with it."""
-    client = _narrative_client(["", "# recovered narrative"])
+    client = _narrative_client(["", _narrative_obj().model_dump_json()])
     with patch.object(extractor, "_client", client):
         payload, _ = extractor.extract(
             content="raw", content_type="Article", content_shape="unknown"
         )
-    assert payload.narrative_md == "# recovered narrative"
+    assert payload.narrative_md == render_narrative(_narrative_obj())
 
 
 def test_an_exhausted_narrative_reports_what_happened_not_a_schema_error(extractor):
@@ -812,21 +832,16 @@ def test_an_exhausted_narrative_reports_what_happened_not_a_schema_error(extract
     sensor copies the innermost exception message into the row's Error field. Left
     to pydantic it read `String should have at least 1 character` for
     `narrative_md`, which names our data model rather than the failure."""
-    client = _narrative_client(["", ""])
+    client = _narrative_client(["", "", ""])
     with patch.object(extractor, "_client", client):
         with pytest.raises(RuntimeError) as exc:
             extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
     message = str(exc.value)
-    assert "empty" in message
-    assert "2 attempts" in message
+    assert "narrative" in message  # which of the three calls gave up
+    assert "empty" in message  # the fault, not json.loads' "Expecting value"
+    assert "3 attempts" in message
     assert "YouTube" in message  # the item, so the row is identifiable
     assert "Retry" in message  # what the reader should do about it
-    # The narrative runs FIRST, so an exhausted narrative means the other two
-    # calls were never made. Saying they "succeeded but were discarded" was true
-    # of the old path, where all three ran before payload assembly rejected the
-    # empty narrative — and is now simply false.
-    assert "not attempted" in message
-    assert "discarded" not in message
 
 
 def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extractor):
@@ -837,7 +852,7 @@ def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extract
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is not None:
+        if "NARRATIVE" not in kwargs["messages"][-1]["content"]:
             return _create_resp(_topic_card_obj().model_dump_json())
         resp = _create_resp("")
         resp.choices[0].message.refusal = "I can't help with that."
@@ -853,27 +868,29 @@ def test_a_refused_narrative_reports_the_refusal_not_an_empty_completion(extract
 def test_a_whitespace_only_narrative_counts_as_empty(extractor):
     """`"   "` clears both `if output` and pydantic's min_length=1, so without
     this it is stored as a narrative and the item silently carries a blank one."""
-    client = _narrative_client(["   \n  ", "# recovered narrative"])
+    client = _narrative_client(["   \n  ", _narrative_obj().model_dump_json()])
     with patch.object(extractor, "_client", client):
         payload, _ = extractor.extract(
             content="raw", content_type="Article", content_shape="unknown"
         )
-    assert payload.narrative_md == "# recovered narrative"
+    assert payload.narrative_md == render_narrative(_narrative_obj())
 
 
 def test_a_truncated_narrative_is_not_stored_as_a_whole_one(extractor):
     """`finish_reason="length"` means the model was cut off at the output ceiling.
-    What came back still reads as a finished narrative, and the voice agent would
-    speak it as one, so storing it is silent corruption rather than a short answer."""
+
+    The reply is checked for it before being parsed, so the item fails naming the
+    ceiling rather than burning every retry on a schema rejection that never says
+    the budget ran out."""
     client = MagicMock()
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is not None:
+        if "NARRATIVE" not in kwargs["messages"][-1]["content"]:
             is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
             obj = _topic_card_obj() if is_topic else _followups_obj()
             return _create_resp(obj.model_dump_json())
-        resp = _create_resp("Salient threads:\n- one thing\n- a second thing, cut off mid-")
+        resp = _create_resp('{"speakers_and_author": "Nick Nisi (WorkOS)", "structure": "one thr')
         resp.choices[0].finish_reason = "length"
         return resp
 
@@ -892,11 +909,11 @@ def test_a_truncated_narrative_message_names_the_limit_and_the_next_step(extract
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is not None:
+        if "NARRATIVE" not in kwargs["messages"][-1]["content"]:
             is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
             obj = _topic_card_obj() if is_topic else _followups_obj()
             return _create_resp(obj.model_dump_json())
-        resp = _create_resp("Salient threads:\n- one thing, cut off mid-")
+        resp = _create_resp('{"speakers_and_author": "Nick Nisi (WorkOS)", "struct')
         resp.choices[0].finish_reason = "length"
         return resp
 
@@ -905,7 +922,7 @@ def test_a_truncated_narrative_message_names_the_limit_and_the_next_step(extract
         with pytest.raises(RuntimeError) as exc:
             extractor.extract(content="raw", content_type="YouTube", content_shape="unknown")
     message = str(exc.value)
-    assert "2048" in message  # the limit that was hit, not a bare "too long"
+    assert "4096" in message  # the limit that was hit, not a bare "too long"
     assert "YouTube" in message  # the item, so the row is identifiable
     assert "Nothing was stored" in message  # what became of the half narrative
     assert "maintainer" in message  # who can act, since the reader cannot
@@ -927,7 +944,7 @@ def test_a_zero_byte_reply_at_the_limit_is_truncation_not_an_empty_narrative(ext
     client.close = AsyncMock()
 
     async def _create(**kwargs):
-        if kwargs.get("response_format") is not None:
+        if "NARRATIVE" not in kwargs["messages"][-1]["content"]:
             is_topic = "TOPIC_CARD_PROMPT" in kwargs["messages"][-1]["content"]
             obj = _topic_card_obj() if is_topic else _followups_obj()
             return _create_resp(obj.model_dump_json())
@@ -941,3 +958,41 @@ def test_a_zero_byte_reply_at_the_limit_is_truncation_not_an_empty_narrative(ext
             extractor.extract(content="raw", content_type="Article", content_shape="unknown")
     # One call: no retry, and the structured pair never ran.
     assert client.chat.completions.create.await_count == 1
+
+
+def test_narrative_sends_the_same_cached_prefix_as_the_structured_calls(extractor):
+    """Everything ahead of the task tail must be byte-identical across all three
+    calls, or the narrative sits in a prompt-cache partition of its own and the
+    article is billed twice per item instead of once."""
+    capture: dict = {}
+    client = _wire_client(
+        _narrative_obj().model_dump_json(), _topic_card_obj(), _followups_obj(), capture=capture
+    )
+    with patch.object(extractor, "_client", client):
+        extractor.extract(content="raw", content_type="Article", content_shape="unknown")
+
+    assert capture["narrative"][:2] == capture["topic_card"][:2]
+
+
+def test_a_blank_field_narrative_is_retried_not_stored(extractor):
+    """`min_length=1` counts characters, so `"   "` clears it. The old narrative
+    call stripped the whole completion before accepting it, which caught this;
+    routing through the schema does not, and a narrative whose fields are blank
+    renders as headed sections with nothing under them — which the voice agent
+    reads as a source that had nothing to say."""
+    blank = json.dumps(
+        {
+            "speakers_and_author": " ",
+            "structure": "\n ",
+            "core_idea": " ",
+            "load_bearing_claims": ["   "],
+            "delivery_beats": ["  "],
+            "named_concepts_and_entities": "\n ",
+        }
+    )
+    client = _narrative_client([blank, _narrative_obj().model_dump_json()])
+    with patch.object(extractor, "_client", client):
+        payload, _ = extractor.extract(
+            content="raw", content_type="Article", content_shape="unknown"
+        )
+    assert payload.narrative_md == render_narrative(_narrative_obj())

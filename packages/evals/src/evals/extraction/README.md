@@ -16,10 +16,11 @@ When the narrative prompt (or model) changes, re-score it against the pinned gol
 
 ```bash
 set -a && source .env && set +a && \
-  uv run eval-narrative-coverage --narrative narrative_v2 --baseline narrative_v1 --runs 3
+  uv run eval-narrative-coverage --narrative narrative_v3 --runs 3
 ```
 
-- `--narrative <label>` — candidate prompt (default `narrative_v2`); `--baseline <label>` — optional prior prompt to diff against in the same pass (prints the per-content-type and per-shape Δ and flags any `← REGRESSION`).
+- `--narrative <label>` — candidate prompt (default `narrative_v3`); `--baseline <label>` — a second prompt to diff against in the same pass (prints the per-content-type and per-shape Δ and flags any `← REGRESSION`).
+- **Comparing two narrative prompts in one pass is no longer possible: the extractor generates the field list from `domains.extraction.schemas.Narrative`, so only a prompt written against the current shape can run. To diff against a prior prompt, run this from a checkout of the release that carried it and compare the recorded means.**
 - `--runs N` (default 3) — the LLM judge is noisy at n=7; the CLI reports the **mean + observed range** over N full re-runs. `--dry-run` estimates cost first.
 - Both prompts are loaded with design-notes headers stripped (`strip_design_notes`, matches prod). Output ends with **Notion-ready rows** — log the mean to the Eval Runs DB (see [`../../../README.md`](../../../README.md) → "Results are two-tier"). Detailed per-run JSON persists under `data/eval_runs/` (gitignored).
 - The gold lives at [`datasets/narrative_coverage_gold.jsonl`](../../../datasets/README.md#narrative_coverage_goldjsonl); the single-fixture hit/miss inspector is the `ab_narrative_coverage__content` workbench notebook.
@@ -27,7 +28,7 @@ set -a && source .env && set +a && \
 
 ### Narrative fidelity (seed, no CLI yet)
 
-`NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores `narrative_v2`'s `narrative_md`
+`NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores the narrative's `narrative_md`
 against gold threads for omission (`faithful_recall`), corruption (`distortion_rate`), and
 invention (`fabrication_rate`), via two single-purpose injected judges — a fidelity judge
 (`DEFAULT_FIDELITY_PROMPT`, per-gold-thread faithful/distorted/absent) and a fabrication judge

@@ -5,7 +5,9 @@ prompt (or model) changes. Builds the three-call extractor with a chosen
 narrative prompt, scores each candidate narrative present/absent against the
 pinned gold threads (`datasets/narrative_coverage_gold.jsonl`), and reports
 `coverage@present` as the **mean of N full re-runs + observed range**,
-stratified by content shape. `--baseline` diffs a candidate prompt against a
+stratified by content shape. `--baseline` diffs two prompts in one pass — both
+must be written against the current `Narrative`; an older one is refused rather
+than run. It diffs a candidate prompt against a
 prior one in the same pass (the ship gate: does the new prompt cover ≥ the old
 on every shape?).
 
@@ -13,7 +15,12 @@ Needs `OPENAI_API_KEY` in env — extraction and the present/absent judge both
 call OpenAI:
 
     set -a && source .env && set +a && \
-      uv run eval-narrative-coverage --narrative narrative_v2 --baseline narrative_v1 --runs 3
+      uv run eval-narrative-coverage --narrative narrative_v3 --runs 3
+
+Only a prompt written against the current `Narrative` shape can run: the
+extractor generates the field list from that model, so an older prompt body
+would be sent with a schema it does not describe. Diffing against a prior
+prompt means running it from the release that carried it.
 
 Headline mean + range go to the Knowledge OS — Eval Runs Notion DB (see
 `packages/evals/README.md` — record the mean of ≥3 runs, never a single run);
@@ -156,8 +163,20 @@ def _print_arm(a: dict, runs: int) -> None:
 
 def main(argv: Sequence[str] | None = None) -> int:
     p = argparse.ArgumentParser(prog="eval-narrative-coverage")
-    p.add_argument("--narrative", default="narrative_v2", help="candidate narrative prompt label")
-    p.add_argument("--baseline", default=None, help="optional prior prompt label to diff against")
+    p.add_argument(
+        "--narrative",
+        default="narrative_v3",
+        help="candidate narrative prompt label; must be a prompt written "
+        "against the current `Narrative` schema, since the extractor "
+        "generates the field list from it",
+    )
+    p.add_argument(
+        "--baseline",
+        default=None,
+        help="second prompt label to diff against in the same pass; must also be "
+        "written against the current `Narrative` schema, so a superseded prompt "
+        "is refused rather than scored",
+    )
     p.add_argument(
         "--runs", type=int, default=3, help="full re-runs to average (LLM judge is noisy)"
     )

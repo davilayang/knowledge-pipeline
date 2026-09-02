@@ -7,6 +7,17 @@ from evals.extraction.types import ExtractionFixture
 from evals.extraction.variants import make_three_call_variant
 
 
+# `make_three_call_variant` refuses a narrative prompt that does not name every
+# field of `Narrative`, since a body written for an older shape would be sent
+# with today's generated field list and scored as if it were that prompt's
+# output. These tests care about variant plumbing, not prompt content, so the
+# stub is the field names plus whatever marker the test is distinguishing by.
+def _narrative_stub(marker: str = "") -> str:
+    from domains.extraction.schemas import Narrative
+
+    return marker + " " + " ".join(Narrative.model_fields)
+
+
 def _fixture(content_type: str = "Article") -> ExtractionFixture:
     return ExtractionFixture(
         fixture_id="art_001",
@@ -19,7 +30,7 @@ def _fixture(content_type: str = "Article") -> ExtractionFixture:
 def test_make_three_call_variant_returns_variant():
     v = make_three_call_variant(
         name="v5_baseline",
-        narrative_prompt_text="N",
+        narrative_prompt_text=_narrative_stub("N"),
         topic_card_prompt_text="T",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1"},
@@ -33,7 +44,7 @@ def test_make_three_call_variant_returns_variant():
 def test_variant_provenance_carries_prompt_versions_and_model():
     v = make_three_call_variant(
         name="v5_baseline",
-        narrative_prompt_text="N",
+        narrative_prompt_text=_narrative_stub("N"),
         topic_card_prompt_text="T",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1", "narrative": "v1", "followups": "v1"},
@@ -47,7 +58,7 @@ def test_variant_provenance_carries_prompt_versions_and_model():
 def test_variant_identity_changes_when_prompt_text_changes():
     a = make_three_call_variant(
         name="a",
-        narrative_prompt_text="N1",
+        narrative_prompt_text=_narrative_stub("N1"),
         topic_card_prompt_text="T1",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1"},
@@ -56,7 +67,7 @@ def test_variant_identity_changes_when_prompt_text_changes():
     )
     b = make_three_call_variant(
         name="b",
-        narrative_prompt_text="N1",
+        narrative_prompt_text=_narrative_stub("N1"),
         topic_card_prompt_text="T2",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v2"},
@@ -88,7 +99,7 @@ def test_variant_run_invokes_three_call_extractor(monkeypatch):
 
     v = make_three_call_variant(
         name="v5",
-        narrative_prompt_text="N",
+        narrative_prompt_text=_narrative_stub("N"),
         topic_card_prompt_text="T",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1"},
@@ -131,7 +142,7 @@ def test_variant_run_inside_running_event_loop(monkeypatch):
 
     v = make_three_call_variant(
         name="v5",
-        narrative_prompt_text="N",
+        narrative_prompt_text=_narrative_stub("N"),
         topic_card_prompt_text="T",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1"},
@@ -162,7 +173,7 @@ def test_variant_run_returns_error_status_on_extractor_failure(monkeypatch):
 
     v = make_three_call_variant(
         name="v5",
-        narrative_prompt_text="N",
+        narrative_prompt_text=_narrative_stub("N"),
         topic_card_prompt_text="T",
         followups_prompt_text="F",
         prompt_versions={"topic_card": "v1"},

@@ -8,18 +8,80 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **A reading now fails when its body arrived damaged, instead of being extracted from anyway.** `extract_metadata` reports substance the text refers to but does not contain (`unreadable_json` on `queue_items`); when the cause is navigation chrome or truncated text at major severity, the item fails and Notion shows Status=Failed with the specific missing material and what to try. A GitHub page whose body fetched as "There was an error while loading" no longer produces a confident reading card built out of navigation.
-- **Severity asks whether a refetch would recover the material, not whether a claim is unverifiable.** Measured over all 227 production bodies: the unverifiable-claim test called 41% of the corpus damaged — half of YouTube, 73% of arXiv — because a paper referencing Figure 4 really does have a claim you cannot check. The refetch test lands at 1.8%, stable across repeat runs. Slides, figures and charts are recorded as `minor` rather than failing: they were never text, so no refetch produces them.
+- **A gold dataset for the extract-metadata prompt.** 58 items drawn from the production queue, stratified by content type toward the lanes that fail for different reasons, with the fetched body inlined and every recorded name carrying a verbatim quote from that body. It replaces "ship the columns dark and eyeball production later" with a measurement, against a control arm — the existing `author` column — whose floor is already known: populated on 72 of 286 rows, holding the publisher 76% of the time, and giving genuine person-level attribution on about 6% of the corpus.
 
-- **A gold dataset for the extract-metadata prompt's `contributors` and `publisher` fields.** 58 items drawn from the production queue, stratified by content type toward the lanes that fail for different reasons, with the fetched body inlined and every recorded name carrying a verbatim quote from that body. It replaces "ship the columns dark and eyeball production later" with a measurement, against a control arm — the existing `author` column — whose floor is already known: populated on 72 of 286 rows, holding the publisher 76% of the time, and giving genuine person-level attribution on about 6% of the corpus.
+- **A labelling codebook covering all three of the prompt's fields**, written to be handed to a labeller verbatim, defining a contributor from what an entity wiki needs rather than from the prompt's own wording — so the gold can catch the prompt being wrong instead of agreeing with it by construction.
 
-- **A labelling codebook for those two fields**, written to be handed to a labeller verbatim, defining a contributor from what an entity wiki needs rather than from the prompt's own wording — so the gold can catch the prompt being wrong instead of agreeing with it by construction.
+  Labels come from two independent labellers in different model families, reading only the codebook and the body. They agree on the contributor set for 56 of 58 items — worth stating next to the 58.8% at which the recently-dropped structural label reproduced across vendors, since "these are checkable facts with a right answer" was the reason these fields stayed gateable when that one did not. Publisher is less settled at 47 of 58, and the disagreement was systematic rather than noisy: in eleven disputes the cross-family labeller returned null where the other named a publisher, and none went the other way — two different thresholds for what counts as the text identifying one.
 
-  Labels come from two independent labellers in different model families, reading only the codebook and the body. They agree on the contributor set for 56 of 58 items — worth stating next to the 58.8% at which the recently-dropped structural label reproduced across vendors, since "these are checkable facts with a right answer" was the reason these two fields stayed gateable when that one did not. Publisher is less settled at 47 of 58, and the disagreement was systematic rather than noisy: in nine of eleven the cross-family labeller returned null where the other named a publisher, and none went the other way — two different thresholds for what counts as the text identifying one.
+  Each dispute was then settled by writing the missing rule into the codebook rather than by ruling on the item, so re-labelling from scratch reaches the same answers. The publisher definition is now an explicit precedence ladder — a stated channel or masthead outranks the organisation a piece speaks as, which outranks a repository owner; a venue is not a publisher; sponsor reads never establish one; and a channel named after a person the piece already credits leaves the publisher null rather than minting a second entity for one human. Every adjudicated row names the rule that decided it.
 
-  Each dispute was then settled by writing the missing rule into the codebook rather than by ruling on the item, so re-labelling from scratch reaches the same answers. The publisher definition is now an explicit precedence ladder — a stated channel or masthead outranks the organisation a piece speaks as, which outranks a repository owner; a venue is not a publisher; sponsor reads never establish one; and a channel named after a person the piece already credits leaves the publisher null rather than minting a second entity for one human. All 58 rows are scorable, and every adjudicated row names the rule that decided it.
+  **What the set cannot decide is `unreadable` recall.** Both labellers read all 58 bodies against the same codebook and found no damaged one: 57 agree the body arrived intact, one is an unresolved dispute, and none is labelled damaged. So the gate can be measured for false alarms and not at all for misses, and a "0 missed" figure from this set would be an artefact of the corpus rather than a result.
 
-  The gold covers two of the prompt's three fields. `unreadable` is deliberately out of it — that field fails a row rather than recording one, its severity test was recalibrated against the whole production corpus rather than a sample, and the two rows in this set it would fail (both GitHub pages that fetched as an error message) are marked so nobody scores contributors against a body production would reject.
+### Changed
+
+- **The metadata prompt now leads with a test a name must pass, not with
+  instructions for finding names.** Scored over the 58 gold rows, the previous
+  wording missed nobody and emitted 36 people who had not made the piece — the
+  entire loss was over-production, so the field needed a stopping rule stated as
+  prominently as its finding rules. Contributor precision moves 0.67 → 0.84 at
+  recall 0.99, and exact publisher matches 28 → 36 of 58.
+- **The prompt no longer enumerates the answers it is rejecting.** Listing the
+  hosting platforms that are not publishers made the model return them *more*
+  often — 15 misses became 19 — so prohibitions are now stated as the positive
+  rule they imply. The same defect had been introduced into the generated schema:
+  a docstring recording which severity test was superseded put the discarded test
+  back in front of the model in the last position it reads, undoing the
+  calibration the prompt exists to apply. Repo history moves to comments, which
+  the schema does not carry.
+- **The narrative extraction now runs `narrative_v3`: six sections in place of
+  v2's three.** `Salient threads` is cut for a measured padding failure and
+  `load_bearing_claims` becomes the inventory, with speakers, structure and
+  ordered delivery beats added. `core_idea` moves off first position and is
+  conditioned on `structure`, which was measured flattening distinct source
+  shapes into one.
+- **A rendered narrative now numbers its list sections and states their size** —
+  `Load bearing claims (15):`. The count is what lets the voice agent say how
+  much is left after walking the beats; deriving it from the array means the
+  model reports no arithmetic that could disagree with the list.
+- **One `Narrative` schema, not one per prompt version**, matching `TopicCard`
+  and `Followups`. The prompt's field list is generated from the model, so the
+  two cannot be versioned apart — a narrative prompt and its schema change in
+  one commit, and superseded prompt files are history rather than alternatives.
+  `eval-narrative-coverage` can therefore no longer diff two narrative prompts
+  in one pass; run the prior one from the release that carried it.
+- **`FETCH_EXTRACT_QUEUE_DAG_VERSION` 7 → 8** — the narrative asset's output
+  shape changed.
+- **A narrative with more delivery beats than load-bearing claims is now
+  rejected and retried.** The beats are selected from the claims, so more beats
+  than claims is impossible rather than thin — and the voice agent subtracts one
+  rendered count from the other and speaks the result, so it would have said
+  "that is four of the three" with nothing for the listener to check it against.
+- **The extractor's staleness signal now covers the narrative's schema.** It
+  hashed the narrative prompt raw, correct while that call returned markdown but
+  not since it became structured: a change to `Narrative` alone left every
+  existing row reading as fresh. `queue_items.extractor_sha256` moves for all
+  rows as a result.
+- **`eval-narrative-coverage` refuses a narrative prompt written for an older
+  schema** instead of running it. The extractor generates the field list from
+  `Narrative`, so a superseded prompt body still ran — asking the model for
+  today's fields while describing another set, then scoring the result as that
+  prompt's. A wrong number that looks like a measurement.
+
+---
+
+## [0.36.21] — 2026-08-31
+
+### Changed
+
+- **The narrative extraction call now shares the article's prompt cache with the topic-card and follow-ups calls, so an article is billed once per extraction instead of twice.** It returns one field per section through the same shared-prefix path; a standalone markdown prompt could never match the others' cache prefix.
+- **`extraction_calls` rows are uniform across the three calls.** The narrative row stores `model_dump_json()` and names its schema, where it stored raw markdown with a null `schema_name`. Readers tell the two shapes apart by that column.
+- **A failed structured call now names the call, item, attempt count and last rejection**, instead of surfacing a bare pydantic or JSON-decoder error. All three calls share the truncation message that was previously narrative-only.
+- **Dropped four unused `queue.db` indexes** — two redundant with existing composites, two on columns nothing filters or orders by. `create_schema` removes them from databases that already have them.
+
+### Added
+
+- **`domains.extraction.schemas.Narrative` and `domains.extraction.render.render_narrative`** — the narrative's sections as typed fields, plus the renderer that turns them back into the headed text the voice agent reads. Blank fields are rejected rather than rendered as empty headers.
 
 ---
 
