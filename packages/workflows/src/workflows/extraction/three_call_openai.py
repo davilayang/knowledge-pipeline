@@ -135,9 +135,11 @@ class ThreeCallOpenAIExtractor:
         model: str,
         prompt_sets: dict[str, PromptBundle],
         # Both callers pass 4096 explicitly — the Dagster resource and the eval
-        # harness — and the widest narrative measured spends 2,106, so the old
+        # harness — and the widest narrative measured spends 2,131 of it, so a
         # 2048 default sat under the observed worst case and matched nothing
-        # that constructs this.
+        # that constructs this. That figure is the worst of the three real
+        # sources tabulated in `prompts/extraction/narrative_v3.md`; re-measure
+        # there before trusting a smaller ceiling.
         max_tokens: int = 4096,
     ):
         if _GENERIC_SHAPE not in prompt_sets:
