@@ -20,6 +20,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **The narrative schema now bounds the delivery beats, which nothing did.**
+  `delivery_beats` is what the voice agent walks a turn at a time, and the
+  prompt has always budgeted four to six — but the only cross-field rule was
+  that beats may not outnumber claims, so eleven beats against twenty-three
+  claims validated cleanly. One run in thirty emitted exactly that, and the
+  coverage metric scored it 1.000: reference recall has no term for material a
+  narrative adds, so the measurement guarding the field was blind to the failure
+  the field's design exists to prevent. The ceiling is one-sided on purpose —
+  the prompt forbids inventing a beat to reach four, so a lower bound would
+  enforce the padding it bans. A second rule refuses a `bridge_to:` on the final
+  beat, which names a next beat that does not exist; also observed once in
+  thirty, on a narrative that scored full coverage. The ceiling reaches the model
+  as `maxItems` in the generated task tail rather than only rejecting it after
+  the fact; the bridge rule was already stated in the field's description and is
+  now enforced rather than assumed. Both move `effective_prompt_sha`, so affected
+  rows re-extract without a pipeline-wide invalidation.
+
 - **`eval-narrative-coverage` can score the model production actually runs.** Its
   present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
   outright, and a single `--model` flag set both the extractor and the judge — so
