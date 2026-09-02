@@ -14,7 +14,7 @@ serve as backward-compat regression tests for the read path.
 import json
 from pathlib import Path
 
-from domains.extraction.schemas import ExtractionPayload
+from domains.extraction.schemas import ExtractionPayload, Narrative
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -47,3 +47,30 @@ def test_extraction_payload_v2_fixture_field_names_match_current_schema():
     assert set(raw) == set(payload.model_dump().keys())
     assert set(raw["topic_card"]) == set(payload.topic_card.model_dump().keys())
     assert set(raw["followups"]) == set(payload.followups.model_dump().keys())
+
+
+# Every key/header pair the narrative puts on the wire. The cross-repo contract
+# (`documents/knowledge-os/contracts/narrative.md` in `davilayang/data-context-builder`)
+# carries one catalogue row per entry, naming what the consumer does with it.
+CATALOGUED_NARRATIVE_SECTIONS = (
+    ("salient_threads", "Salient threads"),
+    ("core_idea", "Core idea"),
+    ("named_concepts_and_entities", "Named concepts and entities"),
+)
+
+
+def test_every_narrative_field_has_a_row_in_the_cross_repo_catalogue():
+    """A field added here reaches the voice agent, which is a model, not a parser.
+
+    The existing render tests pin how a section is *shaped* — its header derives
+    from its key, its value is a string or a list of them. None pins *which*
+    sections exist, so a new field with a well-formed title passes all of them
+    and arrives at a reading model that was told nothing about it. Two fields
+    already reached production that way.
+
+    Updating this tuple is the deliberate act that says the contract's catalogue
+    was updated too. It is not a rename-safety net; it is the reminder that
+    adding a section is a cross-repo change.
+    """
+    emitted = tuple((name, field.title) for name, field in Narrative.model_fields.items())
+    assert emitted == CATALOGUED_NARRATIVE_SECTIONS

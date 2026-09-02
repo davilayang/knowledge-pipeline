@@ -119,7 +119,18 @@ class Narrative(BaseModel):
 
     Each field's `title` is the header the renderer emits, and `schema_block()`
     dumps the titles into the prompt's task tail, so the model is asked for the
-    same names the renderer writes."""
+    same names the renderer writes.
+
+    **Adding, removing or renaming a field here is a cross-repo change.** The
+    sections are the whole interface to newsletter-assistant's voice agent, which
+    reads them as prose and has no parser to fail — so a field it was never told
+    about still reaches it and may be spoken aloud. Every field needs a row in
+    the contract's catalogue naming what the consumer does with it:
+    `documents/knowledge-os/contracts/narrative.md` in the shared hub repo
+    `davilayang/data-context-builder` (locally
+    `~/GitHub/data-context-builder/documents/knowledge-os/contracts/narrative.md`).
+    `test_schema_drift.py` fails until the field set here and that catalogue are
+    reconciled."""
 
     salient_threads: list[NarrativeProse] = Field(
         title="Salient threads",
