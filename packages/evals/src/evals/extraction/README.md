@@ -28,7 +28,7 @@ set -a && source .env && set +a && \
 
 ### Narrative fidelity (seed, no CLI yet)
 
-`NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores `narrative_v2`'s `narrative_md`
+`NarrativeFidelityScorer` (`evals/extraction/scorers.py`) scores the narrative's `narrative_md`
 against gold threads for omission (`faithful_recall`), corruption (`distortion_rate`), and
 invention (`fabrication_rate`), via two single-purpose injected judges — a fidelity judge
 (`DEFAULT_FIDELITY_PROMPT`, per-gold-thread faithful/distorted/absent) and a fabrication judge

@@ -15,6 +15,13 @@ Pure data adapters. Files or DBs → typed `IngestItem`s.
 ```
 src/domains/
 ├── types.py            # IngestItem + IngestSource Protocol — the shape every source yields
+├── extraction/         # The three-call extraction payload — models, rendering, call rows
+│   ├── schemas.py      # TopicCard / Followups / Narrative pydantic models. Narrative's field
+│   │                   # titles are the section headers newsletter-assistant reads aloud, so
+│   │                   # which fields exist is governed by the cross-repo narrative contract
+│   ├── render.py       # render_narrative — Narrative → the headed text the voice agent speaks
+│   ├── records.py      # ExtractionCallRecord — one row per LLM call in queue.db extraction_calls
+│   └── prompts.py      # strip_design_notes — drops a prompt file's header so only the body ships
 ├── raw_store/          # corpus.db — newsletter-assistant ingest store
 │   └── sources.py      # RawStoreSource + ContentRow + query helpers
 ├── notes/              # Local markdown inbox
