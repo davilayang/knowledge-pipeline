@@ -158,6 +158,13 @@ and buys nothing. The constraint belongs to the consumer, not to extraction.
 - **Padding is a shape, not a length.** The failure that killed `Salient threads` was entries
   *about* the piece — tone, target audience, emotional underpinning, the source link. The same
   shape can infect `load_bearing_claims`, which is why it carries its own rule against it.
+- **No `bridge_to` line inside a beat.** Each beat used to name what the next one covered. It was
+  removed on evidence from both ends: the consumer never spoke the label and its own phrasing was
+  more specific, and across 134 bridges the phrase restated a median 43% of the following beat's
+  content words — a partial duplicate of text already present in full. It was also the only
+  snake_case token in an artefact read aloud, and it let a beat manufacture a causal link between
+  items a listicle merely places side by side. The chain survives without it: beats still reuse a
+  name, term or figure from the beat before, which is the rule that carries the handover.
 
 ## What is NOT in this file
 
@@ -247,16 +254,14 @@ The set of claims the piece stops working without. Ask "which claims does this p
 - ONE idea per beat. If a beat needs "and" to join two ideas, it is two beats — or the second one does not belong.
 - Each beat after the first MUST reuse a named entity, term or figure from the beat before it. That chain is what lets the agent open a turn on what it already said instead of starting cold.
 - Each beat carries one concrete Anchor lifted from the source — a figure, a named example, a mechanism, or a short quote.
-- Each beat EXCEPT THE LAST carries a bridge_to: a short phrase naming what the next beat covers. The last beat has no bridge_to.
 - NEVER invent a beat to reach the range. If the source genuinely carries fewer distinct ideas, emit fewer. Padding to 4 is always wrong.
 - Order for a listener hearing this cold, not for a reader: what the thing IS before what it implies.
 
-**Format each beat as ONE string carrying up to three lines, with no numbering of your own:**
+**Format each beat as ONE string carrying two lines, with no numbering of your own:**
 
 ```
 <the idea, one or two sentences>
 Anchor: <the specific detail>
-bridge_to: <what the next beat covers>      <- omit this line on the LAST beat
 ```
 
 ### `named_concepts_and_entities`

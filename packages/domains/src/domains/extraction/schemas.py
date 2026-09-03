@@ -200,8 +200,7 @@ class Narrative(BaseModel):
             "fewer distinct ideas, never padded to reach four. One idea each, "
             "chained so every beat "
             "reuses a name, term or figure from the one before. Each entry is "
-            "the idea, then an `Anchor:` line, then a `bridge_to:` line naming "
-            "what comes next — omitted on the last beat."
+            "the idea, then an `Anchor:` line."
         ),
     )
     named_concepts_and_entities: NarrativeProse = Field(
@@ -230,23 +229,6 @@ class Narrative(BaseModel):
                 f"more delivery beats ({len(self.delivery_beats)}) than "
                 f"load-bearing claims ({len(self.load_bearing_claims)}); the beats "
                 "are selected from the claims, so this reply cannot be right"
-            )
-        return self
-
-    @model_validator(mode="after")
-    def _the_last_beat_bridges_to_nothing(self) -> "Narrative":
-        """A `bridge_to:` on the final beat names a beat that does not exist.
-
-        Every beat but the last carries a short phrase naming what the next one
-        covers, so the agent can open a turn on what it just said. On the last
-        beat there is nothing to name, and the phrase is spoken as a promise the
-        walkthrough cannot keep — unverifiable by a listener with no screen, the
-        same reason more beats than claims is refused above."""
-        if self.delivery_beats and "bridge_to:" in self.delivery_beats[-1]:
-            raise ValueError(
-                "the last delivery beat carries a `bridge_to:`, which names a "
-                "beat that does not follow it; only beats with a successor "
-                "carry one"
             )
         return self
 

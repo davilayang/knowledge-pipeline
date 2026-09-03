@@ -29,13 +29,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   narrative adds, so the measurement guarding the field was blind to the failure
   the field's design exists to prevent. The ceiling is one-sided on purpose —
   the prompt forbids inventing a beat to reach four, so a lower bound would
-  enforce the padding it bans. A second rule refuses a `bridge_to:` on the final
-  beat, which names a next beat that does not exist; also observed once in
-  thirty, on a narrative that scored full coverage. The ceiling reaches the model
-  as `maxItems` in the generated task tail rather than only rejecting it after
-  the fact; the bridge rule was already stated in the field's description and is
-  now enforced rather than assumed. Both move `effective_prompt_sha`, so affected
-  rows re-extract without a pipeline-wide invalidation.
+  enforce the padding it bans. The ceiling reaches the model as `maxItems` in the
+  generated task tail rather than only rejecting it after the fact, and it moves
+  `effective_prompt_sha`, so affected rows re-extract without a pipeline-wide
+  invalidation.
+
+- **Delivery beats no longer carry a `bridge_to:` line.** Each beat used to name
+  what the next one covered, so the voice agent could open a turn on what it had
+  just said. Removed on evidence from both ends of the contract: the consuming
+  agent never spoke the label and its own phrasing was consistently more
+  specific, and across 134 bridges measured here the phrase restated a median 43%
+  of the following beat's content words — a partial duplicate of text the
+  narrative already carries in full. It was also the only snake_case token in an
+  artefact that is read aloud, and it let a beat assert a causal link between
+  items a listicle merely places side by side. The handover survives without it:
+  beats still reuse a name, term or figure from the beat before, which is the
+  rule that actually carries the chain. Removing the field also retires the
+  failure mode where the final beat promised a next beat that never came.
 
 - **`eval-narrative-coverage` can score the model production actually runs.** Its
   present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
