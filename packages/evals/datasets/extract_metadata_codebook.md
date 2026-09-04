@@ -267,15 +267,22 @@ sixth candidate hiding in the prose.
    furniture — a masthead, a logo's alt text, or a copyright line naming an
    organisation that recurs across the page. This outranks everything below it,
    including the maker's own employer.
-2. **For a repository**, the owner as it appears in an `owner/repo` heading. Use
-   the project name only when no owner is shown. Not a name that appears only
-   inside a URL.
+2. **For a repository**, the owner — the account the repository belongs to.
+   Take it from an `owner/repo` heading where one is shown, and otherwise from
+   the `owner` segment of the repository URL itself, including where that is the
+   only place it appears. A repository's URL path is structured data naming who
+   holds the project, not prose to be interpreted, so the "no names from URLs"
+   caution below does not reach it: the pipeline reads the same segment
+   deterministically and prefers it to any answer given here. Use the project
+   name only when no owner exists at all.
 3. **For a paper**, a stated venue — *"Published as a conference paper at
    <VENUE>"*, or a copyright line assigning publication rights to a named
-   publisher. Failing that, **the archive the paper sits on** (a bare `arXiv:`
-   identifier means the publisher is `arXiv`). *"Accepted to"* a venue is **not**
-   *"published at"* it: a paper announcing future acceptance is published by the
-   archive today.
+   publisher. *"Accepted to"* a venue is **not** *"published at"* it: acceptance
+   announces a future event, so it does not name a publisher. Where no venue is
+   stated, keep descending — **the archive is not the publisher.** A bare
+   `arXiv:` identifier says where the file is hosted, which rung 0 excludes like
+   any other platform, and a preprint with no venue reaches rung 5 and is
+   `null`.
 4. **The organisation the piece speaks as** — see the next section.
 5. **Otherwise `null`.** This is a common and correct answer.
 
@@ -308,8 +315,10 @@ channel named after its presenter, all of which are the same shape.
 A platform is infrastructure, not a publisher. Where a piece appears under
 **both** a platform and a named publication, the publication is what rung 1
 finds; where the platform is the only candidate, keep descending and the answer
-is `null`. A paper's archive is the one thing that looks like a platform and is
-not one — rung 3 covers it explicitly.
+is `null`. **A paper's archive is a platform like any other.** arXiv hosts a
+preprint the way Medium hosts a post; neither selected it, and rung 3 looks for a
+venue that did. A repository host is the same shape — the owner under rung 2 is
+the account that published, not GitHub.
 
 ### Writing *as* an organisation counts as naming it — rung 4
 
@@ -320,15 +329,41 @@ after rung 1 has found nothing. First-person organisational voice identifies who
 put the piece out as well as a masthead would, and requiring an explicit statement
 would null out the publisher on most company engineering blogs.
 
+**The test is the evidence quote, and it has to carry both halves.** This rung
+fires only when you can copy **one passage** that contains *both* the
+organisation's name *and* the piece speaking in the first person about itself —
+`we`, `our`, `us`. Both halves, one quote. *"…pushing **us** beyond **our**
+traditional Homes focus"* alongside the name qualifies; *"<Company> is a proud Y
+Combinator company"* does not, because nothing in it says the piece is theirs,
+and *"At <Company>, we offer everything you or your team need"* does not, because
+it is selling to the reader rather than speaking as the maker.
+
+If you cannot produce that one passage, this rung has not fired. Descend to
+rung 5 and answer `null`. Do not assemble the two halves from separate parts of
+the document — a name in a footer plus a `we` in paragraph nine is not a piece
+speaking as its publisher, and this rung was measured reproducing only half the
+time while that was left to judgement.
+
 Two exclusions, both of which produce wrong publishers otherwise:
 
 - **The voice must be the maker's, not a mention.** A piece that discusses a
-  company in the third person has not told you who published it.
+  company in the third person has not told you who published it. Third-person
+  self-description — a boilerplate "about us" line written in the third
+  person — is a mention, not a voice.
 - **Sponsor reads and advertising never establish the publisher.** *"Today's
   episode is brought to you by…"*, *"thanks to <company> for supporting the
   show"*, and the promotional passage that follows are about a third party who
   paid for the slot. In a bare transcript the sponsor is often the *only*
-  organisation named — that is a trap, not evidence.
+  organisation named — that is a trap, not evidence. Promotional copy reads as
+  organisational voice because it uses `we`: *"At <Company>, we offer everything
+  you or your team need"* is an advertisement, and the giveaway is that it
+  addresses the reader as a customer rather than describing work the piece
+  reports on.
+
+**A higher rung always wins, even when rung 4 would also fire.** A repository
+README that speaks as its company still takes the owner from rung 2; a post under
+a named publication still takes that publication from rung 1. This rung exists
+for pieces where nothing above it fired, and the ladder is not a menu.
 
 ### Channels and shows keep their name even when it looks like a handle
 

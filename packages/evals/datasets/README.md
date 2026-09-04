@@ -439,9 +439,9 @@ fail — so that is what the gold answers:
 
 | field | |
 |---|---|
-| `gold_damaged` | did the body arrive broken such that a refetch could recover substance? `null` where the two labellers differed |
-| `gold_damaged_evidence` | **a populated value does not mean the row is damaged.** It is a verbatim quote supporting whichever call was made, and on all 35 rows that carry one, `gold_damaged` is `false` — the quote is the line the piece leans on that points at material never shown as text. Read `gold_damaged`, never the presence of this field |
-| `gold_cause` | `chrome` or `truncation`, only where damaged |
+| `gold_stands_alone` | does this text carry enough of the piece to stand on its own? This is the only field the pipeline acts on — `false` fails the item. 57 true, 1 false |
+| `gold_stands_alone_reason` | one sentence, only where `false`: what is absent and why the piece does not hold without it |
+| `gold_unshown_evidence` | a verbatim quote for the material the piece leans on but does not contain. **A populated value does not mean the row failed** — 35 rows carry one and all of them stand alone. Read `gold_stands_alone`, never the presence of this field. Named `gold_damaged_evidence` before `gold_version` 6 |
 | `gold_references_unshown` | does the piece lean on material that was never text — slides, figures, charts? Reported, never a failure. `null` on the 7 rows where the labellers split |
 | `unreadable_gold_source` | `cross_family_agreed` (57) or `disputed_unresolved` (1) |
 
@@ -647,7 +647,7 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   judge or a human pass; 7 rows carry no organisation string anywhere in their label — no publisher,
   no affiliation, no contributor — and **all seven** are correctly-empty rows, which is exactly where
   an organisation-as-person error is most likely. Do not report it as a mechanical metric.
-- **All 58 rows are scorable for contributors and publisher at `gold_version` 5**, and one row is
+- **All 58 rows are scorable for contributors and publisher at `gold_version` 6**, and one row is
   **not** scorable for `unreadable`. `md_11` carries
   `unreadable_gold_source: "disputed_unresolved"` — the two labellers did not agree on whether its
   body arrived intact, and the dispute was left open rather than settled by fiat. Its contributor
@@ -722,6 +722,33 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   pattern is worth watching: every time a rule is added after labelling, some existing label may stop
   obeying its own codebook, and the set has to be re-checked against it rather than assumed still
   valid.
+
+  **6** did three things. It removed the `unreadable` field's old question:
+  `gold_damaged` and `gold_cause` asked whether a refetch would recover the
+  missing substance, and the production gate stopped asking that, so the answers
+  are not comparable to anything the pipeline now does. `gold_stands_alone`
+  replaces them, drawn from three independent passes over all 58 bodies — two
+  model families, and one of them re-run under deliberately stricter wording that
+  moved nothing. `md_11` is the single `false` and is recorded as a majority
+  rather than an agreement: one reader called it usable while describing the same
+  missing section. Its `disputed_unresolved` exclusion lifts, because the new
+  question settled what the old counterfactual could not.
+
+  It also corrected six publisher labels, each from a rulebook defect rather than
+  a labelling slip. The rung-3 fallback to a paper's hosting archive was deleted
+  — it contradicted the production prompt's highest-value rule, that a hosting
+  site is never the publisher — so `arx_02`, `arx_03`, `arx_05` and `arx_06` go
+  from `arXiv` to null. `gh_03` moves to the repository owner: rung 2 outranks
+  rung 4, and the owner segment of a repository URL is structured data the
+  pipeline already reads deterministically and prefers to any model answer.
+  `aud_03` keeps its publisher but exchanges its evidence, which was promotional
+  copy that rung 4 excludes.
+
+  The rung-4 rewrite is the reason the rest hold. That rule reproduced on only
+  two of the four rows it governs, because it never said what its evidence quote
+  must contain; it now requires one passage carrying both the organisation's name
+  and the piece's own first person. Re-tested against the rewritten text, the
+  arXiv rows resolve 6 of 6 and rung 4 reproduces where it should.
 
   **5** added the third field. `unreadable` and its supporting columns
   (`gold_damaged`, `gold_damaged_evidence`, `gold_cause`, `gold_references_unshown`,
