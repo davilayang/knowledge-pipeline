@@ -1604,3 +1604,39 @@ def test_the_unusable_record_says_so_when_the_model_gave_no_reason():
 
     assert "reason:   (the model gave none)" in record
     assert "causes:   (none reported)" in record
+
+
+def test_a_channel_named_after_its_presenter_does_not_become_a_second_entity(tmp_path: Path):
+    """The deterministic channel wins over the model — except when the channel IS
+    a contributor. Writing that human into `publisher` too mints two wiki entities
+    for one person, one filed as an organisation, which is the class confusion the
+    downstream wiki has no way to undo."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+    from workflows.extraction.metadata import Contributor
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "youtube", "transcript " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    store.upsert_enriched(
+        notion_page_id="p-1",
+        url="https://example.com/x",
+        enrichment_json=json.dumps({"youtube": {"channel": "Evan Edinger", "title": "A video"}}),
+    )
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload(
+        contributors=[Contributor(name="Evan Edinger", role="presenter", affiliation=None)],
+        publisher=None,
+    )
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ):
+        result = _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"extractor": extractor, "store": store},
+        )
+
+    assert result.success
+    assert store.get_row("p-1")["publisher"] is None

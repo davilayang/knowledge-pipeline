@@ -133,6 +133,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   gate stopped asking that in 0.36.22. `gold_stands_alone` replaces it, from
   three passes over all 58 bodies across two model families. `gold_version` 6.
 
+- **A channel named after its own presenter no longer becomes a publisher.** The
+  deterministic YouTube channel overrode the model even when that channel was
+  already a contributor, filing one human as both a person and an organisation —
+  two wiki entities the downstream wiki cannot re-merge.
+
 ---
 
 ## [0.36.22] — 2026-09-04

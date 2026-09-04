@@ -490,6 +490,15 @@ def extract_metadata(
 
         known_publisher = _deterministic_publisher(row)
         contributors = [c.model_dump() for c in payload.contributors]
+        # A channel named after its own presenter is that person, not a second
+        # organisation. Letting the deterministic value through would file one
+        # human as both a person and an org, and the wiki mints an entity per
+        # name with no way to tell afterwards that they were the same.
+        if known_publisher and any(
+            (c.get("name") or "").strip().casefold() == known_publisher.strip().casefold()
+            for c in contributors
+        ):
+            known_publisher = None
         unreadable = [u.model_dump() for u in payload.unreadable]
         if not payload.stands_alone:
             unusable = _unusable_record(payload.model_dump())
