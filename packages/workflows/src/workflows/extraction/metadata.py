@@ -60,14 +60,20 @@ class Contributor(BaseModel):
 # Nested-model docstrings and field descriptions survive into the generated
 # schema's `$defs`, which is appended after the prompt body — the last thing the
 # model reads before answering. Two consequences, both learned the hard way.
-# Nothing here may contradict the prompt: an earlier revision described severity
-# by the superseded unverifiable-claim test, which reinstated it from the
-# strongest position in the message and cost the calibration the prompt exists to
-# apply. And nothing here should spend that position on repo history — a note
+# Nothing here may contradict the prompt: a revision once described a grading
+# rule by a test the prompt had already superseded, which reinstated that test
+# from the strongest position in the message and cost the calibration the prompt
+# exists to apply. And nothing here should spend that position on repo history — a note
 # explaining what a rule replaced is text the model must read and reconcile, so
 # it belongs in a comment like this one rather than in a docstring.
 class Unreadable(BaseModel):
-    """One piece of substance the fetched text references but does not contain."""
+    """One piece of substance the fetched text references but does not contain.
+
+    Reported for every gap, whatever its size. Whether the piece survives its
+    gaps is `MetadataPayload.stands_alone`, judged once over the whole text
+    rather than graded per entry: a per-entry grade was measured drifting across
+    repeat runs of the same body, and it asked about the fetch rather than about
+    whether the result could be used."""
 
     cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
         description=(
@@ -75,18 +81,10 @@ class Unreadable(BaseModel):
             "error page stands where the content should be. truncation: the "
             "content is cut — stops mid-thought, an elided span, an announced "
             "section left empty, a stub of a longer piece. Those two mean the "
-            "text arrived damaged. The rest never were text and no refetch "
-            "recovers them: screen_reference points at something on screen, "
+            "fetch went wrong and is worth retrying. The rest never were text, "
+            "so no refetch recovers them: screen_reference points at something on screen, "
             "images refers to figures not captured, unspeakable is present but "
             "cannot be read aloud, e.g. a raw table."
-        )
-    )
-    severity: Literal["major", "minor"] = Field(
-        description=(
-            "major only when a refetch, or a better source, would recover the "
-            "missing material — the text arrived broken. minor when the material "
-            "was never text, however central it is to the piece. A claim you "
-            "cannot verify from the text alone is not by itself major."
         )
     )
     missing: str = Field(description="What is not in the text, specifically.")
@@ -119,7 +117,24 @@ class MetadataPayload(BaseModel):
         default_factory=list,
         description=(
             "Substance the text points at but does not contain. Empty when the "
-            "text stands on its own."
+            "text contains everything it refers to."
+        ),
+    )
+    stands_alone: bool = Field(
+        description=(
+            "False only when this text does not carry enough of the piece's "
+            "substance to stand on its own — the material it points at is "
+            "absent and what remains does not hold up. A piece that references "
+            "slides or figures it does not contain still stands alone when its "
+            "argument comes through."
+        )
+    )
+    stands_alone_reason: str = Field(
+        default="",
+        description=(
+            "Required when `stands_alone` is false: one sentence naming what is "
+            "absent and why the piece does not hold without it. Must refer to "
+            "the evidence quote of one of the `unreadable` entries."
         ),
     )
 

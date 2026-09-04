@@ -17,15 +17,41 @@ at Greybeam" picks the wrong person.
 
 Three fields. A `delivery_shape` structural label was dropped — 58.8%
 reproduction across model vendors, and it made the spoken delivery worse on 2 of
-3 items. `unreadable` is the only field here that fails a row rather than just
-recording one: a `major` entry caused by `chrome` or `truncation` raises,
-stopping the reading card and writing Status=Failed back to Notion.
+3 items. `stands_alone` is the only field here that fails a row rather than just
+recording one: a false verdict raises, stopping the reading card and writing
+Status=Failed back to Notion.
 
-Severity asks whether a refetch would recover the material, not whether a claim
-is unverifiable without it. Measured over all 227 production bodies, the
-unverifiable-claim reading called 41% of the corpus `major` — a paper
-referencing Figure 4 qualifies — and a gate that fails two ingests in five is a
-gate nobody keeps. The refetch reading lands at 1.8%.
+**The gate used to key on cause, and that was the wrong axis.** It asked whether
+a refetch would recover the missing material — so "nothing could be done about
+it" became grounds for *excusing* a row, when it is grounds for escalating one.
+That reading was wrong in both directions at once: site chrome printed around a
+complete article failed the item, while a talk whose substance never left the
+speaker's screen passed. Measured on the 58-row gold set, the cause-based gate
+fired exactly once, on a GitHub README that four independent readers and a
+direct inspection of the body all agree is intact — a precision of zero.
+
+The replacement asks one thing about the artefact in hand: does this text carry
+enough of the piece to stand on its own? That is answerable from the body, where
+the refetch question was a counterfactual the reader could not check — which is
+why the one dispute in the gold set was unresolvable, and why the new question
+settled it.
+
+Measured before adopting it. Three passes over the 58 gold bodies: a
+non-Anthropic reader and six same-family readers agreed on 57 of 58 (98.3%), and
+the disagreement was a threshold call on one row both described identically. The
+failure rate is 1-2%, low enough to keep hard-failing. A stricter bar was also
+sized and rejected: asking whether the piece's *evidence* survives — the figures
+on a chart, the identity of a cited study — fails 67% of conference talks, which
+is a manual queue nobody reads.
+
+Severity is gone with it. It was a model judgement that drifted across repeat
+runs of the same body, and it answered the refetch question rather than the
+usability one.
+
+The entries that do not fail a row are not noise. A talk that says "Wharton did
+a study" without naming it hands the voice agent an authoritative-sounding claim
+the listener cannot check; recording the gap is what lets the agent say so
+instead of reading it out flat.
 
 **The contributors section is shaped by a measured failure.** Scored over the 58
 gold rows in `packages/evals/datasets/extract_metadata_gold.jsonl`, an earlier
@@ -99,19 +125,26 @@ Report the **masthead, not the address**: the named publication, show, channel o
 
 UNREADABLE — substance the text refers to but does not contain
 
-The text you are reading is what a voice agent will read aloud. Report anything the content depends on that is not in the text.
+The text you are reading is what a voice agent will read aloud, to someone who cannot see the original page, slide or video. Report anything the content depends on that is not in the text.
 
-The severity test is about the FETCH, not about the medium. Ask: **would fetching this source again, or from a better source, recover the missing material?**
+Each entry names one gap. `cause` says what kind it is, `missing` names what is not there specifically ("the benchmark numbers he reads off a chart at around 40%" — not "some numbers"), and `evidence` quotes the line from the text that depends on it.
 
-- Yes → `major`. The text is broken as delivered. A page whose body was replaced by navigation, a cookie wall, or an error message ("There was an error while loading"). A text that stops mid-sentence. A section heading with nothing under it. Two unrelated pieces concatenated with no boundary. A body that is a stub of an article that exists in full elsewhere.
-- No → `minor`. The material was never text in the first place, so no refetch produces it: slides a speaker points at, figures and tables a paper references, a chart read aloud from, a screen recording's on-screen steps, a diagram gestured at. Record these — they tell a reader the piece leans on visuals — but they are not a defect.
+Report **at most five**, the ones that matter most. Do not enumerate repeated instances of the same cause: a talk that gestures at the screen thirty times is one entry describing the pattern, not thirty. A long list crowds out the rest of this reply and the whole answer is discarded when it runs past the length limit, so brevity here protects the other fields.
 
-**Replaced by is not the same as surrounded by.** Fetched pages routinely carry the site's menus, sidebars, footers and error notices *around* the content. That is packaging, not damage. Before calling a body `major` for chrome, check whether the piece itself is present somewhere in the text; if it is, the chrome is not a defect.
+Return an empty list when the text contains everything it refers to. Most well-fetched articles do.
 
-A claim you cannot verify from the text alone is NOT by itself major. Almost every conference talk and every paper references something visual; that is the normal shape of those sources, not a failure. Reserve `major` for text that arrived damaged.
+STANDS_ALONE — can this text be used at all
 
-For each entry, `missing` names what is not there, specifically ("the benchmark numbers he reads off a chart at around 40%" — not "some numbers"), and `evidence` quotes the line from the text that depends on it.
+Separately from the list above, answer one question about the whole text:
 
-Report **at most five**, the ones that matter most — every `major` first, then the most consequential `minor` ones. Do not enumerate repeated instances of the same cause: a talk that gestures at the screen thirty times is one entry describing the pattern, not thirty. A long list crowds out the rest of this reply and the whole answer is discarded when it runs past the length limit, so brevity here protects the other fields.
+**Does this text carry enough of the piece's substance to stand on its own?**
 
-Return an empty list when the text stands on its own. Most well-fetched articles do.
+Judge the text in front of you. Do not ask whether fetching the source again would help — that is a different question and not the one that decides anything here.
+
+`false` only when the substance is genuinely not there: the text points at material it does not contain, and what remains does not hold up. A page whose body was replaced by navigation, a cookie wall or an error message. A text that stops mid-sentence, or announces a section and then delivers nothing. A stub of an article that exists in full elsewhere. A talk whose entire argument lives on slides that were never transcribed.
+
+`true` when the piece survives even though some detail is missing. Almost every conference talk points at a slide and almost every paper references a figure; that is the normal shape of those sources, not a failure. A piece whose argument comes through stands alone even if you could not check every number in it.
+
+**Replaced by is not the same as surrounded by.** Fetched pages routinely carry the site's menus, sidebars, footers and error notices *around* the content. That is packaging, not damage. Before answering `false` for chrome, check whether the piece itself is present somewhere in the text; if it is, the answer is `true`.
+
+When the answer is `false`, `stands_alone_reason` is one sentence saying what is absent and why the piece does not hold without it, referring to the evidence quote of one of your `unreadable` entries. A curator reads this and nothing else before deciding what to do with the item, so "content missing" tells them nothing they can act on.

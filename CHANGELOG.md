@@ -125,6 +125,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.22] — 2026-09-04
+
+### Changed
+
+- **A fetched body now fails on whether it can be used, not on how it broke.**
+  The `unreadable` gate asked whether a refetch would recover the missing
+  substance, so site chrome around an intact article failed the item while a
+  talk whose argument stayed on its slides passed. `severity` is removed and
+  `cause` is now a curator hint; the Notion Error field carries the model's
+  stated reason for the verdict.
+
+---
+
 ## [0.36.21] — 2026-08-31
 
 ### Changed
