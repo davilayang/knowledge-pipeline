@@ -440,6 +440,7 @@ fail — so that is what the gold answers:
 | field | |
 |---|---|
 | `gold_damaged` | did the body arrive broken such that a refetch could recover substance? `null` where the two labellers differed |
+| `gold_damaged_evidence` | **a populated value does not mean the row is damaged.** It is a verbatim quote supporting whichever call was made, and on all 35 rows that carry one, `gold_damaged` is `false` — the quote is the line the piece leans on that points at material never shown as text. Read `gold_damaged`, never the presence of this field |
 | `gold_cause` | `chrome` or `truncation`, only where damaged |
 | `gold_references_unshown` | does the piece lean on material that was never text — slides, figures, charts? Reported, never a failure. `null` on the 7 rows where the labellers split |
 | `unreadable_gold_source` | `cross_family_agreed` (57) or `disputed_unresolved` (1) |
@@ -646,9 +647,15 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   judge or a human pass; 7 rows carry no organisation string anywhere in their label — no publisher,
   no affiliation, no contributor — and **all seven** are correctly-empty rows, which is exactly where
   an organisation-as-person error is most likely. Do not report it as a mechanical metric.
-- **All 58 rows are scorable at `gold_version` 4.** No row is `disputed_unresolved`. If a future
-  round reopens a label, that value returns and those rows must be excluded — check for it rather
-  than assuming the set is always fully usable.
+- **All 58 rows are scorable for contributors and publisher at `gold_version` 5**, and one row is
+  **not** scorable for `unreadable`. `md_11` carries
+  `unreadable_gold_source: "disputed_unresolved"` — the two labellers did not agree on whether its
+  body arrived intact, and the dispute was left open rather than settled by fiat. Its contributor
+  and publisher labels are unaffected and remain scorable.
+  A scorer must therefore exclude on the **field being scored**, not on the row: filtering out every
+  row carrying `disputed_unresolved` anywhere silently drops a row that is gold for the two fields
+  this set exists to measure. Check for the value rather than assuming the set is always fully
+  usable on every field.
 - **The 13 `human_adjudicated` rows are gold, but they are the softest gold here.** Twelve are where
   two model families read the same text differently, so they are the rows most likely to move if the
   codebook changes. When an arm loses on one of them, read the case before believing the score.
@@ -715,6 +722,14 @@ correctly refused. The body has no channel line; what it has is a venue and an a
   pattern is worth watching: every time a rule is added after labelling, some existing label may stop
   obeying its own codebook, and the set has to be re-checked against it rather than assumed still
   valid.
+
+  **5** added the third field. `unreadable` and its supporting columns
+  (`gold_damaged`, `gold_damaged_evidence`, `gold_cause`, `gold_references_unshown`,
+  `unreadable_gold_source`) were labelled across all 58 rows by both families. Fifty-seven agree the
+  body arrived intact; `md_11` is an unresolved dispute and is the only row not scorable on that
+  field. No row is labelled damaged, so the gate this field measures can be scored for false alarms
+  and not at all for misses — a "0 missed" figure from this set would be an artefact of the corpus
+  rather than a result. The contributor and publisher labels did not move at 5.
 - Bodies are **inlined** (1.5 MB) rather than referenced. The only other copy lives in
   `data/shapestudy/`, which is gitignored, laptop-only and unbacked-up; a pointer-based set would
   not survive the laptop.

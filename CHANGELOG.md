@@ -69,8 +69,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   outright, and a single `--model` flag set both the extractor and the judge — so
   a reasoning model could not be scored, and the supported configuration had the
   model under test grading its own output. The judge now shares the extraction
-  call's `token_kwargs`, and `--judge-model` is separate, defaulting away from the
-  subject. The gold threads it scores against were labelled cross-family with
+  call's `token_kwargs`, and `--judge-model` is now a separate flag, so the two can
+  differ at all. **Both still default to `gpt-4.1-mini`**, so a default invocation
+  continues to have the subject grade itself; pass the two explicitly until the
+  defaults are split. The gold threads it scores against were labelled cross-family with
   OpenAI deliberately excluded; the scorer had been putting that family back in at
   the last step.
 - **The metadata prompt now leads with a test a name must pass, not with
