@@ -20,6 +20,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
+  selects claims by asking "which claims does this piece collapse without?" — and
+  a concession is by definition something a piece survives without, so the filter
+  was excluding them by construction, with a second rule against spinning a
+  sub-clause into its own entry pushing the same way. `narrative_v2` had told the
+  model to keep an argument's concessions and both sides of a comparison; v3
+  deleted that and replaced it with nothing. Measured on the coverage gold,
+  concessions were 17.6% of one argument fixture's reference threads but 44.4% of
+  the threads the model missed — 2.5x over-represented, one-sided p=0.031. The
+  repair is an explicit exception inside the filter rather than v2's sentence
+  restored verbatim, which would have contradicted the filter question instead of
+  completing it. Concession recall on that fixture moves 0.500 to 0.833 with the
+  claim count unchanged at 19, and a listicle fixture scores identically across
+  both arms, so the exception does not manufacture caveats where a source has
+  none. Stated in the prompt and in the field description, since the description
+  is rendered into the prompt's task tail and repeats the filter question.
+
 - **The narrative schema now bounds the delivery beats, which nothing did.**
   `delivery_beats` is what the voice agent walks a turn at a time, and the
   prompt has always budgeted four to six — but the only cross-field rule was

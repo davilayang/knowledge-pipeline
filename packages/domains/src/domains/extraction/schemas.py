@@ -181,9 +181,11 @@ class Narrative(BaseModel):
         min_length=1,
         description=(
             "The complete set of claims the piece collapses without — not the "
-            "main point, and not everything it says. Typically 9-28. One claim "
-            "per entry, each carrying its own anchor: a figure, a named "
-            "entity, a mechanism, or a short quote."
+            "main point, and not everything it says. A concession the piece "
+            "makes about its own argument counts, even though the argument "
+            "survives without it. Typically 9-28. One claim per entry, each "
+            "carrying its own anchor: a figure, a named entity, a mechanism, "
+            "or a short quote."
         ),
     )
     delivery_beats: list[NarrativeProse] = Field(
