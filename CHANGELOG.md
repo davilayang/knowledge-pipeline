@@ -8,6 +8,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **A fetched body now fails on whether it can be used, not on how it broke.**
+  The `unreadable` gate asked whether refetching would recover the missing
+  substance, which made "nothing could be done about it" a reason to *excuse* a
+  row rather than to escalate it — so site chrome printed around a complete
+  article failed the item, while a talk whose argument never left the speaker's
+  slides passed. Measured on a 58-row gold set, that gate fired once, on a
+  GitHub README four readers and a direct inspection agree is intact: a
+  precision of zero. It is replaced by one question answerable from the body —
+  does this text carry enough of the piece to stand on its own — with the cause
+  demoted from gate condition to a curator hint. Three independent passes over
+  the 58 bodies agreed on 57 (98.3%) and put the failure rate at 1-2%, so the
+  item still hard-fails. A stricter bar was sized and rejected: asking whether
+  the piece's *evidence* survives fails 67% of conference talks. `severity` is
+  gone — it was a per-entry grade that drifted across repeat runs of the same
+  body and answered the refetch question anyway. The Notion Error field now gets
+  a structured record carrying the model's own reason for the verdict, since
+  naming what is absent without saying why the piece does not hold leaves the
+  reader to re-derive it.
+
 - **The narrative extraction now runs `narrative_v3`: six sections in place of
   v2's three.** `Salient threads` is cut for a measured padding failure and
   `load_bearing_claims` becomes the inventory, with speakers, structure and

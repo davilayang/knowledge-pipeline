@@ -60,9 +60,11 @@ class Contributor(BaseModel):
 class Unreadable(BaseModel):
     """One piece of substance the fetched text references but does not contain.
 
-    The severity test: remove the unshown material — does a claim become
-    unverifiable, or a section become empty? Then `major`. A pointing gesture
-    attached to something also said aloud is `minor`."""
+    Reported for every gap, whatever its size. Whether the piece survives its
+    gaps is `MetadataPayload.stands_alone`, judged once over the whole text
+    rather than graded per entry: a per-entry grade was measured drifting across
+    repeat runs of the same body, and it asked about the fetch rather than about
+    whether the result could be used."""
 
     cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
         description=(
@@ -71,9 +73,6 @@ class Unreadable(BaseModel):
             "replaced the content. truncation: the text stops mid-thought. "
             "unspeakable: present but unreadable aloud, e.g. raw tables."
         )
-    )
-    severity: Literal["major", "minor"] = Field(
-        description="major when a claim becomes unverifiable or a section empty."
     )
     missing: str = Field(description="What is not in the text, specifically.")
     evidence: str = Field(description="The quote from the text that depends on it.")
@@ -98,7 +97,24 @@ class MetadataPayload(BaseModel):
         default_factory=list,
         description=(
             "Substance the text points at but does not contain. Empty when the "
-            "text stands on its own."
+            "text contains everything it refers to."
+        ),
+    )
+    stands_alone: bool = Field(
+        description=(
+            "False only when this text does not carry enough of the piece's "
+            "substance to stand on its own — the material it points at is "
+            "absent and what remains does not hold up. A piece that references "
+            "slides or figures it does not contain still stands alone when its "
+            "argument comes through."
+        )
+    )
+    stands_alone_reason: str = Field(
+        default="",
+        description=(
+            "Required when `stands_alone` is false: one sentence naming what is "
+            "absent and why the piece does not hold without it. Must refer to "
+            "the evidence quote of one of the `unreadable` entries."
         ),
     )
 

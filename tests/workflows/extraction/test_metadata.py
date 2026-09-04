@@ -32,6 +32,9 @@ def _reply(**overrides) -> str:
     payload = {
         "contributors": [{"name": "Kyle Cheung", "role": "author", "affiliation": "Greybeam"}],
         "publisher": "Orchestra",
+        # Required of the model, unlike the two lists — a verdict this asset
+        # gates on cannot be defaulted away by an omission.
+        "stands_alone": True,
     }
     payload.update(overrides)
     import json
@@ -117,7 +120,7 @@ def test_a_reply_omitting_an_empty_list_still_validates():
     verifiable right answer."""
     import json as _json
 
-    minimal = _json.dumps({"publisher": "Orchestra"})
+    minimal = _json.dumps({"publisher": "Orchestra", "stands_alone": True})
     with patch(
         "workflows.extraction.metadata.generate_messages_with_usage",
         return_value=_call(minimal),

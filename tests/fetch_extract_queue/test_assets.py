@@ -976,6 +976,8 @@ def _metadata_payload(**overrides):
             Contributor(name="Kyle Cheung", role="author", affiliation="Greybeam"),
         ],
         publisher="Orchestra",
+        # The common case, so a test that is not about the gate need not say so.
+        stands_alone=True,
     )
     fields.update(overrides)
     return MetadataPayload(**fields)
@@ -1333,9 +1335,9 @@ def test_extract_metadata_records_call_latency(tmp_path: Path):
 def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path: Path):
     """A body whose substance never arrived is worse than no body, because
     nothing downstream can tell the difference — the claims lane will happily
-    extract from navigation chrome. So a `major` entry stops the item, and the
-    run-failure sensor turns that into Status=Failed in Notion. The columns are
-    written first: the failed row still shows what was missing."""
+    extract from navigation chrome. So the item stops, and the run-failure sensor
+    turns that into Status=Failed in Notion. The columns are written first: the
+    failed row still shows what was missing."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
     from workflows.extraction.metadata import Unreadable
 
@@ -1345,14 +1347,15 @@ def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path:
     extractor = MagicMock()
     extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
+        stands_alone=False,
+        stands_alone_reason="the article is replaced by an error page; no README text is present",
         unreadable=[
             Unreadable(
                 cause="chrome",
-                severity="major",
                 missing="the repository README",
                 evidence="There was an error while loading. Please reload this page",
             )
-        ]
+        ],
     )
     with patch(
         "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
@@ -1388,14 +1391,14 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
     extractor = MagicMock()
     extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
+        stands_alone=True,
         unreadable=[
             Unreadable(
                 cause="screen_reference",
-                severity="minor",
                 missing="the benchmark chart he reads numbers off",
                 evidence="as you can see here, the numbers are dramatically better",
             )
-        ]
+        ],
     )
     with patch(
         "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
@@ -1409,48 +1412,7 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
 
     assert result.success
     row = store.get_row("p-1")
-    assert json.loads(row["unreadable_json"])[0]["severity"] == "minor"
-
-
-def test_extract_metadata_does_not_fail_on_a_major_that_no_refetch_would_fix(tmp_path: Path):
-    """`major` alone is not the gate; the cause is. Severity is a model judgement
-    that drifted across repeat runs of the production corpus — an `unspeakable`
-    once came back major — while `chrome` and `truncation` are the only two
-    causes that mean the text arrived damaged, which is the only thing a refetch
-    can repair."""
-    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
-
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "arxiv", "body " * 200)
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
-    payload = _metadata_payload(
-        unreadable=[
-            Unreadable(
-                cause="unspeakable",
-                severity="major",
-                missing="Tables 2, 3 and 4",
-                evidence="Table 2: Metrics of open-domain QA.",
-            )
-        ]
-    )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
-
-    assert result.success
-    # Not failing is half the behaviour; the entry still has to be recorded, or
-    # a regression that dropped the write would pass this test.
-    row = store.get_row("p-1")
-    assert json.loads(row["unreadable_json"])[0]["cause"] == "unspeakable"
+    assert json.loads(row["unreadable_json"])[0]["cause"] == "screen_reference"
 
 
 def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_path: Path):
@@ -1467,14 +1429,15 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
     extractor = MagicMock()
     extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
+        stands_alone=False,
+        stands_alone_reason="the article is replaced by an error page; no README text is present",
         unreadable=[
             Unreadable(
                 cause="chrome",
-                severity="major",
                 missing="the repository README",
                 evidence="There was an error while loading. Please reload this page",
             )
-        ]
+        ],
     )
     with patch(
         "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
@@ -1508,14 +1471,15 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
     extractor = MagicMock()
     extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
+        stands_alone=False,
+        stands_alone_reason="the article is replaced by an error page; no README text is present",
         unreadable=[
             Unreadable(
                 cause="chrome",
-                severity="major",
                 missing="the repository README",
                 evidence="There was an error while loading. Please reload this page",
             )
-        ]
+        ],
     )
     with (
         patch(
@@ -1536,3 +1500,107 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
             )
 
     assert "the repository README" in exc.value.description
+
+
+def test_extract_metadata_fails_a_body_that_does_not_stand_alone(tmp_path: Path):
+    """The gate asks whether the text carries enough of the piece to stand on
+    its own, and nothing else. It used to ask whether a refetch would recover
+    the missing material, which excused the rows that most need a human: a talk
+    whose substance stayed on the speaker's screen is both unusable and
+    unfixable by refetching.
+
+    So the cause plays no part. `screen_reference` is the one no refetch
+    repairs, and here it fails, because the piece does not survive without it."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+    from workflows.extraction.metadata import Unreadable
+
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "youtube", "body " * 200)
+    store = QueueStoreResource(db_path=str(db_path))
+    extractor = MagicMock()
+    extractor.model = "gpt-5-mini"
+    payload = _metadata_payload(
+        stands_alone=False,
+        stands_alone_reason="every benchmark score is read off a chart and never spoken",
+        unreadable=[
+            Unreadable(
+                cause="screen_reference",
+                missing="the benchmark scores",
+                evidence="as you can see here, it is inching up there",
+            )
+        ],
+    )
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
+        return_value=(payload, _metadata_call(payload)),
+    ):
+        with pytest.raises(dg.Failure) as exc:
+            _materialize(
+                extract_metadata,
+                partition_key="p-1",
+                resources={"extractor": extractor, "store": store},
+            )
+
+    assert "every benchmark score is read off a chart" in exc.value.description
+
+
+def test_the_action_names_the_cheapest_repair_that_could_work():
+    """The curator reads one action, so a row whose gaps are mixed has to name
+    the one worth trying first. Refetching is cheap and sometimes works;
+    hunting down another source is neither, so it is the fallback rather than
+    the headline. Derived from the causes rather than asked of the model, which
+    has no idea what this repo can refetch."""
+    from orchestrators.defs.fetch_extract_queue.assets import _action_for
+
+    assert _action_for(["chrome"]) == "REFETCH"
+    assert _action_for(["truncation"]) == "REFETCH"
+    assert _action_for(["screen_reference"]) == "FIND_ANOTHER_SOURCE"
+    assert _action_for(["images"]) == "FIND_ANOTHER_SOURCE"
+    # Substance that is present but unspeakable has no repair to offer.
+    assert _action_for(["unspeakable"]) == "NONE"
+    assert _action_for([]) == "NONE"
+    # Mixed: a refetch might fix half of it, so it is what to try first.
+    assert _action_for(["screen_reference", "truncation"]) == "REFETCH"
+
+
+def test_the_unusable_record_carries_the_reason_not_only_the_absence():
+    """The Notion Error field gets this verbatim. Listing what is missing
+    without saying why the piece does not hold leaves the reader to re-derive
+    the verdict — every talk is missing something, so absence alone does not
+    explain a failure. Structured because it is a log entry, scanned and
+    grepped, not a letter."""
+    from orchestrators.defs.fetch_extract_queue.assets import _unusable_record
+
+    record = _unusable_record(
+        {
+            "stands_alone": False,
+            "stands_alone_reason": "the benchmark scores are read off a chart and never spoken",
+            "unreadable": [
+                {
+                    "cause": "screen_reference",
+                    "missing": "the benchmark comparison at ~12:30",
+                    "evidence": "as you can see here, the gap is substantial",
+                }
+            ],
+        }
+    )
+
+    assert "verdict:  UNUSABLE" in record
+    assert "reason:   the benchmark scores are read off a chart and never spoken" in record
+    assert "action:   FIND_ANOTHER_SOURCE" in record
+    assert "causes:   screen_reference=1" in record
+    assert "  - screen_reference | the benchmark comparison at ~12:30" in record
+    assert 'evidence | "as you can see here, the gap is substantial"' in record
+
+
+def test_the_unusable_record_says_so_when_the_model_gave_no_reason():
+    """`stands_alone_reason` is required by the prompt but not by the schema —
+    a default of "" keeps a missing reason from throwing away a verdict that is
+    otherwise actionable. The record has to show the gap rather than print a
+    blank line the reader mistakes for a rendering fault."""
+    from orchestrators.defs.fetch_extract_queue.assets import _unusable_record
+
+    record = _unusable_record({"stands_alone": False, "unreadable": []})
+
+    assert "reason:   (the model gave none)" in record
+    assert "causes:   (none reported)" in record
