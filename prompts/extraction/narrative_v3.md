@@ -52,7 +52,7 @@ The model writes top to bottom, so field order is generation order.
 1. `speakers_and_author` — a factual lookup. Frames nothing that follows, so it is free to go first.
 2. `structure` — **commits the shape before any content is written.** This is the anti-flattening move.
 3. `core_idea` — the only measured ordering constraint: it must not be first.
-4. `load_bearing_claims` — must precede the beats, which are selected from it.
+4. `load_bearing_claims` — must precede the beats, which compress it and cite it by position.
 5. `delivery_beats` — hard generation dependency on 4.
 6. `named_concepts_and_entities` — a roll-up over everything already written.
 
@@ -169,6 +169,36 @@ and buys nothing. The constraint belongs to the consumer, not to extraction.
 - **Padding is a shape, not a length.** The failure that killed `Salient threads` was entries
   *about* the piece — tone, target audience, emotional underpinning, the source link. The same
   shape can infect `load_bearing_claims`, which is why it carries its own rule against it.
+- **A beat compresses a structural unit; it is not a claim picked off the inventory.** Beats used
+  to be a shortlist — six of fifteen claims, reworded — and nothing recorded which six, so the
+  consumer held an inventory it could not connect to the beat it had just spoken. Two changes
+  together: a beat states the point of every claim in one unit of the source, and names those
+  claims by position. Measured over seven sources, beats cite a mean 2.60 claims each. There is no
+  before-figure to compare that against — beats carried no references, so what they covered could
+  not be counted — and reading the old output shows it was already merging two to four claims per
+  beat despite saying "ONE idea per beat". What changed is that the grouping is now recorded, not
+  that it started happening. Units are found in the source's own turns rather than read off the
+  `structure` label, because the contract already measures that label wrong on one source in five
+  and ambiguous on another — and `one throughline` versus `a sequence` is exactly the pair it
+  confuses, with the same talk drawing both labels across runs. Segmentation cannot rest on that.
+  The label still decides one thing, the case it was measured getting right: under
+  `N independent threads` the threads ARE the units, and merging what a source keeps apart is the
+  failure that removed `bridge_to` below. The one `N independent threads` source measured did not need to: six beats
+  covered all 20 of its claims at 3.33 each. Where a source does carry more units than 6, cover 6
+  and leave the rest, which is a countable remainder rather than a silent merge.
+- **A beat's tags are bracketed because line position could not survive.** `Anchor:` and
+  `From claims:` used to sit at the start of their own lines inside the beat string. A line break
+  inside a json string has to be written as an escape, and the model declines to write one for a
+  whole reply at a time: of seven stored narratives, two have every beat run onto a single line and
+  five have none — all-or-nothing, never mixed, so it is one formatting choice per reply rather
+  than a per-beat slip. That is also why retrying does not rescue it; the correction rides in the
+  tail while everything that set the choice stays put, and the same sources failed all three
+  attempts. It went unnoticed for as long as nothing validated `Anchor:` — the voice agent simply
+  read the label aloud, on 12 of 41 beats. Emphasis is not the lever: the old two-line format asked
+  for the same shape and got 71%, and successive prompt improvements moved item success 5/7 to 3/7
+  to 2/7 by adding text without touching the cause. Brackets need no escape, so a beat that arrives
+  as one line still parses and the collapse stops mattering: 42 of 42 beats across all seven
+  sources. Do not restore line-position structure here.
 - **No `bridge_to` line inside a beat.** Each beat used to name what the next one covered. It was
   removed on evidence from both ends: the consumer never spoke the label and its own phrasing was
   more specific, and across 134 bridges the phrase restated a median 43% of the following beat's
@@ -210,9 +240,9 @@ You extract structured information from articles, podcasts, YouTube transcripts,
 
 Do not carry original-script text into the output — not for quotes, names, titles or terms. Translate quoted phrases; romanise personal and publication names that have no established English form, and give the English meaning in parentheses where the name carries one. Keep the specificity that made a phrase worth quoting — who said it, the exact claim, the number — in the translation.
 
-## Every field is complete, or it declares what it is a subset of
+## Every field is complete, or it declares what it leaves out
 
-Fill every field. A field you leave thin is not read as thin — the agent reading this aloud treats whatever partially answers a question as the WHOLE answer. It does not read a fragment as a hint that more exists; it reads it as the fact, stops looking, and invents whatever the fragment left out. `load_bearing_claims` is the complete inventory. `delivery_beats` is the ONE field that is deliberately a subset, and the reader is told its size and the inventory's size, so it is declared rather than silent. Nothing else here may be partial.
+Fill every field. A field you leave thin is not read as thin — the agent reading this aloud treats whatever partially answers a question as the WHOLE answer. It does not read a fragment as a hint that more exists; it reads it as the fact, stops looking, and invents whatever the fragment left out. `load_bearing_claims` is the complete inventory. `delivery_beats` is the ONE field that deliberately covers less than the whole source — up to six of its units, and where a source has more it covers six of them and says which claims those six drew on. What a beat compressed is reachable through the claims it names; what a seventh uncovered unit held is not, which is why the claim inventory above it must stay complete. Nothing else here may be partial.
 
 ## The fields
 
@@ -261,19 +291,22 @@ The set of claims the piece stops working without. Ask "which claims does this p
 
 ### `delivery_beats`
 
-4-6 beats. This is what the voice agent walks through one turn at a time, so each beat must stand alone as a spoken unit.
-- Beats are SELECTED FROM `load_bearing_claims` above. Do NOT introduce anything in a beat that does not already appear there. Selecting 4-6 from a longer inventory is the normal case — the listener is told both counts, so the unselected claims are not lost, they are the remainder.
-- ONE idea per beat. If a beat needs "and" to join two ideas, it is two beats — or the second one does not belong.
-- Each beat after the first MUST reuse a named entity, term or figure from the beat before it. That chain is what lets the agent open a turn on what it already said instead of starting cold.
-- Each beat carries one concrete Anchor lifted from the source — a figure, a named example, a mechanism, or a short quote.
-- NEVER invent a beat to reach the range. If the source genuinely carries fewer distinct ideas, emit fewer. Padding to 4 is always wrong.
+Usually 4-6 beats — fewer when the source genuinely turns fewer times, never more than 6. This is what the voice agent walks through one turn at a time, so each beat must carry its point without the beats around it.
+
+- **ONE BEAT COVERS ONE UNIT, and a UNIT IS WHERE THE SOURCE TURNS.** Start a new beat only where the source changes what it is arguing, what step it is on, or what it is about. A claim, an example, a figure, a caveat, a restatement, or two adjacent claims are NOT units — they are what a unit is made of. Do NOT deal the inventory out one claim at a time: a set of beats that uses each claim exactly once, in order, with none appearing twice, is the failure this rule exists to stop. Most sources turn 4-6 times; a 15-claim source has 15 claims and about 5 units, so the typical beat carries two to four claims.
+- **A beat states the point of every claim in its unit.** So a beat is written, not picked — it says what several claims add up to, in words that need not appear in any one of them. Where the source turns more than 6 times, cover 6 turns and leave the rest; covering fewer units honestly beats merging them.
+- **Find the turns in the source itself, not in the `structure` label.** Where a source builds an argument and walks an ordered sequence at the same time, both labels fit and the turns are the same either way — so do not let the label pick the segmentation for you. The ONE case where the label changes what you do is `N independent threads`: there the threads ARE the units, and presenting two of them as one beat manufactures a link the source does not make.
+- A beat may say what its claims add up to; it may not add a fact none of them carries. Asserting something no cited claim supports — a cause, a consequence, a connection — is invention, and the listener has no way to check it.
+- Each beat after the first reuses a named entity, term or figure from the beat before it — unless `structure` reports independent threads, where there is no connection between units to carry and reaching for one distorts the source. That chain is what lets the agent open a turn on what it already said instead of starting cold.
+- Each beat carries one concrete Anchor lifted from the source — a figure, a named example, a mechanism, or a short quote. When the unit's claims carry several, take the most specific.
+- Each beat lists the claims it covers, by their position in `load_bearing_claims`, counting from 1. Every beat has at least one; a claim repeats across beats only when the units genuinely share it.
+- NEVER invent a beat to reach the range. If the source genuinely carries fewer units, emit fewer. Padding to 4 is always wrong.
 - Order for a listener hearing this cold, not for a reader: what the thing IS before what it implies.
 
-**Format each beat as ONE string carrying two lines, with no numbering of your own:**
+**Format each beat as ONE string: the point, then two bracketed tags. No numbering of your own, and NO line breaks — the brackets mark the structure, not line position:**
 
 ```
-<the idea, one or two sentences>
-Anchor: <the specific detail>
+<the point of this unit, one or two sentences> [Anchor: <the specific detail>] [From claims: 3, 7, 11]
 ```
 
 ### `named_concepts_and_entities`

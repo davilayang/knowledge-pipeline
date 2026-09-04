@@ -2,13 +2,14 @@
 
 First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via `run_benchmark` (the thin extraction wrapper over `evals.core.run_and_report`).
 
-## Three scored surfaces
+## Four scored surfaces
 
 | What it scores | Scorer | How it's run |
 |---|---|---|
 | **Topic Card** field quality vs a v5 baseline | `TopicCardScorer` | workbench notebooks (`run_variants`) / `run_benchmark` — no CLI |
 | **Narrative coverage** — does `narrative_md` cover the gold follow-up threads? | `NarrativeCoverageScorer` | `eval-narrative-coverage` CLI |
 | **Narrative fidelity** — omission / corruption / invention vs gold threads | `NarrativeFidelityScorer` (`evals/extraction/scorers.py`; metric substrate in `evals.extraction.fidelity`) | seed stage — scorer + gold exist, not wired into a CLI or `evals.extraction.__init__` exports yet |
+| **Beat support** — per beat, do the claims it cites (`[From claims: ...]`) carry what it asserts? | `BeatSupportScorer` (`evals/extraction/scorers.py`) | seed stage — reads `narrative_md`, no CLI or `evals.extraction.__init__` export yet |
 
 ### Re-running narrative coverage
 
@@ -40,6 +41,13 @@ them; only the metric functions (`faithful_recall`, `distortion_rate`, `fabricat
 [`datasets/narrative_fidelity_gold_seed.jsonl`](../../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
 (11 fixtures). This is substrate only — no `eval-*` CLI entry point and not yet re-exported from
 `evals.extraction.__init__` — until a runner lands.
+
+### Beat support (seed, no CLI yet)
+
+`BeatSupportScorer` reads `narrative_md`, resolves each beat's `[From claims: ...]` tag
+against the rendered claim list, and asks an injected `chat_fn` judge whether those claims
+support what the beat asserts. Substrate only — no `eval-*` entry point and not re-exported
+from `evals.extraction.__init__`.
 
 ## Public API
 

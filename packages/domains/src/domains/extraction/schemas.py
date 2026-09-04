@@ -40,6 +40,7 @@ NA tells the json rows from the older markdown ones by
 call became structured. NA's branch for that is already on its main.
 """
 
+import re
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
@@ -125,6 +126,20 @@ class Followups(BaseModel):
 NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
+# Bracketed tags rather than one-per-line: a newline inside a json string is an
+# escape the model has to choose to write, and it makes that choice once per
+# reply and holds it, so beats arrive either all correctly split or all run onto
+# one line. Brackets need no escape, so the run-together case still parses.
+_ANCHOR = re.compile(r"\[Anchor:\s*([^\]]+)\]")
+_CLAIM_REFERENCES = re.compile(r"\[From claims:\s*([0-9,\s]+)\]")
+
+
+def _cited_claims(beat: str) -> list[int]:
+    """The 1-based claim numbers a beat's `[From claims: ...]` tag names."""
+    tag = _CLAIM_REFERENCES.search(beat)
+    return [int(n) for n in re.findall(r"[0-9]+", tag.group(1))] if tag else []
+
+
 class Narrative(BaseModel):
     """The narrative call's sections, one field each.
 
@@ -197,12 +212,17 @@ class Narrative(BaseModel):
         # eleven while the coverage metric scored it 1.000.
         max_length=6,
         description=(
-            "Usually 4-6 beats selected from `load_bearing_claims`, ordered "
-            "for a listener hearing this cold — fewer when the source carries "
-            "fewer distinct ideas, never padded to reach four. One idea each, "
-            "chained so every beat "
-            "reuses a name, term or figure from the one before. Each entry is "
-            "the idea, then an `Anchor:` line."
+            "Usually 4-6 beats, ordered for a listener hearing this cold — "
+            "fewer when the source turns fewer times, never padded to reach "
+            "four. Each beat covers ONE unit of the source — a place where it "
+            "changes what it argues, what step it is on, or what it is about — "
+            "and states the point of every claim in that unit; it may say what "
+            "those claims add up to but not add a fact none of them carries. "
+            "Chained so every beat reuses a name, term or figure from the one "
+            "before, except under independent threads, where the units are "
+            "separate and a chain would invent one. Each entry is the point, "
+            "then `[Anchor: ...]`, then `[From claims: 3, 7, 11]` naming the "
+            "covered claims by their 1-based position."
         ),
     )
     named_concepts_and_entities: NarrativeProse = Field(
@@ -217,21 +237,39 @@ class Narrative(BaseModel):
 
     @model_validator(mode="after")
     def _beats_do_not_outnumber_claims(self) -> "Narrative":
-        """The beats are a selection from the claims, so more beats than claims
-        is an impossible reply rather than a thin one.
+        """Each beat compresses at least one claim, so more beats than claims is
+        an impossible reply rather than a thin one.
 
-        This is the one relationship between the two lists that deriving their
-        counts does not make true. It matters because the consumer subtracts one
-        rendered count from the other and speaks the result: four beats over
-        three claims becomes "that is four of the three", said confidently into a
-        channel where the listener has nothing to check it against. Failing here
-        costs a retry; not failing costs the user's trust in every count."""
+        The cheap half of the reference check below: failing on the counts alone,
+        before any tag is parsed, is what makes a thin reply say so."""
         if len(self.delivery_beats) > len(self.load_bearing_claims):
             raise ValueError(
                 f"more delivery beats ({len(self.delivery_beats)}) than "
                 f"load-bearing claims ({len(self.load_bearing_claims)}); the beats "
                 "are selected from the claims, so this reply cannot be right"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _beat_claim_references_resolve(self) -> "Narrative":
+        """Every claim a beat cites has to exist, or the agent answers from nothing.
+
+        References are 1-based to match how `render_narrative` numbers the claims
+        the agent reads. An out-of-range one raises nothing on its own — it names
+        a claim that is not there, and the agent fills the gap out loud."""
+        for position, beat in enumerate(self.delivery_beats, 1):
+            cited = _cited_claims(beat)
+            if not cited:
+                raise ValueError(
+                    f"delivery beat {position} names no claims; every beat carries "
+                    "a `From claims:` line listing the claims it compressed"
+                )
+            for index in cited:
+                if not 1 <= index <= len(self.load_bearing_claims):
+                    raise ValueError(
+                        f"delivery beat {position} cites claim {index}, but the "
+                        f"inventory holds {len(self.load_bearing_claims)} claims"
+                    )
         return self
 
 

@@ -6,93 +6,28 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.36.24] — 2026-09-04
+
+### Added
+
+- **`BeatSupportScorer` scores a delivery beat against the claims it cites.**
+  Compression lets a narrative gain material, which recall-based coverage
+  scoring has no term for.
+
 ### Changed
 
-- **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
-  selects claims by asking "which claims does this piece collapse without?" — and
-  a concession is by definition something a piece survives without, so the filter
-  was excluding them by construction, with a second rule against spinning a
-  sub-clause into its own entry pushing the same way. `narrative_v2` had told the
-  model to keep an argument's concessions and both sides of a comparison; v3
-  deleted that and replaced it with nothing. Measured on the coverage gold,
-  concessions were 17.6% of one argument fixture's reference threads but 44.4% of
-  the threads the model missed — 2.5x over-represented, one-sided p=0.031. The
-  repair is an explicit exception inside the filter rather than v2's sentence
-  restored verbatim, which would have contradicted the filter question instead of
-  completing it. Concession recall on that fixture moves 0.500 to 0.833 with the
-  claim count unchanged at 19, and a listicle fixture scores identically across
-  both arms, so the exception does not manufacture caveats where a source has
-  none. Stated in the prompt and in the field description, since the description
-  is rendered into the prompt's task tail and repeats the filter question.
-- **The narrative schema now bounds the delivery beats, which nothing did.**
-  `delivery_beats` is what the voice agent walks a turn at a time, and the
-  prompt has always budgeted four to six — but the only cross-field rule was
-  that beats may not outnumber claims, so eleven beats against twenty-three
-  claims validated cleanly. One run in thirty emitted exactly that, and the
-  coverage metric scored it 1.000: reference recall has no term for material a
-  narrative adds, so the measurement guarding the field was blind to the failure
-  the field's design exists to prevent. The ceiling is one-sided on purpose —
-  the prompt forbids inventing a beat to reach four, so a lower bound would
-  enforce the padding it bans. The ceiling reaches the model as `maxItems` in the
-  generated task tail rather than only rejecting it after the fact, and it moves
-  `effective_prompt_sha`, so affected rows re-extract without a pipeline-wide
-  invalidation.
-- **Delivery beats no longer carry a `bridge_to:` line.** Each beat used to name
-  what the next one covered, so the voice agent could open a turn on what it had
-  just said. Removed on evidence from both ends of the contract: the consuming
-  agent never spoke the label and its own phrasing was consistently more
-  specific, and across 134 bridges measured here the phrase restated a median 43%
-  of the following beat's content words — a partial duplicate of text the
-  narrative already carries in full. It was also the only snake_case token in an
-  artefact that is read aloud, and it let a beat assert a causal link between
-  items a listicle merely places side by side. The handover survives without it:
-  beats still reuse a name, term or figure from the beat before, which is the
-  rule that actually carries the chain. Removing the field also retires the
-  failure mode where the final beat promised a next beat that never came.
-- **`eval-narrative-coverage` can score the model production actually runs.** Its
-  present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
-  outright, and a single `--model` flag set both the extractor and the judge — so
-  a reasoning model could not be scored, and the supported configuration had the
-  model under test grading its own output. The judge now shares the extraction
-  call's `token_kwargs`, and `--judge-model` is now a separate flag, so the two can
-  differ at all. **Both still default to `gpt-4.1-mini`**, so a default invocation
-  continues to have the subject grade itself; pass the two explicitly until the
-  defaults are split. The gold threads it scores against were labelled cross-family with
-  OpenAI deliberately excluded; the scorer had been putting that family back in at
-  the last step.
-- **The narrative extraction now runs `narrative_v3`: six sections in place of
-  v2's three.** `Salient threads` is cut for a measured padding failure and
-  `load_bearing_claims` becomes the inventory, with speakers, structure and
-  ordered delivery beats added. `core_idea` moves off first position and is
-  conditioned on `structure`, which was measured flattening distinct source
-  shapes into one.
-- **A rendered narrative now numbers its list sections and states their size** —
-  `Load bearing claims (15):`. The count is what lets the voice agent say how
-  much is left after walking the beats; deriving it from the array means the
-  model reports no arithmetic that could disagree with the list.
-- **One `Narrative` schema, not one per prompt version**, matching `TopicCard`
-  and `Followups`. The prompt's field list is generated from the model, so the
-  two cannot be versioned apart — a narrative prompt and its schema change in
-  one commit, and superseded prompt files are history rather than alternatives.
-  `eval-narrative-coverage` can therefore no longer diff two narrative prompts
-  in one pass; run the prior one from the release that carried it.
-- **`FETCH_EXTRACT_QUEUE_DAG_VERSION` 7 → 8** — the narrative asset's output
-  shape changed.
-- **A narrative with more delivery beats than load-bearing claims is now
-  rejected and retried.** The beats are selected from the claims, so more beats
-  than claims is impossible rather than thin — and the voice agent subtracts one
-  rendered count from the other and speaks the result, so it would have said
-  "that is four of the three" with nothing for the listener to check it against.
-- **The extractor's staleness signal now covers the narrative's schema.** It
-  hashed the narrative prompt raw, correct while that call returned markdown but
-  not since it became structured: a change to `Narrative` alone left every
-  existing row reading as fresh. `queue_items.extractor_sha256` moves for all
-  rows as a result.
-- **`eval-narrative-coverage` refuses a narrative prompt written for an older
-  schema** instead of running it. The extractor generates the field list from
-  `Narrative`, so a superseded prompt body still ran — asking the model for
-  today's fields while describing another set, then scoring the result as that
-  prompt's. A wrong number that looks like a measurement.
+- **A delivery beat now covers one unit of the source and names the claims it
+  covers**, in bracketed tags — `[Anchor: ...] [From claims: 3, 7, 11]` — rather
+  than on their own lines. Line position could not carry them: the model omits
+  the json newline escape for a whole reply at a time, leaving 12 of 41 beats
+  run together. `Narrative` rejects a beat naming no claims or citing one
+  outside the inventory.
+
+- **Beat segmentation no longer reads the `structure` label.** Units are found
+  where the source turns; the label now decides only `N independent threads`,
+  the one case it was measured getting right.
 
 ---
 

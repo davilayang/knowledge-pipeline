@@ -141,3 +141,33 @@ def test_beats_stop_at_six_because_the_agent_walks_them_one_turn_each():
             delivery_beats=[f"Beat {i}" for i in range(1, 8)],
             named_concepts_and_entities="Priya Raghunathan, Latchkey",
         )
+
+
+def test_a_beat_may_not_cite_a_claim_that_is_not_in_the_inventory():
+    """A reference past the end of the inventory sends the agent to nothing, and
+    does it silently: there is no parser downstream to reject it and no citation
+    on screen for the listener to check against, so it fails here or never."""
+    with pytest.raises(ValidationError, match="claim 9"):
+        Narrative(
+            speakers_and_author="Priya Raghunathan (Latchkey)",
+            structure="one throughline - routing beats scale",
+            core_idea="Measure the traffic first.",
+            load_bearing_claims=[f"Claim {i} - anchor" for i in range(1, 4)],
+            delivery_beats=["Beat one [Anchor: 40ms] [From claims: 1, 9]"],
+            named_concepts_and_entities="Priya Raghunathan, Latchkey",
+        )
+
+
+def test_a_beat_without_claim_references_is_rejected():
+    """The references are the only record of which claims a beat compressed, so a
+    beat missing them leaves the agent holding an inventory it cannot connect to
+    what it just said — the state this field exists to end."""
+    with pytest.raises(ValidationError, match="names no claims"):
+        Narrative(
+            speakers_and_author="Priya Raghunathan (Latchkey)",
+            structure="one throughline - routing beats scale",
+            core_idea="Measure the traffic first.",
+            load_bearing_claims=[f"Claim {i} - anchor" for i in range(1, 4)],
+            delivery_beats=["Beat one [Anchor: 40ms]"],
+            named_concepts_and_entities="Priya Raghunathan, Latchkey",
+        )
