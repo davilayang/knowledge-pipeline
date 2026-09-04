@@ -1,7 +1,7 @@
 """Tests for evals.extraction.scorers.BeatSupportScorer.
 
 A delivery beat states the point of several load-bearing claims and names them
-on a `From claims:` line. That compression is where invention becomes possible:
+on a `[From claims: ...]` tag. That compression is where invention becomes possible:
 a beat can assert a cause, a consequence, or a connection none of its claims
 carries, and the listener hears it in a voice channel with nothing to check it
 against. This scorer is the check. The judge call is stubbed — the scorer
@@ -19,13 +19,8 @@ Load bearing claims (3):
 3. Routing needs traffic data first - Raghunathan
 
 Delivery beats (2):
-1. Routing wins on cost before it wins on anything else.
-Anchor: 61% spend cut
-From claims: 1
-2. You cannot route without knowing your traffic, and the latency budget is
-what decides whether you can afford to measure it.
-Anchor: 400ms end to end
-From claims: 2, 3
+1. Routing wins on cost before it wins on anything else. [Anchor: 61% spend cut] [From claims: 1]
+2. Traffic data first; the budget decides affordability. [Anchor: 400ms] [From claims: 2, 3]
 """
 
 
@@ -40,9 +35,9 @@ def test_a_beat_asserting_what_its_claims_do_not_carry_scores_zero():
     """The scorer's whole purpose: catch a beat that invented the link between
     the claims it merged.
 
-    Beat 2 above joins the traffic-data claim and the latency claim with a
-    causal reading — that the budget decides whether measuring is affordable —
-    which neither claim states. Nothing else in the pipeline can see this: the
+    Beat 2 above joins the traffic-data claim and the latency claim with a causal
+    reading — that the budget decides whether measuring is affordable — which
+    neither claim states. Nothing else in the pipeline can see this: the
     coverage scorer measures recall over reference threads and has no term for
     material the narrative adds, and the schema only checks that the cited
     claims exist.

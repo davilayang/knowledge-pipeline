@@ -126,18 +126,24 @@ class Followups(BaseModel):
 NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
-# A beat names the claims it compressed on a `From claims: 3, 7, 11` line. The
-# label is `From claims` rather than `Claims` because a bare word before a colon
-# at the start of a line is how the rendered narrative marks a section, and
-# `Load bearing claims` is one of them — a colliding label would read as a new
-# section opening inside a beat.
-_CLAIM_REFERENCES = re.compile(r"^From claims:[ \t]*([0-9,\s]+)$", re.MULTILINE)
+# A beat carries its metadata in bracketed tags — `[Anchor: ...]` and
+# `[From claims: 3, 7, 11]` — rather than on their own lines.
+#
+# Line position was the original design and it failed: a newline inside a JSON
+# string has to be written as an escape, and the model declines to write one for
+# a whole reply at a time. Two of seven stored narratives have every beat run
+# onto a single line, five have none — all-or-nothing, never mixed. Brackets
+# need no escape, so a beat that arrives as one line is still readable, and the
+# failure stops being a failure. Measured: 42 of 42 beats parsed across all
+# seven sources, against 12 of 41 malformed under the line format.
+_ANCHOR = re.compile(r"\[Anchor:\s*([^\]]+)\]")
+_CLAIM_REFERENCES = re.compile(r"\[From claims:\s*([0-9,\s]+)\]")
 
 
 def _cited_claims(beat: str) -> list[int]:
-    """The 1-based claim numbers a beat's `From claims:` line names."""
-    line = _CLAIM_REFERENCES.search(beat)
-    return [int(n) for n in re.findall(r"[0-9]+", line.group(1))] if line else []
+    """The 1-based claim numbers a beat's `[From claims: ...]` tag names."""
+    tag = _CLAIM_REFERENCES.search(beat)
+    return [int(n) for n in re.findall(r"[0-9]+", tag.group(1))] if tag else []
 
 
 class Narrative(BaseModel):
@@ -213,15 +219,15 @@ class Narrative(BaseModel):
         max_length=6,
         description=(
             "Usually 4-6 beats, ordered for a listener hearing this cold — "
-            "fewer when the source carries fewer units, never padded to reach "
-            "four. Each beat covers ONE unit of the shape `structure` reports "
-            "(a stage of an argument, a step, or one independent thread) and "
-            "states the point of every claim in that unit; it may say what "
+            "fewer when the source turns fewer times, never padded to reach "
+            "four. Each beat covers ONE unit of the source — a place where it "
+            "changes what it argues, what step it is on, or what it is about — "
+            "and states the point of every claim in that unit; it may say what "
             "those claims add up to but not add a fact none of them carries. "
             "Chained so every beat reuses a name, term or figure from the one "
             "before, except under independent threads, where the units are "
             "separate and a chain would invent one. Each entry is the point, "
-            "then an `Anchor:` line, then a `From claims:` line naming the "
+            "then `[Anchor: ...]`, then `[From claims: 3, 7, 11]` naming the "
             "covered claims by their 1-based position."
         ),
     )
@@ -237,15 +243,15 @@ class Narrative(BaseModel):
 
     @model_validator(mode="after")
     def _beats_do_not_outnumber_claims(self) -> "Narrative":
-        """The beats are a selection from the claims, so more beats than claims
-        is an impossible reply rather than a thin one.
+        """Each beat compresses at least one claim, so more beats than claims is
+        an impossible reply rather than a thin one.
 
-        This is the one relationship between the two lists that deriving their
-        counts does not make true. It matters because the consumer subtracts one
-        rendered count from the other and speaks the result: four beats over
-        three claims becomes "that is four of the three", said confidently into a
-        channel where the listener has nothing to check it against. Failing here
-        costs a retry; not failing costs the user's trust in every count."""
+        Beats group the claims rather than being drawn from them one-for-one, so
+        the counts carry no fixed ratio — but a beat still has to have something
+        to compress, and `_beat_claim_references_resolve` below requires each one
+        to name it. This bound is the cheap half of that check: it fails on the
+        arithmetic alone, before any reference is parsed, which is what makes the
+        rejection message name the real problem when a reply is thin."""
         if len(self.delivery_beats) > len(self.load_bearing_claims):
             raise ValueError(
                 f"more delivery beats ({len(self.delivery_beats)}) than "

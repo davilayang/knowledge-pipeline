@@ -383,9 +383,9 @@ def _rendered_entries(narrative: str, header: str) -> list[str]:
 
 
 def _cited_claims(beat: str) -> list[int]:
-    """The 1-based claim numbers a beat's `From claims:` line names."""
-    line = re.search(r"^From claims:[ \t]*([0-9,\s]+)$", beat, re.M)
-    return [int(n) for n in re.findall(r"[0-9]+", line.group(1))] if line else []
+    """The 1-based claim numbers a beat's `[From claims: ...]` tag names."""
+    tag = re.search(r"\[From claims:\s*([0-9,\s]+)\]", beat)
+    return [int(n) for n in re.findall(r"[0-9]+", tag.group(1))] if tag else []
 
 
 def _as_binary(verdict: object) -> float:

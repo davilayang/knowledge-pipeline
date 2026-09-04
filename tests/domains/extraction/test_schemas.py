@@ -161,7 +161,7 @@ def test_a_beat_may_not_cite_a_claim_that_is_not_in_the_inventory():
             structure="one throughline - routing beats scale",
             core_idea="Measure the traffic first.",
             load_bearing_claims=[f"Claim {i} - anchor" for i in range(1, 4)],
-            delivery_beats=["Beat one\nAnchor: 40ms\nFrom claims: 1, 9"],
+            delivery_beats=["Beat one [Anchor: 40ms] [From claims: 1, 9]"],
             named_concepts_and_entities="Priya Raghunathan, Latchkey",
         )
 
@@ -182,6 +182,6 @@ def test_a_beat_without_claim_references_is_rejected():
             structure="one throughline - routing beats scale",
             core_idea="Measure the traffic first.",
             load_bearing_claims=[f"Claim {i} - anchor" for i in range(1, 4)],
-            delivery_beats=["Beat one\nAnchor: 40ms"],
+            delivery_beats=["Beat one [Anchor: 40ms]"],
             named_concepts_and_entities="Priya Raghunathan, Latchkey",
         )

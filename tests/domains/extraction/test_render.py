@@ -12,7 +12,7 @@ def _narrative(**overrides) -> Narrative:
         "structure": "one throughline - argues routing beats scale",
         "core_idea": "Measure the traffic before choosing the model.",
         "load_bearing_claims": ["Router beats scale - 61% spend cut"],
-        "delivery_beats": ["Beat one\nAnchor: 61% spend cut\nFrom claims: 1"],
+        "delivery_beats": ["Beat one [Anchor: 61% spend cut] [From claims: 1]"],
         "named_concepts_and_entities": "Priya Raghunathan, Latchkey, vLLM",
     }
     return Narrative(**{**fields, **overrides})
@@ -43,9 +43,7 @@ def test_render_narrative_puts_each_section_under_its_header():
         "2. Latency budget - 400ms end to end, measured on an A100\n"
         "\n"
         "Delivery beats (1):\n"
-        "1. Beat one\n"
-        "Anchor: 61% spend cut\n"
-        "From claims: 1\n"
+        "1. Beat one [Anchor: 61% spend cut] [From claims: 1]\n"
         "\n"
         "Named concepts and entities:\n"
         "Priya Raghunathan, Latchkey, vLLM"

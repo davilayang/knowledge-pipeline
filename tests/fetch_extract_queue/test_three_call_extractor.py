@@ -58,7 +58,7 @@ def _narrative_obj() -> Narrative:
         structure="one throughline - argues the core idea",
         core_idea="The core idea.",
         load_bearing_claims=["Claim one - anchor", "Claim two - anchor"],
-        delivery_beats=["Beat one\nAnchor: a figure\nFrom claims: 1"],
+        delivery_beats=["Beat one [Anchor: a figure] [From claims: 1]"],
         named_concepts_and_entities="Alice Nkemdirim, Acme",
     )
 

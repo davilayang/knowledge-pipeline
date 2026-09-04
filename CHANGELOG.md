@@ -12,7 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **A delivery beat now covers one structural unit of the source and names the claims it covers**, on a `From claims: 3, 7, 11` line beside its `Anchor:`. Beats were a shortlist — six of fifteen claims, reworded, with no record of which six — so the voice agent held an inventory it could not connect to the beat it had just spoken; it can now answer a follow-up from the claims behind that beat. Which units exist comes from `structure`, which keeps the rule from merging threads a list-shaped source keeps apart. `Narrative` rejects a beat naming no claims or citing one outside the inventory.
+- **A delivery beat now covers one unit of the source and names the claims it covers**, in bracketed tags — `[Anchor: ...] [From claims: 3, 7, 11]` — rather than on their own lines. Beats were a shortlist — six of fifteen claims, reworded, with no record of which six — so the voice agent held an inventory it could not connect to the beat it had just spoken; it can now answer a follow-up from the claims behind that beat. Which units exist comes from `structure`, which keeps the rule from merging threads a list-shaped source keeps apart. `Narrative` rejects a beat naming no claims or citing one outside the inventory.
 
 - **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
   selects claims by asking "which claims does this piece collapse without?" — and
