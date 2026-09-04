@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.36.21"
+version = "0.36.22"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """

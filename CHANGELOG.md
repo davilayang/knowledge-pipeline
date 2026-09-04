@@ -7,7 +7,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Changed
-
 - **The narrative extraction now runs `narrative_v3`: six sections in place of
   v2's three.** `Salient threads` is cut for a measured padding failure and
   `load_bearing_claims` becomes the inventory, with speakers, structure and
@@ -41,6 +40,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   `Narrative`, so a superseded prompt body still ran — asking the model for
   today's fields while describing another set, then scoring the result as that
   prompt's. A wrong number that looks like a measurement.
+
+---
+
+## [0.36.22] — 2026-09-04
+
+### Changed
+
+- **A fetched body now fails on whether it can be used, not on how it broke.**
+  The `unreadable` gate asked whether a refetch would recover the missing
+  substance, so site chrome around an intact article failed the item while a
+  talk whose argument stayed on its slides passed. `severity` is removed and
+  `cause` is now a curator hint; the Notion Error field carries the model's
+  stated reason for the verdict.
 
 ---
 

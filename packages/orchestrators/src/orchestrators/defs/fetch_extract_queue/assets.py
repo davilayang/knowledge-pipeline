@@ -2,6 +2,8 @@ import hashlib
 import json
 import textwrap
 import time
+from collections import Counter
+from collections.abc import Iterable
 from datetime import date
 from typing import Any
 from urllib.parse import urlparse
@@ -339,37 +341,48 @@ def _metadata_is_fresh(last_call: dict[str, Any] | None, inputs_sha: str) -> boo
     return recorded.get("inputs_sha") == inputs_sha
 
 
-# The two causes that mean the text arrived damaged, and so the only two a
-# refetch can repair. The others describe material that was never text — a talk
-# pointing at a slide, a paper referencing a figure — which is the normal shape
-# of those sources: failing on them would fail 41% of the production corpus.
-DAMAGED_CAUSES = frozenset({"chrome", "truncation"})
-
-
-class _DamagedFetch(Exception):
+class _UnusableBody(Exception):
     """Leaves `extract_metadata`'s catch-all try without tripping its
-    swallow-everything handler, so the damaged-body gate can raise past it."""
+    swallow-everything handler, so the unusable-body gate can raise past it."""
 
 
-def _damaged(unreadable: list[dict]) -> list[dict]:
-    """The entries that fail an item: substance the body arrived without, that
-    fetching it again could recover."""
-    return [
-        u for u in unreadable if u.get("severity") == "major" and u.get("cause") in DAMAGED_CAUSES
-    ]
+# What a curator can do about each cause. Derived here rather than asked of the
+# model, which has no idea whether this repo can refetch a source.
+_REFETCHABLE = frozenset({"chrome", "truncation"})
+_NEVER_TEXT = frozenset({"screen_reference", "images"})
 
 
-def _damaged_fetch_message(damaged: list[dict]) -> str:
-    """The text a curator reads in Notion's Error field, so it names the specific
-    missing material and what to do about it — a generic "extraction failed"
-    leaves them nothing to act on."""
+def _action_for(causes: Iterable[str]) -> str:
+    """Refetching is the cheap thing to try, so a mixed row asks for it first;
+    a row whose gaps were never text needs a different source instead."""
+    causes = set(causes)
+    if causes & _REFETCHABLE:
+        return "REFETCH"
+    if causes & _NEVER_TEXT:
+        return "FIND_ANOTHER_SOURCE"
+    return "NONE"
+
+
+def _unusable_record(payload: dict) -> str:
+    """The record a curator reads in Notion's Error field.
+
+    Structured rather than prose: it is a log entry, scanned and grepped, not a
+    letter. `reason` is the model's own words for why the piece does not hold —
+    without it the reader sees what is absent but not why that is fatal, which
+    is the difference between a finding and a fault report."""
+    entries = payload.get("unreadable") or []
+    causes = Counter(str(u.get("cause")) for u in entries)
     lines = [
-        "The fetched text is missing substance the content depends on. "
-        "Refetch this item, or queue a source that carries the full text."
+        "verdict:  UNUSABLE",
+        f"reason:   {payload.get('stands_alone_reason') or '(the model gave none)'}",
+        f"action:   {_action_for(causes)}",
+        f"causes:   {' '.join(f'{c}={n}' for c, n in sorted(causes.items())) or '(none reported)'}",
     ]
-    for u in damaged:
-        evidence = str(u.get("evidence") or "")[:200]
-        lines.append(f"- {u.get('cause')}: {u.get('missing')} (text says: \"{evidence}\")")
+    if entries:
+        lines.append("missing:")
+        for u in entries:
+            lines.append(f"  - {u.get('cause')} | {u.get('missing')}")
+            lines.append(f'    evidence | "{str(u.get("evidence") or "")[:200]}"')
     return "\n".join(lines)
 
 
@@ -401,10 +414,12 @@ def _damaged_fetch_message(damaged: list[dict]) -> str:
         of both extraction branches, since a field the narrative call emitted
         would be invisible to the claims branch. A failed call writes nothing
         and materialises anyway, so metadata can never gate extraction. The one
-        exception is a call that succeeds and reports the body arrived damaged
-        — navigation chrome in place of the article, or text that stops
-        mid-thought: that fails the item, because nothing downstream can tell a
-        broken fetch from a thin one.
+        exception is a call that succeeds and reports the body does not carry
+        enough of the piece to stand on its own: that fails the item, because
+        nothing downstream can tell an unusable fetch from a thin one. Why the
+        substance is missing plays no part — a talk whose argument stayed on the
+        speaker's slides is as unusable as an article replaced by a cookie wall,
+        and no refetch helps either.
         """
     ),
 )
@@ -421,7 +436,7 @@ def extract_metadata(
     # too. A missing metadata row costs nothing; a blocked extraction costs the
     # item. Every write precedes the first yield, so the failure path cannot emit
     # a second materialisation.
-    damaged: list[dict] = []
+    unusable: str = ""
     try:
         # Migrates the schema it writes to: this asset can be materialised alone
         # (a backfill over stored bodies is exactly that), so it cannot rely on a
@@ -441,18 +456,20 @@ def extract_metadata(
             model=extractor.model,
             prompt_sha=prompt_sha,
         )
-        if _metadata_is_fresh(
-            store.get_latest_extraction_calls(page_id).get("metadata"), inputs_sha
-        ):
+        prior_call = store.get_latest_extraction_calls(page_id).get("metadata")
+        if _metadata_is_fresh(prior_call, inputs_sha):
             # Re-read, not re-derived: skipping the call must not skip the gate
-            # too, or the same damaged body passes on its second materialisation
-            # and the reading card proceeds on chrome.
-            damaged = _damaged(json.loads(row.get("unreadable_json") or "[]"))
-            if damaged:
+            # too, or the same unusable body passes on its second materialisation
+            # and the reading card proceeds on chrome. The verdict comes from the
+            # ledger row's stored reply rather than a queue column, so the gate
+            # needs no schema of its own.
+            stored = json.loads((prior_call or {}).get("output") or "{}")
+            if not stored.get("stands_alone", True):
+                unusable = _unusable_record(stored)
                 # Falls through to the raise past the except — this block
                 # swallows every exception by design, so raising here would be
                 # caught and turned into a clean materialisation.
-                raise _DamagedFetch
+                raise _UnusableBody
             yield dg.MaterializeResult(
                 metadata={
                     "metadata_skipped": dg.MetadataValue.bool(True),
@@ -474,7 +491,8 @@ def extract_metadata(
         known_publisher = _deterministic_publisher(row)
         contributors = [c.model_dump() for c in payload.contributors]
         unreadable = [u.model_dump() for u in payload.unreadable]
-        damaged = _damaged(unreadable)
+        if not payload.stands_alone:
+            unusable = _unusable_record(payload.model_dump())
 
         store.record_metadata(
             notion_page_id=page_id,
@@ -498,7 +516,7 @@ def extract_metadata(
             store.checkpoint_wal()
         except Exception as exc:
             context.log.warning("wal checkpoint failed for %s: %r", page_id, exc)
-    except _DamagedFetch:
+    except _UnusableBody:
         pass
     except Exception as exc:
         context.log.warning("extract_metadata failed for %s: %r", page_id, exc)
@@ -517,13 +535,13 @@ def extract_metadata(
         )
         return
 
-    if damaged:
+    if unusable:
         # Outside the try deliberately: that block keeps a failed metadata *call*
         # from gating the extraction branches, and a call that failed cannot know
-        # whether the body was readable. Here the call succeeded and reported the
-        # body damaged. The columns are already written, so the failed row still
-        # shows what was missing.
-        raise dg.Failure(description=_damaged_fetch_message(damaged))
+        # whether the body was usable. Here the call succeeded and reported the
+        # body does not stand alone. The columns are already written, so the
+        # failed row still shows what was missing.
+        raise dg.Failure(description=unusable)
 
     yield dg.MaterializeResult(
         metadata={
