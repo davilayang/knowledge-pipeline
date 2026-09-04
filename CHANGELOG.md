@@ -8,6 +8,8 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
+- **A delivery beat now names the claims it was built from**, on a `From claims: 3, 7, 11` line beside its `Anchor:`. The voice agent can answer a follow-up from the specific claims behind the beat it just spoke, instead of searching the whole inventory. `Narrative` rejects a beat that names none or cites a claim outside the inventory.
+
 - **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
   selects claims by asking "which claims does this piece collapse without?" — and
   a concession is by definition something a piece survives without, so the filter

@@ -40,6 +40,7 @@ NA tells the json rows from the older markdown ones by
 call became structured. NA's branch for that is already on its main.
 """
 
+import re
 from typing import Annotated
 
 from pydantic import BaseModel, Field, StringConstraints, model_validator
@@ -123,6 +124,20 @@ class Followups(BaseModel):
 # as a source with nothing to say rather than a failed extraction. `min_length`
 # counts characters and "   " is three, so the strip is what means "not blank".
 NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
+
+
+# A beat names the claims it compressed on a `From claims: 3, 7, 11` line. The
+# label is `From claims` rather than `Claims` because a bare word before a colon
+# at the start of a line is how the rendered narrative marks a section, and
+# `Load bearing claims` is one of them — a colliding label would read as a new
+# section opening inside a beat.
+_CLAIM_REFERENCES = re.compile(r"^From claims:[ \t]*([0-9,\s]+)$", re.MULTILINE)
+
+
+def _cited_claims(beat: str) -> list[int]:
+    """The 1-based claim numbers a beat's `From claims:` line names."""
+    line = _CLAIM_REFERENCES.search(beat)
+    return [int(n) for n in re.findall(r"[0-9]+", line.group(1))] if line else []
 
 
 class Narrative(BaseModel):
@@ -232,6 +247,32 @@ class Narrative(BaseModel):
                 f"load-bearing claims ({len(self.load_bearing_claims)}); the beats "
                 "are selected from the claims, so this reply cannot be right"
             )
+        return self
+
+    @model_validator(mode="after")
+    def _beat_claim_references_resolve(self) -> "Narrative":
+        """Every claim a beat cites has to exist, or the agent answers from nothing.
+
+        A beat states the point of the claims it compressed and names them, so
+        the agent can reach past the beat for the detail the compression left
+        out. `render_narrative` numbers the claims from 1, so the reference is
+        1-based and resolving it is an index into a list the agent can see —
+        which is exactly why an out-of-range one is invisible: it names a line
+        that is not there rather than raising anything, and the agent fills the
+        gap out loud."""
+        for position, beat in enumerate(self.delivery_beats, 1):
+            cited = _cited_claims(beat)
+            if not cited:
+                raise ValueError(
+                    f"delivery beat {position} names no claims; every beat carries "
+                    "a `From claims:` line listing the claims it compressed"
+                )
+            for index in cited:
+                if not 1 <= index <= len(self.load_bearing_claims):
+                    raise ValueError(
+                        f"delivery beat {position} cites claim {index}, but the "
+                        f"inventory holds {len(self.load_bearing_claims)} claims"
+                    )
         return self
 
 
