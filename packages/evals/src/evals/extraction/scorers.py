@@ -370,10 +370,8 @@ def _flatten(card: dict[str, Any]) -> dict[str, str]:
 def _rendered_entries(narrative: str, header: str) -> list[str]:
     """The entries under one numbered section of a rendered narrative.
 
-    `render_narrative` writes `Header (N):` then `1. `-prefixed entries, and an
-    entry may run over several lines — a beat's `Anchor:` and `From claims:`
-    lines are part of the entry above them. So an entry ends at the next
-    `<digit>. ` at column zero, or at the blank line before the next section.
+    An entry may run over several lines, so it ends at the next `<digit>. ` at
+    column zero or at the blank line before the next section.
     """
     body = re.search(rf"^{re.escape(header)} \(\d+\):\n(.*?)(?:\n\n|\Z)", narrative, re.S | re.M)
     if not body:
@@ -389,9 +387,8 @@ def _cited_claims(beat: str) -> list[int]:
 
 
 def _as_binary(verdict: object) -> float:
-    """Judge verdicts arrive as 1/0, True/False, or "yes"/"no"; anything below
-    half — and anything unrecognised — counts as unsupported, so a malformed
-    reply can never inflate the score."""
+    """Judge verdicts arrive as 1/0, True/False or "yes"/"no". Anything below half
+    or unrecognised counts as unsupported, so a malformed reply cannot inflate."""
     if isinstance(verdict, str):
         return 1.0 if verdict.strip().lower() in {"1", "yes", "true"} else 0.0
     try:
@@ -420,21 +417,16 @@ Return a JSON object mapping each beat's number (as a string) to 1 or 0.
 class BeatSupportScorer:
     """Per-beat verdict on whether a beat's cited claims carry what it asserts.
 
-    A beat compresses several claims into one spoken unit, which is the step
-    where invention becomes possible — a shortlist can only be wrong by
-    omission, a synthesis can be wrong by addition. Nothing else in the harness
-    sees it: `NarrativeCoverageScorer` measures recall over reference threads
-    and has no term for material the narrative adds, and the schema only checks
-    that a cited claim exists, never that it says what the beat needs it to.
+    A beat compresses several claims, so it can be wrong by addition where a
+    shortlist could only be wrong by omission. `NarrativeCoverageScorer` measures
+    recall and has no term for what a narrative adds; the schema checks a cited
+    claim exists, never that it says what the beat needs it to.
 
-    Reads the rendered narrative rather than the model behind it, because that
-    is what the voice agent reads: the agent resolves `From claims: 3` by
-    counting into the rendered claim list, so a scorer resolving it the same way
-    also catches a beat that cites the right claim under the wrong number.
+    Reads the rendered narrative, not the model behind it, so it resolves a
+    reference by counting into the same list the agent counts into — which also
+    catches the right claim cited under the wrong number.
 
-    `chat_fn` is injected so the scorer carries no provider dependency. Give it
-    a model from a different family than the one under test — a judge drawn from
-    the model it is grading marks its own work.
+    Give `chat_fn` a model from a different family than the one under test.
     """
 
     name = "BeatSupportScorer"
@@ -449,8 +441,7 @@ class BeatSupportScorer:
         self._tmpl = prompt_template
 
     def score_run(self, *, fixture: "ExtractionFixture", run: "FixtureRun") -> FieldScore:
-        """Selection adapter. Reference-free — the beat is judged against the
-        claims it cites, so no gold labels are consulted and `fixture` is unused."""
+        """Selection adapter. Reference-free, so `fixture` is unused."""
         narrative = (run.output or {}).get("narrative_md", "") if run.output else ""
         return self.score(actual={"narrative_md": narrative})
 

@@ -126,16 +126,10 @@ class Followups(BaseModel):
 NarrativeProse = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1)]
 
 
-# A beat carries its metadata in bracketed tags — `[Anchor: ...]` and
-# `[From claims: 3, 7, 11]` — rather than on their own lines.
-#
-# Line position was the original design and it failed: a newline inside a JSON
-# string has to be written as an escape, and the model declines to write one for
-# a whole reply at a time. Two of seven stored narratives have every beat run
-# onto a single line, five have none — all-or-nothing, never mixed. Brackets
-# need no escape, so a beat that arrives as one line is still readable, and the
-# failure stops being a failure. Measured: 42 of 42 beats parsed across all
-# seven sources, against 12 of 41 malformed under the line format.
+# Bracketed tags rather than one-per-line: a newline inside a json string is an
+# escape the model has to choose to write, and it makes that choice once per
+# reply and holds it, so beats arrive either all correctly split or all run onto
+# one line. Brackets need no escape, so the run-together case still parses.
 _ANCHOR = re.compile(r"\[Anchor:\s*([^\]]+)\]")
 _CLAIM_REFERENCES = re.compile(r"\[From claims:\s*([0-9,\s]+)\]")
 
@@ -246,12 +240,8 @@ class Narrative(BaseModel):
         """Each beat compresses at least one claim, so more beats than claims is
         an impossible reply rather than a thin one.
 
-        Beats group the claims rather than being drawn from them one-for-one, so
-        the counts carry no fixed ratio — but a beat still has to have something
-        to compress, and `_beat_claim_references_resolve` below requires each one
-        to name it. This bound is the cheap half of that check: it fails on the
-        arithmetic alone, before any reference is parsed, which is what makes the
-        rejection message name the real problem when a reply is thin."""
+        The cheap half of the reference check below: failing on the counts alone,
+        before any tag is parsed, is what makes a thin reply say so."""
         if len(self.delivery_beats) > len(self.load_bearing_claims):
             raise ValueError(
                 f"more delivery beats ({len(self.delivery_beats)}) than "
@@ -264,13 +254,9 @@ class Narrative(BaseModel):
     def _beat_claim_references_resolve(self) -> "Narrative":
         """Every claim a beat cites has to exist, or the agent answers from nothing.
 
-        A beat states the point of the claims it compressed and names them, so
-        the agent can reach past the beat for the detail the compression left
-        out. `render_narrative` numbers the claims from 1, so the reference is
-        1-based and resolving it is an index into a list the agent can see —
-        which is exactly why an out-of-range one is invisible: it names a line
-        that is not there rather than raising anything, and the agent fills the
-        gap out loud."""
+        References are 1-based to match how `render_narrative` numbers the claims
+        the agent reads. An out-of-range one raises nothing on its own — it names
+        a claim that is not there, and the agent fills the gap out loud."""
         for position, beat in enumerate(self.delivery_beats, 1):
             cited = _cited_claims(beat)
             if not cited:

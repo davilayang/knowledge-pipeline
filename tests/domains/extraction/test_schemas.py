@@ -144,17 +144,9 @@ def test_beats_stop_at_six_because_the_agent_walks_them_one_turn_each():
 
 
 def test_a_beat_may_not_cite_a_claim_that_is_not_in_the_inventory():
-    """A beat names the claims it compressed so the agent can answer a follow-up
-    from them; a reference past the end of the inventory sends it to nothing.
-
-    The failure is silent and confident. `render_narrative` numbers the claims
-    from 1, so the agent resolves "From claims: 9" by reading the ninth line of
-    a list that has three — it finds no ninth claim, and the material it answers
-    the listener with is whatever it reaches for instead. There is no parser
-    downstream to reject the reference and no citation on screen for the
-    listener to check it against, so an out-of-range reference has to fail here
-    or it never fails at all.
-    """
+    """A reference past the end of the inventory sends the agent to nothing, and
+    does it silently: there is no parser downstream to reject it and no citation
+    on screen for the listener to check against, so it fails here or never."""
     with pytest.raises(ValidationError, match="claim 9"):
         Narrative(
             speakers_and_author="Priya Raghunathan (Latchkey)",
@@ -167,15 +159,9 @@ def test_a_beat_may_not_cite_a_claim_that_is_not_in_the_inventory():
 
 
 def test_a_beat_without_claim_references_is_rejected():
-    """A beat that names no claims looks identical to a beat whose claims the
-    agent simply has not needed yet, so the omission never surfaces as one.
-
-    The references are the only record of which claims a beat compressed —
-    nothing else on the wire carries the mapping. A beat missing them leaves the
-    agent holding an inventory it cannot connect to what it just said, which is
-    the state this field exists to end, and leaves the support check with
-    nothing to check the beat against.
-    """
+    """The references are the only record of which claims a beat compressed, so a
+    beat missing them leaves the agent holding an inventory it cannot connect to
+    what it just said — the state this field exists to end."""
     with pytest.raises(ValidationError, match="names no claims"):
         Narrative(
             speakers_and_author="Priya Raghunathan (Latchkey)",
