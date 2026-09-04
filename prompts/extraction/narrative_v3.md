@@ -172,12 +172,23 @@ and buys nothing. The constraint belongs to the consumer, not to extraction.
 - **A beat compresses a structural unit; it is not a claim picked off the inventory.** Beats used
   to be a shortlist — six of fifteen claims, reworded — and nothing recorded which six, so the
   consumer held an inventory it could not connect to the beat it had just spoken. Two changes
-  together: a beat now states the point of every claim in one unit of the source, and names those
-  claims by position. Which units exist comes from `structure`, which is what stops the rule
-  fabricating on list-shaped sources: with twelve independent threads and a six-beat cap, a flat
-  "compress several claims per beat" rule has to merge unrelated threads, and merging what a
-  source keeps apart is the same failure that removed `bridge_to` below. Under the structural
-  rule the model covers six threads and leaves six, which is honest and countable.
+  together: a beat states the point of every claim in one unit of the source, and names those
+  claims by position. Measured over seven sources, beats cite a mean 2.60 claims each against 1.00
+  for the shortlist they replace. Which units exist comes from `structure` rather than from a flat
+  "compress several claims per beat" rule, because a flat rule under a six-beat cap has to merge
+  whatever will not fit — and merging what a source keeps apart is the failure that removed
+  `bridge_to` below. The one `N independent threads` source measured did not need to: six beats
+  covered all 20 of its claims at 3.33 each. Where a source does carry more units than 6, cover 6
+  and leave the rest, which is a countable remainder rather than a silent merge.
+- **A beat's inner labels are the weakest thing in this file.** `Anchor:` and `From claims:` are
+  labels at the start of a line inside one string, and the model does not reliably put them there:
+  12 of 41 beats in the development corpus ran the whole beat onto a single line, with `Anchor:`
+  mid-sentence. That shipped unnoticed for as long as nothing validated it — the voice agent simply
+  read the label out loud. `From claims:` IS validated, so the same collapse now fails the item,
+  and 2 of 7 sources could not produce six clean beats in three attempts. Emphasis does not fix it;
+  the old two-line format asked for the same shape and got 71%. The fix is to stop using
+  line-position as structure — beats as objects with `idea` / `anchor` / `from_claims` fields
+  scored 6 of 6 first attempts on the same sources, including both that had been failing.
 - **No `bridge_to` line inside a beat.** Each beat used to name what the next one covered. It was
   removed on evidence from both ends: the consumer never spoke the label and its own phrasing was
   more specific, and across 134 bridges the phrase restated a median 43% of the following beat's
@@ -270,15 +281,13 @@ The set of claims the piece stops working without. Ask "which claims does this p
 
 ### `delivery_beats`
 
-4-6 beats. This is what the voice agent walks through one turn at a time, so each beat must stand alone as a spoken unit. The claims are what it holds behind them to answer follow-ups from — beats are the only thing it delivers.
+4-6 beats. This is what the voice agent walks through one turn at a time, so each beat must stand alone as a spoken unit.
 
-- **ONE BEAT COVERS ONE UNIT OF THE SOURCE'S STRUCTURE, and states the point of every claim in that unit.** Read `structure` above and use its units: a throughline's units are the STAGES OF ITS ARGUMENT, a sequence's are ITS STEPS, and independent threads' units are THE THREADS THEMSELVES. This is why a beat is written, not picked: it says what several claims add up to, in words that need not appear in any one of them.
-- **A beat may say what its claims add up to; it may NOT add a fact none of them carries.** Stating the point of claims 3, 7 and 11 in a new sentence is the job. Asserting something no cited claim supports — a cause, a consequence, a connection — is invention, and the listener has no way to check it.
-- **NEVER merge units that the source keeps apart.** Under `N independent threads` the units ARE separate; presenting two threads as one beat manufactures a link the source does not make. If the source has more units than 6, cover 6 of them and leave the rest — covering fewer units honestly beats merging them.
-- ONE idea per beat, AT THE BEAT'S OWN LEVEL: one unit's point, however many claims support it. Two units in one beat is two beats.
-- Each beat after the first MUST reuse a named entity, term or figure from the beat before it — UNLESS `structure` reports independent threads, where there is no connection between units to carry and reaching for one distorts the source. That chain is what lets the agent open a turn on what it already said instead of starting cold.
+- **ONE BEAT COVERS ONE UNIT OF THE SOURCE'S STRUCTURE, and states the point of every claim in that unit.** Read `structure` above and use its units: a throughline's are the stages of its argument, a sequence's are its steps, and independent threads' are the threads themselves. So a beat is written, not picked — it says what several claims add up to, in words that need not appear in any one of them. Two units in one beat is two beats, and under `N independent threads` merging two threads manufactures a link the source does not make. Where the source has more units than 6, cover 6 and leave the rest; covering fewer units honestly beats merging them.
+- A beat may say what its claims add up to; it may not add a fact none of them carries. Asserting something no cited claim supports — a cause, a consequence, a connection — is invention, and the listener has no way to check it.
+- Each beat after the first reuses a named entity, term or figure from the beat before it — unless `structure` reports independent threads, where there is no connection between units to carry and reaching for one distorts the source. That chain is what lets the agent open a turn on what it already said instead of starting cold.
 - Each beat carries one concrete Anchor lifted from the source — a figure, a named example, a mechanism, or a short quote. When the unit's claims carry several, take the most specific.
-- **Each beat lists the claims it covers, BY THEIR POSITION in `load_bearing_claims`, counting from 1.** Every beat has at least one. A claim may appear in more than one beat only when the units genuinely share it, and under `N independent threads` it should not happen at all.
+- Each beat lists the claims it covers, by their position in `load_bearing_claims`, counting from 1. Every beat has at least one; a claim repeats across beats only when the units genuinely share it.
 - NEVER invent a beat to reach the range. If the source genuinely carries fewer units, emit fewer. Padding to 4 is always wrong.
 - Order for a listener hearing this cold, not for a reader: what the thing IS before what it implies.
 
