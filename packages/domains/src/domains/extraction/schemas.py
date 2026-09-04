@@ -212,12 +212,17 @@ class Narrative(BaseModel):
         # eleven while the coverage metric scored it 1.000.
         max_length=6,
         description=(
-            "Usually 4-6 beats selected from `load_bearing_claims`, ordered "
-            "for a listener hearing this cold — fewer when the source carries "
-            "fewer distinct ideas, never padded to reach four. One idea each, "
-            "chained so every beat "
-            "reuses a name, term or figure from the one before. Each entry is "
-            "the idea, then an `Anchor:` line."
+            "Usually 4-6 beats, ordered for a listener hearing this cold — "
+            "fewer when the source carries fewer units, never padded to reach "
+            "four. Each beat covers ONE unit of the shape `structure` reports "
+            "(a stage of an argument, a step, or one independent thread) and "
+            "states the point of every claim in that unit; it may say what "
+            "those claims add up to but not add a fact none of them carries. "
+            "Chained so every beat reuses a name, term or figure from the one "
+            "before, except under independent threads, where the units are "
+            "separate and a chain would invent one. Each entry is the point, "
+            "then an `Anchor:` line, then a `From claims:` line naming the "
+            "covered claims by their 1-based position."
         ),
     )
     named_concepts_and_entities: NarrativeProse = Field(
