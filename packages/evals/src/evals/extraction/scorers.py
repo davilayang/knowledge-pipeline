@@ -11,6 +11,7 @@ Callers inject `embed_fn` / `chat_fn` so every scorer carries no provider
 dependency — tests pass stubs; runtime callers wire OpenAI clients.
 """
 
+import re
 from collections.abc import Callable
 from typing import TYPE_CHECKING, Any
 
@@ -364,3 +365,116 @@ def _flatten(card: dict[str, Any]) -> dict[str, str]:
         else:
             out[k] = str(v)
     return out
+
+
+def _rendered_entries(narrative: str, header: str) -> list[str]:
+    """The entries under one numbered section of a rendered narrative.
+
+    `render_narrative` writes `Header (N):` then `1. `-prefixed entries, and an
+    entry may run over several lines — a beat's `Anchor:` and `From claims:`
+    lines are part of the entry above them. So an entry ends at the next
+    `<digit>. ` at column zero, or at the blank line before the next section.
+    """
+    body = re.search(rf"^{re.escape(header)} \(\d+\):\n(.*?)(?:\n\n|\Z)", narrative, re.S | re.M)
+    if not body:
+        return []
+    entries = re.split(r"^\d+\. ", body.group(1), flags=re.M)
+    return [e.rstrip("\n") for e in entries if e.strip()]
+
+
+def _cited_claims(beat: str) -> list[int]:
+    """The 1-based claim numbers a beat's `From claims:` line names."""
+    line = re.search(r"^From claims:[ \t]*([0-9,\s]+)$", beat, re.M)
+    return [int(n) for n in re.findall(r"[0-9]+", line.group(1))] if line else []
+
+
+def _as_binary(verdict: object) -> float:
+    """Judge verdicts arrive as 1/0, True/False, or "yes"/"no"; anything below
+    half — and anything unrecognised — counts as unsupported, so a malformed
+    reply can never inflate the score."""
+    if isinstance(verdict, str):
+        return 1.0 if verdict.strip().lower() in {"1", "yes", "true"} else 0.0
+    try:
+        return 1.0 if float(verdict) >= 0.5 else 0.0  # type: ignore[arg-type]
+    except (TypeError, ValueError):
+        return 0.0
+
+
+DEFAULT_BEAT_SUPPORT_PROMPT = """\
+You are a strict support judge. Each delivery beat below states the point of
+several load-bearing claims and names which claims it drew on. For each beat,
+decide whether the claims it names SUPPORT everything the beat asserts.
+
+Answer 1 when every assertion in the beat — including any cause, consequence,
+or connection it draws between the claims — is carried by the claims it names.
+Answer 0 when the beat asserts anything those claims do not carry, even if the
+assertion is plausible or true of the wider source. Restating the claims in new
+words is support, not invention; a beat is meant to say what they add up to.
+
+{beats}
+
+Return a JSON object mapping each beat's number (as a string) to 1 or 0.
+"""
+
+
+class BeatSupportScorer:
+    """Per-beat verdict on whether a beat's cited claims carry what it asserts.
+
+    A beat compresses several claims into one spoken unit, which is the step
+    where invention becomes possible — a shortlist can only be wrong by
+    omission, a synthesis can be wrong by addition. Nothing else in the harness
+    sees it: `NarrativeCoverageScorer` measures recall over reference threads
+    and has no term for material the narrative adds, and the schema only checks
+    that a cited claim exists, never that it says what the beat needs it to.
+
+    Reads the rendered narrative rather than the model behind it, because that
+    is what the voice agent reads: the agent resolves `From claims: 3` by
+    counting into the rendered claim list, so a scorer resolving it the same way
+    also catches a beat that cites the right claim under the wrong number.
+
+    `chat_fn` is injected so the scorer carries no provider dependency. Give it
+    a model from a different family than the one under test — a judge drawn from
+    the model it is grading marks its own work.
+    """
+
+    name = "BeatSupportScorer"
+
+    def __init__(
+        self,
+        *,
+        chat_fn: Callable[[str], dict],
+        prompt_template: str = DEFAULT_BEAT_SUPPORT_PROMPT,
+    ) -> None:
+        self._chat = chat_fn
+        self._tmpl = prompt_template
+
+    def score_run(self, *, fixture: "ExtractionFixture", run: "FixtureRun") -> FieldScore:
+        """Selection adapter. Reference-free — the beat is judged against the
+        claims it cites, so no gold labels are consulted and `fixture` is unused."""
+        narrative = (run.output or {}).get("narrative_md", "") if run.output else ""
+        return self.score(actual={"narrative_md": narrative})
+
+    def score(
+        self, *, actual: dict[str, Any], expected: dict[str, Any] | None = None
+    ) -> FieldScore:
+        claims = _rendered_entries(actual.get("narrative_md", "") or "", "Load bearing claims")
+        beats = _rendered_entries(actual.get("narrative_md", "") or "", "Delivery beats")
+        if not beats:
+            return FieldScore(value={"__overall__": 0.0}, metadata={"per_beat": {}, "raw": {}})
+
+        blocks = []
+        for position, beat in enumerate(beats, 1):
+            cited = "\n".join(
+                f"  claim {n}: {claims[n - 1]}"
+                for n in _cited_claims(beat)
+                if 1 <= n <= len(claims)
+            )
+            blocks.append(f"BEAT {position}:\n{beat}\nCLAIMS IT NAMES:\n{cited or '  (none)'}")
+
+        raw = self._chat(self._tmpl.format(beats="\n\n".join(blocks)))
+        per_beat = {str(i): _as_binary(raw.get(str(i))) for i in range(1, len(beats) + 1)}
+        supported = sum(per_beat.values())
+        return FieldScore(
+            value={"__overall__": supported / len(beats)},
+            metadata={"per_beat": per_beat, "raw": raw},
+        )

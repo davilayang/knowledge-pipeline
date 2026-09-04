@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`BeatSupportScorer` checks a delivery beat against the claims it names.** Compression is where a narrative can gain material rather than lose it, and nothing else in the harness sees that — coverage measures recall over reference threads and has no term for what a beat adds. Reads the rendered narrative, so it also catches a beat citing the right claim under the wrong number.
+
 ### Changed
 
 - **A delivery beat now covers one structural unit of the source and names the claims it covers**, on a `From claims: 3, 7, 11` line beside its `Anchor:`. Beats were a shortlist — six of fifteen claims, reworded, with no record of which six — so the voice agent held an inventory it could not connect to the beat it had just spoken; it can now answer a follow-up from the claims behind that beat. Which units exist comes from `structure`, which keeps the rule from merging threads a list-shaped source keeps apart. `Narrative` rejects a beat naming no claims or citing one outside the inventory.
