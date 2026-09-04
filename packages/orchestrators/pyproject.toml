@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-orchestrators"
-version = "0.36.21"
+version = "0.36.22"
 description = "Deployable orchestrators (Dagster today) — the only package allowed to depend on Dagster"
 requires-python = ">=3.13"
 dependencies = [

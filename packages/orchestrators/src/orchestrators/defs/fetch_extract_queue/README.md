@@ -44,8 +44,9 @@ fetch_content ──► extract_metadata ──► extract_reading_card ──�
    │                       publisher / unreadable_json on queue_items plus a
    │                       call_kind='metadata' extraction_calls row. A failed call is swallowed and
    │                       the asset still materialises — it does not block either branch below it.
-   │                       A call that SUCCEEDS and reports the body arrived damaged (chrome or
-   │                       truncation at major severity) raises, failing the item into Notion.
+   │                       A call that SUCCEEDS and reports the body does not stand on its own
+   │                       (`stands_alone=false`) raises, failing the item into Notion with a
+   │                       structured record (verdict/reason/action/causes) in the Error field.
    │
    └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
