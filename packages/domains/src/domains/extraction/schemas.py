@@ -181,22 +181,28 @@ class Narrative(BaseModel):
         min_length=1,
         description=(
             "The complete set of claims the piece collapses without — not the "
-            "main point, and not everything it says. Typically 9-28. One claim "
-            "per entry, each carrying its own anchor: a figure, a named "
-            "entity, a mechanism, or a short quote."
+            "main point, and not everything it says. A concession the piece "
+            "makes about its own argument counts, even though the argument "
+            "survives without it. Typically 9-28. One claim per entry, each "
+            "carrying its own anchor: a figure, a named entity, a mechanism, "
+            "or a short quote."
         ),
     )
     delivery_beats: list[NarrativeProse] = Field(
         title="Delivery beats",
         min_length=1,
+        # One-sided on purpose. The prompt forbids inventing a beat to reach
+        # four, so a lower bound would enforce the padding it bans; the ceiling
+        # is the spoken-session budget, which a run measured overshooting at
+        # eleven while the coverage metric scored it 1.000.
+        max_length=6,
         description=(
             "Usually 4-6 beats selected from `load_bearing_claims`, ordered "
             "for a listener hearing this cold — fewer when the source carries "
             "fewer distinct ideas, never padded to reach four. One idea each, "
             "chained so every beat "
             "reuses a name, term or figure from the one before. Each entry is "
-            "the idea, then an `Anchor:` line, then a `bridge_to:` line naming "
-            "what comes next — omitted on the last beat."
+            "the idea, then an `Anchor:` line."
         ),
     )
     named_concepts_and_entities: NarrativeProse = Field(

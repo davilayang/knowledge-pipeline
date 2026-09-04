@@ -28,6 +28,17 @@ here. It is defined by a filter question rather than by exhaustion, so it runs 9
 count grows 2.2x. And it is a "go on" queue that walks claims the piece collapses without,
 rather than one that walks into `Tone and rhetorical device`.
 
+**One thing v2 had was dropped by mistake and is now back: concessions.** v2 said "if it
+argues, keep the argument and its concessions; if it compares, keep both sides". v3 deleted
+that and replaced it with nothing — and the filter question actively works against it, since a
+concession is by definition something the piece survives without. Measured on the coverage gold:
+concessions are 17.6% of one argument fixture's threads but were 44.4% of the threads the model
+missed (2.5x, one-sided p=0.031). The repair is the exception bullet inside
+`load_bearing_claims`, not v2's sentence restored verbatim, which would contradict the filter
+question rather than complete it. With the bullet, concession recall on that fixture went
+0.500 to 0.833 with the claim count unchanged, and a listicle fixture was byte-identical across
+both arms — the carve-out does not manufacture caveats where a source has none.
+
 **Four sections are new**: speakers, structure, the claim inventory, and ordered beats. The
 agent needs something to deliver *incrementally* — prose offers nothing to stop at, and it was
 measured speaking ~943 characters after a fetch to a listener whose median reply is ~43.
@@ -158,6 +169,13 @@ and buys nothing. The constraint belongs to the consumer, not to extraction.
 - **Padding is a shape, not a length.** The failure that killed `Salient threads` was entries
   *about* the piece — tone, target audience, emotional underpinning, the source link. The same
   shape can infect `load_bearing_claims`, which is why it carries its own rule against it.
+- **No `bridge_to` line inside a beat.** Each beat used to name what the next one covered. It was
+  removed on evidence from both ends: the consumer never spoke the label and its own phrasing was
+  more specific, and across 134 bridges the phrase restated a median 43% of the following beat's
+  content words — a partial duplicate of text already present in full. It was also the only
+  snake_case token in an artefact read aloud, and it let a beat manufacture a causal link between
+  items a listicle merely places side by side. The chain survives without it: beats still reuse a
+  name, term or figure from the beat before, which is the rule that carries the handover.
 
 ## What is NOT in this file
 
@@ -232,6 +250,7 @@ The shape of the source, so the agent knows whether it is walking one argument o
 The set of claims the piece stops working without. Ask "which claims does this piece collapse without?" — NOT "what is the main point", and NOT "what does it say" (that would be everything). This is the complete set: the agent uses its size to tell the listener how much is left after a walkthrough, so a short list understates the piece and a padded one promises material that is not there.
 - Measured across real sources this runs 9-28, median 15. Scale it to the source rather than to that range — but a source yielding 3 is unusual, and a source yielding 40 means the filter question was not applied.
 - One claim per entry. Each carries its own anchor lifted from the source: a figure, a named entity, a mechanism, a specific example, or a short quoted phrase. A claim with no anchor is not load-bearing — drop it.
+- A concession the piece makes about its own argument IS load-bearing, even though the argument survives without it. An admitted limit, a caveat, a counter-case the author grants, a trade-off named against their own position — dropping these makes the piece sound more confident than it was, which misrepresents it. If the source argues, keep its concessions; if it compares, keep both sides.
 - FIGURES ARE MANDATORY, NOT OPTIONAL. If the source attaches a number, percentage, benchmark score, count, date, price, or measured quantity to a claim, that exact figure MUST appear. Never replace a figure with a qualitative description ("significantly improved", "the majority", "a large dataset") — carry the number.
 - Attribute each to a named speaker when the source names one.
 - Cover the WHOLE source, beginning to end. Do not front-load; a source's later sections (results, implications, war-stories, caveats) carry load-bearing claims as often as its opening.
@@ -247,16 +266,14 @@ The set of claims the piece stops working without. Ask "which claims does this p
 - ONE idea per beat. If a beat needs "and" to join two ideas, it is two beats — or the second one does not belong.
 - Each beat after the first MUST reuse a named entity, term or figure from the beat before it. That chain is what lets the agent open a turn on what it already said instead of starting cold.
 - Each beat carries one concrete Anchor lifted from the source — a figure, a named example, a mechanism, or a short quote.
-- Each beat EXCEPT THE LAST carries a bridge_to: a short phrase naming what the next beat covers. The last beat has no bridge_to.
 - NEVER invent a beat to reach the range. If the source genuinely carries fewer distinct ideas, emit fewer. Padding to 4 is always wrong.
 - Order for a listener hearing this cold, not for a reader: what the thing IS before what it implies.
 
-**Format each beat as ONE string carrying up to three lines, with no numbering of your own:**
+**Format each beat as ONE string carrying two lines, with no numbering of your own:**
 
 ```
 <the idea, one or two sentences>
 Anchor: <the specific detail>
-bridge_to: <what the next beat covers>      <- omit this line on the LAST beat
 ```
 
 ### `named_concepts_and_entities`

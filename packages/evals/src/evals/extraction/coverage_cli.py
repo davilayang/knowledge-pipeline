@@ -34,6 +34,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from domains.extraction.prompts import strip_design_notes
+from workflows.extraction.shared_prefix import token_kwargs
 
 from evals.core import RunManifest, load_fixtures
 from evals.core.harness import run_repeated
@@ -80,9 +81,11 @@ def _make_judge(api_key: str, model: str):
     def judge(prompt: str) -> dict:
         resp = client.chat.completions.create(
             model=model,
-            max_tokens=2048,
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}],
+            # Shared with the extraction call: a gpt-5 judge rejects `max_tokens`
+            # outright, so hardcoding it pinned the judge to non-reasoning models.
+            **token_kwargs(model, 2048),
         )
         try:
             return json.loads(resp.choices[0].message.content or "{}")
@@ -99,6 +102,7 @@ def _run_arm(
     prompts_dir: Path,
     api_key: str,
     model: str,
+    judge_model: str,
     max_tokens: int,
     runs: int,
     gold_rel: str,
@@ -120,14 +124,14 @@ def _run_arm(
         max_tokens=max_tokens,
         code_revision=code_rev(),
     )
-    scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, model))
+    scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, judge_model))
     manifest = RunManifest(
         dataset=Path(gold_rel).name,
         dataset_schema=1,
         dataset_version=gold_version,
         subject=label,
         subject_model=model,
-        judge_model=model,
+        judge_model=judge_model,
         code_rev=code_rev(),
         mode="report",
         runs=runs,
@@ -184,6 +188,10 @@ def main(argv: Sequence[str] | None = None) -> int:
         "--fixtures", type=Path, default=None, help=f"gold JSONL (default {_DEFAULT_GOLD})"
     )
     p.add_argument("--model", default="gpt-4.1-mini")
+    # Separate from --model on purpose: a judge drawn from the model under
+    # test grades its own output, and the gold set it scores against was
+    # itself labelled cross-family for that reason.
+    p.add_argument("--judge-model", default="gpt-4.1-mini")
     p.add_argument("--max-tokens", type=int, default=4096)
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
@@ -197,7 +205,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     print(
         f"gold: {len(fixtures)} fixtures, {total_chars:,} content chars, "
         f"{sum(len(f.gold_threads or []) for f in fixtures)} threads | "
-        f"{n_arms} arm(s) × {args.runs} run(s), model={args.model}"
+        f"{n_arms} arm(s) × {args.runs} run(s), model={args.model}, judge={args.judge_model}"
     )
 
     if args.dry_run:
@@ -218,6 +226,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         prompts_dir=prompts_dir,
         api_key=api_key,
         model=args.model,
+        judge_model=args.judge_model,
         max_tokens=args.max_tokens,
         runs=args.runs,
         gold_rel=gold_rel,
@@ -251,6 +260,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             f"Project=knowledge-pipeline | Benchmark=extraction-coverage | "
             f"Variant={a['variant']} | Metric=coverage@present | Value={value} | "
             f"N={len(fixtures)} | Dataset={dataset}@v{gold_version} | Model={args.model} | "
+            f"Judge={args.judge_model} | "
             f"per-type: {type_str} | per-shape: {shape_str}"
         )
         print(f"  {row}")

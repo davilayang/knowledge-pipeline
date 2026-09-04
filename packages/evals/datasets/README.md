@@ -14,8 +14,8 @@ Each section should document a **contract**, not the file's contents. Anything d
 JSONL — counts, fixture tables, per-fixture stats — belongs out of the prose: it is duplication
 that goes stale, and it is what has gone stale here before. Five headings:
 
-**Only the `narrative_coverage_gold.jsonl` section follows this yet.** The other six predate it and
-still carry derivable counts; migrating them is tracked in issue #236.
+**Two sections follow this so far** — `narrative_coverage_gold.jsonl` and `extract_metadata_gold.jsonl`.
+The other six predate it and still carry derivable counts; migrating them is tracked in issue #236.
 
 | heading | records |
 |---|---|
@@ -374,3 +374,407 @@ run-to-run (LLM variance — a single run isn't precise to ±5pt and needs N-run
 averaging), and the judge sees the producer's tag while grading, so it's an
 anchored signal, not fully independent. Provenance: gitignored
 `data/shadow_audit/build_gold_review.py` (candidate) → user review.
+
+## `extract_metadata_gold.jsonl`
+
+> Written to the five-heading dataset contract described at the top of this file.
+>
+> **Two documents cover this dataset and the split is deliberate.** This section records what was
+> produced and how to read a number off it. [`extract_metadata_codebook.md`](extract_metadata_codebook.md)
+> holds the labelling instructions and *only* those — it is handed verbatim to a labeller, so it
+> carries no prior labels, no outcomes and no record of earlier rounds, any of which would anchor
+> the next labeller.
+
+### What it decides
+
+**Whether the `contributors` and `publisher` fields produced by `prompts/extraction/metadata_v1.md`
+are trustworthy enough to feed the entity wiki and to retire the `queue_items.author` column.**
+
+Those two columns are written **dark** — nothing reads them today. The decision they feed is made
+by a human reading captured production output; this set replaces that eyeball with a measurement.
+Three consequences ride on it and none currently has any measurement behind it: a contributor is
+destined to become a **person entity in the wiki**, so an organisation written into that field
+propagates as a false attributed claim that nothing downstream can detect; the `author` column is
+scheduled for retirement once `contributors` is trusted, and retiring it removes the only control
+variable that exists; and a backfill re-runs this prompt over the whole stored corpus, where a
+systematic error is cheap to find now and expensive later.
+
+**It is a gate, not a report.** The comparison is paired — both arms score the same items:
+
+| arm | what it is | cost |
+|---|---|---|
+| the `author` column | today's stored byline, passed through unchanged | none — no LLM call |
+| `metadata_v1` | the shipped body-only prompt | one call per item |
+
+The **primary axis is contributors precision with organisation-as-person counted separately**,
+because that specific error is the one the asset exists to fix and the one that corrupts the wiki.
+Recall is reported alongside it and is not optional: **16 of the 58 items (28%) have a correctly
+empty contributors list**, so an arm that returns nothing scores perfectly on precision while being
+useless. Publisher is scored as precision and recall on the scalar.
+
+**Loss is asymmetric, pinned at 5:1** — a false contributor is five times worse than a missed one.
+A missed person leaves the wiki no worse than today; a false one actively corrupts it. Report the
+precision/recall tradeoff or the confusion matrix as the headline and treat any weighted scalar as
+one operating point on it, never as the result.
+
+**It also answers a question that only exists once the prompt grew a third field.** `unreadable` was
+added to the same call, and the prompt itself warns that a long list there *"crowds out the rest of
+this reply and the whole answer is discarded when it runs past the length limit, so brevity here
+protects the other fields."* That is a stated risk to the two fields this set scores, and nothing
+currently measures it. Running these 58 items against the two-field prompt and the three-field prompt
+is a paired before/after on exactly that question — the labels are unchanged between them, because
+257 left the contributors and publisher instructions byte-identical.
+
+**No loader and no scorer exist yet.** There is no `eval-*` entry point for this dataset; it is the
+pinned input, and the harness that consumes it is not written. Do not infer a command from the
+sibling sections.
+
+**What it does not decide.** Nothing about `delivery_shape` or `parts` — those fields were dropped
+on evidence and do not exist.
+
+**`unreadable` is now covered too, as one binary rather than as the prompt's full list.** The prompt
+emits a list of entries with causes, severities and free-text descriptions; none of that compares
+cleanly between labellers. What the pipeline actually *acts* on is a single question — does this row
+fail — so that is what the gold answers:
+
+| field | |
+|---|---|
+| `gold_stands_alone` | does this text carry enough of the piece to stand on its own? This is the only field the pipeline acts on — `false` fails the item. 57 true, 1 false |
+| `gold_stands_alone_reason` | one sentence, only where `false`: what is absent and why the piece does not hold without it |
+| `gold_unshown_evidence` | a verbatim quote for the material the piece leans on but does not contain. **A populated value does not mean the row failed** — 35 rows carry one and all of them stand alone. Read `gold_stands_alone`, never the presence of this field. Named `gold_damaged_evidence` before `gold_version` 6 |
+| `gold_references_unshown` | does the piece lean on material that was never text — slides, figures, charts? Reported, never a failure. `null` on the 7 rows where the labellers split |
+| `unreadable_gold_source` | `cross_family_agreed` (57) or `disputed_unresolved` (1) |
+
+Labelled by the same two model families working independently, against the same
+[`extract_metadata_codebook.md`](extract_metadata_codebook.md) as the other two fields — it carries
+both questions, and says so, because a full re-labelling round needs both and a dataset with two
+codebooks invites one of them to go stale. The damage question is self-contained within it, so a
+round covering only that half can be pointed at that section alone.
+
+**Cross-family agreement on `damaged` was 57/58** — higher than either of the other two fields, which
+is what you would expect from a more objective question. **Neither labeller found a single damaged
+body in the 58**, and the one dispute is `md_11`.
+
+**This set cannot measure the gate's recall**, only its precision, because it contains no confirmed
+damaged rows to miss. Establishing recall needs items sampled *because* they are broken, which this
+corpus was not built to supply.
+
+Nothing about **external truth**: this measures whether the prompt
+correctly reported *what the fetched text presents as its own authorship*. A label is not wrong
+because reality disagrees with the byline, and nobody should later "fix" a correct label because
+they know better than the source.
+
+### Provenance
+
+**Items.** 58 rows drawn from the production `queue.db` on 2026-08-30, from the 227 rows that have
+a fetched body. Stratified by `content_type` and ordered within each stratum by `content_hash` —
+deterministic, reproducible, and unrelated to any label-relevant property. The stratification is
+weighted toward the failure region rather than matching production proportions:
+
+| stratum | rows here | why it is its own stratum |
+|---|---|---|
+| youtube | 18 | the person is in the title in four incompatible separator formats, or named only in the speech |
+| medium | 12 | the `author` **column** is empty on all 56 production rows; the body sometimes still carries the byline |
+| article | 10 | one body can carry a platform byline, a different real author, and a publisher |
+| facebook | 6 | the control arm's best lane — the fetcher prepends the poster's name, populating `author_column` on 4 of these 6 |
+| arxiv | 6 | author lists are comma-flattened and frequently multi-person |
+| file_audio | 3 | all of production — the worst-served lane |
+| github | 3 | all of production — heavy site chrome, and an empty contributor list is right on 2 of the 3 |
+
+**Labels.** Authored blind: labellers saw only the `[content_type: ...]` tag and the body — the same
+input the prompt gets. The stored `author`, `title` and `enrichment_json` were **withheld**, because
+`author` is the arm being measured against and showing it would anchor the gold toward the value
+under test. No labeller ever saw any system output; the gold predates any run of the prompt.
+
+Every recorded name carries a **verbatim supporting quote from its own item**, and this was verified
+programmatically from outside the labellers: all 58 files pass, with every evidence quote and every
+contributor name occurring literally in its source. A name that could not be quoted was not recorded.
+
+**Two independent labellers, from different model families, on all 58 items.** A Claude-family
+labeller and an OpenAI-family labeller, each working only from the codebook and the body. Note the
+OpenAI labeller shares a family with the model that runs the prompt under test, which is weaker than
+the ideal — a same-vendor rater self-prefers, and the `narrative_coverage_gold.jsonl` section above
+excludes the family under test for exactly that reason. A Gemini-backed third family was attempted
+first and abandoned: that advisor returns prose and cannot produce artefacts.
+
+**Provenance of the cross-family pass was established by construction.** An earlier attempt routed
+the OpenAI labeller through a dispatching agent, and the resulting files were **discarded rather
+than used**, because they could not be shown to have come from the OpenAI model rather than from the
+wrapper that dispatched it — a false provenance claim inside a gold set is worse than a missing one.
+The pass that stands invoked the `codex` CLI directly, one item per call, in a read-only sandbox with
+its stdout captured verbatim, so no intermediary could substitute an answer.
+
+Agreement between the two families, over all 58 items:
+
+| | |
+|---|---|
+| contributor-set exact match | **56/58 (97%)** |
+| contributor-name Jaccard, mean per item | 0.97 |
+| publisher exact match | **47/58 (81%)** |
+
+(Jaccard is the mean of per-item scores. Pooled across all names it is 0.93 — stated because this
+section tells a scorer to say which averaging convention it used, and the same obligation applies
+here. These figures are between the two labellers and are unaffected by later gold corrections.)
+
+**The 97% is the load-bearing number, and it is the premise of this dataset.** `contributors` was
+carved out as gateable — while the structural delivery-shape label was dropped — on the claim that
+it is a checkable fact with a right answer rather than a judgement. That claim now has a measurement
+behind it: the same cross-vendor comparison that reproduced the structural label at **58.8%**
+reproduces contributors at **97%**.
+
+**Publisher is markedly less settled, and the disagreement is systematic rather than noisy.** In
+**9 of the 11** publisher disagreements the OpenAI labeller returned `null` where the Claude labeller
+named one; **none** went the other way. The two were applying different thresholds for what counts as
+the text identifying a publisher — one accepted a piece speaking in its own organisation's voice, the
+other required a publication statement. That was a genuine gap in the codebook's publisher
+definition, not rater sloppiness, and the definition has since been rewritten as an explicit
+precedence ladder.
+
+Note the 9-of-11 figure describes the **shape** of the disagreements (null versus named). It is not
+the number settled by any one rule — see the adjudication breakdown below.
+
+A **within-family duplicate pass** also ran over 12 of the items (21%), weighted toward the hard
+cases: a second independent Claude-family labeller, blind to the first. It agreed on 11 of 12
+(Jaccard 0.92). Its value is separating genuine ambiguity from single-rater noise — the one item it
+split on, `art_10`, is also one the two families split on, which is what a truly ambiguous item looks
+like. Per-row `within_family_dup_agreed` carries this, and is `null` for items outside that subset.
+Same-family agreement is weaker evidence than cross-family agreement and is kept in its own field so
+the two cannot be conflated.
+
+**Two known contaminants, both bounded and both stated rather than hidden.**
+
+- *The codebook once quoted the corpus.* An early revision illustrated its bare-handle rule with two
+  handles taken verbatim from items in this set, which handed the labeller those two answers. Both
+  items are among the hardest in the corpus, so their agreement is inflated and their labels are the
+  codebook author's read rather than an independent one. Every example in the codebook has since been
+  replaced with an invented one, but the two affected rows were labelled before that: treat `gh_01`
+  (`human_adjudicated`) and `art_02` (`cross_family_agreed`) as weaker evidence than their status
+  suggests. A third leak, a venue string that was also one row's exact publisher evidence, was found
+  later and removed — `arx_04` carries the same caveat.
+- *The gold encodes rules the prompt has never been told.* The codebook now carries a publisher
+  precedence ladder, a sponsor-read exclusion, a personal-site rule and a platform-versus-venue rule.
+  `metadata_v1`'s entire publisher instruction is *"Null when the text does not make it clear — a bare
+  URL host is not a publisher."* So the prompt will systematically under-report publisher against this
+  gold. **That is the eval working, not a gold defect** — but it means the first publisher result will
+  measure a known instruction gap, and the honest first move is to close that gap in the prompt rather
+  than to read the number as a verdict on the model.
+
+Per-row `gold_source` says exactly how far each label was corroborated, and it must not be flattened:
+
+| value | rows | meaning |
+|---|---|---|
+| `cross_family_agreed` | 44 | both families produced the same contributor set and publisher, and both labels' evidence quotes verify |
+| `human_adjudicated` | 13 | a human decided the value against a rule now written into the codebook — `adjudication_note` names the rule. Twelve of these were genuine cross-family disagreements; one (`arx_04`) is a naming normalisation applied to an answer both families agreed on |
+| `single_labelled` | 1 | the cross-family label was discarded because one of its evidence quotes was not found in the body, leaving only the primary label |
+
+That last row is `art_01`, and it is worth noting as a live example of why the evidence check exists:
+the two labellers agreed on the *name*, but the OpenAI labeller's supporting quote had been
+reconstructed rather than copied, so it does not occur in the source. Agreement on a conclusion does
+not license an unverifiable citation.
+
+**Every dispute was settled by a rule, not by preferring a labeller.** At `gold_version` 2 all twelve
+resolved toward the primary labeller, which looked like rubber-stamping and mostly was not: the
+cross-family labeller was systematically *conservative*, returning `null` where the other named
+something, so a rule holding that evidence sufficient resolves that way by construction. But one of
+the twelve had in fact been decided on an argument that was never written into the codebook, and at
+`gold_version` 3 it was **corrected toward the cross-family labeller** — the split is now 11–1. Every
+rule now cited is in the codebook, so re-labelling from scratch reaches the same answers. Three were
+added at `gold_version` 2 in response to what the disputes exposed:
+
+- **A personal site named after its owner.** A blog titled with its owner's name puts that name only
+  in the site header — furniture, which the codebook otherwise excludes — while the piece is written
+  throughout in the first person and names nobody. The header name is the author, and `publisher` is
+  null. This one item, `art_10`, produced *three different answers* across three labellers, because
+  three existing rules each claimed it.
+- **Writing as an organisation names it.** First-person organisational voice identifies the publisher
+  as well as a masthead would; requiring an explicit statement would null out the publisher on most
+  company engineering blogs.
+- **Platform versus venue for papers.** A stated venue wins; otherwise the archive is the publisher;
+  and *"accepted to"* is not *"published at"*.
+
+**More rules were involved than the three new ones**, which between them account for 7 of the
+adjudicated rows. The rest were settled by rules the codebook already carried — the repository owner
+for code, a publication named outright, a stated channel line, preferring a named publication over a
+copyright-holding parent company, writing a name as the text gives it rather than shortening it to a
+surname, the venue-is-not-a-publisher rule, and the publisher-naming rule that drops an edition year.
+
+**Read `adjudication_note` per row rather than any summary count here.** That field is the authority.
+An earlier revision of this section quoted a total, got it wrong twice as rules were added, and the
+count is not worth maintaining — every row carries its own reason and they are individually checkable.
+
+That last row is `yt_02`, and it is the clearest illustration of why the rule-not-ruling discipline
+matters. At `gold_version` 2 it was given the publisher `Stanford`, on the reasoning that a
+university course lecture is published by that university — an argument that appears nowhere in the
+codebook. Reviewed against the corpus, three sibling rows carrying the same evidence shape are null,
+including one where the speaker uses first-person voice about her own employer and it is still
+correctly refused. The body has no channel line; what it has is a venue and an audience. Corrected to
+`null` at `gold_version` 3, and the codebook now states outright that a venue is not a publisher.
+
+### How to read a number off it
+
+- **Pass `body` as the prompt content unchanged, and nothing else.** `body` is exactly `raw_content`,
+  with **no** `[content_type: …]` tag — the runtime prepends that itself
+  (`shared_prefix.structured_messages`), so a scorer that adds one sends it twice, changes the input
+  from what production sends, and breaks the shared cache prefix. `sha256(body)` equals
+  `_meta.content_hash` on all 58 rows; assert it per row as the drift guard.
+- **Match names by casefold, whitespace-collapse, strip, then exact.** No titlecase (two gold names
+  break it), no substring, no fuzzy, no token overlap. Match on `name` alone — the gold contributor
+  dicts carry an `evidence` key the model's schema has no field for, so dict equality matches
+  nothing. Exact matching is load-bearing here: **9 gold names are a single token**, and no fuller
+  form of any of them appears anywhere in its body, so a model emitting a surname is inventing one
+  from world knowledge. A lenient matcher forgives exactly the error the wiki cannot detect.
+- **Report contributors macro, with micro alongside.** 28 of the 72 gold contributors — 39% — come
+  from just 6 arXiv rows. A micro-averaged (pooled) recall is therefore largely "does it copy an
+  author list", a lane where every arm does well. Macro (per-item, then mean) and micro will diverge;
+  choosing silently yields two different headline numbers from one run.
+- **Give the empty cases their own cell, not a precision denominator.** 16 rows have an empty gold
+  contributor list and 23 have a null gold publisher. Empty-versus-empty is 0/0 — report a
+  **correct-empty rate** over those rows instead of folding them into precision, and say which
+  convention you used. This matters because org-as-person shows up precisely as a non-empty answer
+  on those rows.
+- **`group_id` is derived from the labels — never pass it to an arm.** It is `deterministic_publisher
+  or gold_publisher`, falling back to a per-row sentinel, so on three rows (`gh_02`, `gh_03`, `yt_09`)
+  it differs from `gold_publisher`. It is the clustering key, not a feature: 7 of the 18 youtube rows
+  share `AI Engineer`, so getting that one publisher right wins 7 rows at once. A confidence interval
+  computed over 58 independent items is too tight; cluster on `group_id`. Note the derivation means
+  `gh_02` sits in its own cluster despite sharing a gold publisher with two article rows.
+- **Do not grade `role` or `affiliation`.** All 72 gold contributors carry a non-null role, but the
+  codebook permits null and the model's schema defaults to it — so scoring role as equality penalises
+  a correct null and rewards a guess. The zero-null distribution also suggests labellers inferred
+  role from the lane. Report these, do not grade them, until that is fixed.
+- **The organisation-as-person split is not mechanically computable from this file**, despite being
+  the primary axis. Classifying a false-positive name as *organisation* versus *wrong person* needs a
+  judge or a human pass; 7 rows carry no organisation string anywhere in their label — no publisher,
+  no affiliation, no contributor — and **all seven** are correctly-empty rows, which is exactly where
+  an organisation-as-person error is most likely. Do not report it as a mechanical metric.
+- **All 58 rows are scorable for contributors and publisher at `gold_version` 6**, and one row is
+  **not** scorable for `unreadable`. `md_11` carries
+  `unreadable_gold_source: "disputed_unresolved"` — the two labellers did not agree on whether its
+  body arrived intact, and the dispute was left open rather than settled by fiat. Its contributor
+  and publisher labels are unaffected and remain scorable.
+  A scorer must therefore exclude on the **field being scored**, not on the row: filtering out every
+  row carrying `disputed_unresolved` anywhere silently drops a row that is gold for the two fields
+  this set exists to measure. Check for the value rather than assuming the set is always fully
+  usable on every field.
+- **The 13 `human_adjudicated` rows are gold, but they are the softest gold here.** Twelve are where
+  two model families read the same text differently, so they are the rows most likely to move if the
+  codebook changes. When an arm loses on one of them, read the case before believing the score.
+- **`adjudication_note` is populated on 14 rows, not 13.** The extra one is `art_01`, whose note
+  records why its cross-family label was discarded. Key on `gold_source`, not on the presence of a
+  note.
+- **Report per-stratum, never aggregate alone.** `github` and `file_audio` hold 3 rows each — those
+  lanes support a read-the-cases verdict and never a percentage. A rate quoted off three items is
+  noise wearing a number's clothes.
+- **Publisher on `youtube` and `github` does not come from the prompt.** The asset stores
+  `deterministic_publisher or model_publisher`, resolving it from oEmbed's channel for youtube and
+  the URL owner for github. Scoring the prompt's raw publisher on those lanes measures something the
+  pipeline never stores. Each row carries `deterministic_publisher` so the resolved value can be
+  scored instead. Score publisher **three ways and label which**: model-raw over 58, stored over 58,
+  and stored split at the deterministic boundary (16 rows supplied deterministically, 42 by the
+  model).
+- **`expected_unreadable_gate_reject` marks `gh_01`, and the gold now says the gate is wrong about
+  it.** The flag records measured gate behaviour: running the prompt over the set, `gh_01` is the one
+  row where the gate raises. But **both independent labellers read that row as undamaged** — GitHub's
+  navigation, file table and sidebar surround the *complete* sqlbuild README, from tagline through
+  Key features and Quick start. The "error while loading" notices the model keys on are about
+  sub-components of the page, not the article.
+
+  So the row is scorable for contributors and publisher, and it is simultaneously evidence that the
+  gate has a false positive. Do not silently drop it; it is the most informative row in the set.
+
+  That the flag is measured rather than string-matched was itself earned: `gh_02` carries the same
+  GitHub failure text and was initially marked too, but it wraps a complete article in chrome and the
+  model correctly reports it readable. A string match would have excluded a perfectly scorable row.
+- **Three rows are unwinnable on the stored-publisher metric and must not be charged to the prompt.**
+  `gh_02` (deterministic `humanlayer` vs gold `HumanLayer` — case only), `gh_03` (`getnao`, a URL
+  slug, vs gold `nao Labs`), and `yt_09` (deterministic is the presenter's own personal name where
+  gold is null). The override wins on all three regardless of which prompt runs; reporting them as
+  prompt failures measures the fetcher.
+- **The control arm is scorable from this file, and its result is already derivable.** Convert
+  `author_column` with `[] if None else [s.strip() for s in value.split(", ")]` — the fetcher joins
+  its author list that way — then apply the same set comparison. Do **not** apply that split to
+  `affiliation`, which legitimately contains commas. 44 of 58 rows are null, so the arm's headline
+  cannot be an aggregate precision; of the 14 populated rows, **7 are exact person matches and 7 emit
+  an organisation or handle**, five of those the literal string `AI Engineer`. Give this arm no
+  publisher metric — it proposes none.
+- **Ten rows carry `labeller_flags`** recording genuine ambiguity rather than defects. **Six** turn on
+  the codebook's "a bare handle is not a name" rule, which gives them an empty contributor list; if
+  that rule is revised, those six change and `gold_version` must be bumped. The other four are
+  flagged for unrelated reasons — a personal-site name, a paper's author list, a first-name-only
+  speaker, and one page whose only names sit in site chrome — and would not move.
+
+### Identity and safe changes
+
+- `instance_id` is the join key and is immutable. Note the id field is spelled `instance_id` here
+  while sibling datasets in this directory use `fixture_id`, `id` and `source_id` — a loader copied
+  from a sibling will `KeyError`.
+- `body` is exactly `raw_content` and must never be edited — `_meta.content_hash` is the drift alarm,
+  not the pin, and it verifies against `body` directly.
+- **Revision history.** `gold_version` 1 was the first labelled build; 2 adjudicated the twelve
+  cross-family disputes; **3** corrected one publisher label (`yt_02`, which had been settled on an
+  argument never written into the codebook and was inconsistent with three sibling rows carrying the
+  same evidence shape), carried the publisher evidence quote into every row, and removed the
+  `[content_type: …]` tag that earlier revisions had left prepended to `body`; **4** brought two
+  labels into line with codebook rules written after they were made — a venue publisher recorded
+  without its edition year, and affiliations stripped of their trailing country.
+
+  Both changes at 4 are normalisations of answers the labellers agreed on, not new judgements. That
+  pattern is worth watching: every time a rule is added after labelling, some existing label may stop
+  obeying its own codebook, and the set has to be re-checked against it rather than assumed still
+  valid.
+
+  **6** did three things. It removed the `unreadable` field's old question:
+  `gold_damaged` and `gold_cause` asked whether a refetch would recover the
+  missing substance, and the production gate stopped asking that, so the answers
+  are not comparable to anything the pipeline now does. `gold_stands_alone`
+  replaces them, drawn from three independent passes over all 58 bodies — two
+  model families, and one of them re-run under deliberately stricter wording that
+  moved nothing. `md_11` is the single `false` and is recorded as a majority
+  rather than an agreement: one reader called it usable while describing the same
+  missing section. Its `disputed_unresolved` exclusion lifts, because the new
+  question settled what the old counterfactual could not.
+
+  It also corrected six publisher labels, each from a rulebook defect rather than
+  a labelling slip. The rung-3 fallback to a paper's hosting archive was deleted
+  — it contradicted the production prompt's highest-value rule, that a hosting
+  site is never the publisher — so `arx_02`, `arx_03`, `arx_05` and `arx_06` go
+  from `arXiv` to null. `gh_03` moves to the repository owner: rung 2 outranks
+  rung 4, and the owner segment of a repository URL is structured data the
+  pipeline already reads deterministically and prefers to any model answer.
+  `aud_03` keeps its publisher but exchanges its evidence, which was promotional
+  copy that rung 4 excludes.
+
+  The rung-4 rewrite is the reason the rest hold. That rule reproduced on only
+  two of the four rows it governs, because it never said what its evidence quote
+  must contain; it now requires one passage carrying both the organisation's name
+  and the piece's own first person. Re-tested against the rewritten text, the
+  arXiv rows resolve 6 of 6 and rung 4 reproduces where it should.
+
+  **5** added the third field. `unreadable` and its supporting columns
+  (`gold_damaged`, `gold_damaged_evidence`, `gold_cause`, `gold_references_unshown`,
+  `unreadable_gold_source`) were labelled across all 58 rows by both families. Fifty-seven agree the
+  body arrived intact; `md_11` is an unresolved dispute and is the only row not scorable on that
+  field. No row is labelled damaged, so the gate this field measures can be scored for false alarms
+  and not at all for misses — a "0 missed" figure from this set would be an artefact of the corpus
+  rather than a result. The contributor and publisher labels did not move at 5.
+- Bodies are **inlined** (1.5 MB) rather than referenced. The only other copy lives in
+  `data/shapestudy/`, which is gitignored, laptop-only and unbacked-up; a pointer-based set would
+  not survive the laptop.
+- Bump `gold_version` for any label change: adjudicating a disputed row, revising a codebook rule
+  that moves existing labels, or adding a cross-family pass. Bump `schema_version` only when the row
+  shape changes.
+- Adding rows is a top-up and keeps `gold_version`; re-drawing the sample is a rebuild and does not.
+- Validate a change by re-running the evidence check — every `gold_contributors[].evidence` must
+  still occur verbatim in its row's `body`.
+
+### Refresh policy
+
+Re-draw rather than top-up when the corpus composition moves: the lane mix here reflects a corpus
+that is 52% youtube by fetched rows, and the strata weights are pinned to that. Trigger a rebuild
+when any lane's share of fetched rows changes by more than half, when the fetcher changes what
+`raw_content` contains for a lane (transcript chunking and pasted-article structuring have both
+done this before, so rows carry `provenance_date` to make it visible), or when `contributors`
+acquires a consumer that reads it differently from the wiki.
+
+Top up instead when a lane is simply thin: `file_audio` and `github` are at 3 rows because that is
+all production has, and they should grow as the corpus does.

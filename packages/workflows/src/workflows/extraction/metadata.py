@@ -57,6 +57,15 @@ class Contributor(BaseModel):
     )
 
 
+# Nested-model docstrings and field descriptions survive into the generated
+# schema's `$defs`, which is appended after the prompt body — the last thing the
+# model reads before answering. Two consequences, both learned the hard way.
+# Nothing here may contradict the prompt: a revision once described a grading
+# rule by a test the prompt had already superseded, which reinstated that test
+# from the strongest position in the message and cost the calibration the prompt
+# exists to apply. And nothing here should spend that position on repo history — a note
+# explaining what a rule replaced is text the model must read and reconcile, so
+# it belongs in a comment like this one rather than in a docstring.
 class Unreadable(BaseModel):
     """One piece of substance the fetched text references but does not contain.
 
@@ -68,14 +77,25 @@ class Unreadable(BaseModel):
 
     cause: Literal["screen_reference", "images", "chrome", "truncation", "unspeakable"] = Field(
         description=(
-            "screen_reference: points at something on screen. images: the text "
-            "refers to figures not captured. chrome: navigation/boilerplate "
-            "replaced the content. truncation: the text stops mid-thought. "
-            "unspeakable: present but unreadable aloud, e.g. raw tables."
+            "Why the material is missing. chrome: site furniture, a wall or an "
+            "error page stands where the content should be. truncation: the "
+            "content is cut — stops mid-thought, an elided span, an announced "
+            "section left empty, a stub of a longer piece. Those two mean the "
+            "fetch went wrong and is worth retrying. The rest never were text, "
+            "so no refetch recovers them: screen_reference points at something on screen, "
+            "images refers to figures not captured, unspeakable is present but "
+            "cannot be read aloud, e.g. a raw table."
         )
     )
     missing: str = Field(description="What is not in the text, specifically.")
-    evidence: str = Field(description="The quote from the text that depends on it.")
+    evidence: str = Field(
+        description=(
+            "A quote from the text. For screen_reference, images and unspeakable, "
+            "the line that depends on the unshown material; for chrome and "
+            "truncation, the damage itself — the wall or error text, or the last "
+            "words before the text stops."
+        )
+    )
 
 
 class MetadataPayload(BaseModel):

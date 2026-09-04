@@ -119,3 +119,25 @@ def test_beats_may_not_outnumber_the_claims_they_are_selected_from():
             delivery_beats=["Beat one", "Beat two", "Beat three"],
             named_concepts_and_entities="Priya Raghunathan, Latchkey",
         )
+
+
+def test_beats_stop_at_six_because_the_agent_walks_them_one_turn_each():
+    """`delivery_beats` is what the voice agent speaks a turn at a time, so its
+    length is a spoken-session budget rather than a formatting preference.
+
+    Measured on the narrative-coverage gold, one run in thirty emitted eleven
+    beats against the stated four-to-six, and the coverage metric scored that
+    run 1.000 — recall over reference threads has no term for material the
+    narrative adds, so nothing downstream could see it. The bound is deliberately
+    one-sided: the prompt forbids inventing a beat to reach four, so a lower
+    bound would enforce the padding it bans.
+    """
+    with pytest.raises(ValidationError):
+        Narrative(
+            speakers_and_author="Priya Raghunathan (Latchkey)",
+            structure="one throughline - routing beats scale",
+            core_idea="Measure the traffic first.",
+            load_bearing_claims=[f"Claim {i} - anchor" for i in range(1, 9)],
+            delivery_beats=[f"Beat {i}" for i in range(1, 8)],
+            named_concepts_and_entities="Priya Raghunathan, Latchkey",
+        )

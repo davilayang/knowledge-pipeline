@@ -7,6 +7,59 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ## [Unreleased]
 
 ### Changed
+
+- **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
+  selects claims by asking "which claims does this piece collapse without?" — and
+  a concession is by definition something a piece survives without, so the filter
+  was excluding them by construction, with a second rule against spinning a
+  sub-clause into its own entry pushing the same way. `narrative_v2` had told the
+  model to keep an argument's concessions and both sides of a comparison; v3
+  deleted that and replaced it with nothing. Measured on the coverage gold,
+  concessions were 17.6% of one argument fixture's reference threads but 44.4% of
+  the threads the model missed — 2.5x over-represented, one-sided p=0.031. The
+  repair is an explicit exception inside the filter rather than v2's sentence
+  restored verbatim, which would have contradicted the filter question instead of
+  completing it. Concession recall on that fixture moves 0.500 to 0.833 with the
+  claim count unchanged at 19, and a listicle fixture scores identically across
+  both arms, so the exception does not manufacture caveats where a source has
+  none. Stated in the prompt and in the field description, since the description
+  is rendered into the prompt's task tail and repeats the filter question.
+- **The narrative schema now bounds the delivery beats, which nothing did.**
+  `delivery_beats` is what the voice agent walks a turn at a time, and the
+  prompt has always budgeted four to six — but the only cross-field rule was
+  that beats may not outnumber claims, so eleven beats against twenty-three
+  claims validated cleanly. One run in thirty emitted exactly that, and the
+  coverage metric scored it 1.000: reference recall has no term for material a
+  narrative adds, so the measurement guarding the field was blind to the failure
+  the field's design exists to prevent. The ceiling is one-sided on purpose —
+  the prompt forbids inventing a beat to reach four, so a lower bound would
+  enforce the padding it bans. The ceiling reaches the model as `maxItems` in the
+  generated task tail rather than only rejecting it after the fact, and it moves
+  `effective_prompt_sha`, so affected rows re-extract without a pipeline-wide
+  invalidation.
+- **Delivery beats no longer carry a `bridge_to:` line.** Each beat used to name
+  what the next one covered, so the voice agent could open a turn on what it had
+  just said. Removed on evidence from both ends of the contract: the consuming
+  agent never spoke the label and its own phrasing was consistently more
+  specific, and across 134 bridges measured here the phrase restated a median 43%
+  of the following beat's content words — a partial duplicate of text the
+  narrative already carries in full. It was also the only snake_case token in an
+  artefact that is read aloud, and it let a beat assert a causal link between
+  items a listicle merely places side by side. The handover survives without it:
+  beats still reuse a name, term or figure from the beat before, which is the
+  rule that actually carries the chain. Removing the field also retires the
+  failure mode where the final beat promised a next beat that never came.
+- **`eval-narrative-coverage` can score the model production actually runs.** Its
+  present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
+  outright, and a single `--model` flag set both the extractor and the judge — so
+  a reasoning model could not be scored, and the supported configuration had the
+  model under test grading its own output. The judge now shares the extraction
+  call's `token_kwargs`, and `--judge-model` is now a separate flag, so the two can
+  differ at all. **Both still default to `gpt-4.1-mini`**, so a default invocation
+  continues to have the subject grade itself; pass the two explicitly until the
+  defaults are split. The gold threads it scores against were labelled cross-family with
+  OpenAI deliberately excluded; the scorer had been putting that family back in at
+  the last step.
 - **The narrative extraction now runs `narrative_v3`: six sections in place of
   v2's three.** `Salient threads` is cut for a measured padding failure and
   `load_bearing_claims` becomes the inventory, with speakers, structure and
@@ -40,6 +93,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   `Narrative`, so a superseded prompt body still ran — asking the model for
   today's fields while describing another set, then scoring the result as that
   prompt's. A wrong number that looks like a measurement.
+
+---
+
+## [0.36.23] — 2026-09-04
+
+### Added
+
+- **A gold dataset for the extract-metadata prompt.** 58 production items
+  labelled for contributors, publisher, and whether the body stands on its own,
+  every recorded name carrying a verbatim quote from its own body. It replaces
+  eyeballing production output with a measurement.
+
+- **A labelling codebook for all three fields**, handed to a labeller verbatim as
+  their only instruction. It defines a contributor from what an entity wiki
+  needs rather than from the prompt's wording, so the gold can catch the prompt
+  being wrong instead of agreeing with it by construction.
+
+### Changed
+
+- **The metadata prompt leads with a test a name must pass.** The previous
+  wording missed nobody and emitted 36 people who had not made the piece, so the
+  field needed a stopping rule as prominent as its finding rules. Contributor
+  precision moves 0.67 → 0.84 at recall 0.99.
+
+- **The prompt no longer enumerates the answers it rejects.** Listing the hosting
+  platforms that are not publishers made the model return them *more* often — 15
+  misses became 19 — so prohibitions are now stated as the positive rule instead.
+
+- **The publisher rulebook reproduces, and agrees with the prompt.** Its
+  organisational-voice rule never said what evidence proves it, so an independent
+  labeller applied it on 2 of 4 rows; it now requires one passage naming the
+  organisation in the piece's own first person. The fallback making a paper's
+  archive its publisher is deleted — it contradicted the prompt's rule that a
+  hosting site never is. Six labels move.
+
+- **The gold's `unreadable` labels answer the question that replaced them.**
+  `gold_damaged` asked whether a refetch would recover the missing substance; the
+  gate stopped asking that in 0.36.22. `gold_stands_alone` replaces it, from
+  three passes over all 58 bodies across two model families. `gold_version` 6.
+
+- **A channel named after its own presenter no longer becomes a publisher.** The
+  deterministic YouTube channel overrode the model even when that channel was
+  already a contributor, filing one human as both a person and an organisation —
+  two wiki entities the downstream wiki cannot re-merge.
 
 ---
 
