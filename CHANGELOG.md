@@ -6,18 +6,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Added
-
-- **A gold dataset for the extract-metadata prompt.** 58 items drawn from the production queue, stratified by content type toward the lanes that fail for different reasons, with the fetched body inlined and every recorded name carrying a verbatim quote from that body. It replaces "ship the columns dark and eyeball production later" with a measurement, against a control arm — the existing `author` column — whose floor is already known: populated on 72 of 286 rows, holding the publisher 76% of the time, and giving genuine person-level attribution on about 6% of the corpus.
-
-- **A labelling codebook covering all three of the prompt's fields**, written to be handed to a labeller verbatim, defining a contributor from what an entity wiki needs rather than from the prompt's own wording — so the gold can catch the prompt being wrong instead of agreeing with it by construction.
-
-  Labels come from two independent labellers in different model families, reading only the codebook and the body. They agree on the contributor set for 56 of 58 items — worth stating next to the 58.8% at which the recently-dropped structural label reproduced across vendors, since "these are checkable facts with a right answer" was the reason these fields stayed gateable when that one did not. Publisher is less settled at 47 of 58, and the disagreement was systematic rather than noisy: in eleven disputes the cross-family labeller returned null where the other named a publisher, and none went the other way — two different thresholds for what counts as the text identifying one.
-
-  Each dispute was then settled by writing the missing rule into the codebook rather than by ruling on the item, so re-labelling from scratch reaches the same answers. The publisher definition is now an explicit precedence ladder — a stated channel or masthead outranks the organisation a piece speaks as, which outranks a repository owner; a venue is not a publisher; sponsor reads never establish one; and a channel named after a person the piece already credits leaves the publisher null rather than minting a second entity for one human. Every adjudicated row names the rule that decided it.
-
-  **What the set cannot decide is `unreadable` recall.** Both labellers read all 58 bodies against the same codebook and found no damaged one: 57 agree the body arrived intact, one is an unresolved dispute, and none is labelled damaged. So the gate can be measured for false alarms and not at all for misses, and a "0 missed" figure from this set would be an artefact of the corpus rather than a result.
-
 ### Changed
 
 - **The claims inventory keeps the piece's own concessions again.** `narrative_v3`
@@ -36,7 +24,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   both arms, so the exception does not manufacture caveats where a source has
   none. Stated in the prompt and in the field description, since the description
   is rendered into the prompt's task tail and repeats the filter question.
-
 - **The narrative schema now bounds the delivery beats, which nothing did.**
   `delivery_beats` is what the voice agent walks a turn at a time, and the
   prompt has always budgeted four to six — but the only cross-field rule was
@@ -50,7 +37,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   generated task tail rather than only rejecting it after the fact, and it moves
   `effective_prompt_sha`, so affected rows re-extract without a pipeline-wide
   invalidation.
-
 - **Delivery beats no longer carry a `bridge_to:` line.** Each beat used to name
   what the next one covered, so the voice agent could open a turn on what it had
   just said. Removed on evidence from both ends of the contract: the consuming
@@ -63,7 +49,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   beats still reuse a name, term or figure from the beat before, which is the
   rule that actually carries the chain. Removing the field also retires the
   failure mode where the final beat promised a next beat that never came.
-
 - **`eval-narrative-coverage` can score the model production actually runs.** Its
   present/absent judge hardcoded `max_tokens`, which every gpt-5 model rejects
   outright, and a single `--model` flag set both the extractor and the judge — so
@@ -75,20 +60,6 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   defaults are split. The gold threads it scores against were labelled cross-family with
   OpenAI deliberately excluded; the scorer had been putting that family back in at
   the last step.
-- **The metadata prompt now leads with a test a name must pass, not with
-  instructions for finding names.** Scored over the 58 gold rows, the previous
-  wording missed nobody and emitted 36 people who had not made the piece — the
-  entire loss was over-production, so the field needed a stopping rule stated as
-  prominently as its finding rules. Contributor precision moves 0.67 → 0.84 at
-  recall 0.99, and exact publisher matches 28 → 36 of 58.
-- **The prompt no longer enumerates the answers it is rejecting.** Listing the
-  hosting platforms that are not publishers made the model return them *more*
-  often — 15 misses became 19 — so prohibitions are now stated as the positive
-  rule they imply. The same defect had been introduced into the generated schema:
-  a docstring recording which severity test was superseded put the discarded test
-  back in front of the model in the last position it reads, undoing the
-  calibration the prompt exists to apply. Repo history moves to comments, which
-  the schema does not carry.
 - **The narrative extraction now runs `narrative_v3`: six sections in place of
   v2's three.** `Salient threads` is cut for a measured padding failure and
   `load_bearing_claims` becomes the inventory, with speakers, structure and
@@ -122,6 +93,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   `Narrative`, so a superseded prompt body still ran — asking the model for
   today's fields while describing another set, then scoring the result as that
   prompt's. A wrong number that looks like a measurement.
+
+---
+
+## [0.36.23] — 2026-09-04
+
+### Added
+
+- **A gold dataset for the extract-metadata prompt.** 58 production items
+  labelled for contributors, publisher, and whether the body stands on its own,
+  every recorded name carrying a verbatim quote from its own body. It replaces
+  eyeballing production output with a measurement.
+
+- **A labelling codebook for all three fields**, handed to a labeller verbatim as
+  their only instruction. It defines a contributor from what an entity wiki
+  needs rather than from the prompt's wording, so the gold can catch the prompt
+  being wrong instead of agreeing with it by construction.
+
+### Changed
+
+- **The metadata prompt leads with a test a name must pass.** The previous
+  wording missed nobody and emitted 36 people who had not made the piece, so the
+  field needed a stopping rule as prominent as its finding rules. Contributor
+  precision moves 0.67 → 0.84 at recall 0.99.
+
+- **The prompt no longer enumerates the answers it rejects.** Listing the hosting
+  platforms that are not publishers made the model return them *more* often — 15
+  misses became 19 — so prohibitions are now stated as the positive rule instead.
+
+- **The publisher rulebook reproduces, and agrees with the prompt.** Its
+  organisational-voice rule never said what evidence proves it, so an independent
+  labeller applied it on 2 of 4 rows; it now requires one passage naming the
+  organisation in the piece's own first person. The fallback making a paper's
+  archive its publisher is deleted — it contradicted the prompt's rule that a
+  hosting site never is. Six labels move.
+
+- **The gold's `unreadable` labels answer the question that replaced them.**
+  `gold_damaged` asked whether a refetch would recover the missing substance; the
+  gate stopped asking that in 0.36.22. `gold_stands_alone` replaces it, from
+  three passes over all 58 bodies across two model families. `gold_version` 6.
 
 ---
 
