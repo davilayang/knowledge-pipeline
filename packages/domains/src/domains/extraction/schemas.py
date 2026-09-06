@@ -316,15 +316,12 @@ class Contributor(BaseModel):
     )
 
 
-# Nested-model docstrings and field descriptions survive into the generated
-# schema's `$defs`, which is appended after the prompt body — the last thing the
-# model reads before answering. Two consequences, both learned the hard way.
-# Nothing here may contradict the prompt: a revision once described a grading
-# rule by a test the prompt had already superseded, which reinstated that test
-# from the strongest position in the message and cost the calibration the prompt
-# exists to apply. And nothing here should spend that position on repo history — a note
-# explaining what a rule replaced is text the model must read and reconcile, so
-# it belongs in a comment like this one rather than in a docstring.
+# Docstrings and field descriptions below survive into the generated schema's
+# `$defs`, appended after the prompt body — the last thing the model reads. So
+# nothing here may contradict the prompt: a revision once restated a grading
+# test the prompt had superseded, reinstating it from that strongest position
+# and losing the calibration meant to replace it. Nor should anything here
+# spend that position on repo history, which belongs in a comment like this one.
 class Unreadable(BaseModel):
     """One piece of substance the fetched text references but does not contain.
 
