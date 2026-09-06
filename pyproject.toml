@@ -77,10 +77,10 @@ help = "Start postgres + chroma, launch Dagster UI at localhost:3030; tear down 
 [tool.poe.tasks.fetcher-dev]
 # Single worker is load-bearing (see services/fetcher/README.md).
 # FETCHER_DB_PATH override redirects the SQLite file from the container path
-# (/app/data/fetch.db, set in .env) to the laptop's data/ dir.
+# (/app/data/fetches.db, set in .env) to the laptop's data/ dir.
 shell = """
 cd services/fetcher
-FETCHER_DB_PATH="$(pwd)/../../data/fetch.db" uv run uvicorn fetcher.app:app \\
+FETCHER_DB_PATH="$(pwd)/../../data/fetches.db" uv run uvicorn fetcher.app:app \\
   --workers 1 --port ${port} --env-file ../../.env
 """
 help = "Run the fetcher service locally (default port 8000; envs from repo-root .env)"

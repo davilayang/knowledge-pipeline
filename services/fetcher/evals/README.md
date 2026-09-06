@@ -37,7 +37,7 @@ low even when the prose reads well and every heading survives.
 ```bash
 set -a && source .env && set +a && \
   uv run python evals/structure_fidelity.py \
-    --queue-db /path/to/queue.db --fetches-db /path/to/fetch.db \
+    --queue-db /path/to/queue.db --fetches-db /path/to/fetches.db \
     --prompt prompts/structure_v2.md --baseline prompts/structure_v1.md --runs 3
 ```
 

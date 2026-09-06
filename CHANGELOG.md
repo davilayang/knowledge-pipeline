@@ -25,10 +25,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Changed
 
 - **The fetcher's tables say what they hold.** `cache` → `fetch_cache`,
-  `fetches` → `async_jobs`, the module `domains.fetches_store` →
-  `domains.fetch_store`, and the file `fetches.db` → `fetch.db`. `fetches`
-  never held a fetch log — it is the submit-and-poll job record, and the
-  new name lets any async endpoint share it.
+  `fetches` → `async_jobs`, and the module `domains.fetches_store` →
+  `domains.fetch_store`. `fetches` never held a fetch log — it is the
+  submit-and-poll job record, and the new name lets any async endpoint
+  share it. The database file stays `fetches.db`: it is the fetcher's
+  database, not the `fetches` table's.
 
 ---
 
