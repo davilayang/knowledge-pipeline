@@ -26,17 +26,17 @@ from fetcher.extract.tasks import TASKS, TaskSpec, execution_order
 router = APIRouter(tags=["Extract"])
 
 # The only lane implemented, and what `config/extraction.yaml` is checked
-# against at load. Recorded on every call and folded into every cache key, so
-# adding a second provider cannot silently reuse this one's results.
+# against at load. On every call record and in every cache key, so a second
+# provider cannot silently reuse this one's results.
 _PROVIDER = "openai"
 
 
 class TaskRequest(BaseModel):
     """One requested task, with an optional prompt override.
 
-    `prompt_version` names a file in the prompts directory, never prompt text:
-    a label fails closed on an unknown value, where accepting text would make
-    the endpoint an injection surface and hollow out its reason to exist.
+    `prompt_version` names a file in the prompts directory, never prompt text.
+    A label fails closed on an unknown value; accepting text would make this an
+    injection surface and leave results traceable to no version at all.
     """
 
     task: str
@@ -65,12 +65,11 @@ def _normalise(tasks: list[str | TaskRequest]) -> list[TaskRequest]:
 async def extract_prompts(request: Request) -> Any:
     """Report what a run would send, without sending it.
 
-    A caller that decides whether an extraction stored earlier is still current
-    needs the model and the sha *before* it commits to a call. The only other way to get it is
-    to re-derive it — which means re-implementing the shared system message, the
-    article envelope and the generated schema block on the caller's side, and
-    keeping all three in step with this service forever. That duplication is
-    what this service exists to remove, so it answers the question instead.
+    Deciding whether a stored extraction is still current needs the model and
+    the sha *before* committing to a call. The only other way to get them is to
+    re-derive them, which means re-implementing the system message, article
+    envelope and generated schema block caller-side and keeping all three in
+    step forever — the duplication this service exists to remove.
     """
     settings = request.app.state.settings
     prompts_root = Path(settings.extraction_prompts_root)
@@ -92,8 +91,8 @@ async def extract_prompts(request: Request) -> Any:
             {
                 "task": spec.name,
                 "prompt_label": label,
-                # No reader notes: their fold is per-request, and a caller asking
-                # what the defaults are has not got a request yet.
+                # No reader notes: that fold is per-request, and a caller
+                # asking for the defaults has no request yet.
                 "prompt_sha256": effective_prompt_sha(
                     build_role_prompt(spec, text, user_notes=None), spec.schema
                 ),
@@ -159,8 +158,8 @@ async def extract(req: ExtractRequest, request: Request) -> Any:
     prompts_root = Path(settings.extraction_prompts_root)
     overrides = {t.task: t.prompt_version for t in requested if t.prompt_version}
 
-    # Every prompt is resolved up front. Resolving lazily would let a typo in the
-    # last task's label surface only after the earlier ones had been billed.
+    # All resolved up front: resolving lazily would surface a typo in the last
+    # task's label only after the earlier ones had been billed.
     plan: list[tuple[TaskSpec, str, str]] = []
     for spec in execution_order({t.task for t in requested}):
         label = overrides.get(spec.name, spec.default_prompt_label)
@@ -262,8 +261,8 @@ async def extract(req: ExtractRequest, request: Request) -> Any:
                 ttl_days=settings.cache_ttl_days,
             )
 
-    # Reported in lane order, not in whichever order cache hits and fresh calls
-    # happened to resolve, so a response reads the same however it was served.
+    # Lane order, not the order cache hits and fresh calls resolved in, so a
+    # response reads the same however it was served.
     order = [spec.name for spec, _, _ in plan]
     return {
         "results": [results[name] for name in order if name in results],

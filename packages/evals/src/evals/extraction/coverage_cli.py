@@ -73,15 +73,15 @@ def _fixtures(gold_path: Path) -> tuple[list[ExtractionFixture], int]:
 def _judge_token_kwargs(model: str, max_tokens: int) -> dict:
     """Token-budget kwargs for the judge call, per model family.
 
-    gpt-5-family are reasoning models: they reject `max_tokens` and need
-    `max_completion_tokens`. The two generations spell the lowest reasoning
-    effort differently and reject each other's value — `gpt-5`/`gpt-5-mini` take
-    `minimal`, the dotted `gpt-5.x` take `none`.
+    gpt-5 are reasoning models: they reject `max_tokens` and need
+    `max_completion_tokens`. The two generations spell the lowest effort
+    differently and reject each other's value — `gpt-5`/`gpt-5-mini` take
+    `minimal`, dotted `gpt-5.x` take `none`.
 
-    A near-copy of the extraction service's own helper, and deliberately not
-    shared with it: the service is a separate deployable that cannot import this
-    package, and the alternative — parking vendor mechanics in the pure data
-    layer both sides depend on — is the provider lock-in that split was for.
+    Deliberately a near-copy of the extraction service's helper rather than a
+    shared one: that service is a separate deployable that cannot import this
+    package, and putting vendor mechanics in the data layer both depend on is
+    the lock-in the split exists to prevent.
     """
     if model.startswith("gpt-5"):
         effort = "none" if model.startswith("gpt-5.") else "minimal"

@@ -78,21 +78,20 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
 
 
-# The three outputs that make up a reading card, in the order the service runs
-# them. Requested together because they read one article and share one prompt
-# prefix, so splitting them across requests would pay for that article twice.
+# The three outputs a reading card is made of, in service order. Requested
+# together because they read one article and share one prompt prefix — split
+# across requests, that article is paid for twice.
 READING_CARD_TASKS = ("narrative", "topic_card", "followups")
 
-# Cohort identity written to `queue_items.extractor_label`. Names where the
-# extraction ran, not how: rows carrying it came from the fetcher service, and
-# rows carrying `3call_v2_shape_routed` came from the in-process extractor that
-# preceded it, which is exactly the comparison a re-extraction would need.
+# Cohort identity for `queue_items.extractor_label`. Names where extraction
+# ran: this value means the fetcher service, `3call_v2_shape_routed` means the
+# in-process extractor before it — the comparison a re-extraction needs.
 EXTRACTOR_LABEL = "service_v1"
 
 # The service registers one prompt set, so every call resolves to the generic
-# bundle. Recorded as such rather than as the row's classifier shape: the column
-# says which bundle ran, and claiming a shape drove a selection it did not make
-# would misread later as evidence that shape routing works.
+# one. Recorded as such rather than as the row's classifier shape: the column
+# says which set ran, and naming a shape that drove no selection would later
+# read as evidence that shape routing works.
 _RESOLVED_SHAPE = "unknown"
 
 _SCHEMA_NAMES = {
@@ -106,9 +105,9 @@ _SCHEMA_NAMES = {
 def _model_of(result: ExtractResult) -> str:
     """The model the service actually ran, read off the calls it reports.
 
-    Taken from the response rather than from configuration on this side: the
-    service owns the choice, and a request may override it, so anything recorded
-    from local config could name a model that never ran.
+    From the response, not local config: the service owns the choice and a
+    request may override it, so a locally-sourced value could name a model that
+    never ran.
     """
     return result.calls[0]["model"] if result.calls else ""
 
@@ -133,9 +132,9 @@ def _call_record(call: dict[str, Any], *, output: str) -> ExtractionCallRecord:
 def _cohort_sha(*, model: str, calls: list[ExtractionCallRecord]) -> str:
     """Staleness handle over everything static behind this item's reading card.
 
-    The model plus each call's own prompt sha, which already covers the shared
-    system message, the article envelope and the generated schema. Sorted by task
-    so the value depends on what ran, not on the order it came back in.
+    The model plus each call's prompt sha, which already covers the system
+    message, article envelope and generated schema. Sorted by task so the value
+    depends on what ran, not the order it came back in.
     """
     parts = [model] + [f"{c.call_kind}:{c.prompt_sha256}" for c in sorted(calls, key=_call_kind)]
     return hashlib.sha256("\n".join(parts).encode()).hexdigest()
@@ -514,10 +513,9 @@ def extract_metadata(
             yield dg.AssetCheckResult(check_name=check_name, passed=True)
             return
 
-        # Asked before the call, not derived here: the sha covers the shared
-        # system message, the article envelope and the generated schema as well
-        # as the prompt file, and the service is the only thing that sees all
-        # four. Re-deriving it on this side is the duplication being removed.
+        # Asked, not derived: the sha covers the system message, article
+        # envelope and generated schema as well as the prompt file, and only the
+        # service sees all four.
         extraction = fetcher.extraction_prompts()
         prompt_label = extraction.by_task["metadata"]["prompt_label"]
         prompt_sha = extraction.by_task["metadata"]["prompt_sha256"]
@@ -692,10 +690,9 @@ def extract_reading_card(
         )
     content_type = row["content_type"]
 
-    # The classifier's shape is read for provenance only. The service registers
-    # one prompt set, so nothing routes on it — but the column keeps recording
-    # what the row claimed to be, which is what a later routing decision would
-    # be measured against.
+    # Provenance only: the service registers one prompt set, so nothing routes
+    # on this. The column still records what the row claimed to be, which is
+    # what a later routing decision would be measured against.
     content_shape = row.get("content_shape") or "unknown"
     user_notes = comments_json_to_user_notes(row.get("user_comments_json"))
     result = fetcher.extract(
@@ -706,10 +703,9 @@ def extract_reading_card(
     )
     if result.error:
         raise dg.Failure(description=f"extraction service: {result.error}")
-    # A reading card is all three or nothing: the topic card names the item in
-    # Notion and the narrative is what the voice agent reads, so an item missing
-    # either is not publishable. The service returns what it managed, and this
-    # asset is where that becomes a failure.
+    # All three or nothing: the topic card names the item in Notion and the
+    # narrative is what the agent reads aloud. The service returns what it
+    # managed; this asset is where a gap becomes a failure.
     if result.failures:
         raise dg.Failure(
             description="; ".join(f"{task}: {detail}" for task, detail in result.failures.items())
@@ -732,7 +728,7 @@ def extract_reading_card(
     tokens_in_total = sum(c.tokens_in for c in calls)
     tokens_out_total = sum(c.tokens_out for c in calls)
 
-    # One figure, not two: the calls run one after another, so model time and
+    # One figure: the calls run one after another, so model time and
     # user-visible latency are the same number.
     total_model_time_ms = int(sum((v.duration_ms or 0) for v in by_kind.values()))
 

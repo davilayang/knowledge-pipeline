@@ -15,11 +15,10 @@ and in the corresponding CHANGELOG entry.
 
 Last sync: <pending NA-side ship — kp leads with the duplicated shape>
 
-`MetadataPayload` and its two nested models are kp-only too, and for a plainer
-reason than `Narrative`: nothing crosses the repo boundary. The payload feeds
-kp's own unusable-body gate and the two `queue_items` metadata columns, and NA
-never reads either. None of the three drift detectors apply to it, and none
-need to.
+`MetadataPayload` and its two nested models are kp-only too, for a plainer
+reason than `Narrative`: nothing crosses the repo boundary. They feed kp's
+unusable-body gate and its two `queue_items` metadata columns, neither of which
+NA reads, so none of the drift detectors apply.
 
 `Narrative` is kp-only, and the three drift detectors above do NOT cover it.
 There is no mirrored class on the NA side and deliberately so: NA renders the

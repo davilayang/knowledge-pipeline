@@ -4,12 +4,11 @@ Wraps the fetcher service's `POST /v1/extract` into a `Variant`. The variant's
 `run` callable accepts an `ExtractionFixture` and returns a `FixtureRun` with the
 payload dict + per-call token totals.
 
-Prompts are named, not supplied. A variant passes a `prompt_version` per task and
-the service resolves it to a file it ships, so a scored run always names a prompt
-that exists and can be re-run from its label alone. Trying a candidate prompt
-means writing it into `prompts/extraction/` and naming it here — which also means
-the harness measures what production would run rather than a copy of it that has
-since drifted.
+Prompts are named, not supplied: a variant passes a `prompt_version` per task and
+the service resolves it to a file it ships, so a score always names a prompt that
+exists and can be re-run from its label. Trying a candidate means writing it into
+`prompts/extraction/` first — which is what keeps the harness measuring
+production rather than a drifted copy of it.
 """
 
 import hashlib
@@ -33,8 +32,8 @@ _TASKS = ("narrative", "topic_card", "followups")
 def _default_prompts_dir() -> Path:
     """Repo-root `prompts/extraction/`, found by walking up from this file.
 
-    Read only to check a candidate prompt against the current schema before a
-    run costs anything — the service resolves the label it actually uses.
+    Read only to check a candidate against the current schema before a run costs
+    anything; the service resolves the label it actually uses.
     """
     for parent in Path(__file__).resolve().parents:
         if (parent / "prompts" / "extraction").is_dir():
@@ -49,15 +48,11 @@ def _sha_short(text: str) -> str:
 def _reject_prompt_written_for_another_schema(narrative_prompt_text: str, label: str) -> None:
     """Refuse a narrative prompt that does not name every field of `Narrative`.
 
-    The service generates the field list from the model and appends it at call
-    time, so an older prompt body still *runs*: the model is told to emit today's
-    fields while the body describes yesterday's. The output then gets scored and
-    tabulated as that prompt's result, which is a wrong number that looks like a
-    measurement — worse than an error.
-
-    Checking that the body mentions each field name is crude, but it separates a
-    candidate prompt written against the current schema from one that was not,
-    which is the only distinction that matters here.
+    The service appends the generated field list at call time, so an older body
+    still *runs*: the model is asked for today's fields while the body describes
+    yesterday's, and the result is scored as that prompt's — a wrong number
+    wearing the shape of a measurement. Checking that the body mentions each
+    field name is crude, but it is the only distinction that matters here.
     """
     missing = [f for f in Narrative.model_fields if f not in narrative_prompt_text]
     if missing:
@@ -86,15 +81,12 @@ def make_three_call_variant(
 ) -> Variant:
     """Build a Variant that extracts one fixture through the fetcher service.
 
-    `prompt_versions` maps each of narrative / topic_card / followups to a label
-    the service ships, and is reflected verbatim in
-    `VariantProvenance.prompt_versions`. `cost_estimator(tokens_in, tokens_out)
-    -> usd` populates `FixtureRun.cost_usd`; defaults to $0.0 so callers without
-    pricing data still see a structurally complete record.
-
-    The output token ceiling is not a parameter. It is a service constant, which
-    is the point: a harness measuring a different ceiling from production would
-    under-measure coverage on exactly the long sources that stress it.
+    `prompt_versions` maps narrative / topic_card / followups to labels the
+    service ships, reflected verbatim in `VariantProvenance.prompt_versions`.
+    `cost_estimator(tokens_in, tokens_out) -> usd` fills `FixtureRun.cost_usd`,
+    defaulting to $0.0. The token ceiling is deliberately not a parameter: a
+    harness measuring a different one from production would under-measure
+    coverage on exactly the long sources that stress it.
     """
     directory = prompts_dir or _default_prompts_dir()
     texts = {
@@ -166,9 +158,9 @@ def make_three_call_variant(
 def _read_response(response: httpx.Response) -> tuple[dict[str, Any], int, int]:
     """Turn one `/v1/extract` reply into the payload dict the scorers read.
 
-    A partial batch is an error here, unlike in the pipeline: a coverage number
-    computed from two of three outputs is not comparable with one computed from
-    three, and would be tabulated as though it were.
+    A partial batch is an error here, unlike in the pipeline: a number from two
+    of three outputs is not comparable with one from three, and would be
+    tabulated as though it were.
     """
     if response.status_code != 200:
         problem = response.json()

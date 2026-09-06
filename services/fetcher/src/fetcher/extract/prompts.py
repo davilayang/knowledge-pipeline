@@ -1,9 +1,8 @@
 """Resolving an extraction prompt label to the text the model is shown.
 
-Labels, never text. A caller may name a different version of a prompt — that is
-how prompt A/B runs against the real service — but it may not supply prompt
-bodies, which would turn the endpoint into an injection surface and leave no
-version anyone could reproduce a result from.
+Labels, never text. A caller may name a different version — that is how prompt
+A/B runs against the real service — but not supply a body, which would make the
+endpoint an injection surface and leave results reproducible from nothing.
 """
 
 from pathlib import Path

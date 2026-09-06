@@ -1,8 +1,7 @@
 """Per-task result caching for /v1/extract.
 
-Caching is per task, not per batch, and that is what makes a narrowed retry
-cheap: a caller whose `followups` failed re-requests the whole batch if it likes,
-and the three that already succeeded come back without touching the model.
+Per task, not per batch: a caller whose `followups` failed can re-request the
+whole batch, and the three that already succeeded return without a model call.
 """
 
 import hashlib
@@ -29,15 +28,12 @@ def cache_key(
 ) -> str:
     """Compose the key over every input that changes what a task returns.
 
-    Under-specifying this is the known failure on this service: the structurer's
-    key once omitted its hint context and served hits from before those hints
-    changed. So the content, the content type it is labelled with, the reader's
-    notes, the resolved prompt (as its sha, which already covers the system
-    message, envelope template and schema), and the exact provider and model all
-    enter. Provider and model are separate segments because no vendor promises a
-    cache is comparable across model IDs, and `generation` carries the token
-    ceiling and reasoning effort — service constants no request mentions, which a
-    key built from request fields alone would therefore miss.
+    Under-specifying this already bit the structurer, whose key omitted its hint
+    context and served hits from before those hints changed. So everything
+    enters: content, content type, reader's notes, the resolved prompt (as its
+    sha, which covers system message, envelope and schema), provider and model
+    separately, and `generation` — the token ceiling and reasoning effort, which
+    are service constants a request-derived key would miss.
     """
     parts = json.dumps(
         {

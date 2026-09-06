@@ -1,13 +1,10 @@
 """Which model the extraction lane runs, read from `config/extraction.yaml`.
 
-Declared in a file rather than an environment variable, matching the structurer
-and whisper lanes next door: the model is part of what this service *is*, and
-should not differ between a laptop and production the way a credential must.
-The API key still comes from the environment.
-
-Loaded once at import, like the sibling chain configs — a hot-edited file with
-no restart leaves the process running the old model, which keeps the value
-consistent with the results already cached under it during that process's life.
+A file rather than an environment variable, matching the structurer and whisper
+lanes: the model is part of what this service is and should not differ between a
+laptop and production the way an API key must. Loaded once at import, so a hot
+edit without a restart leaves the process on the model its cached results came
+from.
 """
 
 import logging
