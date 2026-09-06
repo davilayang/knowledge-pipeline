@@ -1,5 +1,6 @@
 """Tests for POST /v1/extract — the multi-task LLM extraction endpoint."""
 
+import asyncio
 import json
 from pathlib import Path
 from types import SimpleNamespace
@@ -388,3 +389,49 @@ def test_prompts_endpoint_reports_the_active_label_and_sha(
     assert len(by_task["metadata"]["prompt_sha256"]) == 64
     # The sha a run would record, so a caller can compare without guessing.
     assert by_task["topic_card"]["prompt_sha256"] != by_task["followups"]["prompt_sha256"]
+
+
+def test_only_the_first_task_runs_alone(monkeypatch, tmp_db_path, prompts_root) -> None:
+    """The first call writes the shared article prefix and nothing can read one
+    still in flight, so it goes alone. The rest only read it, so they overlap —
+    which is what keeps a live voice turn from waiting out their sum.
+    """
+    _setup_envs(monkeypatch, tmp_db_path, prompts_root)
+    app = create_app()
+
+    in_flight: list[str] = []
+    overlapped: list[int] = []
+    replies = {
+        "topic_card": json.dumps(TOPIC_CARD),
+        "followups": json.dumps({"questions": ["a?", "b?", "c?", "d?"], "reader_threads": []}),
+        "metadata": json.dumps({"stands_alone": True}),
+    }
+
+    async def create(**kwargs):
+        # The task is identifiable by the schema named in its tail.
+        tail = kwargs["messages"][-1]["content"]
+        task = next(t for t in replies if t in tail or t.replace("_", " ") in tail)
+        in_flight.append(task)
+        overlapped.append(len(in_flight))
+        await asyncio.sleep(0.05)
+        in_flight.remove(task)
+        return _completion(replies[task])
+
+    client = SimpleNamespace(
+        chat=SimpleNamespace(completions=SimpleNamespace(create=AsyncMock(side_effect=create))),
+        close=AsyncMock(),
+    )
+    with patch("fetcher.extract.openai_lane.AsyncOpenAI", return_value=client):
+        with TestClient(app) as http:
+            response = http.post(
+                "/v1/extract",
+                json={
+                    "content": "a long enough article body",
+                    "content_type": "article",
+                    "tasks": ["metadata", "topic_card", "followups"],
+                },
+            )
+
+    assert response.status_code == 200
+    assert overlapped[0] == 1, "the priming call must not share the wire"
+    assert max(overlapped) > 1, "the tasks after it must overlap, not serialise"

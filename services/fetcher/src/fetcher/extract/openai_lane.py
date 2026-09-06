@@ -6,6 +6,7 @@ than from what extraction is. Keeping them together makes a second provider a
 new file plus a dispatch.
 """
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -157,28 +158,38 @@ async def run_tasks(
     model: str,
     api_key: str,
 ) -> list[TaskOutcome]:
-    """Run each `(spec, prompt_label, prompt_text)` in the order given.
+    """Run the first task, then the rest concurrently, in the order given.
 
-    Sequential: a task reads the shared article prefix from cache only once an
-    earlier one has written it, so firing them together pays for the article
-    per task. One failure never stops the others — three outputs and a named
-    error beat none, and the caller can retry exactly what failed.
+    Only the *first* call has to be alone: it writes the shared article prefix,
+    and nothing can read a prefix that is still in flight. Once it has landed
+    the rest only read, so running them together costs nothing and saves their
+    latency — which matters because a live voice turn waits on this whole batch
+    before it can speak.
+
+    One failure never stops the others: `_run_one` returns its error rather than
+    raising, so a failed task cannot cancel its siblings.
     """
     client = AsyncOpenAI(api_key=api_key)
+
+    async def run(entry: tuple[TaskSpec, str, str]) -> TaskOutcome:
+        spec, prompt_label, prompt_text = entry
+        return await _run_one(
+            client,
+            spec,
+            prompt_label,
+            prompt_text,
+            content=content,
+            content_type=content_type,
+            user_notes=user_notes,
+            model=model,
+        )
+
     try:
-        return [
-            await _run_one(
-                client,
-                spec,
-                prompt_label,
-                prompt_text,
-                content=content,
-                content_type=content_type,
-                user_notes=user_notes,
-                model=model,
-            )
-            for spec, prompt_label, prompt_text in plan
-        ]
+        if not plan:
+            return []
+        primed = await run(plan[0])
+        rest = await asyncio.gather(*(run(entry) for entry in plan[1:]))
+        return [primed, *rest]
     finally:
         # Closed on the loop that opened it: an async destructor cannot run on a
         # dead loop, so the httpx sockets would leak.

@@ -34,6 +34,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   failed the item on the first exception. `extract_reading_card` still fails an
   item missing any of its three outputs.
 
+- **An extraction batch runs its first task alone, then the rest together.**
+  Only the first writes the shared article prefix; the others read it, so
+  overlapping them costs no tokens and saves their latency — measured 3.1s on a
+  17.5k-character transcript, with cache reads intact. It matters because a live
+  voice turn waits on the whole batch before it can speak.
+
 - **The extraction model is declared in `services/fetcher/config/extraction.yaml`**,
   beside the structurer and whisper chains, rather than read from
   `EXTRACT_QUEUE_MODEL`. That variable now has no reader and can leave `.env`.
