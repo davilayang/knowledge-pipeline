@@ -2,7 +2,7 @@
 
 import hashlib
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -169,3 +169,77 @@ def test_failed_redirect_follow_is_not_cached(tmp_path) -> None:
     assert cache_hit is False
     with _connect(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM url_aliases").fetchone()[0] == 0
+
+
+async def test_content_is_not_cached_under_an_unresolved_canonical_url(db_path: Path) -> None:
+    """The canonical URL doubles as the content cache key, so an unresolved
+    redirect-follow must not key the markdown either. Otherwise a later fetch
+    that resolves normally looks under the real canonical URL and never finds
+    this row — while a force_refresh writing it reports success."""
+    import httpx
+
+    from fetcher.fetch_service import run_fetch_request
+    from fetcher.types import CascadeResult, FetchContext, FetchRequest
+
+    url = "https://example.com/x"
+    with (
+        patch("fetcher.canonicalize._follow_redirects", side_effect=httpx.ConnectError("boom")),
+        patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
+    ):
+        cascade.return_value = CascadeResult("Real article body. " * 200, "jina", [])
+        outcome = await run_fetch_request(
+            FetchRequest(url=url, quality="fast", allow_paid=False),
+            db_path=db_path,
+            ctx=MagicMock(spec=FetchContext),
+            ttl_days=365,
+            alias_ttl_days=30,
+        )
+
+    assert outcome.markdown  # the caller still gets its content
+    with _connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM fetch_cache").fetchone()[0] == 0
+
+
+async def test_a_fetch_during_an_outage_does_not_poison_the_next_one(db_path: Path) -> None:
+    """The sequence the guard exists for: a fetch whose redirect-follow fails,
+    then a later one where it succeeds. The second must resolve to the real
+    canonical URL and re-fetch, never serve content the first filed under the
+    unresolved key."""
+    import httpx
+
+    from fetcher.fetch_service import run_fetch_request
+    from fetcher.types import CascadeResult, FetchContext, FetchRequest
+
+    short, real = "https://example.com/short", "https://example.com/real-article"
+    req = FetchRequest(url=short, quality="fast", allow_paid=False)
+    ctx = MagicMock(spec=FetchContext)
+
+    with (
+        patch("fetcher.canonicalize._follow_redirects") as follow,
+        patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
+    ):
+        # 1. Origin is down: the redirect-follow raises, so `short` cannot be
+        #    resolved to `real`. The cascade still succeeds (a failed HEAD does
+        #    not imply a failed fetch) and returns the content of the moment.
+        follow.side_effect = httpx.ConnectError("boom")
+        cascade.return_value = CascadeResult("STALE body. " * 200, "jina", [])
+        first = await run_fetch_request(
+            req, db_path=db_path, ctx=ctx, ttl_days=365, alias_ttl_days=30
+        )
+
+        # 2. Origin recovers: `short` now resolves to `real`.
+        follow.side_effect = None
+        follow.return_value = MagicMock(url=real, history=[])
+        cascade.return_value = CascadeResult("FRESH body. " * 200, "jina", [])
+        second = await run_fetch_request(
+            req, db_path=db_path, ctx=ctx, ttl_days=365, alias_ttl_days=30
+        )
+
+    assert first.markdown.startswith("STALE")
+    assert second.canonical_url == real
+    assert second.cache_hit is False
+    assert second.markdown.startswith("FRESH")
+
+    # Only the resolved fetch is cached, and under the real canonical URL.
+    assert lookup(db_path=db_path, canonical_url=real) is not None
+    assert lookup(db_path=db_path, canonical_url=short) is None

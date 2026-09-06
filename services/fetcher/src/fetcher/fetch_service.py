@@ -71,12 +71,13 @@ async def run_fetch_request(
     if handler is None:
         raise UnsupportedKind(f"no handler matches URL: {req.url}")
 
-    canonical = canonicalize_cached(
+    alias, _ = canonicalize_cached(
         req.url,
         db_path=db_path,
         ttl_days=alias_ttl_days,
         force_refresh=req.force_refresh,
-    )[0].canonical_url
+    )
+    canonical = alias.canonical_url
     lock = get_url_lock(cache_key(canonical))
 
     async with lock:
@@ -117,17 +118,23 @@ async def run_fetch_request(
                 tier_log=cascade.tier_log,
             )
 
-        cache_upsert(
-            db_path=db_path,
-            canonical_url=canonical,
-            source_type=handler.NAME,
-            markdown=cascade.content,
-            tier_used=cascade.tier_used,
-            metadata=cascade.metadata,
-            tier_log=cascade.tier_log,
-            ttl_days=ttl_days,
-            url=req.url,
-        )
+        # An unresolved canonical URL is the input URL echoed back after a failed
+        # redirect-follow. Caching markdown under it would strand the row: once
+        # the redirect resolves again, every later fetch looks under the real
+        # canonical URL and never finds this content — while a force_refresh
+        # that wrote it reports success.
+        if alias.resolved:
+            cache_upsert(
+                db_path=db_path,
+                canonical_url=canonical,
+                source_type=handler.NAME,
+                markdown=cascade.content,
+                tier_used=cascade.tier_used,
+                metadata=cascade.metadata,
+                tier_log=cascade.tier_log,
+                ttl_days=ttl_days,
+                url=req.url,
+            )
 
         return FetchOutcome(
             status="success",
