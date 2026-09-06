@@ -1,4 +1,4 @@
-"""Tests for domains.fetch_store schema setup.
+"""Tests for domains.fetches_store schema setup.
 
 fetch_cache, async_jobs, and url_aliases table operations have their own test modules
 once we add direct domain-function coverage (currently exercised indirectly
@@ -7,7 +7,7 @@ through service-level integration tests).
 
 from pathlib import Path
 
-from domains.fetch_store.sources import _connect, create_schema, get_job, insert_job
+from domains.fetches_store.sources import _connect, create_schema, get_job, insert_job
 
 
 def test_create_schema_creates_three_tables(tmp_path: Path) -> None:

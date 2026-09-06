@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from domains.fetch_store.sources import _connect, create_schema
+from domains.fetches_store.sources import _connect, create_schema
 from fetcher.cache import cache_key, compute_etag, lookup, upsert
 
 

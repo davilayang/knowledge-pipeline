@@ -6,7 +6,7 @@ import secrets
 from pathlib import Path
 from typing import Any
 
-from domains.fetch_store.sources import get_job_status, update_job
+from domains.fetches_store.sources import get_job_status, update_job
 from fetcher import task_registry
 from fetcher.config import Settings
 from fetcher.fetch_service import run_fetch_request

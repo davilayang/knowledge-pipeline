@@ -6,7 +6,7 @@ from contextlib import asynccontextmanager
 from pathlib import Path
 from typing import Any
 
-from domains.fetch_store.sources import create_schema, mark_orphans_failed
+from domains.fetches_store.sources import create_schema, mark_orphans_failed
 from fastapi import FastAPI
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError

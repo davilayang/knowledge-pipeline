@@ -24,12 +24,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **The fetcher's tables say what they hold.** `cache` → `fetch_cache`,
-  `fetches` → `async_jobs`, and the module `domains.fetches_store` →
-  `domains.fetch_store`. `fetches` never held a fetch log — it is the
+- **The fetcher's tables say what they hold.** `cache` → `fetch_cache` and
+  `fetches` → `async_jobs`. `fetches` never held a fetch log — it is the
   submit-and-poll job record, and the new name lets any async endpoint
-  share it. The database file stays `fetches.db`: it is the fetcher's
-  database, not the `fetches` table's.
+  share it. Names that describe the *service* rather than a table are
+  unchanged: the file stays `fetches.db` and the module stays
+  `domains.fetches_store`, both of which read as "the fetcher's", not "the
+  `fetches` table's". Requires the one-time
+  `scripts/migrations/2026-09-06_fetcher_table_renames.sh` against prod
+  `fetches.db`, run with the fetcher stopped, **before** this release
+  deploys — `create_schema()` is `CREATE TABLE IF NOT EXISTS`, so a
+  container that boots first adds empty new-name tables beside the
+  populated old-name ones and reads the empty ones.
 
 ---
 

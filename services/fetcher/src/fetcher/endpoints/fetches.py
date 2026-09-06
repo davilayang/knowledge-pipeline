@@ -5,7 +5,7 @@ from pathlib import Path
 from typing import Any
 from urllib.parse import urlparse
 
-from domains.fetch_store.sources import (
+from domains.fetches_store.sources import (
     get_job,
     get_job_status,
     insert_job,

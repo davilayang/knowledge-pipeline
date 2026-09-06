@@ -4,7 +4,7 @@ from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import httpx
-from domains.fetch_store.sources import _connect
+from domains.fetches_store.sources import _connect
 from fastapi.testclient import TestClient
 
 from fetcher.app import create_app
