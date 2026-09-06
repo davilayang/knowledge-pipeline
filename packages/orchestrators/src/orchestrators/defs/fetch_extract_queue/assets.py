@@ -9,9 +9,9 @@ from typing import Any
 from urllib.parse import urlparse
 
 import dagster as dg
+from domains.extraction.schemas import MetadataPayload
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
-from workflows.extraction.metadata import MetadataPayload
 from workflows.extraction.metadata import extract_metadata as run_extract_metadata
 from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.wiki_synthesis.extract_claims import SPOKEN_CONTENT_TYPES

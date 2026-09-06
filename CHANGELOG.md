@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The metadata payload schemas moved to `domains.extraction.schemas`**, next
+  to the other extraction contracts, leaving `workflows.extraction.metadata`
+  holding only the call. They are types, not behaviour, and the extraction
+  implementation is on its way out of `workflows` into an HTTP service that
+  cannot depend on it.
+
+### Fixed
+
+- **Corrected the module docstring on `workflows.extraction.metadata`**, which
+  claimed the narrative call sat in its own prompt-cache partition and was not
+  primed. That stopped being true when narrative became a structured JSON call:
+  all four calls now share one system message, one envelope, one
+  `response_format` and one cache key, and metadata — running first — is what
+  pays the cache write.
+
 ---
 
 ## [0.36.24] — 2026-09-04

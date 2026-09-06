@@ -10,7 +10,8 @@ accept raises rather than being coerced into a half-populated payload.
 from unittest.mock import patch
 
 import pytest
-from workflows.extraction.metadata import MetadataPayload, extract_metadata
+from domains.extraction.schemas import MetadataPayload
+from workflows.extraction.metadata import extract_metadata
 from workflows.extraction.shared_prefix import SHARED_SYSTEM
 from workflows.llm import LLMCall
 

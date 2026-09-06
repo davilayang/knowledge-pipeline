@@ -968,7 +968,7 @@ def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_p
 
 
 def _metadata_payload(**overrides):
-    from workflows.extraction.metadata import Contributor, MetadataPayload
+    from domains.extraction.schemas import Contributor, MetadataPayload
 
     fields = dict(
         contributors=[
@@ -1338,8 +1338,8 @@ def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path:
     extract from navigation chrome. So the item stops, and the run-failure sensor
     turns that into Status=Failed in Notion. The columns are written first: the
     failed row still shows what was missing."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
@@ -1382,8 +1382,8 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
     Figure 4 is the normal shape of a paper — not a defect. Measured over the
     227-body production corpus, failing on those would fail 41% of ingests.
     They are recorded so a reader knows the piece leans on visuals."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "body " * 200)
@@ -1420,8 +1420,8 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
     a gate that only fires on a fresh call would quietly stop applying on the
     second run — the reading card would proceed on the same navigation chrome
     that failed a minute earlier. The verdict is re-read from the stored row."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
@@ -1462,8 +1462,8 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
     readable. Routing it through the catch-all handler would return past the
     gate and release the reading card onto navigation chrome — the one thing
     this asset exists to stop."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
@@ -1511,8 +1511,8 @@ def test_extract_metadata_fails_a_body_that_does_not_stand_alone(tmp_path: Path)
 
     So the cause plays no part. `screen_reference` is the one no refetch
     repairs, and here it fails, because the piece does not survive without it."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "body " * 200)
@@ -1611,8 +1611,8 @@ def test_a_channel_named_after_its_presenter_does_not_become_a_second_entity(tmp
     a contributor. Writing that human into `publisher` too mints two wiki entities
     for one person, one filed as an organisation, which is the class confusion the
     downstream wiki has no way to undo."""
+    from domains.extraction.schemas import Contributor
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Contributor
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "transcript " * 200)

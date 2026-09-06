@@ -241,7 +241,9 @@ class ThreeCallOpenAIExtractor:
         try:
             # Sequential, not concurrent: each call reads the article body from
             # the prompt cache the one before it wrote, which cannot happen while
-            # they are in flight together. The narrative runs first and writes it.
+            # they are in flight together. Narrative goes first of the three and
+            # writes the prefix — unless the upstream metadata asset, which sends
+            # the same prefix, ran recently enough that its write is still warm.
             narrative, narrative_record = await self._structured_call(
                 content,
                 content_type,
