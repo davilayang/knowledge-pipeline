@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.37.0] — 2026-09-06
+
 ### Added
 
 - **`POST /v1/extract` on the fetcher service** — one fetched body in, typed
