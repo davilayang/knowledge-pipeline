@@ -1,6 +1,6 @@
 """Tests for POST /v1/fetch."""
 
-from unittest.mock import AsyncMock, patch
+from unittest.mock import AsyncMock, MagicMock, patch
 
 from fastapi.testclient import TestClient
 
@@ -20,7 +20,7 @@ def test_fetch_returns_200_with_markdown(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with (
-        patch("fetcher.fetch_service.canonicalize") as can_mock,
+        patch("fetcher.cache.canonicalize") as can_mock,
         patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
@@ -63,7 +63,7 @@ def test_fetch_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) -> None:
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
     with (
-        patch("fetcher.fetch_service.canonicalize") as can_mock,
+        patch("fetcher.cache.canonicalize") as can_mock,
         patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
     ):
         can_mock.return_value = CanonicalResult(
@@ -78,3 +78,23 @@ def test_fetch_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) -> None:
     assert second.status_code == 200
     assert second.json()["cache_hit"] is True
     assert cascade.call_count == 1
+
+
+def test_second_fetch_reuses_the_cached_url_alias(monkeypatch, tmp_db_path: str) -> None:
+    """Canonicalization is a blocking network round trip to the origin, so the
+    second fetch of a URL must read its alias from url_aliases instead."""
+    _setup_envs(monkeypatch, tmp_db_path)
+    app = create_app()
+    url = "https://example.com/alias-me"
+
+    with (
+        patch("fetcher.canonicalize._follow_redirects") as follow,
+        patch("fetcher.fetch_service.run_cascade", new_callable=AsyncMock) as cascade,
+    ):
+        follow.return_value = MagicMock(url=url, history=[])
+        cascade.return_value = CascadeResult("Real article body. " * 200, "jina", [])
+        with TestClient(app) as client:
+            client.post("/v1/fetch", json={"url": url})
+            client.post("/v1/fetch", json={"url": url})
+
+    assert follow.call_count == 1

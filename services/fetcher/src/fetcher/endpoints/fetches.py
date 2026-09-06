@@ -95,6 +95,7 @@ async def post_fetches(batch: FetchBatch, request: Request) -> Response:
             db_path=db_path,
             job_id=job_id,
             batch_id=batch_id,
+            job_type="fetch",
             request_body=request_body,
         )
 

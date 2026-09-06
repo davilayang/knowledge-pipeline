@@ -6,6 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Every fetch stopped paying a redirect round trip to the origin.** URL
+  canonicalization ran live on each `/v1/fetch` and `/v1/structure` — cache
+  hits included — because the `url_aliases` cache was implemented in the
+  `/v1/canonicalize` HTTP handler rather than in the function the fetch path
+  calls. All three now share `canonicalize_cached`, so the table finally
+  fills and the HEAD happens once per URL per TTL.
+- **A failed redirect-follow is no longer mistaken for a resolved URL.**
+  `canonicalize()` returned the input URL on `httpx.HTTPError`, which reads
+  identically to a URL that redirects nowhere. It now reports `resolved`,
+  and an unresolved result is never written to `url_aliases` — otherwise a
+  transient DNS blip would pin itself as an alias, and (since the canonical
+  URL is also the content cache key) file the fetched markdown under the
+  wrong key until the row expired.
+
 ### Changed
 
 - **The fetcher's tables say what they hold.** `cache` → `fetch_cache`,

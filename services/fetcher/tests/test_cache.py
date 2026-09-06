@@ -2,6 +2,7 @@
 
 import hashlib
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -55,6 +56,7 @@ async def test_cache_hit_reports_current_handler_name_not_stale_source_type(db_p
     `kind` that a fresh fetch of the same URL wouldn't."""
     from unittest.mock import MagicMock, patch
 
+    from fetcher.canonicalize import CanonicalResult
     from fetcher.fetch_service import run_fetch_request
     from fetcher.types import FetchContext, FetchRequest
 
@@ -72,9 +74,13 @@ async def test_cache_hit_reports_current_handler_name_not_stale_source_type(db_p
         ttl_days=365,
     )
     req = FetchRequest(url=url, quality="fast", allow_paid=False)
-    with patch("fetcher.fetch_service.canonicalize", return_value=MagicMock(canonical_url=url)):
+    with patch("fetcher.cache.canonicalize", return_value=CanonicalResult(url, url, [], [])):
         outcome = await run_fetch_request(
-            req, db_path=db_path, ctx=MagicMock(spec=FetchContext), ttl_days=365
+            req,
+            db_path=db_path,
+            ctx=MagicMock(spec=FetchContext),
+            ttl_days=365,
+            alias_ttl_days=30,
         )
 
     assert outcome.cache_hit is True
@@ -141,3 +147,25 @@ def test_expired_row_is_physically_deleted_on_lookup(db_path: Path) -> None:
 
     with _connect(db_path) as conn:
         assert conn.execute("SELECT COUNT(*) FROM fetch_cache").fetchone()[0] == 0
+
+
+def test_failed_redirect_follow_is_not_cached(tmp_path) -> None:
+    """A failed redirect-follow returns the input URL echoed back, which is
+    indistinguishable from a URL that redirects nowhere. Persisting it would
+    pin a transient network error into the alias table for the whole TTL."""
+    import httpx
+
+    from fetcher.cache import canonicalize_cached
+
+    db_path = tmp_path / "fetcher.db"
+    create_schema(db_path=db_path)
+
+    with patch("fetcher.canonicalize._follow_redirects", side_effect=httpx.ConnectError("boom")):
+        result, cache_hit = canonicalize_cached(
+            "https://example.com/x", db_path=db_path, ttl_days=30
+        )
+
+    assert result.resolved is False
+    assert cache_hit is False
+    with _connect(db_path) as conn:
+        assert conn.execute("SELECT COUNT(*) FROM url_aliases").fetchone()[0] == 0

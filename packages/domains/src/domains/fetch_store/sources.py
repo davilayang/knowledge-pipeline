@@ -32,6 +32,7 @@ CREATE INDEX IF NOT EXISTS fetch_cache_expires_at ON fetch_cache(expires_at);
 
 CREATE TABLE IF NOT EXISTS async_jobs (
     job_id         TEXT PRIMARY KEY,
+    job_type       TEXT NOT NULL,
     status         TEXT NOT NULL,
     request_json   TEXT NOT NULL,
     batch_id       TEXT,
@@ -101,14 +102,18 @@ def create_schema(*, db_path: Path) -> None:
 
 
 def mark_orphans_failed(*, db_path: Path, error_json: str) -> int:
-    """Sweep pending/running fetches → failed.
+    """Sweep pending/running jobs of every job_type → failed.
 
     Called at service boot: --workers=1 means any in-flight row at boot
     is orphaned (the worker process that owned its task_handles entry is gone).
     Returns rows affected.
+
+    Sweeping by status alone is only correct while every job_type runs inside
+    that single uvicorn worker. A job_type dispatched out-of-process, to a
+    thread pool, or onto a queue outlives a fetcher restart, and this would
+    wrongly fail it.
     """
 
-    # Mark pending fetch jobs as failed
     with _connect(db_path) as conn:
         cur = conn.execute(
             """
@@ -221,10 +226,11 @@ def insert_job(
     db_path: Path,
     job_id: str,
     batch_id: str,
+    job_type: str,
     request_body: dict[str, Any],
     expires_in_hours: int = 24,
 ) -> str:
-    """Insert a new pending fetch job. Returns `expires_at` ISO string."""
+    """Insert a new pending job of `job_type`. Returns `expires_at` ISO string."""
     now = _now_iso()
     expires_at = (
         (datetime.now(UTC) + timedelta(hours=expires_in_hours))
@@ -235,11 +241,12 @@ def insert_job(
         conn.execute(
             """
             INSERT INTO async_jobs (
-                job_id, status, request_json, batch_id, created_at, updated_at, expires_at
+                job_id, job_type, status, request_json, batch_id,
+                created_at, updated_at, expires_at
             )
-            VALUES (?, 'pending', ?, ?, ?, ?, ?)
+            VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
             """,
-            (job_id, json.dumps(request_body), batch_id, now, now, expires_at),
+            (job_id, job_type, json.dumps(request_body), batch_id, now, now, expires_at),
         )
     return expires_at
 
@@ -271,11 +278,11 @@ def update_job(
 
 
 def get_job(*, db_path: Path, job_id: str) -> dict[str, Any] | None:
-    """Read a fetches row for the GET handler. Returns None if not found."""
+    """Read an async_jobs row for the GET handler. Returns None if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
-            SELECT job_id, status, created_at, updated_at, expires_at,
+            SELECT job_id, job_type, status, created_at, updated_at, expires_at,
                    result_json, error_json
               FROM async_jobs
              WHERE job_id = ?
@@ -286,15 +293,16 @@ def get_job(*, db_path: Path, job_id: str) -> dict[str, Any] | None:
         return None
     out: dict[str, Any] = {
         "job_id": row[0],
-        "status": row[1],
-        "created_at": row[2],
-        "updated_at": row[3],
-        "expires_at": row[4],
+        "job_type": row[1],
+        "status": row[2],
+        "created_at": row[3],
+        "updated_at": row[4],
+        "expires_at": row[5],
     }
-    if row[5]:
-        out["result"] = json.loads(row[5])
     if row[6]:
-        out["error"] = json.loads(row[6])
+        out["result"] = json.loads(row[6])
+    if row[7]:
+        out["error"] = json.loads(row[7])
     return out
 
 

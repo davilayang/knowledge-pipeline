@@ -15,14 +15,18 @@ from domains.fetch_store.sources import (
     _etag as compute_etag,
     cache_lookup as _store_lookup,
     cache_upsert as _store_upsert,
+    canonicalize_lookup as _alias_lookup,
+    canonicalize_upsert as _alias_upsert,
 )
 
+from fetcher.canonicalize import CanonicalResult, canonicalize
 from fetcher.types import TierLogEntry
 
 
 __all__ = [
     "CacheRow",
     "cache_key",
+    "canonicalize_cached",
     "compute_etag",
     "lookup",
     "upsert",
@@ -128,3 +132,53 @@ def upsert(
         ttl_days=ttl_days,
         url=url,
     )
+
+
+def canonicalize_cached(
+    url: str,
+    *,
+    db_path: Path,
+    ttl_days: int,
+    force_refresh: bool = False,
+) -> tuple[CanonicalResult, bool]:
+    """Canonicalize `url`, reading and writing the url_aliases cache.
+
+    Returns the result and whether it came from cache. `canonicalize()` makes a
+    blocking HTTP round trip to the origin to follow redirects; a live alias row
+    answers without one.
+
+    A result whose redirect-follow failed is returned but never persisted: its
+    canonical_url is the input URL echoed back, and storing that would pin a
+    transient network error into the alias table — and, because the canonical
+    URL is also the content cache key, file the fetched markdown under the
+    wrong key until the row expired.
+    """
+    # Same sha256-hex helper the content cache keys on, applied to the *input*
+    # URL: the alias table is what maps that to a canonical one.
+    key = cache_key(url)
+
+    if not force_refresh:
+        row = _alias_lookup(db_path=db_path, input_url_hash=key)
+        if row is not None:
+            return (
+                CanonicalResult(
+                    input_url=row["input_url"],
+                    canonical_url=row["canonical_url"],
+                    redirects_followed=json.loads(row["redirects_json"]),
+                    params_stripped=json.loads(row["params_stripped"]),
+                ),
+                True,
+            )
+
+    result = canonicalize(url)
+    if result.resolved:
+        _alias_upsert(
+            db_path=db_path,
+            input_url_hash=key,
+            input_url=result.input_url,
+            canonical_url=result.canonical_url,
+            redirects_json=json.dumps(result.redirects_followed),
+            params_stripped=json.dumps(result.params_stripped),
+            ttl_days=ttl_days,
+        )
+    return result, False

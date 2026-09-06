@@ -9,8 +9,13 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from fetcher.cache import cache_key, compute_etag, lookup as cache_lookup, upsert as cache_upsert
-from fetcher.canonicalize import canonicalize
+from fetcher.cache import (
+    cache_key,
+    canonicalize_cached,
+    compute_etag,
+    lookup as cache_lookup,
+    upsert as cache_upsert,
+)
 from fetcher.cascade import run_cascade
 from fetcher.errors import UnsupportedKind, UpstreamFailure
 from fetcher.registry import find_handler
@@ -59,13 +64,19 @@ async def run_fetch_request(
     db_path: Path,
     ctx: FetchContext,
     ttl_days: int,
+    alias_ttl_days: int,
 ) -> FetchOutcome:
     """Run the fetch pipeline: canonicalize -> cache lookup -> cascade -> cache upsert."""
     handler = find_handler(req.url)
     if handler is None:
         raise UnsupportedKind(f"no handler matches URL: {req.url}")
 
-    canonical = canonicalize(req.url).canonical_url
+    canonical = canonicalize_cached(
+        req.url,
+        db_path=db_path,
+        ttl_days=alias_ttl_days,
+        force_refresh=req.force_refresh,
+    )[0].canonical_url
     lock = get_url_lock(cache_key(canonical))
 
     async with lock:

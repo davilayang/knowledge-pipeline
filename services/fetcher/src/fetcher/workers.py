@@ -55,6 +55,7 @@ async def _job_worker(
             db_path=db_path,
             ctx=ctx,
             ttl_days=settings.cache_ttl_days,
+            alias_ttl_days=settings.canonicalize_ttl_days,
         )
 
         result = {

@@ -19,7 +19,7 @@ def test_canonicalize_returns_canonical_url(monkeypatch, tmp_db_path: str) -> No
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
 
-    with patch("fetcher.endpoints.canonicalize.canonicalize") as can_mock:
+    with patch("fetcher.cache.canonicalize") as can_mock:
         can_mock.return_value = CanonicalResult(
             input_url="https://t.co/abc",
             canonical_url="https://medium.com/the-article",
@@ -41,7 +41,7 @@ def test_canonicalize_cache_hit_on_second_call(monkeypatch, tmp_db_path: str) ->
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
 
-    with patch("fetcher.endpoints.canonicalize.canonicalize") as can_mock:
+    with patch("fetcher.cache.canonicalize") as can_mock:
         can_mock.return_value = CanonicalResult(
             input_url="https://t.co/abc",
             canonical_url="https://example.com/x",
@@ -61,7 +61,7 @@ def test_canonicalize_force_refresh_bypasses_cache(monkeypatch, tmp_db_path: str
     _setup_envs(monkeypatch, tmp_db_path)
     app = create_app()
 
-    with patch("fetcher.endpoints.canonicalize.canonicalize") as can_mock:
+    with patch("fetcher.cache.canonicalize") as can_mock:
         can_mock.return_value = CanonicalResult(
             input_url="https://t.co/abc",
             canonical_url="https://example.com/x",
