@@ -68,6 +68,6 @@ def test_app_init_creates_schema(
                 "SELECT name FROM sqlite_master WHERE type='table' ORDER BY name"
             ).fetchall()
         ]
-        assert names == ["cache", "extractions", "fetches", "url_aliases"]
+        assert names == ["cache", "extraction_cache", "fetches", "url_aliases"]
     finally:
         conn.close()

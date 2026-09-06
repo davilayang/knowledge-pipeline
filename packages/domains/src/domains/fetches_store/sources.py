@@ -1,6 +1,6 @@
 """SQLite layer for the fetcher service
 
-Four tables: cache, extractions, fetches, url_aliases.
+Four tables: cache, extraction_cache, fetches, url_aliases.
 """
 
 import hashlib
@@ -60,7 +60,13 @@ CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
 -- content item yields several task payloads, and each would need a synthetic
 -- "canonical_url" with its json in a column called `markdown`, leaving `etag`,
 -- `tier_used`, `content_chars` and `tier_log_json` meaningless on every row.
-CREATE TABLE IF NOT EXISTS extractions (
+--
+-- `_cache`, not `extractions`: rows expire and are deleted on read, and any one
+-- of them can be rebuilt by asking the model again. The durable record of what
+-- was extracted is the `extraction_calls` ledger in knowledge-pipeline's
+-- queue.db — a name close enough that calling this one `extractions` invited
+-- reading it as the same thing.
+CREATE TABLE IF NOT EXISTS extraction_cache (
     cache_key      TEXT PRIMARY KEY,
     task           TEXT NOT NULL,
     payload_json   TEXT NOT NULL,
@@ -69,7 +75,7 @@ CREATE TABLE IF NOT EXISTS extractions (
     expires_at     TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS extractions_expires_at ON extractions(expires_at);
+CREATE INDEX IF NOT EXISTS extraction_cache_expires_at ON extraction_cache(expires_at);
 """
 
 
@@ -226,16 +232,16 @@ def cache_upsert(
         )
 
 
-# --- Extraction Ops ---
+# --- Extraction Cache Ops ---
 
 
-def extraction_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None:
+def extraction_cache_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None:
     """Read one task's cached extraction, or None on miss/expired."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
             SELECT task, payload_json, call_json, created_at, expires_at
-              FROM extractions
+              FROM extraction_cache
              WHERE cache_key = ?
             """,
             (cache_key,),
@@ -243,7 +249,7 @@ def extraction_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None
         if row is None:
             return None
         if row[4] < _now_iso():
-            conn.execute("DELETE FROM extractions WHERE cache_key = ?", (cache_key,))
+            conn.execute("DELETE FROM extraction_cache WHERE cache_key = ?", (cache_key,))
             return None
         return {
             "task": row[0],
@@ -254,7 +260,7 @@ def extraction_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None
         }
 
 
-def extraction_upsert(
+def extraction_cache_upsert(
     *,
     db_path: Path,
     cache_key: str,
@@ -272,7 +278,7 @@ def extraction_upsert(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT OR REPLACE INTO extractions (
+            INSERT OR REPLACE INTO extraction_cache (
                 cache_key, task, payload_json, call_json, created_at, expires_at
             ) VALUES (?, ?, ?, ?, ?, ?)
             """,

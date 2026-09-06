@@ -19,7 +19,7 @@ def test_create_schema_creates_every_table(tmp_path: Path) -> None:
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert tables == {"cache", "extractions", "fetches", "url_aliases"}
+    assert tables == {"cache", "extraction_cache", "fetches", "url_aliases"}
 
 
 def test_create_schema_is_idempotent(tmp_path: Path) -> None:

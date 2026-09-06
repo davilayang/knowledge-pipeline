@@ -10,7 +10,10 @@ import json
 from pathlib import Path
 from typing import Any
 
-from domains.fetches_store.sources import extraction_lookup, extraction_upsert
+from domains.fetches_store.sources import (
+    extraction_cache_lookup,
+    extraction_cache_upsert,
+)
 
 
 def cache_key(
@@ -55,7 +58,7 @@ def cache_key(
 
 def read(*, db_path: Path, key: str) -> tuple[dict[str, Any], dict[str, Any]] | None:
     """The cached `(payload, call)` pair for a key, or None on miss."""
-    row = extraction_lookup(db_path=db_path, cache_key=key)
+    row = extraction_cache_lookup(db_path=db_path, cache_key=key)
     if row is None:
         return None
     return json.loads(row["payload_json"]), json.loads(row["call_json"])
@@ -70,7 +73,7 @@ def write(
     call: dict[str, Any],
     ttl_days: int,
 ) -> None:
-    extraction_upsert(
+    extraction_cache_upsert(
         db_path=db_path,
         cache_key=key,
         task=task,
