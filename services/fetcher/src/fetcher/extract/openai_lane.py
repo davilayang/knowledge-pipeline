@@ -150,9 +150,7 @@ def effective_prompt_sha(role_prompt: str, schema: type) -> str:
     enters as its unfilled template rather than as a wrapped article.
     """
     return hashlib.sha256(
-        "\n".join(
-            (SHARED_SYSTEM, ARTICLE_ENVELOPE, role_prompt, schema_block(schema))
-        ).encode()
+        "\n".join((SHARED_SYSTEM, ARTICLE_ENVELOPE, role_prompt, schema_block(schema))).encode()
     ).hexdigest()
 
 

@@ -22,6 +22,7 @@ def cache_key(
     prompt_sha256: str,
     provider: str,
     model: str,
+    generation: dict[str, Any],
 ) -> str:
     """Compose the key over every input that changes what a task returns.
 
@@ -31,7 +32,9 @@ def cache_key(
     notes, the resolved prompt (as its sha, which already covers the system
     message, envelope template and schema), and the exact provider and model all
     enter. Provider and model are separate segments because no vendor promises a
-    cache is comparable across model IDs.
+    cache is comparable across model IDs, and `generation` carries the token
+    ceiling and reasoning effort — service constants no request mentions, which a
+    key built from request fields alone would therefore miss.
     """
     parts = json.dumps(
         {
@@ -42,6 +45,7 @@ def cache_key(
             "prompt_sha256": prompt_sha256,
             "provider": provider,
             "model": model,
+            "generation": generation,
         },
         sort_keys=True,
         separators=(",", ":"),

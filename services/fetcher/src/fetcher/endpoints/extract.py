@@ -11,10 +11,12 @@ from fetcher.endpoints.errors import problem_response
 from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extract.cache import cache_key, read as cache_read, write as cache_write
 from fetcher.extract.openai_lane import (
+    MAX_TOKENS,
     TaskOutcome,
     build_role_prompt,
     effective_prompt_sha,
     run_tasks,
+    token_kwargs,
 )
 from fetcher.extract.prompts import UnknownPromptVersion, load_prompt
 from fetcher.extract.tasks import TASKS, TaskSpec, execution_order
@@ -147,6 +149,7 @@ async def extract(req: ExtractRequest, request: Request) -> Any:
             ),
             provider=_PROVIDER,
             model=model,
+            generation=token_kwargs(model, MAX_TOKENS),
         )
         for spec, _, text in plan
     }

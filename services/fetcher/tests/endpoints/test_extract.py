@@ -336,3 +336,24 @@ def test_reader_notes_reach_followups_only(monkeypatch, tmp_db_path, prompts_roo
     # The two messages ahead of the tail are what OpenAI matches on; a note that
     # leaked into either would cost the article cache on every sibling task.
     assert topic_card_messages[:2] == followups_messages[:2]
+
+
+def test_the_cache_key_covers_the_generation_parameters() -> None:
+    """A ceiling or reasoning-effort change alters what the model produces, so
+    results banked under the old settings must not keep being served. Nothing on
+    the request carries these — they are service constants — so they would be
+    invisible to a key built from request fields alone."""
+    from fetcher.extract.cache import cache_key
+
+    common = dict(
+        task="topic_card",
+        content="body",
+        content_type="article",
+        user_notes=None,
+        prompt_sha256="abc",
+        provider="openai",
+        model="gpt-5-mini",
+    )
+    assert cache_key(**common, generation={"max_completion_tokens": 4096}) != cache_key(
+        **common, generation={"max_completion_tokens": 8192}
+    )
