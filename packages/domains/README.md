@@ -51,7 +51,7 @@ src/domains/
 │   └── sources.py      # queue_items + extraction_calls tables; upsert/read helpers
 │                       # consumed by triage + fetch_extract_queue pipelines
 └── fetches_store/      # fetches.db — fetcher service SQLite store
-    └── sources.py      # cache + fetches + url_aliases tables; upsert/read helpers
+    └── sources.py      # fetch_cache + async_jobs + url_aliases tables; upsert/read helpers
                         # consumed by the fetcher service
 ```
 

@@ -6,36 +6,25 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- **Every fetch stopped paying a redirect round trip to the origin.** URL
-  canonicalization ran live on each `/v1/fetch` and `/v1/structure` — cache
-  hits included — because the `url_aliases` cache was implemented in the
-  `/v1/canonicalize` HTTP handler rather than in the function the fetch path
-  calls. All three now share `canonicalize_cached`, so the table finally
-  fills and the HEAD happens once per URL per TTL.
-- **A failed redirect-follow is no longer mistaken for a resolved URL.**
-  `canonicalize()` returned the input URL on `httpx.HTTPError`, which reads
-  identically to a URL that redirects nowhere. It now reports `resolved`,
-  and an unresolved result is never written to `url_aliases` — otherwise a
-  transient DNS blip would pin itself as an alias, and (since the canonical
-  URL is also the content cache key) file the fetched markdown under the
-  wrong key until the row expired.
+## [0.36.25] — 2026-09-06
 
 ### Changed
 
-- **The fetcher's tables say what they hold.** `cache` → `fetch_cache` and
-  `fetches` → `async_jobs`. `fetches` never held a fetch log — it is the
-  submit-and-poll job record, and the new name lets any async endpoint
-  share it. Names that describe the *service* rather than a table are
-  unchanged: the file stays `fetches.db` and the module stays
-  `domains.fetches_store`, both of which read as "the fetcher's", not "the
-  `fetches` table's". Requires the one-time
+- **Cache hits no longer pay a redirect round trip to the origin.** URL
+  canonicalization now reads `url_aliases` through `canonicalize_cached`,
+  shared by `/v1/fetch`, `/v1/structure` and `/v1/canonicalize`. New
+  `canonicalize_ttl_days` (30d) keeps aliases shorter-lived than content's 365d.
+- **A failed redirect-follow is no longer cached as a resolved URL.**
+  `canonicalize()` echoed the input URL on `httpx.HTTPError`, indistinguishable
+  from a URL that redirects nowhere; unresolved results now reach neither
+  `url_aliases` nor the content cache key.
+- **The fetcher's tables say what they hold:** `cache` → `fetch_cache`,
+  `fetches` → `async_jobs`, plus a `job_type` column so any async endpoint can
+  share the job table. Requires the one-time
   `scripts/migrations/2026-09-06_fetcher_table_renames.sh` against prod
-  `fetches.db`, run with the fetcher stopped, **before** this release
-  deploys — `create_schema()` is `CREATE TABLE IF NOT EXISTS`, so a
-  container that boots first adds empty new-name tables beside the
-  populated old-name ones and reads the empty ones.
+  `fetches.db`, fetcher stopped, before this release deploys.
 
 ---
 
