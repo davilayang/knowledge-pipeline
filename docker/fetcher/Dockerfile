@@ -39,6 +39,9 @@ COPY --from=builder --chown=fetcher:fetcher /app/.venv /app/.venv
 # configured" error even when keys are present.
 COPY --chown=fetcher:fetcher services/fetcher/config /app/config
 COPY --chown=fetcher:fetcher services/fetcher/prompts /app/prompts
+# The extraction prompts live at the repo root, shared with the orchestrator and
+# the eval harness, so they land as a subdirectory of the same prompts tree.
+COPY --chown=fetcher:fetcher prompts/extraction /app/prompts/extraction
 
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONUNBUFFERED=1

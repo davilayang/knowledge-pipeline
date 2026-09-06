@@ -8,6 +8,63 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.37.0] — 2026-09-06
+
+### Added
+
+- **`POST /v1/extract` on the fetcher service** — one fetched body in, typed
+  payloads out (`metadata`, `narrative`, `topic_card`, `followups`), so this
+  repo and newsletter-assistant stop keeping drifted copies of the same calls.
+  Task names and prompt versions are closed sets, rejected before any model
+  call; results cache per task.
+
+- **`GET /v1/extract/prompts`** reports the model and each task's active prompt
+  label and staleness hash without running anything, so a caller can judge
+  whether a stored extraction is still current before spending on one.
+
+### Changed
+
+- **The fetch/extract pipeline extracts over HTTP.** `extract_metadata` and
+  `extract_reading_card` call the service and `ExtractorRegistry` is gone; the
+  unusable-body gate, the freshness check, publisher reconciliation and the
+  `extraction_calls` ledger stay in the assets.
+
+- **A failing task no longer sinks its batch.** `/v1/extract` returns 200 with
+  what succeeded plus a per-task `errors[]`, where the extractor it replaces
+  failed the item on the first exception. `extract_reading_card` still fails an
+  item missing any of its three outputs.
+
+- **An extraction batch runs its first task alone, then the rest together.**
+  Only the first writes the shared article prefix; the others read it, so
+  overlapping them costs no tokens and saves their latency — measured 3.1s on a
+  17.5k-character transcript, with cache reads intact. It matters because a live
+  voice turn waits on the whole batch before it can speak.
+
+- **The extraction model is declared in `services/fetcher/config/extraction.yaml`**,
+  beside the structurer and whisper chains, rather than read from
+  `EXTRACT_QUEUE_MODEL`. That variable now has no reader and can leave `.env`.
+
+- **The extraction eval scores the deployed path.** `make_three_call_variant`
+  posts to `/v1/extract` naming a `prompt_version` per task instead of building
+  an extractor from prompt text, so a recorded score names prompts that exist
+  and can be re-run from their labels.
+
+- **The article envelope now counts towards a call's staleness signal.**
+  `effective_prompt_sha` covered the system message, role prompt and schema but
+  not the wrapper every article travels in, so rewording it would have left
+  stored extractions reading as fresh. Moves every `prompt_sha256` once.
+
+- **Metadata payload schemas moved to `domains.extraction.schemas`** from
+  `workflows.extraction.metadata`. They are contract rather than behaviour, and
+  the implementation moved to a service that cannot depend on `workflows`.
+
+### Removed
+
+- **`workflows.extraction` is gone** — its last caller moved to the service.
+  `workflows` keeps `openai` for the wiki-synthesis lane.
+
+---
+
 ## [0.36.25] — 2026-09-06
 
 ### Changed

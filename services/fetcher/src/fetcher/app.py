@@ -14,6 +14,7 @@ from pydantic import ValidationError
 from fetcher.config import Settings
 from fetcher.context import make_fetch_context
 from fetcher.endpoints import canonicalize as canonicalize_endpoint
+from fetcher.endpoints import extract as extract_endpoint
 from fetcher.endpoints import fetch as fetch_endpoint
 from fetcher.endpoints import fetches as fetches_endpoint
 from fetcher.endpoints import structure as structure_endpoint
@@ -57,6 +58,14 @@ _OPENAPI_TAGS = [
         "description": (
             "Markdown cleanup + transcript structuring. Source-agnostic; "
             "reused by handlers and external callers."
+        ),
+    },
+    {
+        "name": "Extract",
+        "description": (
+            "Fetched body \u2192 typed extraction payloads (metadata, narrative, "
+            "topic card, followups). Its own response family, unlike the "
+            "markdown-returning endpoints above."
         ),
     },
     {"name": "Utilities", "description": "Canonicalization, cache inspection."},
@@ -130,6 +139,7 @@ def create_app() -> FastAPI:
     app.include_router(fetches_endpoint.router)
     app.include_router(structure_endpoint.router)
     app.include_router(structure_transcript_endpoint.router)
+    app.include_router(extract_endpoint.router)
 
     @app.get(
         "/healthz",

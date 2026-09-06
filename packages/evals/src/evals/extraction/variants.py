@@ -1,72 +1,64 @@
 """Variant builders for the extraction pipeline.
 
-Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant`. The
-variant `run` callable accepts an `ExtractionFixture` and returns a
-`FixtureRun` with the payload dict + per-call token totals.
+Wraps the fetcher service's `POST /v1/extract` into a `Variant`. The variant's
+`run` callable accepts an `ExtractionFixture` and returns a `FixtureRun` with the
+payload dict + per-call token totals.
 
-Prompts are accepted as text (not labels / paths). Callers — notebooks or
-benchmark CLI — resolve labels to text up front (`prompts/extraction/<label>.md`
-read) and pass the text in. This keeps env/label/path concerns out of evals.
+Prompts are named, not supplied: a variant passes a `prompt_version` per task and
+the service resolves it to a file it ships, so a score always names a prompt that
+exists and can be re-run from its label. Trying a candidate means writing it into
+`prompts/extraction/` first — which is what keeps the harness measuring
+production rather than a drifted copy of it.
 """
 
-import asyncio
-import concurrent.futures
 import hashlib
 import time
 from collections.abc import Callable
+from pathlib import Path
 from typing import Any
 
-from domains.extraction.schemas import Narrative
-from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
+import httpx
+from domains.extraction.prompts import strip_design_notes
+from domains.extraction.render import render_narrative
+from domains.extraction.schemas import Followups, Narrative, TopicCard
 
 from evals.core import FixtureRun, RunStatus, Variant, VariantProvenance
 from evals.extraction.types import ExtractionFixture
 
+# The tasks a reading card is made of, in the order the service runs them.
+_TASKS = ("narrative", "topic_card", "followups")
 
-def _call_extractor(
-    extractor: ThreeCallOpenAIExtractor,
-    content: str,
-    content_type: str,
-    content_shape: str,
-) -> Any:
-    """Invoke the extractor regardless of whether a loop is already running.
 
-    ThreeCallOpenAIExtractor.extract() wraps its async pipeline with asyncio.run(),
-    which raises RuntimeError when called inside an existing event loop (Jupyter
-    kernels are the common case). When we detect a running loop, hop into a
-    short-lived thread so the extractor's asyncio.run gets its own loop.
+def _default_prompts_dir() -> Path:
+    """Repo-root `prompts/extraction/`, found by walking up from this file.
+
+    Read only to check a candidate against the current schema before a run costs
+    anything; the service resolves the label it actually uses.
     """
-    try:
-        asyncio.get_running_loop()
-    except RuntimeError:
-        return extractor.extract(content, content_type=content_type, content_shape=content_shape)
-    with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
-        return pool.submit(
-            extractor.extract,
-            content,
-            content_type=content_type,
-            content_shape=content_shape,
-        ).result()
+    for parent in Path(__file__).resolve().parents:
+        if (parent / "prompts" / "extraction").is_dir():
+            return parent / "prompts" / "extraction"
+    raise FileNotFoundError("no prompts/extraction/ above evals.extraction.variants")
+
+
+def _sha_short(text: str) -> str:
+    return hashlib.sha256(text.encode()).hexdigest()[:12]
 
 
 def _reject_prompt_written_for_another_schema(narrative_prompt_text: str, label: str) -> None:
     """Refuse a narrative prompt that does not name every field of `Narrative`.
 
-    `shared_prefix.schema_block()` generates the field list from the model and
-    appends it at call time, so an older prompt body still *runs*: the model is
-    told to emit today's fields while the body describes yesterday's. The output
-    then gets scored and tabulated as that prompt's result, which is a wrong
-    number that looks like a measurement — worse than an error.
-
-    Checking that the body mentions each field name is crude, but it separates a
-    candidate prompt written against the current schema from one that was not,
-    which is the only distinction that matters here.
+    The service appends the generated field list at call time, so an older body
+    still *runs*: the model is asked for today's fields while the body describes
+    yesterday's, and the result is scored as that prompt's — a wrong number
+    wearing the shape of a measurement. Checking that the body mentions each
+    field name is crude, but it is the only distinction that matters here.
     """
     missing = [f for f in Narrative.model_fields if f not in narrative_prompt_text]
     if missing:
         raise ValueError(
             f"narrative prompt {label!r} never mentions {', '.join(missing)}, so it was "
-            f"written for a different `Narrative` shape. The extractor generates the field "
+            f"written for a different `Narrative` shape. The service generates the field "
             f"list from the current model, so running this would ask the model for today's "
             f"fields while the prompt describes another set, and score the result as if it "
             f"were this prompt's. To compare against an older prompt, run it from a checkout "
@@ -77,36 +69,39 @@ def _reject_prompt_written_for_another_schema(narrative_prompt_text: str, label:
 def make_three_call_variant(
     *,
     name: str,
-    narrative_prompt_text: str,
-    topic_card_prompt_text: str,
-    followups_prompt_text: str,
     prompt_versions: dict[str, str],
     model: str,
-    api_key: str,
+    service_url: str,
+    prompts_dir: Path | None = None,
     code_revision: str = "unknown",
     corpus_anchor: str | None = None,
     output_schema_version: int = 1,
     cost_estimator: Callable[[int, int], float] | None = None,
-    max_tokens: int = 4096,
+    timeout_s: float = 300.0,
 ) -> Variant:
-    """Build a Variant that runs the three-call extractor on one fixture.
+    """Build a Variant that extracts one fixture through the fetcher service.
 
-    `prompt_versions` is reflected verbatim in `VariantProvenance.prompt_versions`.
-    `cost_estimator(tokens_in, tokens_out) -> usd` populates `FixtureRun.cost_usd`;
-    defaults to $0.0 so callers without pricing data still see a structurally
-    complete record.
-
-    `max_tokens` (default 4096) is threaded to the extractor so the harness
-    measures the same output ceiling as prod — a lower value silently truncates
-    rich narratives and under-measures coverage.
+    `prompt_versions` maps narrative / topic_card / followups to labels the
+    service ships, reflected verbatim in `VariantProvenance.prompt_versions`.
+    `cost_estimator(tokens_in, tokens_out) -> usd` fills `FixtureRun.cost_usd`,
+    defaulting to $0.0. The token ceiling is deliberately not a parameter: a
+    harness measuring a different one from production would under-measure
+    coverage on exactly the long sources that stress it.
     """
+    directory = prompts_dir or _default_prompts_dir()
+    texts = {
+        task: strip_design_notes((directory / f"{prompt_versions[task]}.md").read_text())
+        for task in _TASKS
+    }
+    _reject_prompt_written_for_another_schema(
+        texts["narrative"], prompt_versions.get("narrative", name)
+    )
+
     config = {
-        "extractor": "ThreeCallOpenAIExtractor",
+        "extractor": "fetcher:/v1/extract",
         "model": model,
-        "max_tokens": max_tokens,
-        "narrative_prompt_sha": _sha_short(narrative_prompt_text),
-        "topic_card_prompt_sha": _sha_short(topic_card_prompt_text),
-        "followups_prompt_sha": _sha_short(followups_prompt_text),
+        "service_url": service_url,
+        **{f"{task}_prompt_sha": _sha_short(texts[task]) for task in _TASKS},
     }
     provenance = VariantProvenance(
         prompt_versions=dict(prompt_versions),
@@ -116,37 +111,25 @@ def make_three_call_variant(
         output_schema_version=output_schema_version,
     )
     cost_fn = cost_estimator or (lambda _in, _out: 0.0)
-
-    _reject_prompt_written_for_another_schema(
-        narrative_prompt_text, prompt_versions.get("narrative", name)
-    )
+    endpoint = f"{service_url.rstrip('/')}/v1/extract"
 
     def _run(fixture: ExtractionFixture) -> FixtureRun:
-        bundle = PromptBundle(
-            narrative=(narrative_prompt_text, prompt_versions.get("narrative", "unknown")),
-            topic_card=(topic_card_prompt_text, prompt_versions.get("topic_card", "unknown")),
-            followups=(followups_prompt_text, prompt_versions.get("followups", "unknown")),
-        )
-        extractor = ThreeCallOpenAIExtractor(
-            api_key=api_key,
-            model=model,
-            prompt_sets={"unknown": bundle},
-            max_tokens=max_tokens,
-        )
         t0 = time.monotonic()
         try:
-            # content_shape="unknown" is deliberate: the extractor routes on its
-            # own shape taxonomy (only the generic bundle is registered), whereas
-            # ExtractionFixture.content_shape is a reporting-only label (prose/
-            # survey/…) used for stratification — the two are distinct axes.
-            payload, records = _call_extractor(
-                extractor,
-                fixture.content,
-                fixture.content_type,
-                content_shape="unknown",
+            response = httpx.post(
+                endpoint,
+                timeout=timeout_s,
+                json={
+                    "content": fixture.content,
+                    "content_type": fixture.content_type,
+                    "model": model,
+                    "tasks": [
+                        {"task": task, "prompt_version": prompt_versions[task]} for task in _TASKS
+                    ],
+                },
             )
-        except Exception as e:
-            duration_ms = int((time.monotonic() - t0) * 1000)
+            output, tokens_in, tokens_out = _read_response(response)
+        except Exception as exc:  # noqa: BLE001 — one fixture's failure is a row, not a crash
             return FixtureRun(
                 fixture_id=fixture.fixture_id,
                 status=RunStatus.ERROR,
@@ -155,34 +138,44 @@ def make_three_call_variant(
                 tokens_in=0,
                 tokens_out=0,
                 cost_usd=0.0,
-                duration_ms=duration_ms,
-                error_message=str(e),
+                duration_ms=int((time.monotonic() - t0) * 1000),
+                error_message=str(exc),
             )
-        duration_ms = int((time.monotonic() - t0) * 1000)
-        tokens_in = sum(r.tokens_in for r in records)
-        tokens_out = sum(r.tokens_out for r in records)
         return FixtureRun(
             fixture_id=fixture.fixture_id,
             status=RunStatus.SUCCESS,
-            output={
-                "narrative_md": payload.narrative_md,
-                "topic_card": payload.topic_card.model_dump(),
-                "followups": payload.followups.model_dump(),
-            },
+            output=output,
             stages=[],
             tokens_in=tokens_in,
             tokens_out=tokens_out,
             cost_usd=cost_fn(tokens_in, tokens_out),
-            duration_ms=duration_ms,
+            duration_ms=int((time.monotonic() - t0) * 1000),
         )
 
-    return Variant(
-        name=name,
-        config=config,
-        provenance=provenance,
-        run=_run,
+    return Variant(name=name, config=config, provenance=provenance, run=_run)
+
+
+def _read_response(response: httpx.Response) -> tuple[dict[str, Any], int, int]:
+    """Turn one `/v1/extract` reply into the payload dict the scorers read.
+
+    A partial batch is an error here, unlike in the pipeline: a number from two
+    of three outputs is not comparable with one from three, and would be
+    tabulated as though it were.
+    """
+    if response.status_code != 200:
+        problem = response.json()
+        raise RuntimeError(f"{problem.get('title', response.status_code)}: {problem.get('detail')}")
+    body = response.json()
+    if body.get("errors"):
+        failed = ", ".join(f"{e['task']} ({e['detail']})" for e in body["errors"])
+        raise RuntimeError(f"extraction incomplete: {failed}")
+    payloads = {r["task"]: r["payload"] for r in body["results"]}
+    return (
+        {
+            "narrative_md": render_narrative(Narrative.model_validate(payloads["narrative"])),
+            "topic_card": TopicCard.model_validate(payloads["topic_card"]).model_dump(),
+            "followups": Followups.model_validate(payloads["followups"]).model_dump(),
+        },
+        sum(c["tokens_in"] for c in body["calls"]),
+        sum(c["tokens_out"] for c in body["calls"]),
     )
-
-
-def _sha_short(text: str) -> str:
-    return hashlib.sha256(text.encode()).hexdigest()[:16]

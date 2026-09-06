@@ -37,8 +37,8 @@ def test_system_prompt_loaded_from_disk() -> None:
     """The system prompt lives in `prompts/triage/<label>.md`; the module
     reads it at import time. Guards against accidental inline prompts
     creeping back in + against the file being renamed/moved without
-    updating the label constant. Mirrors the prompt-resolution test
-    pattern used by `workflows.extraction`."""
+    updating the label constant. Mirrors the prompt-resolution test the
+    extraction service keeps over its own shipped prompts."""
     from orchestrators.defs.triage_knowledge_queue import content_shape_llm
 
     assert "content_shape" in content_shape_llm._SYSTEM_PROMPT

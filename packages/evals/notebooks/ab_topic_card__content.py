@@ -33,6 +33,9 @@ BASELINE_TOPIC_CARD = "topic_card_v1.md"
 CANDIDATE_TOPIC_CARD = "topic_card_v1.md"  # override to candidate when iterating
 MAX_COST_USD_PER_RUN = 0.25
 MODEL = "gpt-4o-mini"
+# The fetcher service that runs the extraction. Point it at a dev instance with
+# this repo's prompts/ mounted to score a candidate prompt before it ships.
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
 
 RESULTS: dict = {}
 
@@ -40,7 +43,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -73,38 +75,27 @@ fixture = ExtractionFixture(
 print(f"using fixture {fixture.fixture_id} ({fixture.content_type})")
 
 # %% tags=["adapter"]
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative_text = strip_design_notes((PROMPTS / "narrative_v3.md").read_text())
-followups_text = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
-baseline_text = strip_design_notes((PROMPTS / BASELINE_TOPIC_CARD).read_text())
-candidate_text = strip_design_notes((PROMPTS / CANDIDATE_TOPIC_CARD).read_text())
 
 variants = [
     make_three_call_variant(
         name="baseline",
-        narrative_prompt_text=narrative_text,
-        topic_card_prompt_text=baseline_text,
-        followups_prompt_text=followups_text,
         prompt_versions={
-            "narrative": "v1",
+            "narrative": "narrative_v3",
             "topic_card": BASELINE_TOPIC_CARD.replace(".md", ""),
-            "followups": "v1",
+            "followups": "followups_v1",
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
     make_three_call_variant(
         name="candidate",
-        narrative_prompt_text=narrative_text,
-        topic_card_prompt_text=candidate_text,
-        followups_prompt_text=followups_text,
         prompt_versions={
-            "narrative": "v1",
+            "narrative": "narrative_v3",
             "topic_card": CANDIDATE_TOPIC_CARD.replace(".md", ""),
-            "followups": "v1",
+            "followups": "followups_v1",
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
 ]
 
@@ -154,5 +145,6 @@ RESULTS["scores"] = None
 # %% tags=["act"]
 # If candidate wins on this content, re-run with CONTENT_ID_INDEX=1, 2, … on
 # 2-3 more fixtures. Then promote: copy candidate_text into
-# prompts/extraction/<new>.md, update EXTRACT_QUEUE_PROMPT_LABEL_<CT> in .env,
+# prompts/extraction/<new>.md, point the task's default_prompt_label at it in
+# the extraction service's extract/tasks.py,
 # run `run_variants` / `run_benchmark` over the fixture set for the scored corpus run.

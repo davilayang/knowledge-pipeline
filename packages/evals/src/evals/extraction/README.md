@@ -1,6 +1,6 @@
 # `evals/extraction/`
 
-First per-pipeline harness consuming `evals/core/`. Wraps `workflows.extraction.ThreeCallOpenAIExtractor` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via `run_benchmark` (the thin extraction wrapper over `evals.core.run_and_report`).
+First per-pipeline harness consuming `evals/core/`. Wraps the fetcher service's `POST /v1/extract` into a `Variant` so prompt swaps + content transforms can be A/B tested in a notebook or scored over a fixture set via `run_benchmark` (the thin extraction wrapper over `evals.core.run_and_report`).
 
 ## Four scored surfaces
 

@@ -29,6 +29,9 @@ BASELINE_FOLLOWUPS = "followups_v1.md"
 CANDIDATE_FOLLOWUPS = "followups_v1.md"  # override to candidate when iterating
 MAX_COST_USD_PER_RUN = 0.25
 MODEL = "gpt-4o-mini"
+# The fetcher service that runs the extraction. Point it at a dev instance with
+# this repo's prompts/ mounted to score a candidate prompt before it ships.
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
 
 RESULTS: dict = {}
 
@@ -36,7 +39,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import ExtractionFixture, make_three_call_variant, run_variants
 
@@ -64,38 +66,27 @@ fixture = ExtractionFixture(
 print(f"using fixture {fixture.fixture_id} ({fixture.content_type})")
 
 # %% tags=["adapter"]
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative_text = strip_design_notes((PROMPTS / "narrative_v3.md").read_text())
-topic_card_text = strip_design_notes((PROMPTS / "topic_card_v1.md").read_text())
-baseline_text = strip_design_notes((PROMPTS / BASELINE_FOLLOWUPS).read_text())
-candidate_text = strip_design_notes((PROMPTS / CANDIDATE_FOLLOWUPS).read_text())
 
 variants = [
     make_three_call_variant(
         name="baseline",
-        narrative_prompt_text=narrative_text,
-        topic_card_prompt_text=topic_card_text,
-        followups_prompt_text=baseline_text,
         prompt_versions={
-            "narrative": "v1",
-            "topic_card": "v1",
+            "narrative": "narrative_v3",
+            "topic_card": "topic_card_v1",
             "followups": BASELINE_FOLLOWUPS.replace(".md", ""),
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
     make_three_call_variant(
         name="candidate",
-        narrative_prompt_text=narrative_text,
-        topic_card_prompt_text=topic_card_text,
-        followups_prompt_text=candidate_text,
         prompt_versions={
-            "narrative": "v1",
-            "topic_card": "v1",
+            "narrative": "narrative_v3",
+            "topic_card": "topic_card_v1",
             "followups": CANDIDATE_FOLLOWUPS.replace(".md", ""),
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
 ]
 

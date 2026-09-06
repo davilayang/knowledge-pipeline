@@ -9,7 +9,6 @@ import json
 import os
 import shutil
 from pathlib import Path
-from unittest.mock import MagicMock
 
 import pytest
 
@@ -31,36 +30,6 @@ def _kernel_available() -> bool:
         return False
 
 
-@pytest.fixture
-def fake_three_call_extract(monkeypatch):
-    """Replace ThreeCallOpenAIExtractor.extract with a deterministic stub."""
-    fake_topic_card = MagicMock()
-    fake_topic_card.model_dump.return_value = {
-        "extracted_title": "Stub title",
-        "core_mechanism": "Stub mechanism",
-        "best_example": "Stub example",
-        "main_tension": "Stub tension",
-        "transferable_pattern": "Stub pattern",
-        "candidate_tie_backs": ["Stub tie"],
-    }
-    fake_followups = MagicMock()
-    fake_followups.model_dump.return_value = {"questions": ["q1", "q2"]}
-
-    fake_payload = MagicMock()
-    fake_payload.narrative_md = "Stub narrative markdown."
-    fake_payload.topic_card = fake_topic_card
-    fake_payload.followups = fake_followups
-
-    fake_record = MagicMock(tokens_in=100, tokens_out=200, duration_ms=1.0)
-
-    def fake_extract(self, content, *, content_type, content_shape):
-        return fake_payload, [fake_record, fake_record, fake_record]
-
-    from workflows.extraction import ThreeCallOpenAIExtractor
-
-    monkeypatch.setattr(ThreeCallOpenAIExtractor, "extract", fake_extract)
-
-
 _KERNEL_SKIP_REASON = (
     "kp-eval kernel not registered; run one-time: "
     "`uv run --extra notebooks python -m ipykernel install --user --name kp-eval`"
@@ -68,14 +37,14 @@ _KERNEL_SKIP_REASON = (
 
 
 @pytest.mark.skipif(not _kernel_available(), reason=_KERNEL_SKIP_REASON)
-def test_ab_topic_card_notebook_runs_end_to_end(tmp_path, fake_three_call_extract):
-    """papermill executes the notebook with mocked LLM — passes if no exceptions.
+def test_ab_topic_card_notebook_runs_end_to_end(tmp_path):
+    """papermill executes the notebook with a stubbed extraction — passes if no
+    exceptions.
 
-    Patching ThreeCallOpenAIExtractor in the parent process doesn't reach the
-    kernel subprocess papermill spawns. Instead we rewrite the notebook's
-    adapter cell to use stub Variants — exercises every other cell (config,
-    load, fire, render, score, act) and confirms the public API of
-    evals.extraction is wired correctly.
+    Nothing patched in this process reaches the kernel subprocess papermill
+    spawns, so the notebook's adapter cell is rewritten to use stub Variants
+    instead. That exercises every other cell (config, load, fire, render, score,
+    act) and confirms the public API of evals.extraction is wired correctly.
     """
     papermill = pytest.importorskip("papermill")
     nb_in = Path("packages/evals/notebooks/ab_topic_card__content.ipynb")

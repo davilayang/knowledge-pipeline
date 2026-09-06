@@ -16,9 +16,10 @@ Pure data adapters. Files or DBs → typed `IngestItem`s.
 src/domains/
 ├── types.py            # IngestItem + IngestSource Protocol — the shape every source yields
 ├── extraction/         # The three-call extraction payload — models, rendering, call rows
-│   ├── schemas.py      # TopicCard / Followups / Narrative pydantic models. Narrative's field
-│   │                   # titles are the section headers newsletter-assistant reads aloud, so
-│   │                   # which fields exist is governed by the cross-repo narrative contract
+│   ├── schemas.py      # TopicCard / Followups / Narrative / MetadataPayload (+ its Contributor,
+│   │                   # Unreadable) pydantic models. Narrative's field titles are the section
+│   │                   # headers newsletter-assistant reads aloud, so which fields exist is
+│   │                   # governed by the cross-repo narrative contract
 │   ├── render.py       # render_narrative — Narrative → the headed text the voice agent speaks
 │   ├── records.py      # ExtractionCallRecord — one row per LLM call in queue.db extraction_calls
 │   └── prompts.py      # strip_design_notes — drops a prompt file's header so only the body ships
@@ -51,8 +52,8 @@ src/domains/
 │   └── sources.py      # queue_items + extraction_calls tables; upsert/read helpers
 │                       # consumed by triage + fetch_extract_queue pipelines
 └── fetches_store/      # fetches.db — fetcher service SQLite store
-    └── sources.py      # fetch_cache + async_jobs + url_aliases tables; upsert/read helpers
-                        # consumed by the fetcher service
+    └── sources.py      # fetch_cache + extraction_cache + async_jobs + url_aliases tables;
+                        # upsert/read helpers consumed by the fetcher service
 ```
 
 ## `IngestItem`

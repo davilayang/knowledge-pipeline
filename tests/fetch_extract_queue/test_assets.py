@@ -15,7 +15,7 @@ from unittest.mock import MagicMock, patch
 import dagster as dg
 import pytest
 from domains.extraction.records import ExtractionCallRecord
-from domains.extraction.schemas import ExtractionPayload, Followups, TopicCard
+from domains.extraction.schemas import ExtractionPayload, Followups, Narrative, TopicCard
 from domains.queue_store import sources as queue_db
 from domains.types import IngestItem
 from orchestrators.defs.fetch_extract_queue.assets import (
@@ -160,6 +160,100 @@ def _make_payload(title: str = "Test Title", followups_n: int = 4) -> Extraction
     )
 
 
+def _narrative_obj() -> Narrative:
+    return Narrative(
+        speakers_and_author="Alice Nkemdirim (Acme)",
+        structure="one throughline - argues the core idea",
+        core_idea="The core idea.",
+        load_bearing_claims=["Claim one - anchor", "Claim two - anchor"],
+        delivery_beats=["Beat one [Anchor: a figure] [From claims: 1]"],
+        named_concepts_and_entities="Alice Nkemdirim, Acme",
+    )
+
+
+def _service_call(task: str, *, model="gpt-5-mini", tokens_in=100, tokens_out=50) -> dict:
+    """One `calls[]` entry as the extraction service reports it."""
+    return {
+        "task": task,
+        "prompt_label": f"{task}_v1",
+        "prompt_sha256": f"{task}_sha".ljust(64, "0"),
+        "provider": "openai",
+        "model": model,
+        "tokens_in": tokens_in,
+        "tokens_out": tokens_out,
+        "cached_tokens": 80,
+        "duration_ms": 500.0,
+    }
+
+
+def _extraction_settings(model: str = "gpt-5-mini"):
+    from orchestrators.defs.fetch_extract_queue.resources import ExtractionSettings
+
+    return ExtractionSettings(
+        model=model,
+        by_task={
+            task: {
+                "prompt_label": f"{task}_v1",
+                "prompt_sha256": f"{task}_sha".ljust(64, "0"),
+            }
+            for task in ("metadata", "narrative", "topic_card", "followups")
+        },
+    )
+
+
+def _mock_fetcher(
+    *,
+    payloads: dict | None = None,
+    failures: dict | None = None,
+    error: str = "",
+    model: str = "gpt-5-mini",
+    tokens: dict | None = None,
+) -> MagicMock:
+    """A FetcherResource whose /v1/extract answers with `payloads`.
+
+    Mirrors the real response: one `calls[]` entry per task that ran, whether or
+    not it produced a payload, so provenance survives a partial batch.
+    """
+    from orchestrators.defs.fetch_extract_queue.resources import ExtractResult
+
+    payloads = payloads or {}
+    failures = failures or {}
+    tokens = tokens or {}
+    fetcher = MagicMock()
+    fetcher.extraction_prompts.return_value = _extraction_settings(model)
+    fetcher.extract.return_value = ExtractResult(
+        payloads=payloads,
+        failures=failures,
+        error=error,
+        calls=[
+            _service_call(task, model=model, **tokens.get(task, {}))
+            for task in list(payloads) + list(failures)
+        ],
+    )
+    return fetcher
+
+
+def _metadata_fetcher(payload, *, model: str = "gpt-5-mini") -> MagicMock:
+    return _mock_fetcher(payloads={"metadata": payload.model_dump(mode="json")}, model=model)
+
+
+def _reading_card_fetcher(title: str = "Test Title", followups_n: int = 4) -> MagicMock:
+    return _mock_fetcher(
+        payloads={
+            "narrative": _narrative_obj().model_dump(mode="json"),
+            "topic_card": _make_payload(title=title).topic_card.model_dump(mode="json"),
+            "followups": Followups(questions=[f"Q{i}?" for i in range(followups_n)]).model_dump(
+                mode="json"
+            ),
+        },
+        tokens={
+            "narrative": {"tokens_in": 200, "tokens_out": 100},
+            "topic_card": {"tokens_in": 250, "tokens_out": 80},
+            "followups": {"tokens_in": 150, "tokens_out": 60},
+        },
+    )
+
+
 def _make_call(call_kind: str, output: str, tokens_in: int = 100, tokens_out: int = 50):
     return ExtractionCallRecord(
         call_kind=call_kind,
@@ -173,30 +267,6 @@ def _make_call(call_kind: str, output: str, tokens_in: int = 100, tokens_out: in
         duration_ms=500.0,
         extracted_at="2026-06-03T12:00:00+00:00",
     )
-
-
-def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMock:
-    """Mock of `ExtractorRegistry` (the resource the asset receives). `.build()`
-    returns a mock extractor instance with the actual extract result + the
-    three properties the asset reads (bundle_label / bundle_sha256 / model).
-    Mirrors the build-once-per-run pattern fixed in this PR's review pass."""
-    payload = _make_payload(title=title, followups_n=followups_n)
-    calls = [
-        _make_call("narrative", payload.narrative_md, 200, 100),
-        _make_call("topic_card", payload.topic_card.model_dump_json(), 250, 80),
-        _make_call("followups", payload.followups.model_dump_json(), 150, 60),
-    ]
-    ex_instance = MagicMock()
-    ex_instance.model = "gpt-4o-mini"
-    ex_instance.bundle_label = "3call_v2_shape_routed"
-    # bundle_sha256 is now a method `(content_shape) -> str`. Returning a
-    # constant 64-char sha matches what the asset writes to queue_items.
-    ex_instance.bundle_sha256 = MagicMock(return_value="b" * 64)
-    ex_instance.extract.return_value = (payload, calls)
-
-    registry = MagicMock()
-    registry.build.return_value = ex_instance
-    return registry
 
 
 # -------- fetch_content --------
@@ -461,11 +531,11 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="JEPA talk")
+    fetcher = _reading_card_fetcher(title="JEPA talk")
     result = _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
+        resources={"fetcher": fetcher, "store": store},
     )
     assert result.success
 
@@ -477,8 +547,8 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
 
     # queue_items cohort fields updated.
     row = store.get_row("p-1")
-    assert row["extractor_label"] == "3call_v2_shape_routed"
-    assert row["extractor_sha256"] == "b" * 64
+    assert row["extractor_label"] == "service_v1"
+    assert len(row["extractor_sha256"]) == 64
     assert row["tokens_in_total"] == 600  # 200 + 250 + 150
     assert row["tokens_out_total"] == 240  # 100 + 80 + 60
     assert row["extracted_at"] is not None
@@ -489,110 +559,146 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
     assert check_events[0].asset_check_evaluation_data.passed
 
 
+def test_extracted_records_the_model_the_service_actually_ran(tmp_path: Path):
+    """The model is the service's choice, so it is read back off the response.
+    Recording one from local config would name a model that never ran the moment
+    the two disagree."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = _reading_card_fetcher()
+    fetcher.extract.return_value.calls = [
+        _service_call(task, model="gpt-5.6-luna")
+        for task in ("narrative", "topic_card", "followups")
+    ]
+    result = _materialize(
+        extract_reading_card,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
+    assert _materialization_metadata(result)["extraction_model"].text == "gpt-5.6-luna"
+
+
 def test_extracted_fails_when_no_raw_content(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_triaged(db_path, "p-1", "YouTube")
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
     with pytest.raises(Exception, match="No raw_content"):
         _materialize(
             extract_reading_card,
             partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
+            resources={"fetcher": MagicMock(), "store": store},
         )
 
 
-def test_extracted_passes_content_type_to_extractor(tmp_path: Path):
-    """content_type flows through to the extractor — each prompt's body branches
-    on the [content_type: …] tag the extractor prepends."""
+def test_extracted_passes_content_type_to_the_service(tmp_path: Path):
+    """content_type reaches the service — each prompt's body branches on the
+    [content_type: ...] tag the service prepends to the article."""
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "arXiv", "a" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="Paper")
+    fetcher = _reading_card_fetcher(title="Paper")
     _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
+        resources={"fetcher": fetcher, "store": store},
     )
-    extractor.build.assert_called_once()
-    ex_instance = extractor.build.return_value
-    ex_instance.extract.assert_called_once()
-    assert ex_instance.extract.call_args.kwargs["content_type"] == "arXiv"
+    fetcher.extract.assert_called_once()
+    assert fetcher.extract.call_args.kwargs["content_type"] == "arXiv"
+    assert fetcher.extract.call_args.kwargs["tasks"] == [
+        "narrative",
+        "topic_card",
+        "followups",
+    ]
 
 
-def test_extracted_passes_content_shape_from_queue_row(tmp_path: Path):
-    """asset reads content_shape from queue_items and passes it
-    through to the extractor + bundle_sha256, so the per-shape PromptBundle
-    fires."""
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000, content_shape="conference_talk")
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="A talk")
-    _materialize(
-        extract_reading_card,
-        partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
-    )
-    ex_instance = extractor.build.return_value
-    assert ex_instance.extract.call_args.kwargs["content_shape"] == "conference_talk"
-    # bundle_sha256 also receives the same shape so the per-row cohort sha
-    # reflects the selected bundle, not the unknown fallback.
-    ex_instance.bundle_sha256.assert_called_with("conference_talk")
-
-
-def test_extracted_falls_back_to_unknown_when_content_shape_null(tmp_path: Path):
-    """Pre-Phase-3 rows (or rows the classifier flagged as unknown) write
-    NULL into queue_items.content_shape; asset must coalesce to the
-    extractor's generic fallback so the call still fires."""
-    db_path = tmp_path / "q.db"
-    _seed_with_raw_content(db_path, "p-1", "Article", "a" * 5000, content_shape=None)
-    store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="Article")
-    _materialize(
-        extract_reading_card,
-        partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
-    )
-    ex_instance = extractor.build.return_value
-    assert ex_instance.extract.call_args.kwargs["content_shape"] == "unknown"
-
-
-def test_extracted_builds_extractor_exactly_once_per_run(tmp_path: Path):
-    """Each call to ExtractorRegistry.build() constructs a fresh AsyncOpenAI
-    client. The asset must call build() ONCE per materialization and reuse
-    the returned instance — calling build() more than once leaks httpx pools.
-    Locks in the fix surfaced by the codex review on PR #79."""
+def test_extracted_asks_for_all_three_in_one_request(tmp_path: Path):
+    """One request, not three. Every task reads the same article, so the service
+    can charge for that article once — split across requests it could not."""
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="JEPA")
+    fetcher = _reading_card_fetcher()
     _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
+        resources={"fetcher": fetcher, "store": store},
     )
-    assert extractor.build.call_count == 1
+    assert fetcher.extract.call_count == 1
+
+
+def test_extracted_records_the_generic_shape_whatever_the_row_claims(tmp_path: Path):
+    """The service registers one prompt set, so nothing routes on the classifier
+    shape. The column says which bundle ran, and writing the row's shape into it
+    would later read as evidence that shape routing works."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000, content_shape="conference_talk")
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = _reading_card_fetcher(title="A talk")
+    _materialize(
+        extract_reading_card,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
+    latest = store.get_latest_extraction_calls("p-1")
+    assert latest["narrative"]["prompt_set_shape"] == "unknown"
+
+
+def test_extracted_fails_the_item_when_a_task_did_not_produce_its_payload(tmp_path: Path):
+    """The service answers a partial batch with a 200 and names what failed.
+    A reading card is all three or nothing — the topic card titles the item in
+    Notion and the narrative is what the agent reads aloud — so this asset is
+    where a partial batch becomes a failure."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = _mock_fetcher(
+        payloads={
+            "narrative": _narrative_obj().model_dump(mode="json"),
+            "topic_card": _make_payload().topic_card.model_dump(mode="json"),
+        },
+        failures={"followups": "TASK_FAILED: no reply matched the schema"},
+    )
+    with pytest.raises(Exception, match="followups"):
+        _materialize(
+            extract_reading_card,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store},
+        )
+
+
+def test_extracted_fails_the_item_when_the_service_is_unreachable(tmp_path: Path):
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = _mock_fetcher(error="fetcher service unreachable")
+    with pytest.raises(Exception, match="unreachable"):
+        _materialize(
+            extract_reading_card,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store},
+        )
 
 
 def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "YouTube", "y" * 5000)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = _mock_extractor(title="Visible Title")
+    fetcher = _reading_card_fetcher(title="Visible Title")
     result = _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"extractor": extractor, "store": store},
+        resources={"fetcher": fetcher, "store": store},
     )
     assert result.success
     metadata = _materialization_metadata(result)
-    assert "Narrative" in metadata["narrative_preview"].md_str
+    assert "core idea" in metadata["narrative_preview"].md_str
     assert "Visible Title" in metadata["topic_card_preview"].md_str
     assert metadata["followups_count"].value == 4
-    assert metadata["extractor_label"].text == "3call_v2_shape_routed"
-    # One timing number: the three calls run one after another, so model time
-    # and wall clock are the same figure and reporting both invited the reader
-    # to believe the pair still overlapped.
+    assert metadata["extractor_label"].text == "service_v1"
+    # One timing number: the calls run one after another, so model time and wall
+    # clock are the same figure and reporting both invited the reader to believe
+    # the pair still overlapped.
     assert "total_model_time_ms" in metadata
     assert "wall_clock_ms" not in metadata
 
@@ -929,33 +1035,36 @@ def _check_events(result):
 
 
 @pytest.mark.parametrize(
-    "exc",
+    "response",
     [
-        ConnectionError("connection reset by peer"),
-        ValueError("reply contains fields the schema does not declare: ['shape']"),
+        pytest.param({"error": "fetcher service unreachable"}, id="service_unreachable"),
+        pytest.param(
+            {"failures": {"metadata": "TASK_FAILED: no reply matched the schema"}},
+            id="task_failed",
+        ),
     ],
-    ids=["transient_network", "unusable_reply"],
 )
-def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_path: Path, exc):
+def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(
+    tmp_path: Path, response
+):
     """A failure here would gate the reading card AND the claims lane — a blast
     radius neither has today. A missing metadata row costs nothing; a blocked
-    extraction costs the item. It materialises; the check turns red."""
+    extraction costs the item. It materialises; the check turns red.
+
+    Both shapes are covered because the service reports them differently: an
+    unreachable service is a request-level error, while a task that ran and
+    could not finish comes back inside a 200."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        side_effect=exc,
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _mock_fetcher(**response)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     row = store.get_row("p-1")
@@ -968,7 +1077,7 @@ def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(tmp_p
 
 
 def _metadata_payload(**overrides):
-    from workflows.extraction.metadata import Contributor, MetadataPayload
+    from domains.extraction.schemas import Contributor, MetadataPayload
 
     fields = dict(
         contributors=[
@@ -1006,18 +1115,13 @@ def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     row = store.get_row("p-1")
@@ -1052,18 +1156,13 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
         url="https://example.com/x",
         enrichment_json=json.dumps({"youtube": {"channel": "AI Engineer", "title": "A talk"}}),
     )
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(publisher="Together AI")
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     row = store.get_row("p-1")
@@ -1098,18 +1197,13 @@ def test_extract_metadata_never_takes_a_site_name_as_the_publisher(
         url="https://example.com/x",
         enrichment_json=json.dumps({"article": {"sitename": sitename}}),
     )
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(publisher="Together AI")
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     assert store.get_row("p-1")["publisher"] == expected_publisher
@@ -1123,36 +1217,31 @@ def _materialize_metadata_twice(tmp_path: Path, *, refetch_body: str | None = No
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ) as call:
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
+    fetcher = _metadata_fetcher(payload)
+    _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
+    if refetch_body is not None:
+        queue_db.upsert_fetched(
+            db_path=db_path,
+            notion_page_id="p-1",
+            url="https://example.com/x",
+            raw_content=refetch_body,
+            fetch_tier="jina",
+            fetch_tier_log=[],
+            fetched_content_char_count=len(refetch_body),
+            content_hash="a-different-hash",
         )
-        if refetch_body is not None:
-            queue_db.upsert_fetched(
-                db_path=db_path,
-                notion_page_id="p-1",
-                url="https://example.com/x",
-                raw_content=refetch_body,
-                fetch_tier="jina",
-                fetch_tier_log=[],
-                fetched_content_char_count=len(refetch_body),
-                content_hash="a-different-hash",
-            )
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
     assert result.success
-    return call, store
+    return fetcher.extract, store
 
 
 def test_extract_metadata_skips_the_call_when_body_and_prompt_are_unchanged(tmp_path: Path):
@@ -1182,14 +1271,9 @@ def test_extract_metadata_still_materializes_when_the_store_write_fails(tmp_path
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload()
+    fetcher = _metadata_fetcher(payload)
     with (
-        patch(
-            "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-            return_value=(payload, _metadata_call(payload)),
-        ),
         patch.object(
             QueueStoreResource, "record_metadata", side_effect=RuntimeError("database is locked")
         ),
@@ -1197,7 +1281,7 @@ def test_extract_metadata_still_materializes_when_the_store_write_fails(tmp_path
         result = _materialize(
             extract_metadata,
             partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
+            resources={"fetcher": fetcher, "store": store},
         )
 
     assert result.success
@@ -1221,18 +1305,13 @@ def test_extract_metadata_migrates_the_schema_it_writes_to(tmp_path: Path):
         for col in ("contributors_json", "publisher"):
             conn.execute(f"ALTER TABLE queue_items DROP COLUMN {col}")
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     assert store.get_row("p-1")["contributors_json"] is not None
@@ -1248,25 +1327,22 @@ def test_extract_metadata_re_extracts_when_the_model_changed(tmp_path: Path):
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
     payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ) as call:
-        first = MagicMock()
-        first.model = "gpt-4.1-mini"
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": first, "store": store},
-        )
-        swapped = MagicMock()
-        swapped.model = "gpt-5-mini"
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": swapped, "store": store},
-        )
-    assert call.call_count == 2
+    first = _metadata_fetcher(payload, model="gpt-4.1-mini")
+    _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": first, "store": store},
+    )
+    swapped = _metadata_fetcher(payload, model="gpt-5-mini")
+    _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": swapped, "store": store},
+    )
+    # The second run re-extracted rather than reading the first run's row: the
+    # model is part of the freshness signal, so swapping it must not freeze a
+    # corpus extracted under the old one.
+    assert swapped.extract.call_count == 1
 
 
 def test_extract_metadata_uses_the_repo_owner_as_the_github_publisher(tmp_path: Path):
@@ -1288,18 +1364,13 @@ def test_extract_metadata_uses_the_repo_owner_as_the_github_publisher(tmp_path: 
         # is never trusted for this field.
         enrichment_json=json.dumps({"article": {"sitename": "GitHub"}}),
     )
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(publisher="LangGraph")
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     assert store.get_row("p-1")["publisher"] == "langchain-ai"
@@ -1314,18 +1385,13 @@ def test_extract_metadata_records_call_latency(tmp_path: Path):
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "article", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload()
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     call_row = store.get_latest_extraction_calls("p-1")["metadata"]
     assert call_row["duration_ms"] is not None
@@ -1338,14 +1404,12 @@ def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path:
     extract from navigation chrome. So the item stops, and the run-failure sensor
     turns that into Status=Failed in Notion. The columns are written first: the
     failed row still shows what was missing."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         stands_alone=False,
         stands_alone_reason="the article is replaced by an error page; no README text is present",
@@ -1357,16 +1421,13 @@ def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path:
             )
         ],
     )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        with pytest.raises(dg.Failure) as exc:
-            _materialize(
-                extract_metadata,
-                partition_key="p-1",
-                resources={"extractor": extractor, "store": store},
-            )
+    fetcher = _metadata_fetcher(payload)
+    with pytest.raises(dg.Failure) as exc:
+        _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store},
+        )
 
     # The Notion row gets this text verbatim, so it has to name the specific
     # missing thing — "extraction failed" tells the reader nothing to act on.
@@ -1382,14 +1443,12 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
     Figure 4 is the normal shape of a paper — not a defect. Measured over the
     227-body production corpus, failing on those would fail 41% of ingests.
     They are recorded so a reader knows the piece leans on visuals."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         stands_alone=True,
         unreadable=[
@@ -1400,15 +1459,12 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
             )
         ],
     )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     row = store.get_row("p-1")
@@ -1420,14 +1476,12 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
     a gate that only fires on a fresh call would quietly stop applying on the
     second run — the reading card would proceed on the same navigation chrome
     that failed a minute earlier. The verdict is re-read from the stored row."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         stands_alone=False,
         stands_alone_reason="the article is replaced by an error page; no README text is present",
@@ -1439,17 +1493,15 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
             )
         ],
     )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ) as call:
-        for _ in range(2):
-            with pytest.raises(dg.Failure) as exc:
-                _materialize(
-                    extract_metadata,
-                    partition_key="p-1",
-                    resources={"extractor": extractor, "store": store},
-                )
+    fetcher = _metadata_fetcher(payload)
+    for _ in range(2):
+        with pytest.raises(dg.Failure) as exc:
+            _materialize(
+                extract_metadata,
+                partition_key="p-1",
+                resources={"fetcher": fetcher, "store": store},
+            )
+    call = fetcher.extract
 
     assert "the repository README" in exc.value.description
     # The second run re-read the verdict rather than paying for it again.
@@ -1462,14 +1514,12 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
     readable. Routing it through the catch-all handler would return past the
     gate and release the reading card onto navigation chrome — the one thing
     this asset exists to stop."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "github", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         stands_alone=False,
         stands_alone_reason="the article is replaced by an error page; no README text is present",
@@ -1481,11 +1531,8 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
             )
         ],
     )
+    fetcher = _metadata_fetcher(payload)
     with (
-        patch(
-            "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-            return_value=(payload, _metadata_call(payload)),
-        ),
         patch.object(
             QueueStoreResource,
             "checkpoint_wal",
@@ -1496,7 +1543,7 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
             _materialize(
                 extract_metadata,
                 partition_key="p-1",
-                resources={"extractor": extractor, "store": store},
+                resources={"fetcher": fetcher, "store": store},
             )
 
     assert "the repository README" in exc.value.description
@@ -1511,14 +1558,12 @@ def test_extract_metadata_fails_a_body_that_does_not_stand_alone(tmp_path: Path)
 
     So the cause plays no part. `screen_reference` is the one no refetch
     repairs, and here it fails, because the piece does not survive without it."""
+    from domains.extraction.schemas import Unreadable
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Unreadable
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "body " * 200)
     store = QueueStoreResource(db_path=str(db_path))
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         stands_alone=False,
         stands_alone_reason="every benchmark score is read off a chart and never spoken",
@@ -1530,16 +1575,13 @@ def test_extract_metadata_fails_a_body_that_does_not_stand_alone(tmp_path: Path)
             )
         ],
     )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        with pytest.raises(dg.Failure) as exc:
-            _materialize(
-                extract_metadata,
-                partition_key="p-1",
-                resources={"extractor": extractor, "store": store},
-            )
+    fetcher = _metadata_fetcher(payload)
+    with pytest.raises(dg.Failure) as exc:
+        _materialize(
+            extract_metadata,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store},
+        )
 
     assert "every benchmark score is read off a chart" in exc.value.description
 
@@ -1611,8 +1653,8 @@ def test_a_channel_named_after_its_presenter_does_not_become_a_second_entity(tmp
     a contributor. Writing that human into `publisher` too mints two wiki entities
     for one person, one filed as an organisation, which is the class confusion the
     downstream wiki has no way to undo."""
+    from domains.extraction.schemas import Contributor
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
-    from workflows.extraction.metadata import Contributor
 
     db_path = tmp_path / "q.db"
     _seed_with_raw_content(db_path, "p-1", "youtube", "transcript " * 200)
@@ -1622,21 +1664,16 @@ def test_a_channel_named_after_its_presenter_does_not_become_a_second_entity(tmp
         url="https://example.com/x",
         enrichment_json=json.dumps({"youtube": {"channel": "Evan Edinger", "title": "A video"}}),
     )
-    extractor = MagicMock()
-    extractor.model = "gpt-5-mini"
     payload = _metadata_payload(
         contributors=[Contributor(name="Evan Edinger", role="presenter", affiliation=None)],
         publisher=None,
     )
-    with patch(
-        "orchestrators.defs.fetch_extract_queue.assets.run_extract_metadata",
-        return_value=(payload, _metadata_call(payload)),
-    ):
-        result = _materialize(
-            extract_metadata,
-            partition_key="p-1",
-            resources={"extractor": extractor, "store": store},
-        )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store},
+    )
 
     assert result.success
     assert store.get_row("p-1")["publisher"] is None

@@ -1,8 +1,9 @@
 """SQLite layer for the fetcher service
 
-Three tables: fetch_cache (URL -> markdown), async_jobs (submit-and-poll job
-records for any endpoint, discriminated by job_type), url_aliases (input URL
--> canonical URL after redirects).
+Four tables: fetch_cache (URL -> markdown), extraction_cache (one task's
+extraction payload, keyed by everything that shaped it), async_jobs
+(submit-and-poll job records for any endpoint, discriminated by job_type),
+url_aliases (input URL -> canonical URL after redirects).
 """
 
 import hashlib
@@ -58,6 +59,27 @@ CREATE TABLE IF NOT EXISTS url_aliases (
 );
 
 CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
+
+-- Extraction results get their own table rather than a row in `fetch_cache`:
+-- one content item yields several task payloads, and each would need a
+-- synthetic "canonical_url" with its json in a column called `markdown`,
+-- leaving `etag`, `tier_used`, `content_chars` and `tier_log_json` meaningless.
+--
+-- `_cache`, not `extractions`: rows expire and are deleted on read, and any one
+-- of them can be rebuilt by asking the model again. The durable record of what
+-- was extracted is the `extraction_calls` ledger in knowledge-pipeline's
+-- queue.db — a name close enough that calling this one `extractions` invited
+-- reading it as the same thing.
+CREATE TABLE IF NOT EXISTS extraction_cache (
+    cache_key      TEXT PRIMARY KEY,
+    task           TEXT NOT NULL,
+    payload_json   TEXT NOT NULL,
+    call_json      TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    expires_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS extraction_cache_expires_at ON extraction_cache(expires_at);
 """
 
 
@@ -91,7 +113,7 @@ def _etag(markdown: str) -> str:
 
 
 def create_schema(*, db_path: Path) -> None:
-    """Create the three tables and supporting indexes if needed."""
+    """Create the tables and supporting indexes if needed."""
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
@@ -212,6 +234,67 @@ def cache_upsert(
                 len(markdown),
                 metadata_json,
                 tier_log_json,
+                _now_iso(),
+                _iso_plus_days(ttl_days),
+            ),
+        )
+
+
+# --- Extraction Cache Ops ---
+
+
+def extraction_cache_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None:
+    """Read one task's cached extraction, or None on miss/expired."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT task, payload_json, call_json, created_at, expires_at
+              FROM extraction_cache
+             WHERE cache_key = ?
+            """,
+            (cache_key,),
+        ).fetchone()
+        if row is None:
+            return None
+        if row[4] < _now_iso():
+            conn.execute("DELETE FROM extraction_cache WHERE cache_key = ?", (cache_key,))
+            return None
+        return {
+            "task": row[0],
+            "payload_json": row[1],
+            "call_json": row[2],
+            "created_at": row[3],
+            "expires_at": row[4],
+        }
+
+
+def extraction_cache_upsert(
+    *,
+    db_path: Path,
+    cache_key: str,
+    task: str,
+    payload_json: str,
+    call_json: str,
+    ttl_days: int,
+) -> None:
+    """Insert or replace one task's cached extraction. Last-writer-wins.
+
+    `call_json` stores the provenance of the call that produced the payload —
+    prompt label, prompt sha, provider, model, what it cost — so a later cache
+    hit can report what actually ran instead of an empty ledger row.
+    """
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO extraction_cache (
+                cache_key, task, payload_json, call_json, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                cache_key,
+                task,
+                payload_json,
+                call_json,
                 _now_iso(),
                 _iso_plus_days(ttl_days),
             ),

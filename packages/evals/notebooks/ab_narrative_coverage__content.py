@@ -28,6 +28,9 @@ FIXTURE_SET = "packages/evals/datasets/narrative_coverage_gold.jsonl"
 CONTENT_ID_INDEX = 0
 NARRATIVE = "narrative_v3.md"  # the prompt under test
 MODEL = "gpt-4.1-mini"
+# The fetcher service that runs the extraction. Point it at a dev instance with
+# this repo's prompts/ mounted to score a candidate prompt before it ships.
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
 MAX_TOKENS = 4096
 MAX_COST_USD_PER_RUN = 0.50
 
@@ -37,7 +40,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -70,16 +72,11 @@ fixture = ExtractionFixture(
 print(f"fixture {fixture.fixture_id} ({fixture.content_shape}) — {len(fixture.gold_threads)} gold threads")
 
 # %% tags=["adapter"]
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
 variant = make_three_call_variant(
     name="candidate",
-    narrative_prompt_text=strip_design_notes((PROMPTS / NARRATIVE).read_text()),
-    topic_card_prompt_text=strip_design_notes((PROMPTS / "topic_card_v1.md").read_text()),
-    followups_prompt_text=strip_design_notes((PROMPTS / "followups_v1.md").read_text()),
-    prompt_versions={"narrative": NARRATIVE.replace(".md", ""), "topic_card": "v1", "followups": "v1"},
+    prompt_versions={"narrative": NARRATIVE.replace(".md", ""), "topic_card": "topic_card_v1", "followups": "followups_v1"},
     model=MODEL,
-    api_key=os.environ["OPENAI_API_KEY"],
-    max_tokens=MAX_TOKENS,
+    service_url=SERVICE_URL,
 )
 
 # %% tags=["fire"]

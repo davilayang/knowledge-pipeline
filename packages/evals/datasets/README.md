@@ -614,7 +614,7 @@ correctly refused. The body has no channel line; what it has is a venue and an a
 
 - **Pass `body` as the prompt content unchanged, and nothing else.** `body` is exactly `raw_content`,
   with **no** `[content_type: …]` tag — the runtime prepends that itself
-  (`shared_prefix.structured_messages`), so a scorer that adds one sends it twice, changes the input
+  (the extraction service's `structured_messages`), so a scorer that adds one sends it twice, changes the input
   from what production sends, and breaks the shared cache prefix. `sha256(body)` equals
   `_meta.content_hash` on all 58 rows; assert it per row as the drift guard.
 - **Match names by casefold, whitespace-collapse, strip, then exact.** No titlecase (two gold names

@@ -1,19 +1,18 @@
 import hashlib
 import json
 import textwrap
-import time
 from collections import Counter
 from collections.abc import Iterable
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urlparse
 
 import dagster as dg
+from domains.extraction.records import ExtractionCallRecord
+from domains.extraction.render import render_narrative
+from domains.extraction.schemas import Followups, MetadataPayload, Narrative, TopicCard
 from domains.types import IngestItem
 from domains.wiki.claims import parse_claims_doc, render_claims
-from workflows.extraction.metadata import MetadataPayload
-from workflows.extraction.metadata import extract_metadata as run_extract_metadata
-from workflows.extraction.shared_prefix import effective_prompt_sha
 from workflows.wiki_synthesis.extract_claims import SPOKEN_CONTENT_TYPES
 from workflows.wiki_synthesis.extract_claims import extract_claims as run_extract_claims
 from workflows.wiki_synthesis.extract_entities import extract_entities as run_extract_entities
@@ -35,10 +34,9 @@ from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
 
 from .def_config import (
     PIPELINE_TAG,
-    PROMPT_LABEL_METADATA,
     queue_items_partition_def,
 )
-from .resources import ExtractorRegistry, FetcherResource, read_extraction_prompt
+from .resources import ExtractResult, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
 
@@ -80,6 +78,72 @@ def _preview(content: str, *, head: int = _PREVIEW_HEAD, tail: int = _PREVIEW_TA
     return f"{content[:head]}\n\n... [{omitted:,} chars omitted] ...\n\n{content[-tail:]}"
 
 
+# The three outputs a reading card is made of, in service order. Requested
+# together because they read one article and share one prompt prefix — split
+# across requests, that article is paid for twice.
+READING_CARD_TASKS = ("narrative", "topic_card", "followups")
+
+# Cohort identity for `queue_items.extractor_label`. Names where extraction
+# ran: this value means the fetcher service, `3call_v2_shape_routed` means the
+# in-process extractor before it — the comparison a re-extraction needs.
+EXTRACTOR_LABEL = "service_v1"
+
+# The service registers one prompt set, so every call resolves to the generic
+# one. Recorded as such rather than as the row's classifier shape: the column
+# says which set ran, and naming a shape that drove no selection would later
+# read as evidence that shape routing works.
+_RESOLVED_SHAPE = "unknown"
+
+_SCHEMA_NAMES = {
+    "narrative": "Narrative",
+    "topic_card": "TopicCard",
+    "followups": "Followups",
+    "metadata": "MetadataPayload",
+}
+
+
+def _model_of(result: ExtractResult) -> str:
+    """The model the service actually ran, read off the calls it reports.
+
+    From the response, not local config: the service owns the choice and a
+    request may override it, so a locally-sourced value could name a model that
+    never ran.
+    """
+    return result.calls[0]["model"] if result.calls else ""
+
+
+def _call_record(call: dict[str, Any], *, output: str) -> ExtractionCallRecord:
+    """One `calls[]` entry from the service as a row for the local ledger."""
+    return ExtractionCallRecord(
+        call_kind=call["task"],
+        prompt_label=call["prompt_label"],
+        prompt_sha256=call["prompt_sha256"],
+        schema_name=_SCHEMA_NAMES.get(call["task"]),
+        output=output,
+        tokens_in=call["tokens_in"],
+        tokens_out=call["tokens_out"],
+        cached_tokens=call["cached_tokens"],
+        duration_ms=call["duration_ms"],
+        extracted_at=datetime.now(UTC).isoformat(),
+        prompt_set_shape=_RESOLVED_SHAPE,
+    )
+
+
+def _cohort_sha(*, model: str, calls: list[ExtractionCallRecord]) -> str:
+    """Staleness handle over everything static behind this item's reading card.
+
+    The model plus each call's prompt sha, which already covers the system
+    message, article envelope and generated schema. Sorted by task so the value
+    depends on what ran, not the order it came back in.
+    """
+    parts = [model] + [f"{c.call_kind}:{c.prompt_sha256}" for c in sorted(calls, key=_call_kind)]
+    return hashlib.sha256("\n".join(parts).encode()).hexdigest()
+
+
+def _call_kind(record: ExtractionCallRecord) -> str:
+    return record.call_kind
+
+
 def _ingest_item_from_row(row: dict[str, Any]) -> IngestItem:
     """Build the IngestItem the claim extractor reads from a fetched queue row.
 
@@ -117,8 +181,8 @@ def _coerce_author(authors: Any) -> str | None:
 
 def comments_json_to_user_notes(raw: str | None) -> str | None:
     """Turn the stored `user_comments_json` into the bullet-list string the
-    extractor wraps in its `[reader's notes]` block. Returns None when there
-    are no non-empty comments, so the extractor's no-comment path runs."""
+    service wraps in its `[reader's notes]` block. Returns None when there
+    are no non-empty comments, so the service's no-comment path runs."""
     if not raw:
         return None
     texts = [
@@ -425,7 +489,7 @@ def _unusable_record(payload: dict) -> str:
 )
 def extract_metadata(
     context: dg.AssetExecutionContext,
-    extractor: ExtractorRegistry,
+    fetcher: FetcherResource,
     store: QueueStoreResource,
 ):
     page_id = context.partition_key
@@ -449,11 +513,15 @@ def extract_metadata(
             yield dg.AssetCheckResult(check_name=check_name, passed=True)
             return
 
-        prompt = read_extraction_prompt(PROMPT_LABEL_METADATA)
-        prompt_sha = effective_prompt_sha(prompt, MetadataPayload)
+        # Asked, not derived: the sha covers the system message, article
+        # envelope and generated schema as well as the prompt file, and only the
+        # service sees all four.
+        extraction = fetcher.extraction_prompts()
+        prompt_label = extraction.by_task["metadata"]["prompt_label"]
+        prompt_sha = extraction.by_task["metadata"]["prompt_sha256"]
         inputs_sha = _metadata_inputs_sha(
             content_hash=row.get("content_hash"),
-            model=extractor.model,
+            model=extraction.model,
             prompt_sha=prompt_sha,
         )
         prior_call = store.get_latest_extraction_calls(page_id).get("metadata")
@@ -479,14 +547,18 @@ def extract_metadata(
             yield dg.AssetCheckResult(check_name=check_name, passed=True)
             return
 
-        started = time.monotonic()
-        payload, call = run_extract_metadata(
+        result = fetcher.extract(
             row["raw_content"],
             content_type=row.get("content_type") or "",
-            prompt=prompt,
-            model=extractor.model,
+            tasks=["metadata"],
         )
-        duration_ms = (time.monotonic() - started) * 1000
+        if result.error:
+            raise RuntimeError(result.error)
+        if "metadata" in result.failures:
+            raise RuntimeError(result.failures["metadata"])
+        payload = MetadataPayload.model_validate(result.payloads["metadata"])
+        call = result.calls[0]
+        duration_ms = call["duration_ms"]
 
         known_publisher = _deterministic_publisher(row)
         contributors = [c.model_dump() for c in payload.contributors]
@@ -510,13 +582,13 @@ def extract_metadata(
             # survives in the ledger row's `output`, which holds the whole reply.
             publisher=known_publisher or payload.publisher,
             unreadable_json=json.dumps(unreadable),
-            prompt_label=PROMPT_LABEL_METADATA,
-            prompt_sha256=prompt_sha,
-            model=call.model,
-            output=call.content,
-            tokens_in=call.input_tokens,
-            tokens_out=call.output_tokens,
-            cached_tokens=call.cached_tokens,
+            prompt_label=prompt_label,
+            prompt_sha256=call["prompt_sha256"],
+            model=call["model"],
+            output=payload.model_dump_json(),
+            tokens_in=call["tokens_in"],
+            tokens_out=call["tokens_out"],
+            cached_tokens=call["cached_tokens"],
             duration_ms=duration_ms,
             content_hash=row.get("content_hash"),
             inputs_sha=inputs_sha,
@@ -561,8 +633,8 @@ def extract_metadata(
             "publisher_source": dg.MetadataValue.text(
                 "deterministic" if known_publisher else "model"
             ),
-            "model": dg.MetadataValue.text(call.model),
-            "cached_tokens": dg.MetadataValue.int(call.cached_tokens),
+            "model": dg.MetadataValue.text(call["model"]),
+            "cached_tokens": dg.MetadataValue.int(call["cached_tokens"] or 0),
             "duration_ms": dg.MetadataValue.int(int(duration_ms)),
             "payload": dg.MetadataValue.json({"contributors": contributors}),
             "summary": dg.MetadataValue.md(
@@ -596,19 +668,18 @@ def extract_metadata(
     ],
     description=_oneline(
         """
-        Runs the three-call extractor via ExtractorRegistry (v2:
-        ThreeCallOpenAIExtractor — narrative, then topic_card, then
-        followups, sequentially in one Dagster op so the structured pair
-        shares the article's prompt cache). Persists one row per call into
-        extraction_calls + updates queue_items cohort fields atomically.
-        Future LangGraph swap is a one-class change inside the registry;
-        no asset edits required.
+        Asks the fetcher service for the narrative, topic card and follow-ups
+        in one request, so all three read the same article and the service
+        charges for it once. Persists one row per call into extraction_calls
+        and updates the queue_items cohort fields atomically. The service
+        answers a partial batch with what it managed plus what failed; a
+        reading card needs all three, so anything missing fails the item.
         """
     ),
 )
 def extract_reading_card(
     context: dg.AssetExecutionContext,
-    extractor: ExtractorRegistry,
+    fetcher: FetcherResource,
     store: QueueStoreResource,
 ):
     page_id = context.partition_key
@@ -619,38 +690,53 @@ def extract_reading_card(
         )
     content_type = row["content_type"]
 
-    # Build the extractor ONCE per materialization. It owns an AsyncOpenAI
-    # client closed at the end of `.extract()`; calling `build()` again
-    # would leak a fresh httpx pool. Reads of `bundle_label` /
-    # `bundle_sha256` / `model` below are property accesses on this
-    # instance — no extra client construction.
-    ex = extractor.build()
-    # Read the user-visible / classifier-emitted content_shape written by
-    # the triaged asset. NULL (legacy rows, or rows the classifier returned
-    # `unknown` for) falls back to the unknown bundle inside the extractor
-    # — bundle selection is the extractor's concern.
+    # Provenance only: the service registers one prompt set, so nothing routes
+    # on this. The column still records what the row claimed to be, which is
+    # what a later routing decision would be measured against.
     content_shape = row.get("content_shape") or "unknown"
     user_notes = comments_json_to_user_notes(row.get("user_comments_json"))
-    payload, calls = ex.extract(
-        content=row["raw_content"],
+    result = fetcher.extract(
+        row["raw_content"],
         content_type=content_type,
-        content_shape=content_shape,
+        tasks=list(READING_CARD_TASKS),
         user_notes=user_notes,
     )
+    if result.error:
+        raise dg.Failure(description=f"extraction service: {result.error}")
+    # All three or nothing: the topic card names the item in Notion and the
+    # narrative is what the agent reads aloud. The service returns what it
+    # managed; this asset is where a gap becomes a failure.
+    if result.failures:
+        raise dg.Failure(
+            description="; ".join(f"{task}: {detail}" for task, detail in result.failures.items())
+        )
 
+    narrative = Narrative.model_validate(result.payloads["narrative"])
+    topic_card = TopicCard.model_validate(result.payloads["topic_card"])
+    followups = Followups.model_validate(result.payloads["followups"])
+    narrative_md = render_narrative(narrative)
+
+    outputs = {
+        "narrative": narrative,
+        "topic_card": topic_card,
+        "followups": followups,
+    }
+    calls = [
+        _call_record(call, output=outputs[call["task"]].model_dump_json()) for call in result.calls
+    ]
+    by_kind = {c.call_kind: c for c in calls}
     tokens_in_total = sum(c.tokens_in for c in calls)
     tokens_out_total = sum(c.tokens_out for c in calls)
-    by_kind = {c.call_kind: c for c in calls}
 
-    # One figure, not two: the three calls run one after another, so model time
-    # and user-visible latency are the same number.
+    # One figure: the calls run one after another, so model time and
+    # user-visible latency are the same number.
     total_model_time_ms = int(sum((v.duration_ms or 0) for v in by_kind.values()))
 
     store.record_extraction_calls(
         notion_page_id=page_id,
-        extractor_label=ex.bundle_label,
-        extractor_sha256=ex.bundle_sha256(content_shape),
-        model=ex.model,
+        extractor_label=EXTRACTOR_LABEL,
+        extractor_sha256=_cohort_sha(model=_model_of(result), calls=calls),
+        model=_model_of(result),
         calls=calls,
         tokens_in_total=tokens_in_total,
         tokens_out_total=tokens_out_total,
@@ -658,8 +744,6 @@ def extract_reading_card(
     # Fold -wal sidecar into the main queue.db, allowing readers to read all rows
     store.checkpoint_wal()
 
-    topic_card = payload.topic_card
-    followups = payload.followups
     passed = (
         bool(topic_card.extracted_title)
         and bool(topic_card.core_mechanism)
@@ -670,11 +754,14 @@ def extract_reading_card(
         metadata={
             "content_type": dg.MetadataValue.text(content_type),
             "content_shape": dg.MetadataValue.text(content_shape),
-            "extractor_label": dg.MetadataValue.text(ex.bundle_label),
-            "extractor_sha256_short": dg.MetadataValue.text(ex.bundle_sha256(content_shape)[:12]),
-            "extraction_model": dg.MetadataValue.text(ex.model),
+            "extractor_label": dg.MetadataValue.text(EXTRACTOR_LABEL),
+            "extractor_sha256_short": dg.MetadataValue.text(
+                _cohort_sha(model=_model_of(result), calls=calls)[:12]
+            ),
+            "extraction_model": dg.MetadataValue.text(_model_of(result)),
+            "cache_hits": dg.MetadataValue.text(", ".join(result.cache_hits) or "(none)"),
             "extracted_title": dg.MetadataValue.text(topic_card.extracted_title),
-            "narrative_chars": dg.MetadataValue.int(len(payload.narrative_md)),
+            "narrative_chars": dg.MetadataValue.int(len(narrative_md)),
             "followups_count": dg.MetadataValue.int(len(followups.questions)),
             "tokens_in_total": dg.MetadataValue.int(tokens_in_total),
             "tokens_out_total": dg.MetadataValue.int(tokens_out_total),
@@ -688,12 +775,12 @@ def extract_reading_card(
             "prompt_sha_short_followups": dg.MetadataValue.text(
                 by_kind["followups"].prompt_sha256[:12]
             ),
-            "narrative_preview": dg.MetadataValue.md(f"```\n{_preview(payload.narrative_md)}\n```"),
+            "narrative_preview": dg.MetadataValue.md(f"```\n{_preview(narrative_md)}\n```"),
             "topic_card_preview": dg.MetadataValue.md(
                 f"```json\n{_preview(topic_card.model_dump_json(indent=2))}\n```"
             ),
             "summary": dg.MetadataValue.md(
-                f"**{topic_card.extracted_title}** — 3-call extraction, "
+                f"**{topic_card.extracted_title}** — {len(calls)}-call extraction, "
                 f"{len(followups.questions)} chips, {total_model_time_ms}ms model"
             ),
         }

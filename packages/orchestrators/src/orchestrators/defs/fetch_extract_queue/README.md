@@ -58,12 +58,15 @@ queue_items row has `raw_content_override` set (user ticked
 in `resources.py` and the override branch in `assets.fetch_content`). For
 `/v1/fetch`, the service is authoritative for source matching
 (arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
-and quality-floor enforcement. `extract_metadata` runs one OpenAI call over the
-fetched body before either branch below it, and is the pipeline's second quality
-gate: the fetcher's floor is about size, this one is about substance — a page
-that fetched 25k characters of navigation chrome clears the floor and still
-carries nothing to extract from. `extract_reading_card`
-runs ExtractorRegistry (ThreeCallOpenAIExtractor) in-process. fetch_content +
+and quality-floor enforcement. `extract_metadata` asks the same service for one
+extraction task over the fetched body before either branch below it, and is the
+pipeline's second quality gate: the fetcher's floor is about size, this one is
+about substance — a page that fetched 25k characters of navigation chrome clears
+the floor and still carries nothing to extract from. `extract_reading_card` asks
+for the remaining three tasks in one request. Neither runs a model in-process:
+extraction moved to the service so this repo and newsletter-assistant stop
+keeping their own copies of it, and the gate, the freshness check and the
+`extraction_calls` ledger stay here, where the pipeline's state lives. fetch_content +
 extract_reading_card include `content_preview` / `narrative_preview` / `topic_card_preview`
 metadata (head + tail of the content) for at-a-glance verification.
 ```
@@ -93,8 +96,9 @@ dg launch --job fetch_extract_queue \
           --partition-range <first_id>...<last_id>
 
 # Re-extract a page with a bumped prompt label (overwrites prior extraction).
-# Bump the relevant PROMPT_LABEL_* constant in def_config.py AND add the new
-# prompts/extraction/<label>.md file in the same commit, then re-launch:
+# Bump the relevant TaskSpec.default_prompt_label in the fetcher service's
+# extract/tasks.py AND add the new prompts/extraction/<label>.md file in the
+# same commit, then re-launch:
 dg launch --job fetch_extract_queue --partition <notion_page_id>
 
 # Recovery — stuck in Fetching:

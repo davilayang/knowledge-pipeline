@@ -1,55 +1,22 @@
 """Resources for the fetch_extract_queue pipeline.
 
-- FetcherResource — HTTP client for the standalone `fetcher` service.
-- ExtractorRegistry — strategy registry: content_type → ExtractorProtocol.
+- FetcherResource — HTTP client for the standalone `fetcher` service, which
+  both fetches content and extracts from it.
 
 Notion + queue.db wrappers live in `orchestrators.defs.shared.queue_resources`
 (shared with triage); `build_resources` binds them to local keys.
 """
 
-import os
 from dataclasses import dataclass, field
-from pathlib import Path
 from typing import Any
 
 import dagster as dg
 import httpx
-from domains.extraction.prompts import strip_design_notes
-from workflows.extraction import PromptBundle, ThreeCallOpenAIExtractor
 
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
     QueueStoreResource,
 )
-
-from .def_config import (
-    PROMPT_LABEL_FOLLOWUPS,
-    PROMPT_LABEL_NARRATIVE,
-    PROMPT_LABEL_TOPIC_CARD,
-)
-
-# Resolve repo-root prompts/extraction/ for the extractor registry.
-# Anchor: this file lives at
-#   packages/orchestrators/src/orchestrators/defs/fetch_extract_queue/resources.py
-#         parents[0] = fetch_extract_queue/
-#         parents[1] = defs/
-#         parents[2] = orchestrators/         (package src)
-#         parents[3] = src/
-#         parents[4] = orchestrators/         (package root)
-#         parents[5] = packages/
-#         parents[6] = repo root
-# Override with KP_PROMPTS_ROOT env var if set (used by evals + tests).
-_DEFAULT_PROMPTS_ROOT = Path(__file__).resolve().parents[6] / "prompts"
-_PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
-_PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
-
-
-def read_extraction_prompt(label: str) -> str:
-    """Load `prompts/extraction/<label>.md`, minus its design-notes header (the
-    text above the first `---`), so only the prompt body reaches the model — see
-    domains.extraction.strip_design_notes. Module-level so callers that need one
-    prompt (the metadata asset) don't construct an extractor to reach it."""
-    return strip_design_notes((_PROMPTS_DIR / f"{label}.md").read_text())
 
 
 @dataclass
@@ -61,6 +28,33 @@ class FetchResult:
     error: str = ""
     transient: bool = False
     extras: dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class ExtractResult:
+    """One `/v1/extract` response, indexed the way the assets consume it.
+
+    Task-level and request-level failures stay apart. `failures` names tasks the
+    service ran and could not complete, and the caller decides what each one
+    means — a missing reading card fails the item, a missing metadata row does
+    not. `error` means the request never produced results at all, which is not
+    any single task's fault.
+    """
+
+    payloads: dict[str, dict[str, Any]] = field(default_factory=dict)
+    failures: dict[str, str] = field(default_factory=dict)
+    calls: list[dict[str, Any]] = field(default_factory=list)
+    cache_hits: list[str] = field(default_factory=list)
+    error: str = ""
+    transient: bool = False
+
+
+@dataclass
+class ExtractionSettings:
+    """What `/v1/extract` would run with right now, read without running it."""
+
+    model: str
+    by_task: dict[str, dict[str, str]]
 
 
 class FetcherResource(dg.ConfigurableResource):
@@ -109,6 +103,78 @@ class FetcherResource(dg.ConfigurableResource):
         if resp.status_code == 200:
             return _parse_success(resp)
         return _parse_problem(resp)
+
+    def extract(
+        self,
+        content: str,
+        *,
+        content_type: str,
+        tasks: list[str],
+        user_notes: str | None = None,
+        model: str | None = None,
+    ) -> ExtractResult:
+        """Run the named extraction tasks over `content` on the fetcher service."""
+        endpoint = f"{self.service_url.rstrip('/')}/v1/extract"
+        payload: dict[str, Any] = {
+            "content": content,
+            "content_type": content_type,
+            "tasks": tasks,
+        }
+        if user_notes:
+            payload["user_notes"] = user_notes
+        if model:
+            payload["model"] = model
+        with self._client() as client:
+            try:
+                resp = client.post(endpoint, json=payload)
+            except (httpx.ConnectError, httpx.ConnectTimeout) as exc:
+                return ExtractResult(error=f"fetcher service unreachable: {exc!r}", transient=True)
+            except httpx.ReadTimeout as exc:
+                return ExtractResult(error=f"fetcher request timeout: {exc!r}", transient=True)
+            except httpx.TransportError as exc:
+                return ExtractResult(error=f"fetcher transport error: {exc!r}", transient=True)
+
+        if resp.status_code != 200:
+            problem = _parse_problem(resp)
+            return ExtractResult(error=problem.error, transient=problem.transient)
+
+        try:
+            body = resp.json()
+        except ValueError:
+            return ExtractResult(
+                error=f"malformed extract response: body={resp.text[:200]!r}", transient=False
+            )
+        return ExtractResult(
+            payloads={r["task"]: r["payload"] for r in body.get("results") or []},
+            failures={
+                e["task"]: f"{e.get('code', 'TASK_FAILED')}: {e.get('detail')}"
+                for e in body.get("errors") or []
+            },
+            calls=body.get("calls") or [],
+            cache_hits=body.get("cache_hits") or [],
+        )
+
+    def extraction_prompts(self) -> "ExtractionSettings":
+        """What a run would use: the active model, and each task's prompt label
+        and staleness sha.
+
+        Read before deciding whether a stored extraction is current. The model is
+        the service's to choose, and the sha covers the shared system message,
+        the article envelope and the generated schema as well as the prompt file
+        — none of which this repo can see once the implementation lives there.
+        """
+        endpoint = f"{self.service_url.rstrip('/')}/v1/extract/prompts"
+        with self._client() as client:
+            resp = client.get(endpoint)
+        resp.raise_for_status()
+        body = resp.json()
+        return ExtractionSettings(
+            model=body["model"],
+            by_task={
+                p["task"]: {"prompt_label": p["prompt_label"], "prompt_sha256": p["prompt_sha256"]}
+                for p in body["prompts"]
+            },
+        )
 
 
 def _call_service(
@@ -182,56 +248,6 @@ def _parse_problem(resp: httpx.Response) -> FetchResult:
     )
 
 
-class ExtractorRegistry(dg.ConfigurableResource):
-    """Strategy registry — factory for the active ExtractorProtocol impl.
-
-    v2: `ThreeCallOpenAIExtractor` is the only strategy; content-type
-    routing now happens **inside** the prompts (each prompt's body branches
-    on the `[content_type: ...]` tag the extractor prepends). Future LangGraph
-    swap is a one-class change: change `build()` to return `LangGraphExtractor`
-    instead — the asset code and storage shape don't move.
-
-    Active prompt labels live as code constants in `def_config.py`
-    (`PROMPT_LABEL_NARRATIVE` etc.) — not env vars. Prompt versions don't
-    vary per-deployment, so dev/prod env symmetry doesn't justify wiring
-    them through Dagster Config; bumping a prompt means editing the
-    markdown file AND the constant in the same commit, no env drift.
-
-    Callers must `build()` ONCE per asset run and reuse the returned
-    extractor for `extract()` + reads of `bundle_label` / `bundle_sha256` /
-    `model`. Each build constructs a fresh AsyncOpenAI client that's closed
-    at the end of `extract()` (see ThreeCallOpenAIExtractor docstring) —
-    calling `build()` more than once per run wastes httpx pools."""
-
-    openai_api_key: str
-    model: str
-    # 4096 (was 2048): the threads-first narrative that preceded the claim
-    # inventory enumerated every distinct thread and hit 2048 on rich prose.
-    # Measured on gpt-5-mini against the current prompt, the worst of three
-    # real long sources (70k-233k characters) spends 2,131 of 4,096 — the
-    # inventory caps where threads did not. Re-measure before adding a section.
-    max_tokens: int = 4096
-
-    def _prompt_text(self, label: str) -> str:
-        return read_extraction_prompt(label)
-
-    def build(self) -> ThreeCallOpenAIExtractor:
-        # One bundle registered as the generic fallback. Per-shape bundles
-        # land alongside once Phase-6 lift evidence motivates them —
-        # registering more shapes is a single-line addition here.
-        generic_bundle = PromptBundle(
-            narrative=(self._prompt_text(PROMPT_LABEL_NARRATIVE), PROMPT_LABEL_NARRATIVE),
-            topic_card=(self._prompt_text(PROMPT_LABEL_TOPIC_CARD), PROMPT_LABEL_TOPIC_CARD),
-            followups=(self._prompt_text(PROMPT_LABEL_FOLLOWUPS), PROMPT_LABEL_FOLLOWUPS),
-        )
-        return ThreeCallOpenAIExtractor(
-            api_key=self.openai_api_key,
-            model=self.model,
-            prompt_sets={"unknown": generic_bundle},
-            max_tokens=self.max_tokens,
-        )
-
-
 def build_resources() -> dict[str, dg.ConfigurableResource]:
     return {
         "notion": NotionQueueResource(
@@ -243,10 +259,6 @@ def build_resources() -> dict[str, dg.ConfigurableResource]:
             service_url=dg.EnvVar("FETCHER_URL"),
             timeout_s=dg.EnvVar.int("FETCHER_TIMEOUT_S"),
             allow_paid=dg.EnvVar("FETCHER_ALLOW_PAID"),
-        ),
-        "extractor": ExtractorRegistry(
-            openai_api_key=dg.EnvVar("OPENAI_API_KEY"),
-            model=dg.EnvVar("EXTRACT_QUEUE_MODEL"),
         ),
         "store": QueueStoreResource(),
     }

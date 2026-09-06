@@ -1,0 +1,23 @@
+# Extraction model config — drives POST /v1/extract.
+#
+# One backend, where the structurer and whisper lanes declare fallback chains.
+# Two reasons, both specific to extraction. Every task in a batch has to reach
+# the same model for the shared article prefix to hit that model's prompt cache,
+# which is the whole economics of the endpoint — one article, several calls. And
+# a fallback leg would have to return the same structured json; the OpenAI-compat
+# shim used for the fallback elsewhere in this OS is recorded as failing exactly
+# that, so a fallback here would trade a clean failure for a plausible wrong one.
+#
+# The model is recorded on every extraction_calls row and folded into the
+# per-task cache key, so editing it here invalidates cached results rather than
+# serving the previous model's answers under the new name.
+#
+# The API key comes from the environment, not from here — same split as the
+# sibling chain configs.
+#
+# Not a newer gpt-5.x: those do not hold the prompt cache well, and the cache is
+# what makes several tasks over one article affordable. A model swap here is a
+# measurement, not an upgrade — check `cached_tokens` on the resulting
+# extraction_calls rows before keeping it.
+model: gpt-5-mini
+provider: openai

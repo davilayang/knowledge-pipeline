@@ -34,7 +34,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -52,6 +51,8 @@ def _repo_root() -> Path:
     raise RuntimeError("Could not locate repo root (no pyproject.toml + packages/ in any parent)")
 
 
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
+
 REPO_ROOT = _repo_root()
 
 # %% tags=["load"]
@@ -68,21 +69,16 @@ fixtures = [
 print(f"loaded {len(fixtures)} fixtures from {FIXTURE_SET}")
 
 # %% tags=["adapter"]
-# Wire variants here. Read prompt text from prompts/extraction/<file>.md.
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative = strip_design_notes((PROMPTS / "narrative_v3.md").read_text())
-topic_card = strip_design_notes((PROMPTS / "topic_card_v1.md").read_text())
-followups = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
-
+# Wire variants here. Name a prompt by its label — the basename of a file under
+# prompts/extraction/ — and the service resolves it. To try a candidate, write
+# it as a new file there and name it, so the run measures a prompt that exists
+# rather than a string that lived only in this notebook.
 variants = [
     make_three_call_variant(
         name="v5_baseline",
-        narrative_prompt_text=narrative,
-        topic_card_prompt_text=topic_card,
-        followups_prompt_text=followups,
-        prompt_versions={"narrative": "v1", "topic_card": "v1", "followups": "v1"},
+        prompt_versions={"narrative": "narrative_v3", "topic_card": "topic_card_v1", "followups": "followups_v1"},
         model="gpt-4o-mini",
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
 ]
 
