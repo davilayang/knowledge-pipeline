@@ -33,6 +33,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   the topic card names the item in Notion and the narrative is what the voice
   agent reads, so an item missing either is not publishable.
 
+- **The extraction eval scores the deployed path.** `make_three_call_variant`
+  posts to `/v1/extract` with a `prompt_version` per task instead of
+  constructing an extractor from prompt text, so a recorded score names prompts
+  that exist and can be re-run from their labels. Trying a candidate now means
+  writing it into `prompts/extraction/` and naming it — which is also what stops
+  the harness measuring a copy of production that has since drifted from it.
+
+### Removed
+
+- **`workflows.extraction` is gone.** Its last caller moved to the service, and
+  a second implementation of extraction is the thing this work exists to end.
+  `workflows` keeps `openai` for the wiki-synthesis lane.
+
 ### Fixed
 
 - **The article envelope now counts towards a call's staleness signal.**

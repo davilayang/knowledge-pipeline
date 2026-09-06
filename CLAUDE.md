@@ -113,13 +113,12 @@ packages/
     raw_store/     # raw_store.db SQLite layer
     queue_store/   # queue.db SQLite layer (sources.py)
     fetches_store/ # fetches.db SQLite layer — cache_lookup/upsert, insert_job, update_job, get_job, get_job_status, canonicalize_lookup/upsert, mark_orphans_failed, create_schema
-    extraction/    # Payload models, narrative rendering, call records (schemas.py, render.py, records.py, prompts.py)
+    extraction/    # Payload models, narrative rendering, call records — the contract both the fetcher service and the orchestrator read (schemas.py, render.py, records.py, prompts.py)
     sessions/
     notes/
     wiki/
-  workflows/       # LangGraph workflows + agents (wiki synthesis, research, extraction)
+  workflows/       # LangGraph workflows + agents (wiki synthesis, research)
     agents/        # Agent primitives
-    extraction/    # ThreeCallOpenAIExtractor, ExtractorProtocol, ExtractionUsage
     shared/        # Shared workflow utilities
     wiki_synthesis/ # Wiki synthesis workflow
   retrievers/      # RAG infra — chunking, OpenAI embedding, Chroma HTTP client, retrieval protocols
@@ -142,10 +141,10 @@ packages/
       upstream_sources.py
 
 services/
-  fetcher/         # Standalone FastAPI URL→markdown fetch service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
+  fetcher/         # Standalone FastAPI content service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call. Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
-  extraction/      # Prompt files consumed by workflows.extraction.ThreeCallOpenAIExtractor
+  extraction/      # Prompt files consumed by the fetcher service's POST /v1/extract; labels resolved in services/fetcher/src/fetcher/extract/tasks.py
   triage/          # Content-shape classifier prompt (triage_knowledge_queue)
   wiki/            # Wiki entity-extraction + page-synthesis prompts (workflows.wiki_synthesis.prompts)
 configs/           # Dagster config — dagster.yaml, workspace.yaml

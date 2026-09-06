@@ -33,9 +33,6 @@ import os
 from collections.abc import Sequence
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
-from workflows.extraction.shared_prefix import token_kwargs
-
 from evals.core import RunManifest, load_fixtures
 from evals.core.harness import run_repeated
 from evals.core.manifest import code_rev
@@ -73,6 +70,25 @@ def _fixtures(gold_path: Path) -> tuple[list[ExtractionFixture], int]:
     ], int(header.extra.get("gold_version", 1))
 
 
+def _judge_token_kwargs(model: str, max_tokens: int) -> dict:
+    """Token-budget kwargs for the judge call, per model family.
+
+    gpt-5-family are reasoning models: they reject `max_tokens` and need
+    `max_completion_tokens`. The two generations spell the lowest reasoning
+    effort differently and reject each other's value — `gpt-5`/`gpt-5-mini` take
+    `minimal`, the dotted `gpt-5.x` take `none`.
+
+    A near-copy of the extraction service's own helper, and deliberately not
+    shared with it: the service is a separate deployable that cannot import this
+    package, and the alternative — parking vendor mechanics in the pure data
+    layer both sides depend on — is the provider lock-in that split was for.
+    """
+    if model.startswith("gpt-5"):
+        effort = "none" if model.startswith("gpt-5.") else "minimal"
+        return {"max_completion_tokens": max_tokens, "reasoning_effort": effort}
+    return {"max_tokens": max_tokens}
+
+
 def _make_judge(api_key: str, model: str):
     import openai
 
@@ -83,9 +99,9 @@ def _make_judge(api_key: str, model: str):
             model=model,
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": prompt}],
-            # Shared with the extraction call: a gpt-5 judge rejects `max_tokens`
-            # outright, so hardcoding it pinned the judge to non-reasoning models.
-            **token_kwargs(model, 2048),
+            # A gpt-5 judge rejects `max_tokens` outright, so hardcoding it
+            # pinned the judge to non-reasoning models.
+            **_judge_token_kwargs(model, 2048),
         )
         try:
             return json.loads(resp.choices[0].message.content or "{}")
@@ -101,9 +117,9 @@ def _run_arm(
     fixtures,
     prompts_dir: Path,
     api_key: str,
+    service_url: str,
     model: str,
     judge_model: str,
-    max_tokens: int,
     runs: int,
     gold_rel: str,
     gold_version: int,
@@ -111,17 +127,14 @@ def _run_arm(
     label = narrative_file.replace(".md", "")
     variant = make_three_call_variant(
         name=label,
-        narrative_prompt_text=strip_design_notes((prompts_dir / narrative_file).read_text()),
-        topic_card_prompt_text=strip_design_notes((prompts_dir / "topic_card_v1.md").read_text()),
-        followups_prompt_text=strip_design_notes((prompts_dir / "followups_v1.md").read_text()),
         prompt_versions={
             "narrative": label,
-            "topic_card": "v1",
-            "followups": "v1",
+            "topic_card": "topic_card_v1",
+            "followups": "followups_v1",
         },
         model=model,
-        api_key=api_key,
-        max_tokens=max_tokens,
+        service_url=service_url,
+        prompts_dir=prompts_dir,
         code_revision=code_rev(),
     )
     scorer = NarrativeCoverageScorer(chat_fn=_make_judge(api_key, judge_model))
@@ -192,7 +205,15 @@ def main(argv: Sequence[str] | None = None) -> int:
     # test grades its own output, and the gold set it scores against was
     # itself labelled cross-family for that reason.
     p.add_argument("--judge-model", default="gpt-4.1-mini")
-    p.add_argument("--max-tokens", type=int, default=4096)
+    p.add_argument(
+        "--service-url",
+        default=os.environ.get("FETCHER_URL", "http://localhost:8000"),
+        help=(
+            "Base URL of the fetcher service that runs the extraction. Point it at a "
+            "dev instance with this repo's prompts/ mounted to score a candidate "
+            "prompt before it ships."
+        ),
+    )
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
 
@@ -227,7 +248,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         api_key=api_key,
         model=args.model,
         judge_model=args.judge_model,
-        max_tokens=args.max_tokens,
+        service_url=args.service_url,
         runs=args.runs,
         gold_rel=gold_rel,
         gold_version=gold_version,

@@ -7,6 +7,9 @@ dependencies = [
     "knowledge-domains",
     "knowledge-workflows",
     "knowledge-retrievers",
+    # The extraction eval drives the fetcher service over HTTP rather than
+    # importing an extractor, so a scored run exercises the deployed path.
+    "httpx>=0.27,<1.0",
     # Retrieval eval (evals.retrieval) — runs against a real Chroma instance,
     # embeds via retrievers.embedding.OpenAIEmbedder.
     "chromadb-client>=1.5,<2.0",

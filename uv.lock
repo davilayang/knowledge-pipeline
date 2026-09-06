@@ -1953,6 +1953,7 @@ version = "0.36.24"
 source = { editable = "packages/evals" }
 dependencies = [
     { name = "chromadb-client" },
+    { name = "httpx" },
     { name = "knowledge-domains" },
     { name = "knowledge-retrievers" },
     { name = "knowledge-workflows" },
@@ -1962,6 +1963,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "chromadb-client", specifier = ">=1.5,<2.0" },
+    { name = "httpx", specifier = ">=0.27,<1.0" },
     { name = "knowledge-domains", editable = "packages/domains" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "knowledge-workflows", editable = "packages/workflows" },

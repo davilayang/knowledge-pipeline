@@ -35,6 +35,9 @@ CANDIDATE_NARRATIVE = "narrative_v3.md"  # override to candidate when iterating
 # with a schema it does not describe. `make_three_call_variant` refuses it.
 MAX_COST_USD_PER_RUN = 0.25
 MODEL = "gpt-4o-mini"
+# The fetcher service that runs the extraction. Point it at a dev instance with
+# this repo's prompts/ mounted to score a candidate prompt before it ships.
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
 
 RESULTS: dict = {}
 
@@ -79,29 +82,23 @@ candidate_text = strip_design_notes((PROMPTS / CANDIDATE_NARRATIVE).read_text())
 variants = [
     make_three_call_variant(
         name="baseline",
-        narrative_prompt_text=baseline_text,
-        topic_card_prompt_text=topic_card_text,
-        followups_prompt_text=followups_text,
         prompt_versions={
             "narrative": BASELINE_NARRATIVE.replace(".md", ""),
-            "topic_card": "v1",
-            "followups": "v1",
+            "topic_card": "topic_card_v1",
+            "followups": "followups_v1",
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
     make_three_call_variant(
         name="candidate",
-        narrative_prompt_text=candidate_text,
-        topic_card_prompt_text=topic_card_text,
-        followups_prompt_text=followups_text,
         prompt_versions={
             "narrative": CANDIDATE_NARRATIVE.replace(".md", ""),
-            "topic_card": "v1",
-            "followups": "v1",
+            "topic_card": "topic_card_v1",
+            "followups": "followups_v1",
         },
         model=MODEL,
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
 ]
 

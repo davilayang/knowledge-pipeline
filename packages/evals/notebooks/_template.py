@@ -52,6 +52,8 @@ def _repo_root() -> Path:
     raise RuntimeError("Could not locate repo root (no pyproject.toml + packages/ in any parent)")
 
 
+SERVICE_URL = os.environ.get("FETCHER_URL", "http://localhost:8000")
+
 REPO_ROOT = _repo_root()
 
 # %% tags=["load"]
@@ -77,12 +79,9 @@ followups = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
 variants = [
     make_three_call_variant(
         name="v5_baseline",
-        narrative_prompt_text=narrative,
-        topic_card_prompt_text=topic_card,
-        followups_prompt_text=followups,
-        prompt_versions={"narrative": "v1", "topic_card": "v1", "followups": "v1"},
+        prompt_versions={"narrative": "v1", "topic_card": "topic_card_v1", "followups": "v1"},
         model="gpt-4o-mini",
-        api_key=os.environ["OPENAI_API_KEY"],
+        service_url=SERVICE_URL,
     ),
 ]
 

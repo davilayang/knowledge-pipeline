@@ -86,7 +86,7 @@ The same `content_id` lives on every chunk in Chroma (the runner sets it as meta
 |---|---|---|---|
 | `evals.core` | ✅ active | Pure-function substrate — `Variant` + `variant_identity` + schema-versioned fixtures + `RunRecord` persistence + injected-callable judges. Provider-agnostic. | (imported by harnesses) |
 | `evals.retrieval` | ✅ active | Recall@K / MRR@K / nDCG@K for `(embedding_model, dims, chunker_per_source)` — does the right document come back for a query? | `uv run eval-retrieval` |
-| `evals.extraction` | ✅ active | Three scored surfaces over `ThreeCallOpenAIExtractor`: **Topic Card** field scoring (variant comparison + per-content-type stratification, run via workbench notebooks / `run_benchmark` — no CLI), **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per content_type and per shape, mean-of-N runs), and **narrative fidelity** (`NarrativeFidelityScorer` — omission/corruption/invention vs gold threads; seed stage, no CLI yet). Injected callables. | `uv run eval-narrative-coverage` |
+| `evals.extraction` | ✅ active | Three scored surfaces over the fetcher service's `POST /v1/extract`: **Topic Card** field scoring (variant comparison + per-content-type stratification, run via workbench notebooks / `run_benchmark` — no CLI), **narrative coverage** (`NarrativeCoverageScorer` — does `narrative_md` cover the gold follow-up threads, `coverage@present` per content_type and per shape, mean-of-N runs), and **narrative fidelity** (`NarrativeFidelityScorer` — omission/corruption/invention vs gold threads; seed stage, no CLI yet). Injected callables. | `uv run eval-narrative-coverage` |
 | `evals.wiki` | ✅ active | Wiki page-quality judges — `FaithfulnessJudge` (claim grounding), `SpecificityJudge` (numeric/date/name/quote recall), `TaggingJudge` (reported/opinion tag correctness). Injected `chat_fn`; production wires `chat.py` builders over `gpt-4.1`. Offline confidence-lane admission gate (`gate.py`). | (imported by harnesses; no standalone CLI) |
 | `evals.wiki.claims` | ✅ active | Extract-claims producer eval — faithfulness (grounded_fraction per claim), tagging accuracy, and claim volume aggregated per content shape. TaggingJudge calibration against 60-claim human gold (`calibration.py`). | `uv run eval-extract-claims` |
 | `evals.workflows` | ⬜ pending (Step 5; Step 4 prereq) | Wiki synthesis quality via per-node `StageTrace`. Requires `wiki_synthesis` decomposed into node factories first (Step 4). | `uv run eval-workflows` |
@@ -166,9 +166,9 @@ Four composition patterns recur. Each names the load-bearing primitives + when t
 
 ### Pattern 4 — Migrating an implementation (golden regression)
 
-**Example:** `ThreeCallOpenAIExtractor` → `LangGraphExtractor`. Different implementation, **same Topic Card output expected**.
+**Example:** the in-process three-call extractor → the fetcher service's `POST /v1/extract`. Different implementation, **same Topic Card output expected**.
 
-- **Variants:** `Variant.config["extractor"]` flips between implementation classes. Provenance carries any new node prompts (`planner_v1`, `critic_v1`) distinctly.
+- **Variants:** `Variant.config["extractor"]` flips between implementations. Provenance carries any new node prompts (`planner_v1`, `critic_v1`) distinctly.
 - **Output schema:** **MUST stay identical on both variants.** Type-level encoding of the migration contract — if a reviewer bumps the candidate's `output_schema_version`, the contract has been declaratively violated.
 - **Headline output:** **`diff_runs` becomes a GATE, not a survey.** Pass the contract field set as `field_picker`; any diff is a regression to investigate.
 - **Cost lens:** Per-node `StageTrace` + `output_snapshot["cached_tokens"]` exposes prefix-cache regressions. LangGraph migrations risk breaking the OpenAI prefix cache if per-node system prompts differ from the current shared prompt prefix.
