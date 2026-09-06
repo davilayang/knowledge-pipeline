@@ -10,6 +10,7 @@ from pydantic import BaseModel
 from fetcher.endpoints.errors import problem_response
 from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extract.cache import cache_key, read as cache_read, write as cache_write
+from fetcher.extract.model import get_model
 from fetcher.extract.openai_lane import (
     MAX_TOKENS,
     TaskOutcome,
@@ -24,8 +25,9 @@ from fetcher.extract.tasks import TASKS, TaskSpec, execution_order
 
 router = APIRouter(tags=["Extract"])
 
-# The only lane implemented. Recorded on every call and folded into every cache
-# key, so adding a second provider cannot silently reuse this one's results.
+# The only lane implemented, and what `config/extraction.yaml` is checked
+# against at load. Recorded on every call and folded into every cache key, so
+# adding a second provider cannot silently reuse this one's results.
 _PROVIDER = "openai"
 
 
@@ -97,7 +99,11 @@ async def extract_prompts(request: Request) -> Any:
                 ),
             }
         )
-    return {"model": settings.extraction_model, "prompts": prompts}
+    configured = get_model()
+    return {
+        "model": configured.model if configured else None,
+        "prompts": prompts,
+    }
 
 
 @router.post(
@@ -173,13 +179,17 @@ async def extract(req: ExtractRequest, request: Request) -> Any:
                 retryable=False,
             )
 
-    model = req.model or settings.extraction_model
+    configured = get_model()
+    model = req.model or (configured.model if configured else "")
     if not model or not settings.openai_api_key:
         return problem_response(
             status=503,
             code="EXTRACTION_UNCONFIGURED",
             title="Extraction not configured",
-            detail="set OPENAI_API_KEY and EXTRACT_QUEUE_MODEL to serve /v1/extract",
+            detail=(
+                "/v1/extract needs config/extraction.yaml (the model) and "
+                "OPENAI_API_KEY (the credential)"
+            ),
             instance=str(request.url.path),
             retryable=False,
         )

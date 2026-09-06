@@ -9,6 +9,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from fetcher.app import create_app
+from fetcher.extract.model import ExtractionModel
 from fetcher.extract.tasks import TASKS
 
 
@@ -36,7 +37,12 @@ def _setup_envs(monkeypatch, tmp_db_path: str, prompts_root: Path) -> None:
     monkeypatch.setenv("FETCHER_LLAMA_PARSE_API_KEY", "x")
     monkeypatch.setenv("FETCHER_EXTRACTION_PROMPTS_ROOT", str(prompts_root))
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test")
-    monkeypatch.setenv("EXTRACT_QUEUE_MODEL", "gpt-5-mini")
+    # The model comes from config/extraction.yaml, read once at import, so it is
+    # patched on the loaded module rather than through the environment.
+    monkeypatch.setattr(
+        "fetcher.extract.model._MODEL",
+        ExtractionModel(model="gpt-5-mini", provider="openai"),
+    )
 
 
 def test_unknown_task_name_is_rejected_before_any_model_call(

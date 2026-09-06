@@ -21,6 +21,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   that did not, where the extractor it replaces failed the whole item on the
   first exception.
 
+- **The extraction model is declared in `services/fetcher/config/extraction.yaml`**,
+  alongside the structurer and whisper chains, rather than read from the
+  `EXTRACT_QUEUE_MODEL` environment variable. The model is part of what the
+  service is and should not differ between a laptop and production the way a
+  credential must; the API key still comes from the environment. Nothing reads
+  `EXTRACT_QUEUE_MODEL` any more — it can come out of `.env`.
+
 - **The fetch/extract pipeline now extracts over HTTP.** `extract_metadata` and
   `extract_reading_card` ask the fetcher service instead of running OpenAI
   in-process, and `ExtractorRegistry` is gone. What stays here is what is about
