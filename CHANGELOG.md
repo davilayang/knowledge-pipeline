@@ -55,6 +55,26 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.36.25] — 2026-09-06
+
+### Changed
+
+- **Cache hits no longer pay a redirect round trip to the origin.** URL
+  canonicalization now reads `url_aliases` through `canonicalize_cached`,
+  shared by `/v1/fetch`, `/v1/structure` and `/v1/canonicalize`. New
+  `canonicalize_ttl_days` (30d) keeps aliases shorter-lived than content's 365d.
+- **A failed redirect-follow is no longer cached as a resolved URL.**
+  `canonicalize()` echoed the input URL on `httpx.HTTPError`, indistinguishable
+  from a URL that redirects nowhere; unresolved results now reach neither
+  `url_aliases` nor the content cache key.
+- **The fetcher's tables say what they hold:** `cache` → `fetch_cache`,
+  `fetches` → `async_jobs`, plus a `job_type` column so any async endpoint can
+  share the job table. Requires the one-time
+  `scripts/migrations/2026-09-06_fetcher_table_renames.sh` against prod
+  `fetches.db`, fetcher stopped, before this release deploys.
+
+---
+
 ## [0.36.24] — 2026-09-04
 
 ### Added

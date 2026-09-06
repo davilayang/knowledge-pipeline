@@ -28,6 +28,10 @@ class CanonicalResult:
     canonical_url: str
     redirects_followed: list[str]
     params_stripped: list[str]
+    # False when the redirect-follow failed and `canonical_url` is just the
+    # input URL echoed back — indistinguishable from a URL that genuinely
+    # redirects nowhere, so callers must not persist it.
+    resolved: bool = True
 
 
 def _is_tracking_param(name: str) -> bool:
@@ -68,6 +72,7 @@ def _follow_redirects(url: str, *, timeout_s: float = 10.0) -> httpx.Response:
 
 def canonicalize(url: str, *, timeout_s: float = 10.0) -> CanonicalResult:
     """Return the canonical URL after following redirects and stripping trackers."""
+    resolved = True
     try:
         response = _follow_redirects(url, timeout_s=timeout_s)
         final_url = str(response.url)
@@ -77,6 +82,7 @@ def canonicalize(url: str, *, timeout_s: float = 10.0) -> CanonicalResult:
     except httpx.HTTPError:
         final_url = url
         redirects = []
+        resolved = False
 
     cleaned, stripped = _strip_tracking_params(final_url)
     return CanonicalResult(
@@ -84,4 +90,5 @@ def canonicalize(url: str, *, timeout_s: float = 10.0) -> CanonicalResult:
         canonical_url=cleaned,
         redirects_followed=redirects,
         params_stripped=stripped,
+        resolved=resolved,
     )

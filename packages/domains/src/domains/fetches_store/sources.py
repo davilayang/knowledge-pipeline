@@ -1,6 +1,9 @@
 """SQLite layer for the fetcher service
 
-Four tables: cache, extraction_cache, fetches, url_aliases.
+Four tables: fetch_cache (URL -> markdown), extraction_cache (one task's
+extraction payload, keyed by everything that shaped it), async_jobs
+(submit-and-poll job records for any endpoint, discriminated by job_type),
+url_aliases (input URL -> canonical URL after redirects).
 """
 
 import hashlib
@@ -11,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS cache (
+CREATE TABLE IF NOT EXISTS fetch_cache (
     url_hash       TEXT PRIMARY KEY,
     url            TEXT NOT NULL,
     canonical_url  TEXT NOT NULL,
@@ -26,10 +29,11 @@ CREATE TABLE IF NOT EXISTS cache (
     expires_at     TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS cache_expires_at ON cache(expires_at);
+CREATE INDEX IF NOT EXISTS fetch_cache_expires_at ON fetch_cache(expires_at);
 
-CREATE TABLE IF NOT EXISTS fetches (
+CREATE TABLE IF NOT EXISTS async_jobs (
     job_id         TEXT PRIMARY KEY,
+    job_type       TEXT NOT NULL,
     status         TEXT NOT NULL,
     request_json   TEXT NOT NULL,
     batch_id       TEXT,
@@ -40,9 +44,9 @@ CREATE TABLE IF NOT EXISTS fetches (
     expires_at     TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS fetches_status ON fetches(status);
-CREATE INDEX IF NOT EXISTS fetches_batch_id ON fetches(batch_id);
-CREATE INDEX IF NOT EXISTS fetches_expires_at ON fetches(expires_at);
+CREATE INDEX IF NOT EXISTS async_jobs_status ON async_jobs(status);
+CREATE INDEX IF NOT EXISTS async_jobs_batch_id ON async_jobs(batch_id);
+CREATE INDEX IF NOT EXISTS async_jobs_expires_at ON async_jobs(expires_at);
 
 CREATE TABLE IF NOT EXISTS url_aliases (
     input_url_hash    TEXT PRIMARY KEY,
@@ -56,10 +60,10 @@ CREATE TABLE IF NOT EXISTS url_aliases (
 
 CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
 
--- Extraction results get their own table rather than a row in `cache`: one
--- content item yields several task payloads, and each would need a synthetic
--- "canonical_url" with its json in a column called `markdown`, leaving `etag`,
--- `tier_used`, `content_chars` and `tier_log_json` meaningless on every row.
+-- Extraction results get their own table rather than a row in `fetch_cache`:
+-- one content item yields several task payloads, and each would need a
+-- synthetic "canonical_url" with its json in a column called `markdown`,
+-- leaving `etag`, `tier_used`, `content_chars` and `tier_log_json` meaningless.
 --
 -- `_cache`, not `extractions`: rows expire and are deleted on read, and any one
 -- of them can be rebuilt by asking the model again. The durable record of what
@@ -120,18 +124,22 @@ def create_schema(*, db_path: Path) -> None:
 
 
 def mark_orphans_failed(*, db_path: Path, error_json: str) -> int:
-    """Sweep pending/running fetches → failed.
+    """Sweep pending/running jobs of every job_type → failed.
 
     Called at service boot: --workers=1 means any in-flight row at boot
     is orphaned (the worker process that owned its task_handles entry is gone).
     Returns rows affected.
+
+    Sweeping by status alone is only correct while every job_type runs inside
+    that single uvicorn worker. A job_type dispatched out-of-process, to a
+    thread pool, or onto a queue outlives a fetcher restart, and this would
+    wrongly fail it.
     """
 
-    # Mark pending fetch jobs as failed
     with _connect(db_path) as conn:
         cur = conn.execute(
             """
-            UPDATE fetches
+            UPDATE async_jobs
                 SET status = 'failed',
                     error_json = ?,
                     updated_at = ?
@@ -154,7 +162,7 @@ def cache_lookup(*, db_path: Path, canonical_url: str) -> dict[str, Any] | None:
             SELECT url_hash, url, canonical_url, source_type, markdown, etag,
                    tier_used, content_chars, metadata_json, tier_log_json,
                    fetched_at, expires_at
-              FROM cache
+              FROM fetch_cache
              WHERE url_hash = ?
             """,
             (key,),
@@ -162,7 +170,7 @@ def cache_lookup(*, db_path: Path, canonical_url: str) -> dict[str, Any] | None:
         if row is None:
             return None
         if row[11] < _now_iso():
-            conn.execute("DELETE FROM cache WHERE url_hash = ?", (key,))
+            conn.execute("DELETE FROM fetch_cache WHERE url_hash = ?", (key,))
             return None
         return {
             "url_hash": row[0],
@@ -196,7 +204,7 @@ def cache_upsert(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO cache (
+            INSERT INTO fetch_cache (
                 url_hash, url, canonical_url, source_type, markdown, etag,
                 tier_used, content_chars, metadata_json, tier_log_json,
                 fetched_at, expires_at
@@ -301,10 +309,11 @@ def insert_job(
     db_path: Path,
     job_id: str,
     batch_id: str,
+    job_type: str,
     request_body: dict[str, Any],
     expires_in_hours: int = 24,
 ) -> str:
-    """Insert a new pending fetch job. Returns `expires_at` ISO string."""
+    """Insert a new pending job of `job_type`. Returns `expires_at` ISO string."""
     now = _now_iso()
     expires_at = (
         (datetime.now(UTC) + timedelta(hours=expires_in_hours))
@@ -314,12 +323,13 @@ def insert_job(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO fetches (
-                job_id, status, request_json, batch_id, created_at, updated_at, expires_at
+            INSERT INTO async_jobs (
+                job_id, job_type, status, request_json, batch_id,
+                created_at, updated_at, expires_at
             )
-            VALUES (?, 'pending', ?, ?, ?, ?, ?)
+            VALUES (?, ?, 'pending', ?, ?, ?, ?, ?)
             """,
-            (job_id, json.dumps(request_body), batch_id, now, now, expires_at),
+            (job_id, job_type, json.dumps(request_body), batch_id, now, now, expires_at),
         )
     return expires_at
 
@@ -336,7 +346,7 @@ def update_job(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            UPDATE fetches
+            UPDATE async_jobs
                SET status = ?, result_json = ?, error_json = ?, updated_at = ?
              WHERE job_id = ?
             """,
@@ -351,13 +361,13 @@ def update_job(
 
 
 def get_job(*, db_path: Path, job_id: str) -> dict[str, Any] | None:
-    """Read a fetches row for the GET handler. Returns None if not found."""
+    """Read an async_jobs row for the GET handler. Returns None if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
             """
-            SELECT job_id, status, created_at, updated_at, expires_at,
+            SELECT job_id, job_type, status, created_at, updated_at, expires_at,
                    result_json, error_json
-              FROM fetches
+              FROM async_jobs
              WHERE job_id = ?
             """,
             (job_id,),
@@ -366,15 +376,16 @@ def get_job(*, db_path: Path, job_id: str) -> dict[str, Any] | None:
         return None
     out: dict[str, Any] = {
         "job_id": row[0],
-        "status": row[1],
-        "created_at": row[2],
-        "updated_at": row[3],
-        "expires_at": row[4],
+        "job_type": row[1],
+        "status": row[2],
+        "created_at": row[3],
+        "updated_at": row[4],
+        "expires_at": row[5],
     }
-    if row[5]:
-        out["result"] = json.loads(row[5])
     if row[6]:
-        out["error"] = json.loads(row[6])
+        out["result"] = json.loads(row[6])
+    if row[7]:
+        out["error"] = json.loads(row[7])
     return out
 
 
@@ -382,7 +393,7 @@ def get_job_status(*, db_path: Path, job_id: str) -> str | None:
     """Cheap status-only read for DELETE precheck. Returns None if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
-            "SELECT status FROM fetches WHERE job_id = ?",
+            "SELECT status FROM async_jobs WHERE job_id = ?",
             (job_id,),
         ).fetchone()
     return row[0] if row else None

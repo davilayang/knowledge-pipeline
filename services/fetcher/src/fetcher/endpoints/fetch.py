@@ -75,6 +75,7 @@ async def fetch(
         db_path=Path(settings.db_path),
         ctx=request.app.state.fetch_context,
         ttl_days=settings.cache_ttl_days,
+        alias_ttl_days=settings.canonicalize_ttl_days,
     )
 
     if if_none_match and if_none_match.strip('"') == outcome.etag:

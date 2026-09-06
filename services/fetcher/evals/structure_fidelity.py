@@ -78,7 +78,7 @@ def _load_transcript_body(fetches_db: Path | None, fixture: dict) -> str:
         )
     with closing(sqlite3.connect(f"file:{fetches_db}?mode=ro", uri=True)) as conn:
         row = conn.execute(
-            "SELECT metadata_json FROM cache WHERE url_hash = ?", (fixture["url_hash"],)
+            "SELECT metadata_json FROM fetch_cache WHERE url_hash = ?", (fixture["url_hash"],)
         ).fetchone()
     if row is None:
         raise SystemExit(

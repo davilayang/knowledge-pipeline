@@ -201,7 +201,7 @@ def test_structure_and_structure_transcript_use_separate_cache_namespaces(
     )()
 
     with (
-        patch("fetcher.endpoints.structure.canonicalize") as can_mock,
+        patch("fetcher.cache.canonicalize") as can_mock,
         patch("fetcher.endpoints.structure.run_cascade", new_callable=AsyncMock) as cascade,
         patch(
             "fetcher.endpoints.structure_transcript.structure_transcript",
