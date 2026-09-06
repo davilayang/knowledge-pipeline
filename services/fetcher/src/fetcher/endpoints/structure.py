@@ -7,8 +7,7 @@ from fastapi import APIRouter, Request
 from fastapi.responses import JSONResponse
 from pydantic import BaseModel
 
-from fetcher.cache import lookup as cache_lookup, upsert as cache_upsert
-from fetcher.canonicalize import canonicalize
+from fetcher.cache import canonicalize_cached, lookup as cache_lookup, upsert as cache_upsert
 from fetcher.endpoints.errors import problem_response
 from fetcher.endpoints.schemas import ProblemResponse
 from fetcher.extractors import structure as _structure_extractor
@@ -108,12 +107,16 @@ async def structure(req: StructureRequest, request: Request) -> Any:
             retryable=False,
         )
 
-    canonical_url = ""
-    if req.source_url:
-        canonical_url = canonicalize(req.source_url).canonical_url
-
     settings = request.app.state.settings
     db_path = Path(settings.db_path)
+
+    canonical_url = ""
+    if req.source_url:
+        canonical_url = canonicalize_cached(
+            req.source_url,
+            db_path=db_path,
+            ttl_days=settings.canonicalize_ttl_days,
+        )[0].canonical_url
     cache_key = _structurer_cache_key(req)
 
     cached = cache_lookup(db_path=db_path, canonical_url=cache_key)

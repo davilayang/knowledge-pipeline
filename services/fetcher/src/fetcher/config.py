@@ -40,6 +40,13 @@ class Settings(BaseSettings):
         default=365,
         description="Default number of days before cached fetcher rows expire.",
     )
+    canonicalize_ttl_days: int = Field(
+        default=30,
+        description="Days before a cached URL alias expires. Shorter than "
+        "cache_ttl_days because redirect targets — shortlinks, tracking and "
+        "affiliate hops — are re-pointed far more often than article text is "
+        "rewritten.",
+    )
     batch_max: int = Field(
         default=100,
         description="Maximum number of URLs accepted in a batch fetch request.",
