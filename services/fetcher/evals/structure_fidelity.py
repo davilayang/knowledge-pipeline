@@ -64,7 +64,7 @@ def _load_article_body(queue_db: Path, fixture: dict) -> str:
 
 
 def _load_transcript_body(fetches_db: Path | None, fixture: dict) -> str:
-    """Rebuild a transcript structurer input from the caption chunks in fetches.db.
+    """Rebuild a transcript structurer input from the caption chunks in fetch.db.
 
     The handler feeds `chunks_to_markdown(chunks)` to the structurer and stores
     only the result, so the input is reconstructed the same way here rather
@@ -78,7 +78,7 @@ def _load_transcript_body(fetches_db: Path | None, fixture: dict) -> str:
         )
     with closing(sqlite3.connect(f"file:{fetches_db}?mode=ro", uri=True)) as conn:
         row = conn.execute(
-            "SELECT metadata_json FROM cache WHERE url_hash = ?", (fixture["url_hash"],)
+            "SELECT metadata_json FROM fetch_cache WHERE url_hash = ?", (fixture["url_hash"],)
         ).fetchone()
     if row is None:
         raise SystemExit(
@@ -274,7 +274,7 @@ def main() -> None:
         type=Path,
         default=None,
         help=(
-            "Path to a fetches.db, needed only for transcript-lane fixtures, whose "
+            "Path to a fetch.db, needed only for transcript-lane fixtures, whose "
             "input is rebuilt from the caption chunks in the cache row."
         ),
     )

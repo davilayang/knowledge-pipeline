@@ -333,7 +333,7 @@ def test_structure_endpoint_does_not_collide_with_fetch_cache(
             # /v1/fetch hit for this URL).
             from pathlib import Path
 
-            from domains.fetches_store.sources import create_schema
+            from domains.fetch_store.sources import create_schema
             from fetcher.cache import upsert as cache_upsert
 
             db_path = Path(tmp_db_path)

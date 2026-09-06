@@ -1,6 +1,6 @@
-"""Service-side cache adapter — typed wrapper over fetches_store.cache_* ops.
+"""Service-side cache adapter — typed wrapper over fetch_store.cache_* ops.
 
-The SQL + connection management lives in domains.fetches_store.sources.
+The SQL + connection management lives in domains.fetch_store.sources.
 This module exists to adapt between the typed service-layer view
 (CacheRow + TierLogEntry) and the JSON-shaped persistence view.
 """
@@ -10,7 +10,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
-from domains.fetches_store.sources import (
+from domains.fetch_store.sources import (
     _cache_key as cache_key,
     _etag as compute_etag,
     cache_lookup as _store_lookup,

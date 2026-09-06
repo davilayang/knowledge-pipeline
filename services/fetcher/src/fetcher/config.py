@@ -33,7 +33,7 @@ class Settings(BaseSettings):
     )
 
     db_path: str = Field(
-        default="/app/data/fetches.db",
+        default="/app/data/fetch.db",
         description="SQLite database path for fetcher cache, fetch jobs, and URL aliases.",
     )
     cache_ttl_days: int = Field(

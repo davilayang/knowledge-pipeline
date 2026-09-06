@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from domains.fetches_store.sources import _connect, create_schema
+from domains.fetch_store.sources import _connect, create_schema
 from fetcher.cache import cache_key, compute_etag, lookup, upsert
 
 
@@ -140,4 +140,4 @@ def test_expired_row_is_physically_deleted_on_lookup(db_path: Path) -> None:
     lookup(db_path=db_path, canonical_url="https://x")
 
     with _connect(db_path) as conn:
-        assert conn.execute("SELECT COUNT(*) FROM cache").fetchone()[0] == 0
+        assert conn.execute("SELECT COUNT(*) FROM fetch_cache").fetchone()[0] == 0

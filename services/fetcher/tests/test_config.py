@@ -18,7 +18,7 @@ def test_settings_loads_defaults(monkeypatch: pytest.MonkeyPatch) -> None:
 
     settings = Settings()
 
-    assert settings.db_path == "/app/data/fetches.db"
+    assert settings.db_path == "/app/data/fetch.db"
     assert settings.cache_ttl_days == 365
 
 

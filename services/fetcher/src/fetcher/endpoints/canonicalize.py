@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 from typing import Any
 
-from domains.fetches_store.sources import canonicalize_lookup, canonicalize_upsert
+from domains.fetch_store.sources import canonicalize_lookup, canonicalize_upsert
 from fastapi import APIRouter, Query, Request
 
 from fetcher.canonicalize import canonicalize

@@ -25,7 +25,7 @@ reads the body from the `--queue-db` given at run time.
 | `source_chars` | both | Length of the body when pinned. Display only. |
 | `source_sha256` | both | SHA-256 of the body when pinned. **Verified on every load.** |
 | `notion_page_id` | article | Primary key into `queue_items`; the row whose `raw_content_override` is the body. Needs `--queue-db`. |
-| `url_hash` | transcript | Primary key into `fetches.db`'s `cache`; the body is rebuilt from that row's caption chunks. Needs `--fetches-db`. |
+| `url_hash` | transcript | Primary key into `fetch.db`'s `cache`; the body is rebuilt from that row's caption chunks. Needs `--fetches-db`. |
 | `recall_floor` | transcript | Minimum acceptable trigram recall. Below it, the run reports `!! BELOW FLOOR`. |
 | `known_failing` | any | Optional note shown beside a red verdict, marking a fixture that reproduces an open bug rather than a regression. Remove it in the commit that makes the fixture pass. |
 

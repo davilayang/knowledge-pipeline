@@ -1,6 +1,8 @@
 """SQLite layer for the fetcher service
 
-Three tables: cache, fetches, url_aliases.
+Three tables: fetch_cache (URL -> markdown), async_jobs (submit-and-poll job
+records for any endpoint, discriminated by job_type), url_aliases (input URL
+-> canonical URL after redirects).
 """
 
 import hashlib
@@ -11,7 +13,7 @@ from pathlib import Path
 from typing import Any
 
 _SCHEMA_SQL = """
-CREATE TABLE IF NOT EXISTS cache (
+CREATE TABLE IF NOT EXISTS fetch_cache (
     url_hash       TEXT PRIMARY KEY,
     url            TEXT NOT NULL,
     canonical_url  TEXT NOT NULL,
@@ -26,9 +28,9 @@ CREATE TABLE IF NOT EXISTS cache (
     expires_at     TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS cache_expires_at ON cache(expires_at);
+CREATE INDEX IF NOT EXISTS fetch_cache_expires_at ON fetch_cache(expires_at);
 
-CREATE TABLE IF NOT EXISTS fetches (
+CREATE TABLE IF NOT EXISTS async_jobs (
     job_id         TEXT PRIMARY KEY,
     status         TEXT NOT NULL,
     request_json   TEXT NOT NULL,
@@ -40,9 +42,9 @@ CREATE TABLE IF NOT EXISTS fetches (
     expires_at     TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS fetches_status ON fetches(status);
-CREATE INDEX IF NOT EXISTS fetches_batch_id ON fetches(batch_id);
-CREATE INDEX IF NOT EXISTS fetches_expires_at ON fetches(expires_at);
+CREATE INDEX IF NOT EXISTS async_jobs_status ON async_jobs(status);
+CREATE INDEX IF NOT EXISTS async_jobs_batch_id ON async_jobs(batch_id);
+CREATE INDEX IF NOT EXISTS async_jobs_expires_at ON async_jobs(expires_at);
 
 CREATE TABLE IF NOT EXISTS url_aliases (
     input_url_hash    TEXT PRIMARY KEY,
@@ -110,7 +112,7 @@ def mark_orphans_failed(*, db_path: Path, error_json: str) -> int:
     with _connect(db_path) as conn:
         cur = conn.execute(
             """
-            UPDATE fetches
+            UPDATE async_jobs
                 SET status = 'failed',
                     error_json = ?,
                     updated_at = ?
@@ -133,7 +135,7 @@ def cache_lookup(*, db_path: Path, canonical_url: str) -> dict[str, Any] | None:
             SELECT url_hash, url, canonical_url, source_type, markdown, etag,
                    tier_used, content_chars, metadata_json, tier_log_json,
                    fetched_at, expires_at
-              FROM cache
+              FROM fetch_cache
              WHERE url_hash = ?
             """,
             (key,),
@@ -141,7 +143,7 @@ def cache_lookup(*, db_path: Path, canonical_url: str) -> dict[str, Any] | None:
         if row is None:
             return None
         if row[11] < _now_iso():
-            conn.execute("DELETE FROM cache WHERE url_hash = ?", (key,))
+            conn.execute("DELETE FROM fetch_cache WHERE url_hash = ?", (key,))
             return None
         return {
             "url_hash": row[0],
@@ -175,7 +177,7 @@ def cache_upsert(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO cache (
+            INSERT INTO fetch_cache (
                 url_hash, url, canonical_url, source_type, markdown, etag,
                 tier_used, content_chars, metadata_json, tier_log_json,
                 fetched_at, expires_at
@@ -232,7 +234,7 @@ def insert_job(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            INSERT INTO fetches (
+            INSERT INTO async_jobs (
                 job_id, status, request_json, batch_id, created_at, updated_at, expires_at
             )
             VALUES (?, 'pending', ?, ?, ?, ?, ?)
@@ -254,7 +256,7 @@ def update_job(
     with _connect(db_path) as conn:
         conn.execute(
             """
-            UPDATE fetches
+            UPDATE async_jobs
                SET status = ?, result_json = ?, error_json = ?, updated_at = ?
              WHERE job_id = ?
             """,
@@ -275,7 +277,7 @@ def get_job(*, db_path: Path, job_id: str) -> dict[str, Any] | None:
             """
             SELECT job_id, status, created_at, updated_at, expires_at,
                    result_json, error_json
-              FROM fetches
+              FROM async_jobs
              WHERE job_id = ?
             """,
             (job_id,),
@@ -300,7 +302,7 @@ def get_job_status(*, db_path: Path, job_id: str) -> str | None:
     """Cheap status-only read for DELETE precheck. Returns None if not found."""
     with _connect(db_path) as conn:
         row = conn.execute(
-            "SELECT status FROM fetches WHERE job_id = ?",
+            "SELECT status FROM async_jobs WHERE job_id = ?",
             (job_id,),
         ).fetchone()
     return row[0] if row else None

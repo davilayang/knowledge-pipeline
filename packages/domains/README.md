@@ -50,7 +50,7 @@ src/domains/
 ├── queue_store/        # queue.db — Notion Queue pipeline SQLite store
 │   └── sources.py      # queue_items + extraction_calls tables; upsert/read helpers
 │                       # consumed by triage + fetch_extract_queue pipelines
-└── fetches_store/      # fetches.db — fetcher service SQLite store
+└── fetch_store/      # fetch.db — fetcher service SQLite store
     └── sources.py      # cache + fetches + url_aliases tables; upsert/read helpers
                         # consumed by the fetcher service
 ```
