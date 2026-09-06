@@ -269,30 +269,6 @@ def _make_call(call_kind: str, output: str, tokens_in: int = 100, tokens_out: in
     )
 
 
-def _mock_extractor(title: str = "Test Title", followups_n: int = 4) -> MagicMock:
-    """Mock of `ExtractorRegistry` (the resource the asset receives). `.build()`
-    returns a mock extractor instance with the actual extract result + the
-    three properties the asset reads (bundle_label / bundle_sha256 / model).
-    Mirrors the build-once-per-run pattern fixed in this PR's review pass."""
-    payload = _make_payload(title=title, followups_n=followups_n)
-    calls = [
-        _make_call("narrative", payload.narrative_md, 200, 100),
-        _make_call("topic_card", payload.topic_card.model_dump_json(), 250, 80),
-        _make_call("followups", payload.followups.model_dump_json(), 150, 60),
-    ]
-    ex_instance = MagicMock()
-    ex_instance.model = "gpt-4o-mini"
-    ex_instance.bundle_label = "3call_v2_shape_routed"
-    # bundle_sha256 is now a method `(content_shape) -> str`. Returning a
-    # constant 64-char sha matches what the asset writes to queue_items.
-    ex_instance.bundle_sha256 = MagicMock(return_value="b" * 64)
-    ex_instance.extract.return_value = (payload, calls)
-
-    registry = MagicMock()
-    registry.build.return_value = ex_instance
-    return registry
-
-
 # -------- fetch_content --------
 
 

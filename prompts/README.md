@@ -7,7 +7,7 @@ Markdown prompt bodies consumed by the workflow layer. Treated as **content arte
 ````
 prompts/
   eval/           # consumed by evals.wiki (FaithfulnessJudge, SpecificityJudge, TaggingJudge)
-  extraction/     # consumed by workflows.extraction (ThreeCallOpenAIExtractor)
+  extraction/     # consumed by services/fetcher (POST /v1/extract)
   triage/         # consumed by orchestrators.defs.triage_knowledge_queue
   wiki/           # consumed by workflows.wiki_synthesis (extract_claims.py, extract_entities.py, entity_assignment.py / orchestrators.defs.fetch_extract_queue)
   # future: knowledge_graph/, etc.
@@ -15,15 +15,9 @@ prompts/
 
 ## Resolution
 
-Consumers resolve the prompts root via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory. The orchestrator's `ExtractorRegistry` adapter (`packages/orchestrators/.../fetch_extract_queue/resources.py`) defines:
+The `wiki/`, `triage/` and `eval/` subdirs resolve via the `KP_PROMPTS_ROOT` env var, defaulting to the repo-root `prompts/` directory (used by evals + tests to point at alternate trees, not by deployments).
 
-```python
-_DEFAULT_PROMPTS_ROOT = Path(__file__).resolve().parents[6] / "prompts"
-_PROMPTS_ROOT = Path(os.environ.get("KP_PROMPTS_ROOT", _DEFAULT_PROMPTS_ROOT))
-_PROMPTS_DIR = _PROMPTS_ROOT / "extraction"
-```
-
-`parents[6]` anchors at the repo root from `resources.py`'s location; `KP_PROMPTS_ROOT` is used by evals + tests to point at alternate trees, not by deployments.
+`extraction/` is the exception: it is read by the standalone `services/fetcher` process, not by anything in this uv workspace. The fetcher resolves it via its own `FETCHER_EXTRACTION_PROMPTS_ROOT` setting (default `prompts`, relative to the service's working directory — where the Docker image copies the tree), deliberately not aliased to `KP_PROMPTS_ROOT`: compose passes the shared `.env` into the fetcher container, so a laptop path set there for an eval run would follow into the image and point at nothing.
 
 ## Version-naming convention
 

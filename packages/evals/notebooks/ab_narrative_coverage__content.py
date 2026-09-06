@@ -40,7 +40,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -73,10 +72,9 @@ fixture = ExtractionFixture(
 print(f"fixture {fixture.fixture_id} ({fixture.content_shape}) — {len(fixture.gold_threads)} gold threads")
 
 # %% tags=["adapter"]
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
 variant = make_three_call_variant(
     name="candidate",
-    prompt_versions={"narrative": NARRATIVE.replace(".md", ""), "topic_card": "topic_card_v1", "followups": "v1"},
+    prompt_versions={"narrative": NARRATIVE.replace(".md", ""), "topic_card": "topic_card_v1", "followups": "followups_v1"},
     model=MODEL,
     service_url=SERVICE_URL,
 )

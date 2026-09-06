@@ -96,8 +96,9 @@ dg launch --job fetch_extract_queue \
           --partition-range <first_id>...<last_id>
 
 # Re-extract a page with a bumped prompt label (overwrites prior extraction).
-# Bump the relevant PROMPT_LABEL_* constant in def_config.py AND add the new
-# prompts/extraction/<label>.md file in the same commit, then re-launch:
+# Bump the relevant TaskSpec.default_prompt_label in the fetcher service's
+# extract/tasks.py AND add the new prompts/extraction/<label>.md file in the
+# same commit, then re-launch:
 dg launch --job fetch_extract_queue --partition <notion_page_id>
 
 # Recovery — stuck in Fetching:

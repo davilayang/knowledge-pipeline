@@ -23,7 +23,7 @@ The `config` cell additionally carries the `parameters` tag (papermill conventio
 ## Hard rules
 
 1. **One `RESULTS` dict.** Declared in `config`, mutated by `fire`/`score`, read by `render`. No second mutable state pool.
-2. **No hand-rolled extraction/synthesis.** Always route through `workflows.extraction.*` / `workflows.wiki_synthesis.*` / `retrievers.*`. Hand-rolled equivalents drift silently from production.
+2. **No hand-rolled extraction/synthesis.** Always route through the fetcher service's `/v1/extract` (via `evals.extraction.make_three_call_variant`) / `workflows.wiki_synthesis.*` / `retrievers.*`. Hand-rolled equivalents drift silently from production.
 3. **Cache key.** `f"nb::{NOTEBOOK_STEM}::{variant}::{content_id}"` on every LLM call. Stable across cell re-runs.
 4. **Outputs cleared before commit.** `Edit → Clear All Outputs`, save, commit. The jupytext `.py` carries source-of-truth for PR review.
 5. **Promote shared helpers when ≥3 notebooks duplicate.** Earlier than that, copy. Don't preemptively abstract.

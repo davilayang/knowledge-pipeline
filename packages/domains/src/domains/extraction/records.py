@@ -2,8 +2,9 @@
 
 Schemas in `schemas.py` are the cross-repo contract (mirrored byte-for-byte
 in newsletter-assistant). The records here are kp-internal — NA never sees
-them; they hop from `ThreeCallOpenAIExtractor.extract()` into
-`queue_store.sources.record_extraction_calls()` and die there.
+them; they are built from the extraction service's `calls[]` response by the
+orchestrator, hop into `queue_store.sources.record_extraction_calls()`, and die
+there.
 
 Plain `@dataclass` instead of pydantic — these are write-only carriers, no
 validation needed (the schema-validated content is in `output` already).
@@ -46,6 +47,8 @@ class ExtractionCallRecord:
     to JSON on write; None for the v1 three-call shape."""
 
     prompt_set_shape: str | None = None
-    """Which content_shape's PromptBundle the extractor selected for this
-    call. NULL on rows written before the column existed; downstream eval
-    queries should coalesce to `"unknown"` for grouping."""
+    """Which content_shape's prompt set produced this call. The extraction
+    service registers one, so every row reads `"unknown"` — the generic set —
+    until a second is registered. NULL on rows written before the column
+    existed; downstream eval queries should coalesce to `"unknown"` for
+    grouping."""

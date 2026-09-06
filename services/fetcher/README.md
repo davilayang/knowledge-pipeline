@@ -1,7 +1,8 @@
 # Fetcher service
 
-URL -> markdown for the Knowledge OS project. Single source of truth for content fetching across
-the KOS services.
+URL -> markdown, plus LLM extraction over an already-fetched body, for the Knowledge OS project.
+Single source of truth for content fetching and for extraction across the KOS services — called
+by both this repo's Dagster pipeline and the sibling `newsletter-assistant` repo.
 
 ---
 
@@ -34,6 +35,8 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
 - **`POST /v1/structure`** — content-keyed counterpart to `/v1/fetch` for user-pasted bodies. Two-stage cascade (trafilatura → OpenAI/Ollama Cloud chain) returns the same `FetchResult` wire shape; cascade exhaustion surfaces as `application/problem+json` (502 transient, 503 unconfigured). Cloud chain config: `config/structurer.yaml`; prompt `prompts/structure_v2.md`, selected server-side by `FETCHER_STRUCTURER_PROMPT_PATH` (a service change, not a client header) — superseded versions stay on disk as eval baselines. Response metadata carries no prompt identifier, so a stored row doesn't record which prompt produced it.
 - **Structurer fidelity eval** (`evals/`) — scores how much of a pasted body survives `/v1/structure` and A/Bs two prompts. Dev-only; not in the image.
 - **`GET /v1/canonicalize`** — exposes URL normalization with cached results in `url_aliases`.
+- **`POST /v1/extract`** — structured LLM extraction over an already-fetched body. Takes `content` + `content_type` plus a list of tasks from the closed set `metadata`, `narrative`, `topic_card`, `followups`; returns each task's typed payload. Tasks always run in one fixed, service-chosen order (`metadata` first) because they share a single OpenAI prompt-cache prefix over the article — a caller cannot reorder them. A task that fails does not fail the whole request: the response is still 200, carrying whatever tasks succeeded plus a per-task entry in `errors[]`. Model: `config/extraction.yaml` (single backend, no fallback chain — unlike `config/structurer.yaml` / `config/whisper.yaml`), env override `FETCHER_EXTRACTION_CONFIG_PATH`. Prompts: `prompts/extraction/` under `extraction_prompts_root` (env `FETCHER_EXTRACTION_PROMPTS_ROOT`, default `prompts`); the image copies the repo-root `prompts/extraction/` into `/app/prompts/extraction/`. Route: `src/fetcher/endpoints/extract.py`; task/model/prompt/cache logic: `src/fetcher/extract/`.
+- **`GET /v1/extract/prompts`** — reports the configured model and each task's active prompt label + staleness sha, without running anything, so a caller can decide whether a stored extraction is still current before paying for a new one.
 - **Handlers:**
   - `arxiv` — pymupdf (50MB cap) → LlamaParse agentic_plus (strict paid).
   - `youtube` — transcript-api with oEmbed metadata header.
@@ -44,7 +47,7 @@ CMD ["uvicorn", "fetcher.app:app", "--workers", "1", "--host", "0.0.0.0", "--por
   - `file_audio` — Whisper transcription for audio/video-file URLs (mp3/m4a/mp4/… — suffix set shared via `domains.AUDIO_SUFFIXES`).
   - `article` — Jina → curl_cffi+trafilatura → Tavily Extract (paid). The catch-all.
 - **Preference-ordered tier cascade** per handler: walk tiers in each handler's declared order (free-first for most; a quality-first handler like `arxiv` may list its paid tier first), stopping at the first to clear the quality floor. Paid tiers are gated on `allow_paid=true` wherever they sit in the order.
-- **SQLite cache** with three tables: `cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
+- **SQLite cache** with four tables: `cache`, `extraction_cache`, `fetches`, `url_aliases` — owned by `domains.fetches_store`.
 - **Container** in this repo's docker-compose stack, attached to `dagster_network` and `kos-network` with the alias `kp-fetcher`.
 
 ## Structurer fidelity eval

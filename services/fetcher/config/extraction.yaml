@@ -14,5 +14,10 @@
 #
 # The API key comes from the environment, not from here — same split as the
 # sibling chain configs.
+#
+# Not a newer gpt-5.x: those do not hold the prompt cache well, and the cache is
+# what makes several tasks over one article affordable. A model swap here is a
+# measurement, not an upgrade — check `cached_tokens` on the resulting
+# extraction_calls rows before keeping it.
 model: gpt-5-mini
 provider: openai

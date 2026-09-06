@@ -8,27 +8,28 @@
 > It carries the section shape, the completeness guarantees, and both sides'
 > obligations.
 
-Prompt assets consumed by `workflows.extraction`. Each file has its own header explaining what it does and how it's called — read those for the per-prompt contract. This README only documents which file plays which role.
+Prompt assets consumed by the standalone `services/fetcher` process, behind `POST /v1/extract`. Each file has its own header explaining what it does and how it's called — read those for the per-prompt contract. This README only documents which file plays which role.
 
-**Header/body convention.** Each prompt file opens with a design-notes / change-history header, then a `---` horizontal rule, then the model-facing body. Everything above the first `---` is stripped at load by `domains.extraction.strip_design_notes` — applied at every read site (production `ExtractorRegistry` + the eval harness/notebooks) so what ships equals what's evaluated. Record what changed each iteration (and why) in that header; it never reaches the model. A file with no `---` is treated as body-only.
+**Header/body convention.** Each prompt file opens with a design-notes / change-history header, then a `---` horizontal rule, then the model-facing body. Everything above the first `---` is stripped at load by `domains.extraction.prompts.strip_design_notes` — applied at every read site (the fetcher service's `load_prompt` + the eval harness/notebooks) so what ships equals what's evaluated. Record what changed each iteration (and why) in that header; it never reaches the model. A file with no `---` is treated as body-only.
 
-## Active in production (loaded by `ExtractorRegistry`)
+## Active in production (loaded by the fetcher's `/v1/extract`)
 
-`ThreeCallOpenAIExtractor` (v2) is the only production strategy. Three calls per item, one prompt each:
+Four tasks, one prompt each, declared as `TaskSpec` entries in the fetcher's `extract/tasks.py`:
 
-| Label (`def_config.py`) | File | Call |
+| Task | Default prompt label | File |
 |---|---|---|
-| `PROMPT_LABEL_NARRATIVE = "narrative_v3"` | `narrative_v3.md` | 1 — structured `Narrative`, JSON mode (writes the shared article prefix the other two read) |
-| `PROMPT_LABEL_TOPIC_CARD = "topic_card_v1"` | `topic_card_v1.md` | 2 — structured `TopicCard`, JSON mode |
-| `PROMPT_LABEL_FOLLOWUPS = "followups_v1"` | `followups_v1.md` | 3 — structured `Followups`, JSON mode |
+| `metadata` | `metadata_v1` | `metadata_v1.md` — structured `MetadataPayload`, JSON mode |
+| `narrative` | `narrative_v3` | `narrative_v3.md` — structured `Narrative`, JSON mode (writes the shared article prefix the rest read) |
+| `topic_card` | `topic_card_v1` | `topic_card_v1.md` — structured `TopicCard`, JSON mode |
+| `followups` | `followups_v1` | `followups_v1.md` — structured `Followups`, JSON mode |
 
-Labels map to filenames as `<label>.md`. To bump a prompt, edit the file AND the label constant in the same commit.
+Labels map to filenames as `<label>.md`. `tasks.py`'s declaration order (`metadata` first) is the execution order the service runs requested tasks in — knowledge-pipeline gates on `metadata` before spending the other three. To bump a prompt, edit the file AND the `default_prompt_label` on that task's `TaskSpec` in the same commit.
 
-All three run in sequence rather than concurrently, so each reads the article from the prompt cache the one before it wrote — see the cache section below for why the order and the message shape are load-bearing.
+Whichever tasks a caller requests run in that fixed sequence rather than concurrently, so each reads the article from the prompt cache the one before it wrote — see the cache section below for why the order and the message shape are load-bearing.
 
 **The narrative's section headers are not in its prompt file.** They come from the `title` on each field of `domains.extraction.schemas.Narrative`, and `domains.extraction.render.render_narrative` emits them when turning the stored json back into the text the voice agent reads. Renaming a section means editing the model.
 
-Also active in production, but read directly via `read_extraction_prompt` rather than through `ExtractorRegistry` (it runs upstream of both extraction branches, not as one of the three calls above): `PROMPT_LABEL_METADATA = "metadata_v1"` → `metadata_v1.md`, called once per item by the `extract_metadata` asset.
+`metadata` runs as its own request — knowledge-pipeline's `extract_metadata` asset calls `/v1/extract` with `tasks=["metadata"]` upstream of both extraction branches, before either commits to `narrative`/`topic_card`/`followups` (requested together as `extract_reading_card`'s one request).
 
 ## Reference / eval variants (not loaded by production)
 
@@ -45,7 +46,7 @@ The v1 trio above was derived from these v5 single-shots by splitting the schema
 ## Prompt size, message shape, and the OpenAI prompt cache
 
 All four extraction calls send `[SHARED_SYSTEM, article, task]` via
-`shared_prefix.structured_messages` with the same `{"type": "json_object"}`
+`fetcher.extract.openai_lane.structured_messages` with the same `{"type": "json_object"}`
 response format. Both halves are load-bearing and neither is a style choice:
 
 - **OpenAI matches a cached prefix front-to-back from position zero**, so the
@@ -93,4 +94,4 @@ one reported 0 across all three.
 
 ## Resolution
 
-`KP_PROMPTS_ROOT` env var → see [`../README.md`](../README.md).
+`FETCHER_EXTRACTION_PROMPTS_ROOT` env var, read by `services/fetcher` — see [`../README.md`](../README.md).

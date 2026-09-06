@@ -8,80 +8,50 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **`POST /v1/extract` on the fetcher service** — one fetched body in, several
-  typed extraction payloads out (`metadata`, `narrative`, `topic_card`,
-  `followups`), so the orchestrator and newsletter-assistant can stop keeping
-  their own drifted copies of the same three calls. Task names are a closed set
-  and prompt versions name files the service ships, both rejected before any
-  model call. Results are cached per task, so retrying a batch re-runs only what
-  failed. Nothing calls it yet.
+- **`POST /v1/extract` on the fetcher service** — one fetched body in, typed
+  payloads out (`metadata`, `narrative`, `topic_card`, `followups`), so this
+  repo and newsletter-assistant stop keeping drifted copies of the same calls.
+  Task names and prompt versions are closed sets, rejected before any model
+  call; results cache per task.
 
-- **A failing task no longer sinks its batch.** The endpoint returns 200 with
-  the payloads that succeeded and a per-task entry in `errors[]` for the ones
-  that did not, where the extractor it replaces failed the whole item on the
-  first exception.
-
-- **The extraction model is declared in `services/fetcher/config/extraction.yaml`**,
-  alongside the structurer and whisper chains, rather than read from the
-  `EXTRACT_QUEUE_MODEL` environment variable. The model is part of what the
-  service is and should not differ between a laptop and production the way a
-  credential must; the API key still comes from the environment. Nothing reads
-  `EXTRACT_QUEUE_MODEL` any more — it can come out of `.env`.
-
-- **The fetch/extract pipeline now extracts over HTTP.** `extract_metadata` and
-  `extract_reading_card` ask the fetcher service instead of running OpenAI
-  in-process, and `ExtractorRegistry` is gone. What stays here is what is about
-  this pipeline rather than about extraction: the unusable-body gate, the
-  freshness check that skips an unchanged item, the deterministic-publisher
-  reconciliation, and the `extraction_calls` ledger.
-
-- **A reading card is now all three outputs or none.** The service reports a
-  partial batch rather than failing it, and the asset turns that into a failure:
-  the topic card names the item in Notion and the narrative is what the voice
-  agent reads, so an item missing either is not publishable.
-
-- **The extraction eval scores the deployed path.** `make_three_call_variant`
-  posts to `/v1/extract` with a `prompt_version` per task instead of
-  constructing an extractor from prompt text, so a recorded score names prompts
-  that exist and can be re-run from their labels. Trying a candidate now means
-  writing it into `prompts/extraction/` and naming it — which is also what stops
-  the harness measuring a copy of production that has since drifted from it.
-
-### Removed
-
-- **`workflows.extraction` is gone.** Its last caller moved to the service, and
-  a second implementation of extraction is the thing this work exists to end.
-  `workflows` keeps `openai` for the wiki-synthesis lane.
-
-### Fixed
-
-- **The article envelope now counts towards a call's staleness signal.**
-  `effective_prompt_sha` covered the system message, the role prompt and the
-  generated schema, but not the wrapper every article travels in — so rewording
-  that wrapper would have changed what every model was shown while every stored
-  extraction still read as fresh. It enters as its unfilled template, so a
-  wording change moves every sha once and a change of article moves none.
-
-  This shifts every `prompt_sha256` without changing anything the model is sent,
-  so the first run after it lands re-extracts the corpus and reproduces what is
-  already there.
+- **`GET /v1/extract/prompts`** reports the model and each task's active prompt
+  label and staleness hash without running anything, so a caller can judge
+  whether a stored extraction is still current before spending on one.
 
 ### Changed
 
-- **The metadata payload schemas moved to `domains.extraction.schemas`**, next
-  to the other extraction contracts, leaving `workflows.extraction.metadata`
-  holding only the call. They are types, not behaviour, and the extraction
-  implementation is on its way out of `workflows` into an HTTP service that
-  cannot depend on it.
+- **The fetch/extract pipeline extracts over HTTP.** `extract_metadata` and
+  `extract_reading_card` call the service and `ExtractorRegistry` is gone; the
+  unusable-body gate, the freshness check, publisher reconciliation and the
+  `extraction_calls` ledger stay in the assets.
 
-### Fixed
+- **A failing task no longer sinks its batch.** `/v1/extract` returns 200 with
+  what succeeded plus a per-task `errors[]`, where the extractor it replaces
+  failed the item on the first exception. `extract_reading_card` still fails an
+  item missing any of its three outputs.
 
-- **Corrected the module docstring on `workflows.extraction.metadata`**, which
-  claimed the narrative call sat in its own prompt-cache partition and was not
-  primed. That stopped being true when narrative became a structured JSON call:
-  all four calls now share one system message, one envelope, one
-  `response_format` and one cache key, and metadata — running first — is what
-  pays the cache write.
+- **The extraction model is declared in `services/fetcher/config/extraction.yaml`**,
+  beside the structurer and whisper chains, rather than read from
+  `EXTRACT_QUEUE_MODEL`. That variable now has no reader and can leave `.env`.
+
+- **The extraction eval scores the deployed path.** `make_three_call_variant`
+  posts to `/v1/extract` naming a `prompt_version` per task instead of building
+  an extractor from prompt text, so a recorded score names prompts that exist
+  and can be re-run from their labels.
+
+- **The article envelope now counts towards a call's staleness signal.**
+  `effective_prompt_sha` covered the system message, role prompt and schema but
+  not the wrapper every article travels in, so rewording it would have left
+  stored extractions reading as fresh. Moves every `prompt_sha256` once.
+
+- **Metadata payload schemas moved to `domains.extraction.schemas`** from
+  `workflows.extraction.metadata`. They are contract rather than behaviour, and
+  the implementation moved to a service that cannot depend on `workflows`.
+
+### Removed
+
+- **`workflows.extraction` is gone** — its last caller moved to the service.
+  `workflows` keeps `openai` for the wiki-synthesis lane.
 
 ---
 

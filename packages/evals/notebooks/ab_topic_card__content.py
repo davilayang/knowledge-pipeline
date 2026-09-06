@@ -43,7 +43,6 @@ RESULTS: dict = {}
 import os
 from pathlib import Path
 
-from domains.extraction.prompts import strip_design_notes
 from evals.core import CostBudget, load_fixtures
 from evals.extraction import (
     ExtractionFixture,
@@ -76,17 +75,12 @@ fixture = ExtractionFixture(
 print(f"using fixture {fixture.fixture_id} ({fixture.content_type})")
 
 # %% tags=["adapter"]
-PROMPTS = REPO_ROOT / "prompts" / "extraction"
-narrative_text = strip_design_notes((PROMPTS / "narrative_v3.md").read_text())
-followups_text = strip_design_notes((PROMPTS / "followups_v1.md").read_text())
-baseline_text = strip_design_notes((PROMPTS / BASELINE_TOPIC_CARD).read_text())
-candidate_text = strip_design_notes((PROMPTS / CANDIDATE_TOPIC_CARD).read_text())
 
 variants = [
     make_three_call_variant(
         name="baseline",
         prompt_versions={
-            "narrative": "v1",
+            "narrative": "narrative_v3",
             "topic_card": BASELINE_TOPIC_CARD.replace(".md", ""),
             "followups": "followups_v1",
         },
@@ -96,7 +90,7 @@ variants = [
     make_three_call_variant(
         name="candidate",
         prompt_versions={
-            "narrative": "v1",
+            "narrative": "narrative_v3",
             "topic_card": CANDIDATE_TOPIC_CARD.replace(".md", ""),
             "followups": "followups_v1",
         },
@@ -151,5 +145,6 @@ RESULTS["scores"] = None
 # %% tags=["act"]
 # If candidate wins on this content, re-run with CONTENT_ID_INDEX=1, 2, … on
 # 2-3 more fixtures. Then promote: copy candidate_text into
-# prompts/extraction/<new>.md, update EXTRACT_QUEUE_PROMPT_LABEL_<CT> in .env,
+# prompts/extraction/<new>.md, point the task's default_prompt_label at it in
+# the extraction service's extract/tasks.py,
 # run `run_variants` / `run_benchmark` over the fixture set for the scored corpus run.

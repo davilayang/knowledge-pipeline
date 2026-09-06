@@ -5,7 +5,8 @@ and follow-ups remain separate calls (`topic_card_v1.md`, `followups_v1.md`).
 
 ## This is the live narrative prompt
 
-`PROMPT_LABEL_NARRATIVE` points here and the call validates against
+The narrative task's `default_prompt_label` in the extraction service's
+`extract/tasks.py` points here, and the call validates against
 `domains.extraction.schemas.Narrative`, which carries the six sections below.
 
 **There is one `Narrative` class, not one per prompt version** — the same rule `TopicCard` and
@@ -110,7 +111,8 @@ not worth a cross-repo special case.
 
 ## Before merging: the token ceiling
 
-`ExtractorRegistry.max_tokens` is 4096. Measured on gpt-5.6-luna, a 71k-character podcast used
+`MAX_TOKENS` in the extraction service's `extract/openai_lane.py` is 4096. Measured on
+gpt-5.6-luna, a 71k-character podcast used
 **4,057 of 4,096** on v3's earlier seven-section shape, and a 41,000-character newsletter
 returned `finish_reason: length`.
 
@@ -210,7 +212,8 @@ and buys nothing. The constraint belongs to the consumer, not to extraction.
 ## What is NOT in this file
 
 The output-format instruction and the field list are generated from the `Narrative` pydantic
-model by `shared_prefix.schema_block()` and appended to this text at call time. Do not restate
+model by `schema_block()` in the extraction service's `extract/openai_lane.py`, and appended
+to this text at call time. Do not restate
 the **format** here — the key names, the json container, the required set.
 
 The rules below and the model's `description=` text do overlap, deliberately: the description is

@@ -698,7 +698,7 @@ def test_fetcher_extract_maps_a_service_problem_to_a_request_level_error():
     problem = {
         "code": "EXTRACTION_UNCONFIGURED",
         "title": "Extraction not configured",
-        "detail": "set OPENAI_API_KEY and EXTRACT_QUEUE_MODEL",
+        "detail": "/v1/extract needs config/extraction.yaml and OPENAI_API_KEY",
         "retryable": False,
     }
     with patch("httpx.Client.post", return_value=_fake_response(503, problem)):
