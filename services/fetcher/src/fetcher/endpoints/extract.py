@@ -53,6 +53,53 @@ def _normalise(tasks: list[str | TaskRequest]) -> list[TaskRequest]:
     return [TaskRequest(task=t) if isinstance(t, str) else t for t in tasks]
 
 
+@router.get(
+    "/v1/extract/prompts",
+    summary="The model, prompt label and staleness sha each task would run with.",
+    responses={
+        400: {"model": ProblemResponse, "description": "A configured prompt label has no file."},
+    },
+)
+async def extract_prompts(request: Request) -> Any:
+    """Report what a run would send, without sending it.
+
+    A caller that decides whether an extraction stored earlier is still current
+    needs the model and the sha *before* it commits to a call. The only other way to get it is
+    to re-derive it — which means re-implementing the shared system message, the
+    article envelope and the generated schema block on the caller's side, and
+    keeping all three in step with this service forever. That duplication is
+    what this service exists to remove, so it answers the question instead.
+    """
+    settings = request.app.state.settings
+    prompts_root = Path(settings.extraction_prompts_root)
+    prompts = []
+    for spec in TASKS.values():
+        label = spec.default_prompt_label
+        try:
+            text = load_prompt(label, prompts_root=prompts_root)
+        except UnknownPromptVersion:
+            return problem_response(
+                status=400,
+                code="UNKNOWN_PROMPT_VERSION",
+                title="Configured prompt is missing",
+                detail=f"task {spec.name!r} names prompt {label!r}, which is not on disk",
+                instance=str(request.url.path),
+                retryable=False,
+            )
+        prompts.append(
+            {
+                "task": spec.name,
+                "prompt_label": label,
+                # No reader notes: their fold is per-request, and a caller asking
+                # what the defaults are has not got a request yet.
+                "prompt_sha256": effective_prompt_sha(
+                    build_role_prompt(spec, text, user_notes=None), spec.schema
+                ),
+            }
+        )
+    return {"model": settings.extraction_model, "prompts": prompts}
+
+
 @router.post(
     "/v1/extract",
     summary="Run one or more structured extraction tasks over a fetched body.",

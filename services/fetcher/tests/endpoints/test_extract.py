@@ -357,3 +357,28 @@ def test_the_cache_key_covers_the_generation_parameters() -> None:
     assert cache_key(**common, generation={"max_completion_tokens": 4096}) != cache_key(
         **common, generation={"max_completion_tokens": 8192}
     )
+
+
+def test_prompts_endpoint_reports_the_active_label_and_sha(
+    monkeypatch, tmp_db_path, prompts_root
+) -> None:
+    """A caller that gates on freshness has to know what would be sent before it
+    decides whether to send it. The alternative is re-deriving the sha, which
+    means re-implementing the system message, envelope and schema block on the
+    caller side — the duplication this service exists to remove."""
+    _setup_envs(monkeypatch, tmp_db_path, prompts_root)
+    app = create_app()
+    with TestClient(app) as http:
+        response = http.get("/v1/extract/prompts")
+
+    assert response.status_code == 200
+    body = response.json()
+    # The model is part of the answer: a caller comparing freshness has to know
+    # which model would run, and it is the service that decides.
+    assert body["model"] == "gpt-5-mini"
+    by_task = {p["task"]: p for p in body["prompts"]}
+    assert set(by_task) == set(TASKS)
+    assert by_task["metadata"]["prompt_label"] == "metadata_v1"
+    assert len(by_task["metadata"]["prompt_sha256"]) == 64
+    # The sha a run would record, so a caller can compare without guessing.
+    assert by_task["topic_card"]["prompt_sha256"] != by_task["followups"]["prompt_sha256"]

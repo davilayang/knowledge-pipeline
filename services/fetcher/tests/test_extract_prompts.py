@@ -19,10 +19,25 @@ from fetcher.extract.tasks import TASKS
 REPO_PROMPTS = Path(__file__).resolve().parents[3] / "prompts"
 
 
+# A phrase from each prompt's body, distinctive enough that another prompt would
+# not contain it. Existence alone would not catch a label pointed at the wrong
+# file — which is the mistake a label makes possible in the first place.
+_MARKERS = {
+    "metadata": "publisher",
+    "narrative": "core_idea",
+    "topic_card": "PER-FIELD CONTRACTS",
+    "followups": "follow-up questions",
+}
+
+
 @pytest.mark.parametrize("task_name", sorted(TASKS))
-def test_every_default_prompt_label_names_a_shipped_file(task_name: str) -> None:
+def test_every_default_prompt_label_names_the_right_shipped_file(task_name: str) -> None:
     body = load_prompt(TASKS[task_name].default_prompt_label, prompts_root=REPO_PROMPTS)
     assert body.strip(), f"{task_name}'s prompt is empty once its design notes are stripped"
+    assert _MARKERS[task_name] in body, (
+        f"{task_name} resolves to {TASKS[task_name].default_prompt_label}.md, which does "
+        f"not read like a {task_name} prompt"
+    )
 
 
 def test_a_label_may_not_escape_the_prompts_directory() -> None:

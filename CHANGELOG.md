@@ -21,6 +21,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   that did not, where the extractor it replaces failed the whole item on the
   first exception.
 
+- **The fetch/extract pipeline now extracts over HTTP.** `extract_metadata` and
+  `extract_reading_card` ask the fetcher service instead of running OpenAI
+  in-process, and `ExtractorRegistry` is gone. What stays here is what is about
+  this pipeline rather than about extraction: the unusable-body gate, the
+  freshness check that skips an unchanged item, the deterministic-publisher
+  reconciliation, and the `extraction_calls` ledger.
+
+- **A reading card is now all three outputs or none.** The service reports a
+  partial batch rather than failing it, and the asset turns that into a failure:
+  the topic card names the item in Notion and the narrative is what the voice
+  agent reads, so an item missing either is not publishable.
+
 ### Fixed
 
 - **The article envelope now counts towards a call's staleness signal.**

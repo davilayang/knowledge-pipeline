@@ -5,7 +5,6 @@ the import location in their respective modules. Covers what the asset bodies
 depend on:
 - Notion query/get/update payload shapes
 - Fetcher dispatch (YouTube, arXiv, article cascade)
-- ExtractorRegistry builds the three-call extractor + delegates correctly
 - Store thin delegation
 """
 
@@ -14,7 +13,6 @@ from unittest.mock import MagicMock, patch
 
 import httpx
 from orchestrators.defs.fetch_extract_queue.resources import (
-    ExtractorRegistry,
     FetcherResource,
 )
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
@@ -242,82 +240,6 @@ def test_notion_get_status_reads_native_status_name():
     }
     with patch.object(NotionQueueResource, "_client", return_value=fake_client):
         assert resource.get_status("p-1") == "Ready"
-
-
-# -------- ExtractorRegistry --------
-
-
-def _make_registry(
-    tmp_path: Path,
-    monkeypatch,
-    *,
-    narrative: str = "NARRATIVE PROMPT",
-    topic_card: str = "TOPIC CARD PROMPT",
-    followups: str = "FOLLOWUPS PROMPT",
-) -> "ExtractorRegistry":
-    """Patches the prompts dir + the module-level PROMPT_LABEL_* constants
-    so the registry resolves to the synthetic files."""
-    fake_dir = tmp_path / "prompts"
-    fake_dir.mkdir(exist_ok=True)
-    (fake_dir / "n.md").write_text(narrative)
-    (fake_dir / "t.md").write_text(topic_card)
-    (fake_dir / "f.md").write_text(followups)
-    monkeypatch.setattr(
-        "orchestrators.defs.fetch_extract_queue.resources._PROMPTS_DIR",
-        fake_dir,
-    )
-    monkeypatch.setattr(
-        "orchestrators.defs.fetch_extract_queue.resources.PROMPT_LABEL_NARRATIVE",
-        "n",
-    )
-    monkeypatch.setattr(
-        "orchestrators.defs.fetch_extract_queue.resources.PROMPT_LABEL_TOPIC_CARD",
-        "t",
-    )
-    monkeypatch.setattr(
-        "orchestrators.defs.fetch_extract_queue.resources.PROMPT_LABEL_FOLLOWUPS",
-        "f",
-    )
-    return ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
-
-
-def test_registry_build_returns_extractor_with_shape_routed_bundle_label(
-    tmp_path: Path, monkeypatch
-):
-    registry = _make_registry(tmp_path, monkeypatch)
-    ex = registry.build()
-    assert ex.bundle_label == "3call_v2_shape_routed"
-
-
-def test_registry_build_bundle_sha256_changes_with_prompt_content(tmp_path: Path, monkeypatch):
-    """Bundle sha covers model + the three prompt texts — bumping any one
-    flips the cohort-staleness signal written to queue_items.extractor_sha256.
-    Registry registers only the `unknown` bundle today, so the staleness check
-    runs against that key."""
-    base = _make_registry(tmp_path, monkeypatch).build()
-    other = _make_registry(tmp_path, monkeypatch, narrative="DIFFERENT NARRATIVE").build()
-    assert other.bundle_sha256("unknown") != base.bundle_sha256("unknown")
-    assert len(base.bundle_sha256("unknown")) == 64
-
-
-def test_extractor_uses_real_prompt_labels():
-    """The active narrative/topic_card/followups prompt files ship in the
-    package — the registry loads them without monkeypatching anything."""
-    from orchestrators.defs.fetch_extract_queue.def_config import (
-        PROMPT_LABEL_FOLLOWUPS,
-        PROMPT_LABEL_NARRATIVE,
-        PROMPT_LABEL_TOPIC_CARD,
-    )
-
-    assert PROMPT_LABEL_NARRATIVE == "narrative_v3"
-    assert PROMPT_LABEL_TOPIC_CARD == "topic_card_v1"
-    assert PROMPT_LABEL_FOLLOWUPS == "followups_v1"
-
-    registry = ExtractorRegistry(openai_api_key="k", model="gpt-4o-mini")
-    assert "core_idea" in registry._prompt_text(PROMPT_LABEL_NARRATIVE)
-    assert "PER-FIELD CONTRACTS" in registry._prompt_text(PROMPT_LABEL_TOPIC_CARD)
-    assert "follow-up questions" in registry._prompt_text(PROMPT_LABEL_FOLLOWUPS)
-    assert len(registry.build().bundle_sha256("unknown")) == 64
 
 
 # -------- QueueStoreResource --------
@@ -691,3 +613,116 @@ def test_fetcher_structure_maps_503_problem_to_permanent_failure():
         result = resource.structure("raw", source_url="https://example.com/a")
     assert result.transient is False
     assert "Structurer not configured" in result.error
+
+
+# -------- FetcherResource.extract() --------
+
+
+def _extract_body(**overrides) -> dict:
+    body = {
+        "results": [
+            {"task": "metadata", "schema_version": 1, "payload": {"stands_alone": True}},
+        ],
+        "errors": [],
+        "calls": [
+            {
+                "task": "metadata",
+                "prompt_label": "metadata_v1",
+                "prompt_sha256": "a" * 64,
+                "provider": "openai",
+                "model": "gpt-5-mini",
+                "tokens_in": 1000,
+                "tokens_out": 200,
+                "cached_tokens": 0,
+                "duration_ms": 1234.5,
+            }
+        ],
+        "cache_hits": [],
+    }
+    body.update(overrides)
+    return body
+
+
+def test_fetcher_extract_posts_the_requested_tasks_and_maps_payloads_by_task():
+    resource = _make_service_fetcher()
+    with patch("httpx.Client.post", return_value=_fake_response(200, _extract_body())) as post:
+        result = resource.extract(
+            "the article body",
+            content_type="article",
+            tasks=["metadata"],
+            user_notes="a note",
+            model="gpt-5-mini",
+        )
+
+    assert post.call_args.args[0].endswith("/v1/extract")
+    sent = post.call_args.kwargs["json"]
+    assert sent == {
+        "content": "the article body",
+        "content_type": "article",
+        "tasks": ["metadata"],
+        "user_notes": "a note",
+        "model": "gpt-5-mini",
+    }
+    assert result.payloads["metadata"] == {"stands_alone": True}
+    assert result.failures == {}
+    assert result.calls[0]["prompt_sha256"] == "a" * 64
+    assert result.error == ""
+
+
+def test_fetcher_extract_reports_a_failed_task_without_failing_the_call():
+    """A partial batch is a 200. The caller decides what a missing task means —
+    for the reading card that is fatal, for metadata it is not."""
+    resource = _make_service_fetcher()
+    body = _extract_body(
+        results=[],
+        errors=[
+            {
+                "task": "metadata",
+                "code": "TASK_FAILED",
+                "detail": "no reply matched the schema",
+                "retryable": False,
+                "blocked_by": None,
+            }
+        ],
+    )
+    with patch("httpx.Client.post", return_value=_fake_response(200, body)):
+        result = resource.extract("body", content_type="article", tasks=["metadata"])
+
+    assert result.payloads == {}
+    assert "no reply matched the schema" in result.failures["metadata"]
+    assert result.error == ""
+
+
+def test_fetcher_extract_maps_a_service_problem_to_a_request_level_error():
+    resource = _make_service_fetcher()
+    problem = {
+        "code": "EXTRACTION_UNCONFIGURED",
+        "title": "Extraction not configured",
+        "detail": "set OPENAI_API_KEY and EXTRACT_QUEUE_MODEL",
+        "retryable": False,
+    }
+    with patch("httpx.Client.post", return_value=_fake_response(503, problem)):
+        result = resource.extract("body", content_type="article", tasks=["metadata"])
+
+    assert "Extraction not configured" in result.error
+    assert result.transient is False
+    assert result.payloads == {}
+
+
+def test_fetcher_extraction_prompts_reads_the_active_labels():
+    resource = _make_service_fetcher()
+    body = {
+        "model": "gpt-5-mini",
+        "prompts": [
+            {"task": "metadata", "prompt_label": "metadata_v1", "prompt_sha256": "b" * 64},
+        ],
+    }
+    with patch("httpx.Client.get", return_value=_fake_response(200, body)) as get:
+        settings = resource.extraction_prompts()
+
+    assert get.call_args.args[0].endswith("/v1/extract/prompts")
+    assert settings.model == "gpt-5-mini"
+    assert settings.by_task["metadata"] == {
+        "prompt_label": "metadata_v1",
+        "prompt_sha256": "b" * 64,
+    }
