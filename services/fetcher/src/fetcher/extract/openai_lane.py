@@ -20,7 +20,12 @@ from typing import Any
 
 from openai import AsyncOpenAI
 
-from fetcher.extract.shared import SHARED_SYSTEM, render_envelope, validate_strict
+from fetcher.extract.shared import (
+    ARTICLE_ENVELOPE,
+    SHARED_SYSTEM,
+    render_envelope,
+    validate_strict,
+)
 from fetcher.extract.tasks import TaskSpec
 
 
@@ -137,13 +142,17 @@ def structured_messages(*, content_type: str, content: str, task: str) -> list[d
 def effective_prompt_sha(role_prompt: str, schema: type) -> str:
     """Per-call staleness signal over everything static the model is shown.
 
-    Hashing the prompt markdown alone would miss the shared system message and
-    the generated schema, so adding a field to `TopicCard` would change what the
-    model is asked for while every existing row still read as fresh. Per-item
-    values stay out — they are data, and would make every row uniquely stale.
+    Hashing the prompt markdown alone would miss the shared system message, the
+    article envelope and the generated schema, so adding a field to `TopicCard`
+    or rewording the envelope would change what the model is asked for while
+    every existing row still read as fresh. Per-item values stay out — they are
+    data, and would make every row uniquely stale, which is why the envelope
+    enters as its unfilled template rather than as a wrapped article.
     """
     return hashlib.sha256(
-        "\n".join((SHARED_SYSTEM, role_prompt, schema_block(schema))).encode()
+        "\n".join(
+            (SHARED_SYSTEM, ARTICLE_ENVELOPE, role_prompt, schema_block(schema))
+        ).encode()
     ).hexdigest()
 
 

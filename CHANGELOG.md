@@ -21,6 +21,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   that did not, where the extractor it replaces failed the whole item on the
   first exception.
 
+### Fixed
+
+- **The article envelope now counts towards a call's staleness signal.**
+  `effective_prompt_sha` covered the system message, the role prompt and the
+  generated schema, but not the wrapper every article travels in — so rewording
+  that wrapper would have changed what every model was shown while every stored
+  extraction still read as fresh. It enters as its unfilled template, so a
+  wording change moves every sha once and a change of article moves none.
+
+  This shifts every `prompt_sha256` without changing anything the model is sent,
+  so the first run after it lands re-extracts the corpus and reproduces what is
+  already there.
+
 ### Changed
 
 - **The metadata payload schemas moved to `domains.extraction.schemas`**, next
