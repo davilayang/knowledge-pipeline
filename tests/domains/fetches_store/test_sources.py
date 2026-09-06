@@ -10,7 +10,7 @@ from pathlib import Path
 from domains.fetches_store.sources import _connect, create_schema
 
 
-def test_create_schema_creates_three_tables(tmp_path: Path) -> None:
+def test_create_schema_creates_every_table(tmp_path: Path) -> None:
     db_path = tmp_path / "fetcher.db"
     create_schema(db_path=db_path)
 
@@ -19,7 +19,7 @@ def test_create_schema_creates_three_tables(tmp_path: Path) -> None:
             row[0]
             for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'").fetchall()
         }
-    assert tables == {"cache", "fetches", "url_aliases"}
+    assert tables == {"cache", "extractions", "fetches", "url_aliases"}
 
 
 def test_create_schema_is_idempotent(tmp_path: Path) -> None:

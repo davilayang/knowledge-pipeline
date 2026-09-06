@@ -6,6 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **`POST /v1/extract` on the fetcher service** — one fetched body in, several
+  typed extraction payloads out (`metadata`, `narrative`, `topic_card`,
+  `followups`), so the orchestrator and newsletter-assistant can stop keeping
+  their own drifted copies of the same three calls. Task names are a closed set
+  and prompt versions name files the service ships, both rejected before any
+  model call. Results are cached per task, so retrying a batch re-runs only what
+  failed. Nothing calls it yet.
+
+- **A failing task no longer sinks its batch.** The endpoint returns 200 with
+  the payloads that succeeded and a per-task entry in `errors[]` for the ones
+  that did not, where the extractor it replaces failed the whole item on the
+  first exception.
+
 ### Changed
 
 - **The metadata payload schemas moved to `domains.extraction.schemas`**, next

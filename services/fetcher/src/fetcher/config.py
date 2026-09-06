@@ -121,6 +121,30 @@ class Settings(BaseSettings):
             "copies from git history."
         ),
     )
+    extraction_prompts_root: str = Field(
+        default="prompts",
+        description=(
+            "Directory holding the versioned prompt tree; /v1/extract reads its "
+            "`extraction/` subdirectory. Default is relative to the service "
+            "working dir, which is where the image copies them. Deliberately NOT "
+            "aliased to the bare KP_PROMPTS_ROOT that knowledge-pipeline's "
+            "orchestrator and eval harness read: compose passes the shared .env "
+            "into this container, so a laptop path set there for an eval run "
+            "would follow into the image and point at nothing."
+        ),
+    )
+    extraction_model: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("EXTRACT_QUEUE_MODEL", "FETCHER_EXTRACTION_MODEL"),
+        description=(
+            "Default OpenAI model for /v1/extract when a request names none. "
+            "Shares the bare EXTRACT_QUEUE_MODEL name with knowledge-pipeline's "
+            "orchestrator, which read it before extraction moved here, so the "
+            "deployed value carries over rather than being re-pinned. Optional: "
+            "unset leaves /v1/extract returning 503 EXTRACTION_UNCONFIGURED "
+            "while every other endpoint still serves."
+        ),
+    )
     transcript_structurer_config_path: str = Field(
         default="config/transcript_structurer.yaml",
         description="Path to the YAML file declaring the transcript structurer cloud chain.",

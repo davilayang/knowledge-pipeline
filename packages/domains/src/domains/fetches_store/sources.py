@@ -1,6 +1,6 @@
 """SQLite layer for the fetcher service
 
-Three tables: cache, fetches, url_aliases.
+Four tables: cache, extractions, fetches, url_aliases.
 """
 
 import hashlib
@@ -55,6 +55,21 @@ CREATE TABLE IF NOT EXISTS url_aliases (
 );
 
 CREATE INDEX IF NOT EXISTS url_aliases_expires_at ON url_aliases(expires_at);
+
+-- Extraction results get their own table rather than a row in `cache`: one
+-- content item yields several task payloads, and each would need a synthetic
+-- "canonical_url" with its json in a column called `markdown`, leaving `etag`,
+-- `tier_used`, `content_chars` and `tier_log_json` meaningless on every row.
+CREATE TABLE IF NOT EXISTS extractions (
+    cache_key      TEXT PRIMARY KEY,
+    task           TEXT NOT NULL,
+    payload_json   TEXT NOT NULL,
+    call_json      TEXT NOT NULL,
+    created_at     TEXT NOT NULL,
+    expires_at     TEXT NOT NULL
+);
+
+CREATE INDEX IF NOT EXISTS extractions_expires_at ON extractions(expires_at);
 """
 
 
@@ -88,7 +103,7 @@ def _etag(markdown: str) -> str:
 
 
 def create_schema(*, db_path: Path) -> None:
-    """Create the three tables and supporting indexes if needed."""
+    """Create the tables and supporting indexes if needed."""
 
     db_path.parent.mkdir(parents=True, exist_ok=True)
     with _connect(db_path) as conn:
@@ -205,6 +220,67 @@ def cache_upsert(
                 len(markdown),
                 metadata_json,
                 tier_log_json,
+                _now_iso(),
+                _iso_plus_days(ttl_days),
+            ),
+        )
+
+
+# --- Extraction Ops ---
+
+
+def extraction_lookup(*, db_path: Path, cache_key: str) -> dict[str, Any] | None:
+    """Read one task's cached extraction, or None on miss/expired."""
+    with _connect(db_path) as conn:
+        row = conn.execute(
+            """
+            SELECT task, payload_json, call_json, created_at, expires_at
+              FROM extractions
+             WHERE cache_key = ?
+            """,
+            (cache_key,),
+        ).fetchone()
+        if row is None:
+            return None
+        if row[4] < _now_iso():
+            conn.execute("DELETE FROM extractions WHERE cache_key = ?", (cache_key,))
+            return None
+        return {
+            "task": row[0],
+            "payload_json": row[1],
+            "call_json": row[2],
+            "created_at": row[3],
+            "expires_at": row[4],
+        }
+
+
+def extraction_upsert(
+    *,
+    db_path: Path,
+    cache_key: str,
+    task: str,
+    payload_json: str,
+    call_json: str,
+    ttl_days: int,
+) -> None:
+    """Insert or replace one task's cached extraction. Last-writer-wins.
+
+    `call_json` stores the provenance of the call that produced the payload —
+    prompt label, prompt sha, provider, model, what it cost — so a later cache
+    hit can report what actually ran instead of an empty ledger row.
+    """
+    with _connect(db_path) as conn:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO extractions (
+                cache_key, task, payload_json, call_json, created_at, expires_at
+            ) VALUES (?, ?, ?, ?, ?, ?)
+            """,
+            (
+                cache_key,
+                task,
+                payload_json,
+                call_json,
                 _now_iso(),
                 _iso_plus_days(ttl_days),
             ),
