@@ -6,22 +6,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.37.2] — 2026-09-12
+
 ### Changed
 
-- **Videos whose owner disabled captions can now be read.** When neither caption
-  tier can serve a YouTube video, the handler fetches its audio and transcribes
-  it, producing the same timestamped chunks as a captioned video and passing
-  them through the same finalizer. Runs last and only with paid tiers enabled,
-  since published captions are cheaper and more precise. The transcript timeline
-  is rebuilt from measured chunk durations, and a download materially shorter
-  than the source is rejected rather than transcribed into a silently
-  incomplete record.
+- **YouTube videos with captions disabled are now readable.** When no caption
+  tier can serve a video, the handler downloads its audio and transcribes it via
+  the whisper chain, producing the same timestamped chunks as a captioned video.
+  Runs last, and only with paid tiers enabled.
 
-- **Audio transcription now reaches Groq.** The whisper chain names Groq primary
-  and OpenAI fallback, but the Groq API key was never read from the environment
-  or placed on the fetch context, so the primary was skipped and every
-  transcription ran on the fallback. Measured on a 7-minute video, the intended
-  primary transcribes in 4.3s against 20.5s for the fallback.
+- **Audio transcription now actually reaches Groq, its configured primary
+  provider.** `GROQ_API_KEY` is read into fetcher `Settings` and threaded onto
+  `FetchContext`; previously it was never wired, so every transcription silently
+  ran on the slower OpenAI fallback.
 
 ---
 
