@@ -31,6 +31,7 @@ async def make_fetch_context(settings: Settings) -> AsyncIterator[FetchContext]:
             tavily_api_key=settings.tavily_api_key,
             rapidapi_key=settings.rapidapi_key,
             openai_api_key=settings.openai_api_key,
+            groq_api_key=settings.groq_api_key,
             ollama_api_key=settings.ollama_api_key,
             youtube_structurer_enabled=settings.youtube_structurer_enabled,
         )

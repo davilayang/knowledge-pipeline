@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Audio transcription now actually reaches Groq.** The whisper chain names
+  Groq as its primary provider and OpenAI as the fallback, but the Groq API key
+  was never read from the environment or placed on the fetch context, so the
+  primary was silently skipped and every transcription ran on the OpenAI
+  fallback. Podcast and audio-file transcription now uses the configured
+  primary, as `config/whisper.yaml` always described.
+
 ---
 
 ## [0.37.0] — 2026-09-06

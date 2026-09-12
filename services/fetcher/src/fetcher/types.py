@@ -63,6 +63,7 @@ class FetchContext:
     tavily_api_key: str | None = None
     rapidapi_key: str | None = None
     openai_api_key: str | None = None
+    groq_api_key: str | None = None
     ollama_api_key: str | None = None
     youtube_structurer_enabled: bool = False
 

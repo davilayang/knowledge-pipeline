@@ -99,9 +99,9 @@ class WhisperNotConfigured(WhisperChainFailed):
 
 def _key_for(provider: str, ctx: "FetchContext") -> str | None:
     if provider == "groq":
-        return getattr(ctx, "groq_api_key", None)
+        return ctx.groq_api_key
     if provider == "openai":
-        return getattr(ctx, "openai_api_key", None)
+        return ctx.openai_api_key
     return None
 
 
