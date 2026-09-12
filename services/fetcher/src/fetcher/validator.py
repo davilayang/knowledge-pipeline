@@ -32,16 +32,16 @@ _BLOCK_MARKERS = (
 )
 
 
-# An authentication demand wherever it appears, including inside a link or
-# button — a body ending in one is walled, not merely linking onward.
+# An auth demand wherever it appears, link or button included — a body ending
+# in one is walled, not merely linking onward.
 _AUTH_MARKERS = (
     "log in to continue",
     "log in to see more",
     "log in or sign up",
 )
 
-# Ambiguous with site navigation: a paywall says it, and so does a footer link
-# to the next post. Only counted as truncation outside a markdown link.
+# A paywall says these, and so does a footer link to the next post. Only count
+# them outside a markdown link.
 _NAV_AMBIGUOUS_MARKERS = (
     "see more",
     "continue reading",
@@ -51,13 +51,12 @@ _NAV_AMBIGUOUS_MARKERS = (
 _TRUNCATION_MARKERS = _AUTH_MARKERS + _NAV_AMBIGUOUS_MARKERS
 
 
-# A markdown link's visible text: navigation ("[Continue reading...](/other-post)"),
-# not this body being cut off. Stripped before truncation markers are matched.
+# Stripped before matching, so "[Continue reading...](/other-post)" reads as the
+# navigation it is.
 _MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
 
-# How much of the body's end is scanned for truncation markers. A genuine
-# cut-off sits at the end; a "see more" inside real prose earlier in the body
-# does not mean the body is incomplete.
+# A genuine cut-off sits at the end; "see more" in prose further up does not
+# mean the body is incomplete.
 _TAIL_SCAN_CHARS = 1000
 
 _ELLIPSIS_TAIL = re.compile(r"(\.\.\.|…)\s*$")
