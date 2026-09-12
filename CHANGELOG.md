@@ -8,6 +8,17 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.37.1] — 2026-09-12
+
+### Changed
+
+- **Complete articles are no longer discarded as truncated.** `fetcher.validator`
+  now counts cut-off markers only in the body's last 1000 characters, ignoring
+  navigation-ambiguous ones ("continue reading", "see more") inside markdown
+  links. Auth demands ("log in to continue") still match anywhere.
+
+---
+
 ## [0.37.0] — 2026-09-06
 
 ### Added
