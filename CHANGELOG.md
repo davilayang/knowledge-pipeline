@@ -6,6 +6,19 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Fixed
+
+- **Complete articles are no longer discarded as truncated.** The fetcher's
+  content validator scanned the whole body for cut-off markers, so an article
+  whose footer linked onward (`[Continue reading...](/another-post)`) or whose
+  prose happened to contain "see more" was rejected by every tier at once and
+  never fetched. Markers now only count in the last 1000 characters, and the
+  navigation-ambiguous ones ("continue reading", "see more", "read the full
+  article") are ignored inside markdown links; authentication demands ("log in
+  to continue") still count anywhere, including as a link. Across the stored
+  article corpus this recovers bodies that were being thrown away and rejects
+  nothing that was previously accepted.
+
 ---
 
 ## [0.37.0] — 2026-09-06

@@ -32,15 +32,33 @@ _BLOCK_MARKERS = (
 )
 
 
-_TRUNCATION_MARKERS = (
-    "see more",
-    "continue reading",
-    "read the full article",
+# An authentication demand wherever it appears, including inside a link or
+# button — a body ending in one is walled, not merely linking onward.
+_AUTH_MARKERS = (
     "log in to continue",
     "log in to see more",
     "log in or sign up",
 )
 
+# Ambiguous with site navigation: a paywall says it, and so does a footer link
+# to the next post. Only counted as truncation outside a markdown link.
+_NAV_AMBIGUOUS_MARKERS = (
+    "see more",
+    "continue reading",
+    "read the full article",
+)
+
+_TRUNCATION_MARKERS = _AUTH_MARKERS + _NAV_AMBIGUOUS_MARKERS
+
+
+# A markdown link's visible text: navigation ("[Continue reading...](/other-post)"),
+# not this body being cut off. Stripped before truncation markers are matched.
+_MARKDOWN_LINK = re.compile(r"\[[^\]]*\]\([^)]*\)")
+
+# How much of the body's end is scanned for truncation markers. A genuine
+# cut-off sits at the end; a "see more" inside real prose earlier in the body
+# does not mean the body is incomplete.
+_TAIL_SCAN_CHARS = 1000
 
 _ELLIPSIS_TAIL = re.compile(r"(\.\.\.|…)\s*$")
 _TERMINAL_PUNCT = re.compile(r"[.!?]")
@@ -58,10 +76,15 @@ def is_likely_truncated(md: str) -> bool:
     """True if the body is cut off (paywalled, login-walled, or "see more")."""
     if not md:
         return False
-    lower = md.lower()
-    if any(marker in lower for marker in _TRUNCATION_MARKERS):
-        return True
-    tail = md.rstrip()[-200:]
+    body_end = md.rstrip()
+    for line in body_end[-_TAIL_SCAN_CHARS:].splitlines():
+        lower = line.lower()
+        if any(marker in lower for marker in _AUTH_MARKERS):
+            return True
+        bare = _MARKDOWN_LINK.sub(" ", lower)
+        if any(marker in bare for marker in _NAV_AMBIGUOUS_MARKERS):
+            return True
+    tail = body_end[-200:]
     if _ELLIPSIS_TAIL.search(tail):
         return True
     if len(md) < 500:

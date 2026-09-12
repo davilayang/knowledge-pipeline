@@ -1,5 +1,7 @@
 """Tests for the content validator (block-page + truncation detection)."""
 
+from pathlib import Path
+
 from fetcher.validator import (
     MIN_CONTENT_CHARS,
     is_acceptable,
@@ -69,3 +71,38 @@ def test_is_acceptable_requires_both_valid_and_not_truncated() -> None:
 
     valid_but_truncated = "Real article. " * 60 + "Read the full article on Medium."
     assert is_acceptable(valid_but_truncated) is False
+
+
+def test_is_acceptable_accepts_body_whose_footer_links_to_another_post() -> None:
+    """A footer link reading "Continue reading..." points at a *different*
+    article — it is site navigation, not this body being cut off.
+
+    Fixture is the real tail of the Jina Reader output for
+    seangoedecke.com/they-really-do-think-ai-might-kill-everyone, which on
+    2026-09-11 was discarded by all three article tiers (jina 15336 chars,
+    curl_cffi 13103, tavily 13294 — every one a complete copy) because the
+    marker scan matched this link.
+    """
+    body = (Path(__file__).parent / "fixtures" / "article_footer_nav_link.md").read_text()
+    assert is_acceptable(body) is True
+
+
+def test_is_likely_truncated_detects_login_wall_rendered_as_a_link() -> None:
+    """Auth walls are usually rendered as a link or button, not plain prose —
+    stripping markdown links must not let a login-walled body through.
+
+    "Log in" / "sign up" markers are an authentication demand wherever they
+    appear; "continue reading" / "see more" are ambiguous with site navigation,
+    which is why only the latter are ignored inside links.
+    """
+    body = "Real article prose. " * 60 + "\n\n[Log in to continue reading](https://site/login)"
+    assert is_likely_truncated(body) is True
+
+
+def test_is_likely_truncated_detects_marker_followed_by_footer_boilerplate() -> None:
+    """A cut-off is rarely the last thing on the page — nav, tags and legal
+    boilerplate usually follow it. The tail scan must reach back past that,
+    which is why it is 1000 chars and not the 200 the ellipsis check uses.
+    """
+    body = "Real article prose. " * 60 + "\n\nContinue reading below.\n\n" + "Footer nav. " * 35
+    assert is_likely_truncated(body) is True
