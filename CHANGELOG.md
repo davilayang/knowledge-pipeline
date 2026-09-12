@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.37.2] — 2026-09-12
+
+### Changed
+
+- **YouTube videos with captions disabled are now readable.** When no caption
+  tier can serve a video, the handler downloads its audio and transcribes it via
+  the whisper chain, producing the same timestamped chunks as a captioned video.
+  Runs last, and only with paid tiers enabled.
+
+- **Audio transcription now actually reaches Groq, its configured primary
+  provider.** `GROQ_API_KEY` is read into fetcher `Settings` and threaded onto
+  `FetchContext`; previously it was never wired, so every transcription silently
+  ran on the slower OpenAI fallback.
+
+---
+
 ## [0.37.1] — 2026-09-12
 
 ### Changed

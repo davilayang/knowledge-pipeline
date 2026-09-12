@@ -1,8 +1,15 @@
-"""YouTube handler: transcript API + oEmbed metadata, with optional cloud structurer."""
+"""YouTube handler: transcript API + oEmbed metadata, with optional cloud structurer.
+
+Audio transcription is the last tier: a video whose owner disabled captions
+cannot be served by any caption source, so its audio is fetched and transcribed.
+"""
 
 import logging
 import re
+import shutil
+import tempfile
 import time
+from pathlib import Path
 from urllib.parse import parse_qs, urlparse
 
 from fetcher.extractors import oembed as oembed_extractor
@@ -11,7 +18,9 @@ from fetcher.metadata import build_metadata
 from fetcher.extractors import transcript_structurer
 from fetcher.extractors import youtube_transcript as transcript_extractor
 from fetcher.extractors._cloud_chain import StructurerChainFailed
+from fetcher.extractors import whisper as whisper_extractor
 from fetcher.extractors.rapidapi import youtube_captions as rapidapi_captions_extractor
+from fetcher.extractors.rapidapi import youtube_mp3 as youtube_mp3_extractor
 from fetcher.types import FetchContext, RawTierResult, Tier, TierLogEntry
 
 
@@ -167,6 +176,113 @@ async def _rapidapi_captions_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return await _finalize_chunks(ctx, url, chunks)
 
 
+# Stops a misreported link from filling the disk. Matches the file_audio cap.
+_MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
+
+# Below this, a short download is encoder jitter rather than a partial file.
+# The fixed floor matters because a percentage alone is far too tight on short clips.
+_DURATION_ALLOWANCE_S = 15.0
+_DURATION_ALLOWANCE_RATIO = 0.10
+
+
+async def _download_audio(ctx: FetchContext, url: str) -> Path:
+    """Stream the converted MP3 to a tempfile. Caller owns deletion."""
+    with tempfile.NamedTemporaryFile(prefix="youtube-audio-", suffix=".mp3", delete=False) as tmp:
+        out_path = Path(tmp.name)
+
+    total = 0
+    async with ctx.http_client.stream(
+        "GET", url, follow_redirects=True, timeout=ctx.upstream_timeout_s
+    ) as response:
+        response.raise_for_status()
+        with open(out_path, "wb") as f:
+            async for block in response.aiter_bytes(chunk_size=64 * 1024):
+                f.write(block)
+                total += len(block)
+                if total > _MAX_DOWNLOAD_BYTES:
+                    out_path.unlink(missing_ok=True)
+                    raise ValueError(f"audio exceeds {_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB cap")
+    logger.info("youtube audio download: %d bytes", total)
+    return out_path
+
+
+def _duration_shortfall_detail(measured: float, reported: float) -> str | None:
+    """Detail string if the download is materially shorter than the source, else None."""
+    if reported <= 0:
+        return None
+    allowed = max(_DURATION_ALLOWANCE_S, reported * _DURATION_ALLOWANCE_RATIO)
+    if reported - measured <= allowed:
+        return None
+    return (
+        f"audio duration {measured:.1f}s is short of the reported source "
+        f"duration {reported:.1f}s by more than {allowed:.1f}s — partial download"
+    )
+
+
+async def _rapidapi_mp3_tier(ctx: FetchContext, url: str) -> RawTierResult:
+    """Transcribe the video's audio when no caption source could serve it.
+
+    Goes through the same finalizer as the caption tiers, so the artifacts are
+    interchangeable. Timestamps are ASR segment boundaries rather than published
+    caption cues: monotonic and citable, not frame-accurate.
+    """
+    if not ctx.rapidapi_key:
+        return RawTierResult(
+            content="", status=0, detail="rapidapi_mp3 skipped: RAPIDAPI_KEY not configured"
+        )
+    video_id = extract_video_id(url)
+    if not video_id:
+        return RawTierResult(content="", status=0)
+
+    try:
+        audio = await youtube_mp3_extractor.fetch_audio_link(
+            ctx.http_client, video_id=video_id, api_key=ctx.rapidapi_key
+        )
+    except ValueError as exc:
+        logger.warning("youtube rapidapi mp3 link fetch failed for %s: %s", video_id, exc)
+        return RawTierResult(content="", status=0, detail=f"rapidapi_mp3: {_exception_detail(exc)}")
+
+    try:
+        audio_path = await _download_audio(ctx, audio.link)
+    except Exception as exc:
+        logger.warning("youtube audio download failed for %s: %s", video_id, exc)
+        return RawTierResult(content="", status=0, detail=f"rapidapi_mp3: {_exception_detail(exc)}")
+
+    chunk_dir: Path | None = None
+    try:
+        shortfall = _duration_shortfall_detail(
+            whisper_extractor.probe_duration(audio_path), audio.duration
+        )
+        if shortfall is not None:
+            logger.warning("youtube audio rejected for %s: %s", video_id, shortfall)
+            return RawTierResult(content="", status=0, detail=f"rapidapi_mp3: {shortfall}")
+
+        chunks = whisper_extractor.prepare_chunks(audio_path)
+        if not chunks:
+            return RawTierResult(
+                content="", status=0, detail="rapidapi_mp3: ffmpeg produced no chunks"
+            )
+        chunk_dir = chunks[0].parent
+
+        chain = whisper_extractor.get_chain()
+        per_chunk = []
+        for chunk in chunks:
+            segments = await whisper_extractor.transcribe_chunk_verbose(ctx, chunk, chain=chain)
+            per_chunk.append((segments, whisper_extractor.probe_duration(chunk)))
+    except whisper_extractor.WhisperChainFailed as exc:
+        logger.warning("youtube audio transcription failed for %s: %s", video_id, exc)
+        return RawTierResult(content="", status=0, detail=f"rapidapi_mp3: {_exception_detail(exc)}")
+    finally:
+        if chunk_dir is not None:
+            shutil.rmtree(chunk_dir, ignore_errors=True)
+        audio_path.unlink(missing_ok=True)
+
+    transcript_chunks = whisper_extractor.stitch_chunk_segments(per_chunk)
+    if not transcript_chunks:
+        return RawTierResult(content="", status=0, detail="rapidapi_mp3: transcription was empty")
+    return await _finalize_chunks(ctx, url, transcript_chunks)
+
+
 def _exception_detail(exc: BaseException) -> str:
     """Single-line detail string for the tier_log — class name + truncated message."""
     msg = str(exc).replace("\n", " ").strip()
@@ -234,5 +350,16 @@ TIERS: list[Tier] = [
         200,
         _rapidapi_captions_tier,
         rate_limit_key="rapidapi",
+    ),
+    # Own rate-limit key, not the shared "rapidapi" one: the cascade holds a
+    # tier's semaphore for its whole run, and this one spans polling, a download,
+    # ffmpeg and several transcriptions — minutes of blocking every sibling tier.
+    Tier(
+        "rapidapi_mp3",
+        "paid",
+        200,
+        200,
+        _rapidapi_mp3_tier,
+        rate_limit_key="youtube_audio",
     ),
 ]

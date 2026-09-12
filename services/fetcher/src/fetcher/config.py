@@ -108,6 +108,14 @@ class Settings(BaseSettings):
             "at least one of openai/ollama is needed for the cloud stage."
         ),
     )
+    groq_api_key: str | None = Field(
+        default=None,
+        validation_alias=AliasChoices("GROQ_API_KEY"),
+        description=(
+            "Groq API key for the whisper chain's primary provider (config/whisper.yaml). "
+            "Unset means the chain falls through to OpenAI."
+        ),
+    )
     ollama_api_key: str | None = Field(
         default=None,
         validation_alias=AliasChoices("OLLAMA_API_KEY"),
