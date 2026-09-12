@@ -1,21 +1,15 @@
 """YouTube audio-link fetcher via RapidAPI's youtube-mp36.
 
-Last-resort input for the YouTube handler: when a video's captions are disabled
-by its owner, no caption tier can serve it, and the only remaining source of
-text is the audio itself. This module only obtains a downloadable MP3 link —
+Obtains a downloadable MP3 link for videos no caption tier can serve;
 transcription is the caller's job.
 
 Docs / playground:
 https://rapidapi.com/ytjar/api/youtube-mp36/playground/
 
-`/dl` is asynchronous. A video the provider has not converted before answers
-`{"status": "processing", "progress": N}`; the same call repeated returns
-`{"status": "ok", "link": ..., "duration": ..., "title": ...}` once conversion
-finishes. Observed cold-start is ~10s.
-
-The link is served from a third-party mirror rather than googlevideo, so it
-downloads from any IP — which is what makes this reachable from a datacenter
-host without residential egress.
+`/dl` is asynchronous: an unconverted video answers `{"status": "processing",
+"progress": N}` until it flips to `{"status": "ok", "link": ...}`. Cold-start
+is ~10s. The link is served from a third-party mirror rather than googlevideo,
+so it downloads from any IP — no residential egress needed.
 """
 
 import asyncio
@@ -38,7 +32,7 @@ _LABEL = "RapidAPI youtube-mp36"
 
 @dataclass(frozen=True)
 class AudioLink:
-    """A ready-to-download MP3 plus the provider's own view of the source."""
+    """A downloadable MP3 plus the provider's own view of the source."""
 
     link: str
     duration: float
@@ -55,9 +49,9 @@ async def fetch_audio_link(
 ) -> AudioLink:
     """Poll `/dl` until the conversion is ready and return the audio link.
 
-    Raises ValueError on HTTP >=400, quota exhaustion, a provider-reported
-    failure, a malformed payload, or a conversion still unfinished at
-    `poll_budget_s` — the handler maps each to `RawTierResult.detail`.
+    Raises ValueError on HTTP >=400, quota exhaustion, provider failure, a
+    malformed payload, or still-processing at `poll_budget_s` — the handler
+    maps each to `RawTierResult.detail`.
     """
     deadline = time.monotonic() + poll_budget_s
     while True:

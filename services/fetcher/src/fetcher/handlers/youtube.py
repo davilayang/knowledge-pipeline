@@ -176,14 +176,11 @@ async def _rapidapi_captions_tier(ctx: FetchContext, url: str) -> RawTierResult:
     return await _finalize_chunks(ctx, url, chunks)
 
 
-# Audio is streamed to disk before ffmpeg touches it; the cap stops a misreported
-# link from filling the disk. Matches the file_audio handler's cap.
+# Stops a misreported link from filling the disk. Matches the file_audio cap.
 _MAX_DOWNLOAD_BYTES = 2 * 1024 * 1024 * 1024
 
-# A downloaded file shorter than the source by more than this is a partial
-# download, not encoder jitter. Fixed allowance plus a proportion: a 4% gap is
-# normal at this scale (measured), and a percentage alone is far too tight on
-# short clips.
+# Below this, a short download is encoder jitter rather than a partial file.
+# The fixed floor matters because a percentage alone is far too tight on short clips.
 _DURATION_ALLOWANCE_S = 15.0
 _DURATION_ALLOWANCE_RATIO = 0.10
 
@@ -205,13 +202,12 @@ async def _download_audio(ctx: FetchContext, url: str) -> Path:
                 if total > _MAX_DOWNLOAD_BYTES:
                     out_path.unlink(missing_ok=True)
                     raise ValueError(f"audio exceeds {_MAX_DOWNLOAD_BYTES // (1024 * 1024)} MB cap")
-    logger.info("youtube audio download: %d bytes from %s", total, url)
+    logger.info("youtube audio download: %d bytes", total)
     return out_path
 
 
 def _duration_shortfall_detail(measured: float, reported: float) -> str | None:
-    """Detail string when the downloaded audio is materially shorter than the
-    source the provider described, else None."""
+    """Detail string if the download is materially shorter than the source, else None."""
     if reported <= 0:
         return None
     allowed = max(_DURATION_ALLOWANCE_S, reported * _DURATION_ALLOWANCE_RATIO)
@@ -226,10 +222,9 @@ def _duration_shortfall_detail(measured: float, reported: float) -> str | None:
 async def _rapidapi_mp3_tier(ctx: FetchContext, url: str) -> RawTierResult:
     """Transcribe the video's audio when no caption source could serve it.
 
-    Produces the same chunk shape as the caption tiers and goes through the same
-    finalizer, so the artifacts are interchangeable. The timestamps are ASR
-    segment boundaries rather than published caption cues, so they are less
-    precise — monotonic and citable, not frame-accurate.
+    Goes through the same finalizer as the caption tiers, so the artifacts are
+    interchangeable. Timestamps are ASR segment boundaries rather than published
+    caption cues: monotonic and citable, not frame-accurate.
     """
     if not ctx.rapidapi_key:
         return RawTierResult(
@@ -357,9 +352,8 @@ TIERS: list[Tier] = [
         rate_limit_key="rapidapi",
     ),
     # Own rate-limit key, not the shared "rapidapi" one: the cascade holds a
-    # tier's semaphore for the tier's whole run, and this one spans polling, a
-    # download, ffmpeg and several sequential transcriptions. Sharing would
-    # block every other RapidAPI-backed tier for minutes.
+    # tier's semaphore for its whole run, and this one spans polling, a download,
+    # ffmpeg and several transcriptions — minutes of blocking every sibling tier.
     Tier(
         "rapidapi_mp3",
         "paid",

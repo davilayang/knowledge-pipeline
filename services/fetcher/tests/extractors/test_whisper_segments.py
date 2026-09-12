@@ -1,8 +1,5 @@
-"""Whisper verbose transcription: ASR segments mapped onto the caption-chunk shape.
-
-The YouTube handler's `_finalize_chunks` consumes `{text, start, duration}`
-chunks. Mapping Whisper's `{start, end, text}` segments onto that shape lets an
-audio-transcribed video produce the same artifacts as a captioned one.
+"""ASR segments mapped onto the `{text, start, duration}` caption-chunk shape,
+so an audio-transcribed video produces the same artifacts as a captioned one.
 """
 
 import pytest
@@ -23,9 +20,8 @@ def test_segments_map_onto_the_caption_chunk_shape() -> None:
 
 
 def test_chunk_offsets_come_from_measured_durations_not_the_nominal_segment_length() -> None:
-    """ffmpeg cuts on keyframes and the final chunk is short, so chunk N cannot
-    be assumed to start at N * 600s. Offsetting by the nominal length would put
-    chunk 2 at 1200.0 here instead of its real position."""
+    """ffmpeg cuts on keyframes and the last chunk is short, so chunk N does not
+    start at N * 600s. The nominal offset would put chunk 2 at 1200.0, not 1199.6."""
     from fetcher.extractors.whisper import stitch_chunk_segments
 
     per_chunk = [
@@ -40,10 +36,9 @@ def test_chunk_offsets_come_from_measured_durations_not_the_nominal_segment_leng
 
 
 def test_malformed_segments_are_dropped_and_output_stays_monotonic() -> None:
-    """ASR output is model-generated, not schema-guaranteed: segments arrive with
-    missing or non-numeric timestamps, end before start, empty text, or a hallucinated
-    tail running past the chunk's own length. Any of those would corrupt the stitched
-    timeline, so they are dropped rather than clamped into plausible-looking data."""
+    """ASR output is model-generated, not schema-guaranteed. Malformed segments
+    would corrupt the stitched timeline, so they are dropped rather than clamped
+    into plausible-looking data."""
     from fetcher.extractors.whisper import segments_to_chunks
 
     segments = [
@@ -63,8 +58,8 @@ def test_malformed_segments_are_dropped_and_output_stays_monotonic() -> None:
 
 
 def test_stitching_drops_segments_running_past_their_own_chunk() -> None:
-    """Whisper hallucinates trailing segments on silence at a chunk's end. Left in,
-    they would overlap the next chunk's real speech once offset onto the timeline."""
+    """Whisper hallucinates trailing segments on silence; left in, they overlap the
+    next chunk's real speech once offset."""
     from fetcher.extractors.whisper import stitch_chunk_segments
 
     per_chunk = [
@@ -86,8 +81,7 @@ def test_stitching_drops_segments_running_past_their_own_chunk() -> None:
 
 def test_probe_duration_measures_the_real_file(medium_mp3) -> None:
     """The stitched timeline is only as good as this number, so it comes from the
-    media itself rather than from the nominal split length or a provider's
-    self-reported duration."""
+    media itself."""
     from fetcher.extractors.whisper import probe_duration
 
     assert probe_duration(medium_mp3) == pytest.approx(25.0, abs=0.5)

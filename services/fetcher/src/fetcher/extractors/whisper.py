@@ -8,7 +8,6 @@ Used by the upcoming `handlers/file_audio.py` for MP3 / video-podcast inputs
 that have no YouTube mirror.
 """
 
-import json
 import logging
 import os
 import subprocess
@@ -100,13 +99,11 @@ class WhisperNotConfigured(WhisperChainFailed):
 
 
 def probe_duration(path: Path) -> float:
-    """Measured duration of an audio file in seconds, via ffprobe.
+    """Measured duration in seconds — the authority for the stitched timeline.
 
-    The authority for the stitched transcript timeline. Deliberately not the
-    nominal split length (ffmpeg cuts on keyframes, and the last chunk is short)
-    and not the transcription provider's self-reported duration (response
-    metadata, which can be rounded, absent, or differ between providers, and
-    whose error would accumulate across every later chunk).
+    Not the nominal split length (ffmpeg cuts on keyframes, last chunk is short)
+    and not the provider's self-reported duration (rounded, sometimes absent,
+    and its error accumulates across every later chunk).
     """
     result = subprocess.run(
         [
@@ -129,18 +126,12 @@ def probe_duration(path: Path) -> float:
 def segments_to_chunks(
     segments: list[dict], *, offset: float, chunk_duration: float | None = None
 ) -> list[dict]:
-    """Map Whisper `{start, end, text}` segments onto the `{text, start, duration}`
-    caption-chunk shape the YouTube handler's finalizer consumes.
+    """Map Whisper `{start, end, text}` segments onto the caption-chunk shape.
 
-    `offset` shifts every timestamp onto the full recording's timeline: Whisper
-    restarts at 0 for each audio chunk it is given, so chunk N's segments must be
-    pushed past the real duration of chunks 0..N-1.
-
-    `chunk_duration`, when given, is the measured length of the audio this batch
-    came from; segments ending past it are hallucinated tails and are dropped.
-    Malformed segments (missing/non-numeric timestamps, end before start, blank
-    text) are dropped rather than repaired — a plausible-looking guess is worse
-    than a gap, because nothing downstream can tell it was invented.
+    `offset` shifts timestamps onto the full recording's timeline — Whisper
+    restarts at 0 for every chunk it is given. Segments past `chunk_duration`
+    are hallucinated tails; those and malformed ones are dropped rather than
+    repaired, since nothing downstream could tell a guess from real data.
     """
     chunks: list[dict] = []
     for segment in segments:
@@ -169,10 +160,8 @@ def segments_to_chunks(
 def stitch_chunk_segments(per_chunk: list[tuple[list[dict], float]]) -> list[dict]:
     """Flatten per-chunk `(segments, measured_duration)` pairs onto one timeline.
 
-    Each chunk's offset is the sum of the *measured* durations of the chunks
-    before it. The nominal split length is not usable: ffmpeg cuts on keyframes
-    so chunks drift from it, the last chunk is short, and any per-chunk error
-    would accumulate across every chunk that follows.
+    Each chunk's offset is the sum of the measured durations before it — see
+    `probe_duration` for why measured rather than nominal.
     """
     chunks: list[dict] = []
     offset = 0.0
@@ -235,9 +224,8 @@ async def _post_to_chain(
 ) -> httpx.Response:
     """POST the chunk to each chain entry in order; return the first 2xx response.
 
-    `data` carries the per-call form fields other than `model`, which each entry
-    supplies itself — that is the only thing that differs between the plain-text
-    and timestamped callers.
+    `data` carries the form fields other than `model` — the only thing differing
+    between the plain-text and timestamped callers.
     """
     callable_entries = [e for e in chain if _key_for(e.provider, ctx) is not None]
     if not callable_entries:
@@ -296,18 +284,11 @@ async def transcribe_chunk_verbose(
 ) -> list[dict]:
     """Like `transcribe_chunk`, but returns Whisper's timestamped segments.
 
-    Kept separate from `transcribe_chunk` so that function keeps its `str`
-    return for existing callers. `timestamp_granularities` is pinned to
-    segment-level explicitly: word-level would multiply the payload for no
-    gain here, and relying on the provider default invites silent reshaping.
+    Separate from `transcribe_chunk` so that keeps its `str` return for existing
+    callers. Segments come from `verbose_json` alone — Groq rejects OpenAI's
+    `timestamp_granularities` param outright (HTTP 400 `unknown_param`).
     """
     resp = await _post_to_chain(
-        ctx,
-        chunk_path,
-        chain=chain,
-        data={
-            "response_format": "verbose_json",
-            "timestamp_granularities": json.dumps(["segment"]),
-        },
+        ctx, chunk_path, chain=chain, data={"response_format": "verbose_json"}
     )
     return resp.json().get("segments") or []

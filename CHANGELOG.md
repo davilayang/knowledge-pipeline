@@ -6,26 +6,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Added
+### Changed
 
-- **Videos whose owner disabled captions can now be read.** When neither
-  caption tier can serve a YouTube video, the handler fetches its audio and
-  transcribes it, producing the same timestamped chunks as a captioned video
-  and passing them through the same finalizer — so a transcribed video yields
-  the same artifacts as a captioned one. Runs last and only with paid tiers
-  enabled, since published captions are cheaper and more precise. The
-  transcript timeline is rebuilt from measured chunk durations, and a download
-  materially shorter than the source is rejected rather than transcribed into a
-  silently incomplete record.
+- **Videos whose owner disabled captions can now be read.** When neither caption
+  tier can serve a YouTube video, the handler fetches its audio and transcribes
+  it, producing the same timestamped chunks as a captioned video and passing
+  them through the same finalizer. Runs last and only with paid tiers enabled,
+  since published captions are cheaper and more precise. The transcript timeline
+  is rebuilt from measured chunk durations, and a download materially shorter
+  than the source is rejected rather than transcribed into a silently
+  incomplete record.
 
-### Fixed
-
-- **Audio transcription now actually reaches Groq.** The whisper chain names
-  Groq as its primary provider and OpenAI as the fallback, but the Groq API key
-  was never read from the environment or placed on the fetch context, so the
-  primary was silently skipped and every transcription ran on the OpenAI
-  fallback. Podcast and audio-file transcription now uses the configured
-  primary, as `config/whisper.yaml` always described.
+- **Audio transcription now reaches Groq.** The whisper chain names Groq primary
+  and OpenAI fallback, but the Groq API key was never read from the environment
+  or placed on the fetch context, so the primary was skipped and every
+  transcription ran on the fallback. Measured on a 7-minute video, the intended
+  primary transcribes in 4.3s against 20.5s for the fallback.
 
 ---
 

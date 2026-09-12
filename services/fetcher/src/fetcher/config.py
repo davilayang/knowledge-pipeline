@@ -112,9 +112,8 @@ class Settings(BaseSettings):
         default=None,
         validation_alias=AliasChoices("GROQ_API_KEY"),
         description=(
-            "Groq API key for the whisper transcription chain's primary provider "
-            "(see config/whisper.yaml). Shares the bare GROQ_API_KEY env var with "
-            "the orchestrator. Unset means the chain falls through to OpenAI."
+            "Groq API key for the whisper chain's primary provider (config/whisper.yaml). "
+            "Unset means the chain falls through to OpenAI."
         ),
     )
     ollama_api_key: str | None = Field(

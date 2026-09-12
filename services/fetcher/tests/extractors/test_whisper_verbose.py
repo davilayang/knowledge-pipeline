@@ -22,9 +22,11 @@ def _chain():
     ]
 
 
-async def test_verbose_transcription_requests_segment_timestamps(tmp_path: Path) -> None:
-    """Pins the wire contract: a default change on either side (text instead of
-    verbose_json, or word-level granularity) would silently reshape the payload."""
+async def test_verbose_transcription_asks_for_timestamped_json(tmp_path: Path) -> None:
+    """Pins the wire contract. `verbose_json` alone yields segments on both
+    providers; OpenAI's `timestamp_granularities` param must NOT be sent, as
+    Groq rejects it with HTTP 400 `unknown_param` (confirmed against the live
+    API — a mocked response cannot catch that)."""
     from fetcher.extractors import whisper
 
     chunk = tmp_path / "chunk_000.mp3"
@@ -49,5 +51,5 @@ async def test_verbose_transcription_requests_segment_timestamps(tmp_path: Path)
     segments = await whisper.transcribe_chunk_verbose(ctx, chunk, chain=_chain())
 
     assert sent["response_format"] == "verbose_json"
-    assert json.loads(sent["timestamp_granularities"]) == ["segment"]
+    assert "timestamp_granularities" not in sent
     assert segments == [{"start": 0.0, "end": 2.0, "text": "hi"}]

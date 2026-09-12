@@ -36,8 +36,8 @@ async def test_polls_until_the_conversion_is_ready() -> None:
 
 
 async def test_gives_up_when_still_processing_at_the_budget() -> None:
-    """A conversion that never completes must not hold the fetch request open —
-    the caller has a shared end-to-end budget to leave room in."""
+    """A conversion that never completes must not hold the request open — the
+    caller has a shared end-to-end budget to leave room in."""
     from fetcher.extractors.rapidapi import youtube_mp3
 
     client = MagicMock()

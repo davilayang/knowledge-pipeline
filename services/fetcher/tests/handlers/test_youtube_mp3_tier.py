@@ -1,9 +1,6 @@
-"""The YouTube handler's audio-transcription tier.
-
-Last resort for videos whose owner disabled captions: no caption tier can serve
-them, so the audio is downloaded and transcribed. It produces the same
-`{text, start, duration}` chunks as the caption tiers and goes through the same
-finalizer, so a transcribed video yields the same artifacts as a captioned one.
+"""The YouTube handler's audio-transcription tier — last resort for videos whose
+owner disabled captions. Goes through the same finalizer as the caption tiers,
+so a transcribed video yields the same artifacts as a captioned one.
 """
 
 from pathlib import Path
@@ -93,9 +90,8 @@ async def test_transcribed_audio_produces_the_same_chunk_sidecar_as_captions(tmp
 
 
 async def test_tier_rejects_a_download_far_shorter_than_the_source(tmp_path) -> None:
-    """A mirror can serve a partial file. Transcribing it would store a
-    confident, silently incomplete transcript, so a large duration gap fails
-    the tier instead."""
+    """A mirror can serve a partial file; transcribing it would store a confident,
+    silently incomplete transcript."""
     patches = _patch_pipeline(source_duration=600.0, measured_duration=120.0, tmp_path=tmp_path)
     with _patch_oembed(), patches[0], patches[1], patches[2], patches[3], patches[4]:
         result = await youtube._rapidapi_mp3_tier(_ctx(), _VIDEO_URL)
@@ -105,8 +101,8 @@ async def test_tier_rejects_a_download_far_shorter_than_the_source(tmp_path) -> 
 
 
 async def test_audio_tier_sits_last_so_captions_are_always_preferred() -> None:
-    """Transcription costs money and time and is less accurate than published
-    captions; it must never pre-empt a caption tier."""
+    """Transcription is slower, paid and less precise than published captions, so
+    it must never pre-empt a caption tier."""
     names = [tier.name for tier in youtube.TIERS]
 
     assert names.index("rapidapi_mp3") > names.index("rapidapi_captions")

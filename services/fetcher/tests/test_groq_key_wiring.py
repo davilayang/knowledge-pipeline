@@ -1,9 +1,8 @@
 """The whisper chain's primary provider must be reachable in a real process.
 
-`whisper._key_for` reads `ctx.groq_api_key`. The existing whisper tests build
-their context from `MagicMock()`, which answers *any* attribute with a truthy
-mock — so they pass whether or not the key is actually plumbed from the
-environment. These tests close that gap at the real seam.
+The existing whisper tests build their context from `MagicMock()`, which answers
+any attribute with a truthy mock, so they pass whether or not the key is plumbed
+from the environment. These assert at the real seam.
 """
 
 import os
@@ -20,9 +19,8 @@ def test_settings_reads_groq_api_key_from_env() -> None:
 
 
 async def test_fetch_context_carries_groq_api_key() -> None:
-    """`whisper._key_for("groq", ctx)` reads this attribute off the live
-    context; without it the chain's primary provider is silently unreachable
-    and every transcription falls through to the OpenAI fallback."""
+    """`_key_for` reads this off the live context; without it the primary is
+    silently unreachable and everything falls through to OpenAI."""
     from fetcher.config import Settings
     from fetcher.context import make_fetch_context
     from fetcher.extractors import whisper
