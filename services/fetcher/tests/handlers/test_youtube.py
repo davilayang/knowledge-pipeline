@@ -400,7 +400,10 @@ def test_handler_registers_transcript_api_before_rapidapi_captions() -> None:
     """Free tier runs first; paid fallback only fires when transcript_api
     returned empty AND the request opted into paid tiers."""
     names = [t.name for t in youtube.TIERS]
-    assert names == ["transcript_api", "rapidapi_captions"]
+    assert names.index("transcript_api") < names.index("rapidapi_captions")
+    assert youtube.TIERS[0].name == "transcript_api"
     assert youtube.TIERS[0].cost == "free"
-    assert youtube.TIERS[1].cost == "paid"
-    assert youtube.TIERS[1].rate_limit_key == "rapidapi"
+
+    captions = next(t for t in youtube.TIERS if t.name == "rapidapi_captions")
+    assert captions.cost == "paid"
+    assert captions.rate_limit_key == "rapidapi"

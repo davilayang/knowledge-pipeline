@@ -6,6 +6,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Videos whose owner disabled captions can now be read.** When neither
+  caption tier can serve a YouTube video, the handler fetches its audio and
+  transcribes it, producing the same timestamped chunks as a captioned video
+  and passing them through the same finalizer — so a transcribed video yields
+  the same artifacts as a captioned one. Runs last and only with paid tiers
+  enabled, since published captions are cheaper and more precise. The
+  transcript timeline is rebuilt from measured chunk durations, and a download
+  materially shorter than the source is rejected rather than transcribed into a
+  silently incomplete record.
+
 ### Fixed
 
 - **Audio transcription now actually reaches Groq.** The whisper chain names
