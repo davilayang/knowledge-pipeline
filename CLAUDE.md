@@ -62,12 +62,32 @@ above) beats work that polishes the already-working layer.
 
 Before locking in an architecture choice, pipeline / DAG topology change, schema migration, embedding-model or chunking-strategy swap, or refactor with non-obvious tradeoffs, invoke an advisor agent — don't ship the recommendation on a single model's read.
 
-- Use **`codex-advisor`** for bounded critique of a specific design, snippet, or plan (Codex runs in a read-only sandbox and returns one tight judgment).
-- Use **`gemini-advisor`** for open-ended exploration or when current web context matters ("is X still considered best practice?", "what are people doing with Y now?").
+- **`codex-advisor` is the default.** Use it for bounded critique of a specific design, snippet, or plan — Codex runs in a read-only sandbox enforced by its own CLI and returns one tight judgment. Reach for it first, and exclusively when the read-only floor matters.
+- **`agy-advisor` is the rationed exception.** Use it only when the question genuinely needs open-ended exploration or current web context ("is X still considered best practice?", "what are people doing with Y now?") — not as a co-equal second opinion. Two reasons to spend it sparingly: `agy` runs on a materially smaller quota, and it has no enforced read-only floor (its print mode exposes no granular sandbox, so read-only is prompt convention only).
+
+There is no `gemini-advisor`, and the `gemini` CLI is gone from this machine — `agy` replaced both. A doc or a stale worktree still naming either is out of date, not a hint that they can be reinstalled.
 
 Pass absolute file paths in the prompt — both agents read files themselves; no need to paste contents. Surface the response verbatim to the user before acting on it; do **not** filter or paraphrase the second opinion away.
 
 Both agents live under `.claude/agents/` and are symlinked from `~/GitHub/data-context-builder/claude-agents/`.
+
+## Decision logging
+
+When a hard-to-reverse decision lands — pipeline or DAG topology, schema
+migration, embedding-model or chunking-strategy swap, a framework pick, a scope
+cut that closes off an option — offer to log it to the Notion **Knowledge OS —
+Decisions** database (data-source `36ed130d-6131-8014-99fa-fb89176b920a`, under
+the `Knowledge OS` parent page), ADR-shaped. Use the `mcp__notion-private__*`
+tools — the default `notion` MCP cannot reach this database.
+
+This repo is part of the personal Knowledge OS. Its decisions do not go to the
+Apolitical work Notion, and work decisions do not come here.
+
+Surface the candidate row and confirm before writing; never write unprompted.
+The threshold is the decision being expensive to undo, not merely notable.
+
+This pairs with the second opinions above: the advisor read is what informs the
+decision, and the Decisions row is what preserves why it went the way it did.
 
 ## Git Workflow
 
