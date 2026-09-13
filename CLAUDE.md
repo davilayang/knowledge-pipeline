@@ -62,10 +62,10 @@ above) beats work that polishes the already-working layer.
 
 Before locking in an architecture choice, pipeline / DAG topology change, schema migration, embedding-model or chunking-strategy swap, or refactor with non-obvious tradeoffs, invoke an advisor agent — don't ship the recommendation on a single model's read.
 
-- Use **`codex-advisor`** for bounded critique of a specific design, snippet, or plan (Codex runs in a read-only sandbox and returns one tight judgment).
-- Use **`agy-advisor`** for open-ended exploration or when current web context matters ("is X still considered best practice?", "what are people doing with Y now?"). `agy` is the Antigravity CLI; it replaced the older `gemini-advisor` when the standalone `gemini` CLI was deprecated.
+- **`codex-advisor` is the default.** Use it for bounded critique of a specific design, snippet, or plan — Codex runs in a read-only sandbox enforced by its own CLI and returns one tight judgment. Reach for it first, and exclusively when the read-only floor matters.
+- **`agy-advisor` is the rationed exception.** Use it only when the question genuinely needs open-ended exploration or current web context ("is X still considered best practice?", "what are people doing with Y now?") — not as a co-equal second opinion. Two reasons to spend it sparingly: `agy` runs on a materially smaller quota, and it has no enforced read-only floor (its print mode exposes no granular sandbox, so read-only is prompt convention only).
 
-**Asymmetry to know:** `codex-advisor` runs under a hard read-only sandbox enforced by the Codex CLI. `agy-advisor` has no such floor — agy's print mode exposes no granular sandbox, so its read-only contract is prompt convention only. Prefer `codex-advisor` for review work where the read-only floor matters.
+There is no `gemini-advisor`, and the `gemini` CLI is gone from this machine — `agy` replaced both. A doc or a stale worktree still naming either is out of date, not a hint that they can be reinstalled.
 
 Pass absolute file paths in the prompt — both agents read files themselves; no need to paste contents. Surface the response verbatim to the user before acting on it; do **not** filter or paraphrase the second opinion away.
 
