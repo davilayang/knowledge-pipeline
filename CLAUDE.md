@@ -63,7 +63,9 @@ above) beats work that polishes the already-working layer.
 Before locking in an architecture choice, pipeline / DAG topology change, schema migration, embedding-model or chunking-strategy swap, or refactor with non-obvious tradeoffs, invoke an advisor agent — don't ship the recommendation on a single model's read.
 
 - Use **`codex-advisor`** for bounded critique of a specific design, snippet, or plan (Codex runs in a read-only sandbox and returns one tight judgment).
-- Use **`gemini-advisor`** for open-ended exploration or when current web context matters ("is X still considered best practice?", "what are people doing with Y now?").
+- Use **`agy-advisor`** for open-ended exploration or when current web context matters ("is X still considered best practice?", "what are people doing with Y now?"). `agy` is the Antigravity CLI; it replaced the older `gemini-advisor` when the standalone `gemini` CLI was deprecated.
+
+**Asymmetry to know:** `codex-advisor` runs under a hard read-only sandbox enforced by the Codex CLI. `agy-advisor` has no such floor — agy's print mode exposes no granular sandbox, so its read-only contract is prompt convention only. Prefer `codex-advisor` for review work where the read-only floor matters.
 
 Pass absolute file paths in the prompt — both agents read files themselves; no need to paste contents. Surface the response verbatim to the user before acting on it; do **not** filter or paraphrase the second opinion away.
 
