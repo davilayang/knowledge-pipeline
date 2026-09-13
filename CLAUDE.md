@@ -69,6 +69,22 @@ Pass absolute file paths in the prompt — both agents read files themselves; no
 
 Both agents live under `.claude/agents/` and are symlinked from `~/GitHub/data-context-builder/claude-agents/`.
 
+## Decision logging
+
+When a hard-to-reverse decision lands — pipeline or DAG topology, schema
+migration, embedding-model or chunking-strategy swap, a framework pick, a scope
+cut that closes off an option — offer to log it to the cross-project Notion
+**Decisions** database (data-source `4deb3fa2-bf03-4563-a8a6-c41ff80a29d6`, under
+the `Apolitical Data` parent page), ADR-shaped and tagged by Project. Use the
+`mcp__notion-private__*` tools — the default `notion` MCP cannot reach this
+database.
+
+Surface the candidate row and confirm before writing; never write unprompted.
+The threshold is the decision being expensive to undo, not merely notable.
+
+This pairs with the second opinions above: the advisor read is what informs the
+decision, and the Decisions row is what preserves why it went the way it did.
+
 ## Git Workflow
 
 Main is **protected**. All changes go through feature branches and pull requests.
