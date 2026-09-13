@@ -75,11 +75,13 @@ Both agents live under `.claude/agents/` and are symlinked from `~/GitHub/data-c
 
 When a hard-to-reverse decision lands — pipeline or DAG topology, schema
 migration, embedding-model or chunking-strategy swap, a framework pick, a scope
-cut that closes off an option — offer to log it to the cross-project Notion
-**Decisions** database (data-source `4deb3fa2-bf03-4563-a8a6-c41ff80a29d6`, under
-the `Apolitical Data` parent page), ADR-shaped and tagged by Project. Use the
-`mcp__notion-private__*` tools — the default `notion` MCP cannot reach this
-database.
+cut that closes off an option — offer to log it to the Notion **Knowledge OS —
+Decisions** database (data-source `36ed130d-6131-8014-99fa-fb89176b920a`, under
+the `Knowledge OS` parent page), ADR-shaped. Use the `mcp__notion-private__*`
+tools — the default `notion` MCP cannot reach this database.
+
+This repo is part of the personal Knowledge OS. Its decisions do not go to the
+Apolitical work Notion, and work decisions do not come here.
 
 Surface the candidate row and confirm before writing; never write unprompted.
 The threshold is the decision being expensive to undo, not merely notable.
