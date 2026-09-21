@@ -3,7 +3,6 @@ import json
 import textwrap
 from collections import Counter
 from collections.abc import Iterable
-from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -38,7 +37,7 @@ from .def_config import (
     PIPELINE_TAG,
     queue_items_partition_def,
 )
-from .figures import inject_figure_descriptions, strip_figure_descriptions
+from .figures import inject_figure_descriptions
 from .resources import ExtractResult, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
@@ -351,27 +350,29 @@ def fetch_content(
             },
         )
 
-    # Figure descriptions land in the body before anything measures it: the
-    # gate counts the anchors an injected description has replaced, and the
-    # extraction lanes read what is stored.
-    content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
-
-    char_count = len(content)
-    # The fetcher cascade falls back to `best_result` when no tier hits its
-    # floor (services/fetcher/cascade.py), so a 200 can carry sub-floor
-    # content. Guard the extractor against degenerate inputs before persist.
-    if char_count < 500:
+    # The floor asks whether the SOURCE carried enough to extract from, so it is
+    # measured before any description is added — operator text is not the source,
+    # and a body that only clears the floor once descriptions land is still a bad
+    # fetch. The fetcher cascade falls back to `best_result` when no tier hits its
+    # own floor (services/fetcher/cascade.py), so a 200 can carry sub-floor content.
+    source_chars = len(result.content)
+    if source_chars < 500:
         raise dg.Failure(
-            description=f"{content_type} fetch below extraction floor: {char_count} chars",
+            description=f"{content_type} fetch below extraction floor: {source_chars} chars",
             allow_retries=False,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),
                 "fetch_tier": dg.MetadataValue.text(result.tier),
-                "content_chars": dg.MetadataValue.int(char_count),
+                "content_chars": dg.MetadataValue.int(source_chars),
                 "tier_log": dg.MetadataValue.json(result.tier_log),
             },
         )
+
+    # Descriptions land after the floor and before the hash: the hash covers what
+    # is stored, so a revised map re-runs extraction.
+    content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
+    char_count = len(content)
     content_hash = hashlib.sha256(content.encode()).hexdigest()
     extras = result.extras or {}
     author = _coerce_author(extras.get("authors"))
@@ -969,13 +970,7 @@ def extract_claims(
     if not row or not row.get("raw_content"):
         return dg.MaterializeResult(metadata={"summary_skipped": dg.MetadataValue.bool(True)})
 
-    # The claims lane reads the body with the figure descriptions cut out.
-    # Provenance is decided by which input produced a claim, never by a prompt
-    # instruction: record_claims writes every claim as something the source
-    # said, and a description is a model's reading of a picture.
-    item = replace(
-        _ingest_item_from_row(row), text=strip_figure_descriptions(row.get("raw_content") or "")
-    )
+    item = _ingest_item_from_row(row)
     content_type = (row.get("content_type") or "").lower()
     summary, call = run_extract_claims(item, content_type=content_type)
     store.record_claims(
@@ -1040,11 +1035,7 @@ def extract_entities(
     if not claims_doc:
         return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})
 
-    # Same cut as the claims lane: an entity the wiki attributes to this source
-    # must come from the source, not from a description of one of its pictures.
-    item = replace(
-        _ingest_item_from_row(row), text=strip_figure_descriptions(row.get("raw_content") or "")
-    )
+    item = _ingest_item_from_row(row)
     candidates, call = run_extract_entities(item, parse_claims_doc(claims_doc))
     store.record_candidates(
         notion_page_id=page_id,

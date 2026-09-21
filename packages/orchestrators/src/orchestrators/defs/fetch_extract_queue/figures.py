@@ -19,14 +19,6 @@ _FIGURE = re.compile(
 )
 _ANCHOR = re.compile(r"!\[figure\]\((?P<anchor>oreilly:[^)]+)\)")
 
-# The injected block, and the pattern that takes it back out. The tag is a
-# structural boundary rather than an instruction to a model: the claims lane
-# gets a body this pattern has already emptied, so a claim cannot originate in
-# a description even if a prompt is ignored.
-_DESCRIPTION_BLOCK = re.compile(
-    r'<figure-description ref="[^"]*">\n.*?\n</figure-description>', re.DOTALL
-)
-
 
 def figure_repair_template(markdown: str) -> dict[str, dict[str, str]]:
     """Every undescribed figure in `markdown`, keyed by the anchor an injector
@@ -65,14 +57,3 @@ def inject_figure_descriptions(
         return f'<figure-description ref="{anchor}">\n{description}\n</figure-description>'
 
     return _ANCHOR.sub(swap, markdown), described
-
-
-def strip_figure_descriptions(markdown: str) -> str:
-    """The body with every injected description block removed.
-
-    What the claims lane reads. Provenance is then decided by which input
-    produced a claim rather than by a model remembering a rule — without this
-    cut, a vision model's reading of a screenshot persists as a claim the book
-    made, carrying a backlink that makes it look more trustworthy, not less.
-    """
-    return _DESCRIPTION_BLOCK.sub("", markdown)

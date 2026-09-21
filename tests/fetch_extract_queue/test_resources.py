@@ -778,3 +778,24 @@ def test_figure_text_fails_loudly_when_the_attachment_is_not_a_json_map():
         with patch("httpx.get", return_value=MagicMock(content=b"not json at all")):
             with pytest.raises(ValueError, match="Figure Text"):
                 resource.get_figure_text("p-1")
+
+
+def test_figure_text_names_the_anchor_whose_entry_is_malformed():
+    """The operator edits this file by hand. An entry that is not
+    `{caption, description}` has to name itself — and the message has to survive
+    the run-failure handler, which posts an exception's innermost cause to
+    Notion's Error field."""
+    resource = NotionQueueResource(
+        integration_token="secret_x", queue_db_id="db-123", queue_data_source_id="ds-456"
+    )
+    client = _notion_page_with_figure_text(
+        [{"name": "ch10.json", "file": {"url": "https://files.notion.so/ch10.json"}}]
+    )
+    payload = b'{"oreilly:x/a.png": "just a string"}'
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        with patch("httpx.get", return_value=MagicMock(content=payload)):
+            with pytest.raises(ValueError) as caught:
+                resource.get_figure_text("p-1")
+    assert "oreilly:x/a.png" in str(caught.value)
+    assert "ch10.json" in str(caught.value)
+    assert caught.value.__cause__ is None

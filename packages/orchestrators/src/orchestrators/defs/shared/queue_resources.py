@@ -283,9 +283,12 @@ class NotionQueueResource(dg.ConfigurableResource):
         """The row's `Figure Text` attachment parsed as `{anchor: {caption,
         description}}`, or `{}` when nothing is attached.
 
-        An attachment that is not that map raises rather than reading as empty:
-        an unparsed file and an absent one both park the row, and the operator
-        needs to know which happened.
+        Anything else raises, naming the file and the offending anchor. The
+        operator writes this file by hand, and a malformed entry read as empty
+        would park the row again with no hint that the file was even read. The
+        message is not chained to the decoder's: the run-failure handler posts an
+        exception's innermost cause to Notion, so a chained message loses the
+        only two identifiers the operator can act on.
         """
         attachment = self._download_file_property(page_id, "Figure Text")
         if not attachment:
@@ -294,9 +297,15 @@ class NotionQueueResource(dg.ConfigurableResource):
         try:
             figure_text = json.loads(payload)
         except json.JSONDecodeError as exc:
-            raise ValueError(f"Figure Text attachment {name!r} is not valid JSON: {exc}") from exc
+            raise ValueError(f"Figure Text attachment {name!r} is not valid JSON: {exc}") from None
         if not isinstance(figure_text, dict):
             raise ValueError(f"Figure Text attachment {name!r} is not a JSON object")
+        for anchor, entry in figure_text.items():
+            if not isinstance(entry, dict) or not isinstance(entry.get("description", ""), str):
+                raise ValueError(
+                    f"Figure Text attachment {name!r}: entry for {anchor!r} is not "
+                    f'{{"caption": …, "description": …}}'
+                )
         return figure_text
 
     def get_page_body_markdown(self, page_id: str) -> str:

@@ -73,14 +73,11 @@ POST `/v1/structure` for `.md`/`.txt`/`.markdown` — any other attachment
 extension fails the item rather than being decoded as prose. A
 `book_chapter` (an `ATTACHMENT_BODY_TYPES` content type) with no Source File
 attached fails outright: its publisher answers an automated fetch with
-Access Denied, so there is no URL fetch to fall back to. Before the body is
-stored, any description attached as `Figure Text` replaces its figure anchor
-(`figures.inject_figure_descriptions`) — which is what clears the figure check,
-since the check counts the anchors that remain. The claims and entities lanes
-read that body with the description blocks cut back out
-(`figures.strip_figure_descriptions`): every claim this pipeline persists is
-recorded as something the source said, and a description is a model's reading of
-a picture, not the book's words. For
+Access Denied, so there is no URL fetch to fall back to. Any description attached as
+`Figure Text` replaces its figure anchor (`figures.inject_figure_descriptions`)
+after the extraction floor and before the content hash — which is what clears the
+figure check, since the check counts the anchors that remain. Every lane then
+reads one body, descriptions included. For
 `/v1/fetch`, the service is authoritative for source matching
 (arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
 and quality-floor enforcement. `extract_metadata` asks the same service for one

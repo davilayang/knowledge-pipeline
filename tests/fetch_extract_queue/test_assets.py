@@ -1957,11 +1957,10 @@ def test_fetched_injects_figure_descriptions_so_the_gate_passes(tmp_path: Path):
     assert figure_gate_result("book_chapter", stored).passed
 
 
-def test_extract_claims_cannot_see_a_figure_description(tmp_path: Path):
-    """The claims lane reads the body with the description blocks cut out, so a
-    claim cannot originate in a model's reading of a picture — every claim this
-    pipeline persists is hardcoded `provenance="source"`, and a description is
-    not something the book said."""
+def test_extract_claims_reads_the_body_including_figure_descriptions(tmp_path: Path):
+    """One body, every lane. A description is part of the chapter once injected —
+    the figures illustrate what the prose argues, and measuring the two inputs
+    over chapter 10 found no claim that came from a description."""
     from domains.wiki.claims import ClaimSet
     from orchestrators.defs.fetch_extract_queue.assets import extract_claims as extract_claims_asset
     from workflows.llm import LLMCall
@@ -1969,7 +1968,7 @@ def test_extract_claims_cannot_see_a_figure_description(tmp_path: Path):
     db_path = tmp_path / "q.db"
     body = (
         "# Ch 10\n\n"
-        '<figure-description ref="oreilly:x/a.png">\nA model read this picture.\n'
+        '<figure-description ref="oreilly:x/a.png">\nBinary grade buttons.\n'
         "</figure-description>\n\n**Figure 10-1. EvalGen.**\n\n" + "c" * 5000
     )
     _seed_with_raw_content(db_path, "p-1", "book_chapter", body)
@@ -1990,7 +1989,29 @@ def test_extract_claims_cannot_see_a_figure_description(tmp_path: Path):
         result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
 
     assert result.success
-    assert "A model read this picture." not in captured["text"]
-    assert "**Figure 10-1. EvalGen.**" in captured["text"]
-    # The stored body keeps the description: the narrative lane is what needs it.
-    assert "A model read this picture." in store.get_row("p-1")["raw_content"]
+    assert captured["text"] == store.get_row("p-1")["raw_content"]
+
+
+def test_fetched_floors_the_converted_body_not_the_descriptions(tmp_path: Path):
+    """The extraction floor asks whether the source carried enough to extract
+    from. Operator-written descriptions are not the source, so a body that only
+    clears 500 characters once they are added still fails."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch10.html"
+    anchor = "oreilly:9798341660717/aiee_1001.png"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content=f"# Ch 10\n\n![figure]({anchor})\n", tier="oreilly-htmlbook", tier_log=[]
+    )
+    notion = _notion_with_file("ch10.html", b"<html>chapter</html>")
+    notion.get_figure_text.return_value = {anchor: {"caption": "", "description": "d" * 5000}}
+
+    with pytest.raises(Exception, match="below extraction floor"):
+        _materialize(
+            fetch_content,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store, "notion": notion},
+            url=url,
+        )

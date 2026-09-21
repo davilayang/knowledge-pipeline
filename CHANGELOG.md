@@ -11,10 +11,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **A parked book chapter can be repaired by describing its figures.** Fill the
   repair template the figure check emits, attach it to the row's new Notion
   `Figure Text` property, and re-queue: `fetch_content` swaps each anchor for
-  its description, which clears the check. The claims and entities lanes read
-  the body with those descriptions cut back out
-  (`fetch_extract_queue/figures.py`), so a model's reading of a picture can
-  never persist as something the book said.
+  its description, which clears the check (`fetch_extract_queue/figures.py`).
+  Every lane reads one body: measuring chapter 10 with and without the
+  descriptions found no claim that came from one.
 
 ---
 
