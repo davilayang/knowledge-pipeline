@@ -436,10 +436,10 @@ def _deterministic_publisher(row: dict[str, Any]) -> str | None:
 def _typed_contributors(row: dict[str, Any]) -> list[dict[str, Any]] | None:
     """The row's own author as contributors, or None to let the model decide.
 
-    Only `book_chapter` carries one: its publisher blocks automated fetching, so
-    nothing but a human types that column, and a name somebody typed beats a name
-    a model read out of page furniture. A comma-separated value is several people,
-    which is how the Notion property spells a co-authored book."""
+    Only `book_chapter` carries one: the converter reads the byline off the page
+    it was handed, and a name the publisher printed beats a name a model read out
+    of page furniture — an editor's contact address, say. A comma-separated value
+    is several people, which is how the converter spells a co-authored book."""
     if (row.get("content_type") or "") != CONTENT_TYPE_BOOK_CHAPTER:
         return None
     names = [n.strip() for n in (row.get("author") or "").split(",") if n.strip()]

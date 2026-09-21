@@ -37,7 +37,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **A chapter's title and authors come from the page rather than a model.** Both
   are parsed from the publisher's markup and stored with the body, so the queue
   row and the wiki carry what the page printed instead of an extraction's reading
-  of it. A manually set author still wins — the page only fills a blank.
+  of it.
 
 ### Changed
 

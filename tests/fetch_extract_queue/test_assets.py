@@ -1200,24 +1200,22 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     assert json.loads(call["output"])["publisher"] == "Together AI"
 
 
-def test_extract_metadata_prefers_a_typed_author_for_a_book_chapter(tmp_path: Path):
-    """A typed Notion Author is the fallback for a source whose markup names
-    nobody, and it must reach the reading card as well as the wiki — a value
+def test_extract_metadata_prefers_the_row_author_for_a_book_chapter(tmp_path: Path):
+    """The converter reads a chapter's byline off the page it was handed, and
+    that beats the model's reading of page furniture — an editor's contact
+    address, say. It must reach the reading card as well as the wiki: a value
     that lands in one and not the other is the split this was chosen to avoid.
     The model's answer survives in the call ledger."""
     from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
 
     db_path = tmp_path / "q.db"
     queue_db.create_schema(db_path=db_path)
-    # Triage first, then the fetch — re-triage clears raw_content, so seeding the
-    # body before the typed author would leave the row with nothing to extract.
     queue_db.upsert_triaged(
         db_path=db_path,
         notion_page_id="p-book",
         url="https://example.com/x",
         canonical_url="https://example.com/x",
         content_type="book_chapter",
-        author="Ada Lovelace",
     )
     body = "chapter " * 400
     queue_db.upsert_fetched(
@@ -1229,6 +1227,7 @@ def test_extract_metadata_prefers_a_typed_author_for_a_book_chapter(tmp_path: Pa
         fetch_tier_log=[],
         fetched_content_char_count=len(body),
         content_hash="h",
+        author="Ada Lovelace",
     )
     store = QueueStoreResource(db_path=str(db_path))
     from domains.extraction.schemas import Contributor

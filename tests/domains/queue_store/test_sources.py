@@ -373,57 +373,6 @@ def test_fetcher_does_not_clobber_user_set_content_date(db_path: Path):
     assert row["content_date"] == "2026-01-15"
 
 
-def test_fetcher_does_not_clobber_user_set_author(db_path: Path):
-    # A typed Notion "Author" is authoritative for sources whose markup names
-    # nobody: the fetch must fill that column only when it is blank. Asserting on
-    # the triage write alone would pass while the fetch silently overwrote it.
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-author",
-        url="https://learning.oreilly.com/library/view/b/1/ch01.html",
-        canonical_url="https://learning.oreilly.com/library/view/b/1/ch01.html",
-        content_type="book_chapter",
-        author="Shreya Shankar, Hamel Husain",
-    )
-    upsert_fetched(
-        db_path=db_path,
-        notion_page_id="t-author",
-        url="https://learning.oreilly.com/library/view/b/1/ch01.html",
-        raw_content="body",
-        fetch_tier="oreilly-htmlbook",
-        fetch_tier_log=[],
-        fetched_content_char_count=4,
-        content_hash="h",
-        author="arufino@oreilly.com",  # fetch's guess — must lose to the typed value
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-author")
-    assert row["author"] == "Shreya Shankar, Hamel Husain"
-
-
-def test_fetcher_fills_author_when_user_left_it_blank(db_path: Path):
-    # No typed author → the fetch's own value fills the gap.
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-author-blank",
-        url="https://example.com/a",
-        canonical_url="https://example.com/a",
-        content_type="article",
-    )
-    upsert_fetched(
-        db_path=db_path,
-        notion_page_id="t-author-blank",
-        url="https://example.com/a",
-        raw_content="body",
-        fetch_tier="jina",
-        fetch_tier_log=[],
-        fetched_content_char_count=4,
-        content_hash="h",
-        author="Chip Huyen",
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-author-blank")
-    assert row["author"] == "Chip Huyen"
-
-
 def test_fetcher_fills_content_date_when_user_left_it_blank(db_path: Path):
     # No user date at triage → the fetcher's date fills the gap (COALESCE takes it).
     upsert_triaged(

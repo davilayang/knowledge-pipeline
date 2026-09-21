@@ -159,10 +159,6 @@ class TriageInput(dg.Config):
     # types the fetcher can't auto-date: PDF, podcast, date-less sites). Wins over
     # the fetcher's auto-detected date, which fills only when this is blank.
     publish_date_iso: str | None = None
-    # User-set Notion "Author" — the fallback for sources whose own markup names
-    # nobody. A converter that parses an author from the page still wins for the
-    # body it produces; this fills the column when nothing else can.
-    author: str | None = None
     raw_content_override: str = ""
 
 
@@ -201,11 +197,13 @@ def triaged(
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
-    # A book chapter keeps the URL it was captured with: its publisher redirects an
-    # automated fetch to a marketing homepage, which would collapse every chapter of
-    # every book onto one canonical URL and reclassify the row. Classifying the
-    # captured URL first is what makes that decidable. Every other source still
-    # resolves through its redirect, which is what turns a shortener into a platform.
+    # A book chapter keeps the URL it was captured with. The reader redirects an
+    # automated fetch to the same path on the marketing host, which classifies as
+    # `article` — so consuming the redirect would move the row off the type that
+    # requires an attached file, and it would try to fetch a URL the publisher
+    # answers with Access Denied. Classifying the captured URL first is what makes
+    # that decidable. Every other source still resolves through its redirect, which
+    # is what turns a shortener into the platform it points at.
     if classify_content_type(config.url) == CONTENT_TYPE_BOOK_CHAPTER:
         effective_url = config.url
     else:
@@ -309,7 +307,6 @@ def triaged(
         raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
         content_date=config.publish_date_iso,
-        author=config.author,
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.

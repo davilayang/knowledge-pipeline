@@ -53,7 +53,6 @@ def _materialize(
     content_type: str | None = None,
     name: str | None = None,
     publish_date_iso: str | None = None,
-    author: str | None = None,
 ):
     instance = _instance_with_partition(partition_key)
     op_config: dict = {"url": url}
@@ -63,8 +62,6 @@ def _materialize(
         op_config["name"] = name
     if publish_date_iso is not None:
         op_config["publish_date_iso"] = publish_date_iso
-    if author is not None:
-        op_config["author"] = author
     return dg.materialize(
         [triaged],
         partition_key=partition_key,
@@ -380,23 +377,6 @@ def test_triaged_uses_redirected_url_for_classification_after_redirect(tmp_path:
     assert result.success
     metadata = _get_metadata(result)
     assert metadata["content_type"].text == "youtube"
-
-
-def test_triaged_persists_typed_author(tmp_path: Path):
-    """A typed Notion "Author" reaches queue_items.author at triage.
-
-    It is the fallback for sources whose own markup names nobody. Without this
-    the column is written only by the fetch, so a typed value has no way in."""
-    resources, _ = _resources(tmp_path)
-    result = _materialize(
-        partition_key="p-author",
-        resources=resources,
-        url="https://example.com/a",
-        author="Ada Lovelace",
-    )
-    assert result.success
-    row = resources["triage_store"].get_row("p-author")
-    assert row["author"] == "Ada Lovelace"
 
 
 def test_triaged_keeps_book_chapter_url_when_the_reader_redirects_to_the_homepage(
