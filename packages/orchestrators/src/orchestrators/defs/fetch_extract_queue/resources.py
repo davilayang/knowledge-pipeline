@@ -83,13 +83,12 @@ class FetcherResource(dg.ConfigurableResource):
         # pass the catch-all so no stale taxonomy value lingers here.
         return self.fetch_for_type(url, content_type="article")
 
-    def structure(self, raw_content: str, *, title: str = "", source_url: str = "") -> FetchResult:
-        endpoint = f"{self.service_url.rstrip('/')}/v1/structure"
-        payload: dict[str, Any] = {"raw_content": raw_content}
-        if title:
-            payload["title"] = title
-        if source_url:
-            payload["source_url"] = source_url
+    def _post_json(self, path: str, payload: dict[str, Any]) -> FetchResult:
+        """POST to one of the service's markdown-producing routes.
+
+        Transport failures become transient FetchResults rather than raising, so
+        every caller reports a fetch problem the same way."""
+        endpoint = f"{self.service_url.rstrip('/')}{path}"
         with self._client() as client:
             try:
                 resp = client.post(endpoint, json=payload)
@@ -103,6 +102,25 @@ class FetcherResource(dg.ConfigurableResource):
         if resp.status_code == 200:
             return _parse_success(resp)
         return _parse_problem(resp)
+
+    def structure(self, raw_content: str, *, title: str = "", source_url: str = "") -> FetchResult:
+        payload: dict[str, Any] = {"raw_content": raw_content}
+        if title:
+            payload["title"] = title
+        if source_url:
+            payload["source_url"] = source_url
+        return self._post_json("/v1/structure", payload)
+
+    def structure_oreilly(self, page_html: str, *, source_url: str = "") -> FetchResult:
+        """Convert a saved publisher page to markdown deterministically.
+
+        No model and no cascade — the markup already names every structure — so
+        a rejection here means the converter would not vouch for the output,
+        not that a tier was unavailable."""
+        payload: dict[str, Any] = {"page_html": page_html}
+        if source_url:
+            payload["source_url"] = source_url
+        return self._post_json("/v1/structure-oreilly", payload)
 
     def extract(
         self,

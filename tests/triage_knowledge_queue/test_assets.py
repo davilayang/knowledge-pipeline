@@ -379,6 +379,28 @@ def test_triaged_uses_redirected_url_for_classification_after_redirect(tmp_path:
     assert metadata["content_type"].text == "youtube"
 
 
+def test_triaged_keeps_book_chapter_url_when_the_reader_redirects_to_the_homepage(
+    tmp_path: Path,
+):
+    """O'Reilly answers an automated fetch with a redirect to its marketing
+    homepage. Consuming that redirect would collapse every chapter of every book
+    onto one canonical URL and reclassify the row as `article`, so a chapter is
+    classified and canonicalized from the URL as captured."""
+    resources, _ = _resources(tmp_path)
+    chapter = "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html"
+    meta = UrlMeta(
+        redirected_url="https://www.oreilly.com/",
+        title=None,
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(partition_key="p-1", resources=resources, url=chapter)
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "book_chapter"
+    assert metadata["canonical_url"].url == chapter
+
+
 # -------- user override --------
 
 
@@ -1011,3 +1033,22 @@ def test_triaged_stores_null_when_no_comments(tmp_path: Path):
     assert result.success
     row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-2")
     assert row["user_comments_json"] is None
+
+
+def test_triaged_does_not_ask_a_book_chapter_for_page_metadata(tmp_path: Path):
+    """The reader answers an automated fetch with every field empty and a redirect
+    to the marketing host, so a book chapter is not asked at all — the round trip
+    buys nothing and its one non-empty field is the one that must be ignored."""
+    resources, _ = _resources(tmp_path)
+    with patch("orchestrators.defs.triage_knowledge_queue.assets.fetch_url_meta") as fetch_meta:
+        result = _materialize(
+            partition_key="p-book",
+            resources=resources,
+            url="https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch11.html",
+        )
+    assert result.success
+    fetch_meta.assert_not_called()
+    row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-book")
+    assert row["canonical_url"] == (
+        "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch11.html"
+    )

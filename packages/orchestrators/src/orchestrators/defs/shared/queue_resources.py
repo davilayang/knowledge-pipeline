@@ -18,6 +18,7 @@ from pathlib import Path
 from typing import Any
 
 import dagster as dg
+import httpx
 from domains.queue_store import sources as queue_db
 from notion_client import APIResponseError as NotionAPIResponseError
 from notion_client import Client as NotionClient
@@ -25,6 +26,9 @@ from notion_client import Client as NotionClient
 from orchestrators.config import LOCAL_QUEUE_DB
 
 _NOTION_ERROR_RICH_TEXT_CAP = 1900
+# A saved chapter page runs to a few hundred KB; the ceiling is generous so a
+# slow link fails as a timeout rather than a truncated body.
+_SOURCE_FILE_TIMEOUT_S = 60.0
 
 
 def _build_rich_text(segments: list[tuple[str, str | None]]) -> list[dict[str, Any]]:
@@ -248,6 +252,28 @@ class NotionQueueResource(dg.ConfigurableResource):
         title = (page.get("properties", {}).get("Name", {}) or {}).get("title", []) or []
         text = "".join(t.get("plain_text", "") for t in title).strip()
         return text or None
+
+    def get_source_file(self, page_id: str) -> tuple[str, bytes] | None:
+        """Download the row's `Source File` attachment as `(filename, bytes)`,
+        or None when the property is absent or empty.
+
+        Read on every call, never cached: Notion stores the file durably but
+        hands out a presigned download URL that expires about an hour after the
+        property is read, so a URL captured earlier answers 403. The filename is
+        returned because the caller dispatches on its extension.
+        """
+        page = self._client().pages.retrieve(page_id=page_id)
+        files = (page.get("properties", {}).get("Source File", {}) or {}).get("files") or []
+        if not files:
+            return None
+        entry = files[0]
+        name = entry.get("name") or ""
+        url = (entry.get("file") or entry.get("external") or {}).get("url") or ""
+        if not url:
+            return None
+        resp = httpx.get(url, follow_redirects=True, timeout=_SOURCE_FILE_TIMEOUT_S)
+        resp.raise_for_status()
+        return name, resp.content
 
     def get_page_body_markdown(self, page_id: str) -> str:
         """Fetch all top-level block children of a page and convert to markdown.

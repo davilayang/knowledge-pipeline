@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.37.2"
+version = "0.38.0"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -124,9 +124,13 @@ help = "SSH tunnel to remote Dagster UI"
 cmd = "pytest -n auto"
 help = "Run tests in parallel across CPU cores (pytest-xdist)"
 
+[tool.poe.tasks.test-fetcher]
+cmd = "./scripts/test-fetcher.sh"
+help = "Run the fetcher service's own suite (separate venv, not a workspace member)"
+
 [tool.poe.tasks.check]
-sequence = ["fmt", "lint", "test"]
-help = "Run all checks: formatting, linting, and tests"
+sequence = ["fmt", "lint", "test", "test-fetcher"]
+help = "Run all checks: formatting, linting, workspace tests, and the fetcher suite"
 
 [tool.poe.tasks.fmt]
 cmd = "black --check packages/ services/ tests/"

@@ -8,6 +8,38 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.0] — 2026-09-21
+
+### Added
+
+- **A book chapter can be read into the queue from a page saved by hand.**
+  O'Reilly blocks automated fetching, so the saved page is attached to the row
+  and a deterministic converter turns the publisher's markup into markdown —
+  section depth, callouts, tables, code and footnotes that copy-pasting loses.
+  A conversion that would change a word is refused rather than flattened.
+
+- **A chapter's title and authors come from the page, not a model.** Both are
+  parsed from the publisher's markup at conversion, so the row and the wiki
+  carry the printed values instead of an extractor's reading of page furniture.
+
+- **A book chapter whose figures carry no description is held back.** A blocking
+  check parks it before extraction with a template naming every figure and its
+  caption, rather than letting a chapter whose substance is pictorial enter the
+  corpus looking complete.
+
+- **A queue row can carry its body as an attached file.** A `Source File`
+  attachment replaces the URL fetch: a publisher page converts deterministically,
+  `.md`/`.txt` goes through the existing structurer, anything else is refused
+  rather than decoded as text.
+
+### Changed
+
+- **`uv run poe check` now runs the fetcher service's own suite.** It sits
+  outside the uv workspace, so its tests were invisible to the standard check;
+  `scripts/test-fetcher.sh` runs them and takes a path argument.
+
+---
+
 ## [0.37.2] — 2026-09-12
 
 ### Changed

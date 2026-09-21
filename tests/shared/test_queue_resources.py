@@ -61,3 +61,20 @@ def test_get_page_comments_paginates():
     assert out[1]["text"] == "second comment"
     # Second call must carry the cursor from the first page's next_cursor.
     client.comments.list.assert_called_with(block_id="p1", start_cursor="c2")
+
+
+def test_query_for_extract_filter_claims_book_chapter_rows():
+    """The extract sensor selects on Content Type, so a type missing from
+    `SUPPORTED_CONTENT_TYPES` strands its rows at Status=Fetching with no error.
+    Assert the built Notion filter — the tuple alone would not prove the clause
+    reaches the query."""
+    from orchestrators.defs.fetch_extract_queue.def_config import SUPPORTED_CONTENT_TYPES
+
+    client = MagicMock()
+    client.data_sources.query.return_value = {"results": []}
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        _resource().query_for_extract(page_size=10, supported_content_types=SUPPORTED_CONTENT_TYPES)
+
+    sent = client.data_sources.query.call_args.kwargs["filter"]
+    type_clauses = sent["and"][1]["or"]
+    assert {"property": "Content Type", "select": {"equals": "book_chapter"}} in type_clauses

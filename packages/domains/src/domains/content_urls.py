@@ -6,8 +6,9 @@ lives in sibling modules (`arxiv_urls`, `medium_urls`); this module owns the
 remaining host-set + file-suffix rules and the precedence order.
 
 Returns the lowercase taxonomy: youtube / arxiv / medium / facebook / github /
-file_pdf / file_audio / article (the catch-all). Precedence follows the fetcher's
-registry order — host-matched platforms first, then file-suffix, then article.
+book_chapter / file_pdf / file_audio / article (the catch-all). Precedence follows
+the fetcher's registry order — host-matched platforms first, then file-suffix, then
+article.
 """
 
 from urllib.parse import urlparse
@@ -19,11 +20,35 @@ _YOUTUBE_HOSTS = frozenset(
     {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
 )
 _FACEBOOK_BARE_HOSTS = frozenset({"facebook.com", "fb.com", "fb.watch"})
+# O'Reilly's reader host only. `www.oreilly.com` is the marketing site and stays
+# `article`; a chapter page answers an automated fetch with a redirect there, so
+# the two must not classify alike.
+_OREILLY_READER_HOST = "learning.oreilly.com"
 # file_audio names the class "an audio/av file", not one extension — whisper
 # handles them all (incl. video, from which it extracts audio), and a zencastr
 # .mp4 podcast already exists in the corpus. Shared with the fetcher's file_audio
 # handler so the classifier and the fetch routing agree on the set.
 AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus", ".flac", ".mp4", ".webm", ".mov")
+
+# Behaviour shared by content types, named here so a new type joins by editing one
+# line rather than by matching an equality check scattered across two pipelines.
+# They are separate sets because they are separate questions: a plain-text book
+# would arrive as an attachment without carrying figures, and a source we can
+# fetch may still state its own authors more reliably than a model reads them.
+
+# The body arrives as an attached file, so the URL identifies the source rather
+# than being somewhere to fetch. Triage does not ask such a URL for page metadata
+# or trust its redirect, and a row of this type with no attachment fails.
+ATTACHMENT_BODY_TYPES = frozenset({"book_chapter"})
+
+# The page states its own title and authors, so they beat what a model reads off
+# the body — which for these sources includes publisher furniture an extractor
+# can mistake for a byline.
+SELF_DESCRIBING_TYPES = frozenset({"book_chapter"})
+
+# Figures carry substance here, so a row is held back until each one has a
+# description rather than entering the corpus looking complete.
+FIGURE_GATED_TYPES = frozenset({"book_chapter"})
 
 
 def classify_url_type(url: str) -> str:
@@ -46,6 +71,8 @@ def classify_url_type(url: str) -> str:
         return "github"
     if bare in _FACEBOOK_BARE_HOSTS or bare.endswith(".facebook.com"):
         return "facebook"
+    if bare == _OREILLY_READER_HOST:
+        return "book_chapter"
     if path.endswith(".pdf"):
         return "file_pdf"
     if path.endswith(AUDIO_SUFFIXES):

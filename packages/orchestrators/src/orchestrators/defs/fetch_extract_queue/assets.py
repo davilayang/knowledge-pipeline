@@ -8,6 +8,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import dagster as dg
+
+# enrichment_json is written by triage and read here for the youtube channel;
+# EnrichmentSignals IS that serialisation contract, so it is imported rather than
+# the JSON re-parsed by hand.
+from domains.content_urls import ATTACHMENT_BODY_TYPES, SELF_DESCRIBING_TYPES
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.render import render_narrative
 from domains.extraction.schemas import Followups, MetadataPayload, Narrative, TopicCard
@@ -26,10 +31,6 @@ from workflows.wiki_synthesis.prompts import (
 
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
-
-# enrichment_json is written by triage and read here for the youtube channel;
-# EnrichmentSignals IS that serialisation contract, so it is imported rather than
-# the JSON re-parsed by hand.
 from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
 
 from .def_config import (
@@ -53,6 +54,13 @@ _EXTRACT_CLAIMS_PROMPT_SHA = hashlib.sha256(
 _EXTRACT_ENTITIES_PROMPT_SHA = hashlib.sha256(
     (EXTRACT_SHARED_SYSTEM + EXTRACT_ARTICLE_ENVELOPE + EXTRACT_ENTITIES_TASK).encode()
 ).hexdigest()
+
+# What an attached `Source File` may be, and where each kind goes. Anything else
+# is refused rather than decoded: bytes forced through UTF-8 replacement reach
+# `raw_content` looking like prose.
+_CONVERTED_EXTENSIONS = (".html", ".htm")
+_STRUCTURED_EXTENSIONS = (".md", ".markdown", ".txt")
+_ATTACHMENT_EXTENSIONS = _CONVERTED_EXTENSIONS + _STRUCTURED_EXTENSIONS
 
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500
@@ -211,6 +219,7 @@ def fetch_content(
     context: dg.AssetExecutionContext,
     fetcher: FetcherResource,
     store: QueueStoreResource,
+    notion: NotionQueueResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
     notion_url = f"https://www.notion.so/{page_id.replace('-', '')}"
@@ -277,8 +286,54 @@ def fetch_content(
             },
         )
 
+    # An attached file IS the body. A publisher page converts deterministically;
+    # pasted prose keeps the structurer cleaning the page-body override gives it.
+    source_file = notion.get_source_file(page_id)
     override = row.get("raw_content_override") or ""
-    if override:
+    if source_file:
+        filename, payload = source_file
+        lowered = filename.lower()
+        if not lowered.endswith(_ATTACHMENT_EXTENSIONS):
+            # An attachment on a row is not always its body — a PDF or a
+            # screenshot may be a note. Decoding those bytes with replacement
+            # posts mojibake to the structurer and stores it as prose, which
+            # nothing downstream can tell from the real thing.
+            raise dg.Failure(
+                description=(
+                    f"{notion_url} has {filename!r} attached, which is not a text "
+                    f"format this pipeline can read as a body. Attach the publisher's "
+                    f"saved page ({'/'.join(_CONVERTED_EXTENSIONS)}) or pasted prose "
+                    f"({'/'.join(_STRUCTURED_EXTENSIONS)}), or remove the attachment "
+                    f"to fetch the URL instead."
+                ),
+                allow_retries=False,
+                metadata={
+                    "notion_url": dg.MetadataValue.url(notion_url),
+                    "notion_page_id": dg.MetadataValue.text(page_id),
+                    "filename": dg.MetadataValue.text(filename),
+                },
+            )
+        text = payload.decode("utf-8", errors="replace")
+        if lowered.endswith(_CONVERTED_EXTENSIONS):
+            result = fetcher.structure_oreilly(text, source_url=url)
+        else:
+            result = fetcher.structure(text, source_url=url)
+    elif content_type in ATTACHMENT_BODY_TYPES:
+        raise dg.Failure(
+            description=(
+                f"Book chapter {notion_url} has no Source File attached. "
+                f"Its publisher answers an automated fetch with Access Denied, so there "
+                f"is no URL to fall back to — save the chapter page and attach it. "
+                f"Adding a fetch tier cannot serve this source."
+            ),
+            allow_retries=False,
+            metadata={
+                "notion_url": dg.MetadataValue.url(notion_url),
+                "notion_page_id": dg.MetadataValue.text(page_id),
+                "url": dg.MetadataValue.url(url),
+            },
+        )
+    elif override:
         result = fetcher.structure(override, source_url=url)
     else:
         result = fetcher.fetch_for_type(url, content_type=content_type)
@@ -376,6 +431,19 @@ def _deterministic_publisher(row: dict[str, Any]) -> str | None:
             return _github_owner(row.get("canonical_url") or row.get("url"))
         case _:
             return None
+
+
+def _typed_contributors(row: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The row's own author as contributors, or None to let the model decide.
+
+    Only `book_chapter` carries one: the converter reads the byline off the page
+    it was handed, and a name the publisher printed beats a name a model read out
+    of page furniture — an editor's contact address, say. A comma-separated value
+    is several people, which is how the converter spells a co-authored book."""
+    if (row.get("content_type") or "") not in SELF_DESCRIBING_TYPES:
+        return None
+    names = [n.strip() for n in (row.get("author") or "").split(",") if n.strip()]
+    return [{"name": n, "role": None, "affiliation": None} for n in names] or None
 
 
 def _metadata_inputs_sha(*, content_hash: str | None, model: str, prompt_sha: str) -> str:
@@ -561,7 +629,9 @@ def extract_metadata(
         duration_ms = call["duration_ms"]
 
         known_publisher = _deterministic_publisher(row)
-        contributors = [c.model_dump() for c in payload.contributors]
+        # On a disagreement the typed value wins and the model's survives in the
+        # ledger row's `output`, exactly as it does for the publisher below.
+        contributors = _typed_contributors(row) or [c.model_dump() for c in payload.contributors]
         # A channel named after its own presenter is that person, not a second
         # organisation. Letting the deterministic value through would file one
         # human as both a person and an org, and the wiki mints an entity per
@@ -838,6 +908,12 @@ def publish_item(
     topic_card = store.get_latest_topic_card(page_id)
     core_mechanism = topic_card.core_mechanism if topic_card else None
     extracted_title = topic_card.extracted_title if topic_card else None
+    # A book chapter's real title is parsed off the publisher's own page and
+    # stored at fetch time, so the model does not get to re-derive it. Every
+    # other type keeps the extracted title, which is sharper than a raw page
+    # title — `article` pages in particular carry site chrome in theirs.
+    if (row.get("content_type") or "") in SELF_DESCRIBING_TYPES and row.get("title"):
+        extracted_title = row["title"]
     notion.update_status(
         page_id,
         "Ready",

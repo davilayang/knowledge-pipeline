@@ -5,10 +5,13 @@ Cards stored locally for newsletter-assistant to retrieve on engagement.
 
 Picks up rows after triage_knowledge_queue has classified them: sensor filter is
 Status=Fetching AND Content Type ∈ SUPPORTED_CONTENT_TYPES ({youtube, arxiv,
-medium, facebook, github, file_pdf, file_audio, article, other}). The fetcher
-service's handler registry routes the URL by host; the article handler is a
-catch-all for anything not yt/arxiv/medium/facebook/github/file_pdf/file_audio,
-so article and other reach a real fetcher path. Triage also registers the
+medium, facebook, github, file_pdf, file_audio, book_chapter, article, other}).
+The fetcher service's handler registry routes the URL by host; the article
+handler is a catch-all for anything not
+yt/arxiv/medium/facebook/github/file_pdf/file_audio, so article and other reach
+a real fetcher path. `book_chapter` never reaches `/v1/fetch` — its body is a
+Notion `Source File` attachment, not a fetched URL (see `fetch_content` below).
+Triage also registers the
 dynamic partition; this pipeline only runs the job. Triage is therefore the
 sole writer to `queue_items` partition state — a Notion row reaching
 Status=Fetching without going through triage (manual edit, env misroute,
@@ -26,8 +29,9 @@ fetch_extract_queue_job  (partition_key = notion_page_id)
         ▼
 fetch_content ──► extract_metadata ──► extract_reading_card ──► publish_item
    │                    │         │              │
-   │                    │         │              └──► Notion: Status=Ready + Name (extracted_title)
-   │                    │         │                   + Description (core_mechanism)
+   │                    │         │              └──► Notion: Status=Ready + Name (extracted_title,
+   │                    │         │                   or the row's stored title for a
+   │                    │         │                   SELF_DESCRIBING_TYPES row) + Description (core_mechanism)
    │                    │         │
    │                    │         └─ on failure (LLM error / required-fields check):
    │                    │            run_failure_sensor → Notion: Status=Failed + Error
@@ -51,11 +55,22 @@ fetch_content ──► extract_metadata ──► extract_reading_card ──�
    └─ on failure (fetcher service returns problem+json or unreachable):
       run_failure_sensor → Notion: Status=Failed + Error
 
+fetch_content ──► book_chapter_figures_described (blocking asset check)
+                   a book_chapter whose figure anchors carry no description
+                   parks at Status=Failed with a repair template, rather than
+                   reaching extract_metadata looking complete.
+
 `fetch_content` calls the standalone `fetcher` service over dagster_network —
-POST `/v1/fetch` for normal URLs, or POST `/v1/structure` when the
-queue_items row has `raw_content_override` set (user ticked
-`Use page body` in Notion; see `FetcherResource.structure`
-in `resources.py` and the override branch in `assets.fetch_content`). For
+POST `/v1/fetch` for normal URLs, POST `/v1/structure` when the queue_items
+row has `raw_content_override` set (user ticked `Use page body` in Notion; see
+`FetcherResource.structure` in `resources.py` and the override branch in
+`assets.fetch_content`), or, when the row carries a Notion `Source File`
+attachment, POST `/v1/structure-oreilly` for an `.html`/`.htm` file or
+POST `/v1/structure` for `.md`/`.txt`/`.markdown` — any other attachment
+extension fails the item rather than being decoded as prose. A
+`book_chapter` (an `ATTACHMENT_BODY_TYPES` content type) with no Source File
+attached fails outright: its publisher answers an automated fetch with
+Access Denied, so there is no URL fetch to fall back to. For
 `/v1/fetch`, the service is authoritative for source matching
 (arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
 and quality-floor enforcement. `extract_metadata` asks the same service for one
@@ -121,7 +136,9 @@ dg launch --job fetch_extract_queue --partition <notion_page_id>
   `Queued / Fetching / Ready / Engaging / Discussed / Archived / Failed`
   (triage additionally requires `Skipped`),
   a `URL` url property, a `Content Type` select property (youtube, arxiv, …),
-  and an `Error` rich-text property.
+  a `Source File` files-and-media property (the body for `book_chapter` rows,
+  and an optional body override for any other type — see `fetch_content`
+  above), and an `Error` rich-text property.
 - **Fetcher service** — `FETCHER_URL` must point to a reachable
   `services/fetcher/` instance. In docker-compose the sidecar container
   resolves at `http://fetcher:8000` over `dagster_network`; for laptop
