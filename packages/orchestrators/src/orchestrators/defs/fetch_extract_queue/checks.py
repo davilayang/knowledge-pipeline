@@ -56,9 +56,8 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             passed=True,
             metadata={"gated": dg.MetadataValue.bool(True), "figures": dg.MetadataValue.int(0)},
         )
-    # The template rides in check metadata, not in the exception: the run-failure
-    # handler copies a message into Notion's Error, which truncates at 1,900
-    # characters and would cut a template of any size in half.
+    # In check metadata, not the exception: the run-failure handler copies a
+    # message into Notion's Error, which truncates at 1,900 characters.
     return dg.AssetCheckResult(
         passed=False,
         severity=dg.AssetCheckSeverity.ERROR,
@@ -68,10 +67,10 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             "figure_text_template": dg.MetadataValue.json(template),
             "summary": dg.MetadataValue.md(
                 f"**{len(template)} figures need a description.** Fill the "
-                f"`figure_text_template` below, merge it into the map already "
-                f"attached (this template lists only what is still unresolved, "
-                f"and only the first attachment is read), replace the row's "
-                f"`Figure Text` file, and flip Status back to Queued."
+                f"`figure_text_template` below, merge it into any map already "
+                f"attached — it lists only what is still unresolved, and only "
+                f"the first file is read — then replace the row's `Figure Text` "
+                f"and set Status to Queued."
             ),
         },
     )

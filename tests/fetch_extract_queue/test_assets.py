@@ -1958,9 +1958,9 @@ def test_fetched_injects_figure_descriptions_so_the_gate_passes(tmp_path: Path):
 
 
 def test_extract_claims_reads_the_body_including_figure_descriptions(tmp_path: Path):
-    """One body, every lane. A description is part of the chapter once injected —
-    the figures illustrate what the prose argues, and measuring the two inputs
-    over chapter 10 found no claim that came from a description."""
+    """One body, every lane. Measured over chapter 10 with and without the
+    descriptions: no claim came from one — the figures illustrate what the prose
+    already argues."""
     from domains.wiki.claims import ClaimSet
     from orchestrators.defs.fetch_extract_queue.assets import extract_claims as extract_claims_asset
     from workflows.llm import LLMCall

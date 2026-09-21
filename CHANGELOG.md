@@ -8,16 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
-- **A parked book chapter can be repaired by describing its figures.** Fill the
-  repair template the figure check emits, attach it to the row's new Notion
-  `Figure Text` property, and re-queue: `fetch_content` swaps each anchor for
-  its description, which clears the check (`fetch_extract_queue/figures.py`).
-  Every lane reads one body: measuring chapter 10 with and without the
-  descriptions found no claim that came from one.
-- **A book chapter's queue row is named for its book as well as its chapter.**
-  `Evals for AI Engineers — Chapter 10. Interfaces for Human Review`, not
-  `Chapter 10. Interfaces for Human Review`, which identifies nothing in a list
-  of rows. The converter already read both off the page.
+- **A chapter parked on the figure gate can be repaired by describing its
+  figures.** Fill the template the check emits, attach it to the row's new
+  Notion `Figure Text` property, re-queue: `fetch_content` swaps each anchor for
+  its description (`fetch_extract_queue/figures.py`), which clears the gate.
+  Descriptions reach every extraction lane — measured on one chapter, none
+  produced a claim.
+- **A book chapter's row is named for its book as well as its chapter** —
+  `Evals for AI Engineers — Chapter 10. Interfaces for Human Review`. The
+  converter already read both off the page.
 
 ---
 

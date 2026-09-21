@@ -350,11 +350,10 @@ def fetch_content(
             },
         )
 
-    # The floor asks whether the SOURCE carried enough to extract from, so it is
-    # measured before any description is added — operator text is not the source,
-    # and a body that only clears the floor once descriptions land is still a bad
-    # fetch. The fetcher cascade falls back to `best_result` when no tier hits its
-    # own floor (services/fetcher/cascade.py), so a 200 can carry sub-floor content.
+    # Measured before any description is added: the floor asks whether the source
+    # carried enough to extract from, and operator text is not the source. The
+    # fetcher cascade falls back to `best_result` when no tier hits its own floor
+    # (services/fetcher/cascade.py), so a 200 can carry sub-floor content.
     source_chars = len(result.content)
     if source_chars < 500:
         raise dg.Failure(
@@ -369,8 +368,7 @@ def fetch_content(
             },
         )
 
-    # Descriptions land after the floor and before the hash: the hash covers what
-    # is stored, so a revised map re-runs extraction.
+    # Before the hash, so a revised description map re-runs extraction.
     content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
     char_count = len(content)
     content_hash = hashlib.sha256(content.encode()).hexdigest()

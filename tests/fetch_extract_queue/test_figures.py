@@ -1,9 +1,8 @@
 """Tests for the figure-description channel.
 
-An operator describes a chapter's figures locally and attaches the descriptions
-as JSON. Injection puts each description where its figure was, which is what makes the
-chapter deliverable — and what clears the gate, since the gate counts the anchors
-that remain.
+Injection puts each operator-written description where its figure was, which is
+what makes the chapter deliverable and what clears the gate — the gate counts
+the anchors that remain.
 """
 
 from orchestrators.defs.fetch_extract_queue.figures import inject_figure_descriptions

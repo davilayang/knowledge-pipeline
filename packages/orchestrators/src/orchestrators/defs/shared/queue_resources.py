@@ -283,12 +283,10 @@ class NotionQueueResource(dg.ConfigurableResource):
         """The row's `Figure Text` attachment parsed as `{anchor: {caption,
         description}}`, or `{}` when nothing is attached.
 
-        Anything else raises, naming the file and the offending anchor. The
-        operator writes this file by hand, and a malformed entry read as empty
-        would park the row again with no hint that the file was even read. The
-        message is not chained to the decoder's: the run-failure handler posts an
-        exception's innermost cause to Notion, so a chained message loses the
-        only two identifiers the operator can act on.
+        A hand-written file, so anything else raises, naming the file and the
+        anchor — read as empty it would park the row with no hint the file was
+        read at all. Unchained: the run-failure handler posts an exception's
+        innermost cause to Notion, which would drop both identifiers.
         """
         attachment = self._download_file_property(page_id, "Figure Text")
         if not attachment:

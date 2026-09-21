@@ -781,10 +781,9 @@ def test_figure_text_fails_loudly_when_the_attachment_is_not_a_json_map():
 
 
 def test_figure_text_names_the_anchor_whose_entry_is_malformed():
-    """The operator edits this file by hand. An entry that is not
-    `{caption, description}` has to name itself — and the message has to survive
+    """A hand-edited file, so a malformed entry has to name itself — and survive
     the run-failure handler, which posts an exception's innermost cause to
-    Notion's Error field."""
+    Notion."""
     resource = NotionQueueResource(
         integration_token="secret_x", queue_db_id="db-123", queue_data_source_id="ds-456"
     )

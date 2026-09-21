@@ -580,8 +580,8 @@ def convert_page(page_html: str) -> ChapterConversion:
     title = heading.group(1).strip() if heading else ""
     if not title and chapter_meta:
         title = html.unescape(chapter_meta.group(1)).strip()
-    # The book names the chapter: "Chapter 1. Introduction" identifies nothing in
-    # a queue of two hundred rows, and this title becomes the row's name.
+    # This title becomes the queue row's name, and "Chapter 1. Introduction"
+    # identifies nothing in a list of rows.
     if title and book:
         title = f"{html.unescape(book.group(1))} — {title}"
     header = [f"# {html.unescape(book.group(1))}" if book else "# Book"]
