@@ -26,6 +26,12 @@ from domains.content_urls import classify_url_type
         ("https://zencastr.com/ep/show.mp4", "file_audio"),  # .mp4 is audio/av now
         ("https://cdn.example.com/ep/episode.opus", "file_audio"),
         ("https://cdn.example.com/ep/episode.flac", "file_audio"),
+        (
+            "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html",
+            "book_chapter",
+        ),
+        ("https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html#id79", "book_chapter"),
+        ("https://www.oreilly.com/", "article"),  # marketing host is not the reader
         ("https://example.com/some-article", "article"),
         ("https://medium.com/@a/post-123", "medium"),
         ("https://towardsdatascience.com/title-abc", "medium"),

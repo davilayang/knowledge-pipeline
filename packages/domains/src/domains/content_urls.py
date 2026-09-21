@@ -6,8 +6,9 @@ lives in sibling modules (`arxiv_urls`, `medium_urls`); this module owns the
 remaining host-set + file-suffix rules and the precedence order.
 
 Returns the lowercase taxonomy: youtube / arxiv / medium / facebook / github /
-file_pdf / file_audio / article (the catch-all). Precedence follows the fetcher's
-registry order — host-matched platforms first, then file-suffix, then article.
+book_chapter / file_pdf / file_audio / article (the catch-all). Precedence follows
+the fetcher's registry order — host-matched platforms first, then file-suffix, then
+article.
 """
 
 from urllib.parse import urlparse
@@ -19,6 +20,10 @@ _YOUTUBE_HOSTS = frozenset(
     {"youtube.com", "www.youtube.com", "m.youtube.com", "music.youtube.com", "youtu.be"}
 )
 _FACEBOOK_BARE_HOSTS = frozenset({"facebook.com", "fb.com", "fb.watch"})
+# O'Reilly's reader host only. `www.oreilly.com` is the marketing site and stays
+# `article`; a chapter page answers an automated fetch with a redirect there, so
+# the two must not classify alike.
+_OREILLY_READER_HOST = "learning.oreilly.com"
 # file_audio names the class "an audio/av file", not one extension — whisper
 # handles them all (incl. video, from which it extracts audio), and a zencastr
 # .mp4 podcast already exists in the corpus. Shared with the fetcher's file_audio
@@ -46,6 +51,8 @@ def classify_url_type(url: str) -> str:
         return "github"
     if bare in _FACEBOOK_BARE_HOSTS or bare.endswith(".facebook.com"):
         return "facebook"
+    if bare == _OREILLY_READER_HOST:
+        return "book_chapter"
     if path.endswith(".pdf"):
         return "file_pdf"
     if path.endswith(AUDIO_SUFFIXES):

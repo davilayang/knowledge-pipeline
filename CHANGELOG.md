@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **A chapter captured from O'Reilly's reader is recognised as its own content
+  type.** URLs on `learning.oreilly.com` classify as `book_chapter` rather than
+  falling to the `article` catch-all, so the queue can route them to the capture
+  path a publisher that blocks automated fetching requires. `www.oreilly.com`
+  is unaffected and stays `article`.
+
 ---
 
 ## [0.37.2] — 2026-09-12

@@ -20,6 +20,10 @@ CONTENT_TYPE_FACEBOOK = "facebook"
 CONTENT_TYPE_GITHUB = "github"
 CONTENT_TYPE_FILE_PDF = "file_pdf"
 CONTENT_TYPE_FILE_AUDIO = "file_audio"
+# Emitted by host match on O'Reilly's reader. The type carries an obligation the
+# others do not: the body arrives as an attached file, because the publisher
+# answers an automated fetch with an access-denied redirect.
+CONTENT_TYPE_BOOK_CHAPTER = "book_chapter"
 # `other` is never auto-emitted (article is the catch-all) — it's a user-only
 # override value, kept as a valid Notion Content Type option.
 CONTENT_TYPE_OTHER = "other"
@@ -32,6 +36,7 @@ ALL_CONTENT_TYPES = {
     CONTENT_TYPE_GITHUB,
     CONTENT_TYPE_FILE_PDF,
     CONTENT_TYPE_FILE_AUDIO,
+    CONTENT_TYPE_BOOK_CHAPTER,
     CONTENT_TYPE_ARTICLE,
     CONTENT_TYPE_OTHER,
 }
@@ -50,7 +55,7 @@ def classify_content_type(url: str) -> str:
     """Pure URL → kp Content Type, delegated to the shared `classify_url_type`.
 
     Returns the lowercase taxonomy: youtube / arxiv / medium / facebook / github /
-    file_pdf / file_audio / article (the catch-all). The fetcher routes on the same
+    book_chapter / file_pdf / file_audio / article (the catch-all). The fetcher routes on the same
     function, so content_type and fetch handler always agree (e.g. a non-paper
     arxiv.org page is `article`, matching that it's fetched by the article handler).
     """
