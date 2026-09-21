@@ -125,6 +125,12 @@ TABLE = """
 """
 
 MERGED_CELL = TABLE.replace("<th>Open code</th>", '<th colspan="2">Open code</th>')
+# A real chapter spans a cell down its rows: the first data row carries the
+# shared value, the next omits the cell entirely.
+SPANNED_ROWS = TABLE.replace(
+    "<tr><td><p>Summary included signature</p></td>",
+    '<tr><td rowspan="2"><p>Summary included signature</p></td>',
+).replace("<tr><td><p>Wrong name extracted</p></td>", "<tr>")
 
 
 def test_table_reconstructs_as_a_markdown_grid():
@@ -136,11 +142,23 @@ def test_table_reconstructs_as_a_markdown_grid():
     assert "**Table 3-1. Realistic open codes**" in md
 
 
-def test_a_merged_cell_is_rejected_rather_than_flattened():
-    """A spanning cell has no faithful markdown grid. Flattening it silently
-    would misalign every column after it, so the converter refuses."""
-    with pytest.raises(ConversionRejected, match="colspan|rowspan"):
-        convert_chapter(MERGED_CELL)
+def test_a_spanning_cell_renders_in_its_first_row_and_leaves_blanks_below():
+    """A real book uses spanning cells, and refusing a whole chapter over one
+    table serves nobody. The cell is written in the first row it occupies and
+    the rows beneath get an empty cell, so every word still appears exactly once
+    in document order and the grid stays readable."""
+    rows = [line for line in convert_chapter(SPANNED_ROWS).split("\n") if line.startswith("|")]
+    body = [r for r in rows if "---" not in r][1:]
+    assert "Summary included signature" in body[0]
+    # The row beneath the span gets a blank, never a repeat: duplicating the
+    # value would add a word the chapter does not contain.
+    assert body[1].count("Summary included signature") == 0
+    assert "name confusion" in body[1]
+
+
+def test_a_colspan_cell_also_renders_rather_than_refusing():
+    md = convert_chapter(MERGED_CELL)
+    assert "Open code" in md
 
 
 FIGURE_AND_NOTES = """
@@ -244,3 +262,123 @@ def test_heading_level_follows_section_depth_beyond_two_levels():
     tracks it — the publisher restarts heading tags inside every section."""
     md = convert_chapter(CODE_AND_LITERALS)
     assert "## A" in md and "### B" in md and "#### C" in md and "##### D" in md
+
+
+def test_inline_equation_keeps_the_punctuation_that_follows_it():
+    """MathJax renders a formula twice inside one `<mjx-container>`: an `<svg>`
+    carrying no text, then `<mjx-assistive-mml>` holding the symbols as text
+    nodes. Both wrappers sit mid-sentence, so neither may separate the formula
+    from the full stop after it — a boundary there splits one word into two and
+    the guard rejects a chapter whose prose is intact."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        '<section data-type="sect1"><h1>Divergence</h1>'
+        "<p>represented as "
+        '<mjx-container class="MathJax" jax="SVG">'
+        '<svg viewBox="0 0 100 100"><defs><path id="p"/></defs>'
+        '<g><use xlink:href="#p"></use></g></svg>'
+        '<mjx-assistive-mml unselectable="on" display="inline">'
+        '<math xmlns="http://www.w3.org/1998/Math/MathML"><mrow><msub><mi>D</mi>'
+        "<mrow><mi>K</mi><mi>L</mi></mrow></msub><mrow><mo>(</mo><mi>P</mi>"
+        "<mo>|</mo><mo>|</mo><mi>Q</mi><mo>)</mo></mrow></mrow></math>"
+        "</mjx-assistive-mml></mjx-container>."
+        "</p></section></section>"
+    )
+    markdown = convert_chapter(html_doc)
+    assert "DKL(P||Q)." in markdown
+    # The svg is a second rendering of the same formula; reading it too would
+    # emit the symbols twice.
+    assert markdown.count("DKL(P||Q)") == 1
+
+
+def test_block_equation_reaches_the_markdown():
+    """A display formula sits in `<div data-type="equation">` with no paragraph
+    of its own. Without a block open for it the symbols reach the source text
+    and never the output, so the guard reports a divergence on prose that is
+    present — the equation itself is what went missing."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        '<section data-type="sect1"><h1>Agreement</h1>'
+        "<p>observed agreement is:</p>"
+        '<div data-type="equation">'
+        '<mjx-container class="MathJax" jax="SVG" display="true">'
+        '<svg viewBox="0 0 10 10"><g><use xlink:href="#p"></use></g></svg>'
+        '<mjx-assistive-mml unselectable="on" display="block">'
+        "<math><mrow><msub><mi>P</mi><mi>o</mi></msub><mo>=</mo>"
+        "<mi>n</mi><mi>u</mi><mi>m</mi></mrow></math>"
+        "</mjx-assistive-mml></mjx-container></div>"
+        "<p>Percent agreement is easy.</p>"
+        "</section></section>"
+    )
+    markdown = convert_chapter(html_doc)
+    assert "Po=num" in markdown
+
+
+def test_an_unlisted_mathml_element_does_not_split_a_formula():
+    """MathML has a large element set and a formula is one run of characters, so
+    naming the elements one at a time leaves the next unnamed one to split a
+    word. `<msubsup>` is the one that appeared in a real chapter; the rule is
+    that nothing inside `<math>` marks a boundary, whatever it is called."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        '<section data-type="sect1"><h1>Perplexity</h1>'
+        "<p>is: "
+        "<mjx-container><mjx-assistive-mml><math><mrow>"
+        "<msubsup><mo>&#x220F;</mo><mrow><mi>i</mi><mo>=</mo><mn>1</mn></mrow>"
+        "<mi>n</mi></msubsup>"
+        "<mfrac><mn>1</mn><mrow><mi>P</mi></mrow></mfrac>"
+        "</mrow></math></mjx-assistive-mml></mjx-container>"
+        " where</p></section></section>"
+    )
+    assert "∏i=1n1P where" in convert_chapter(html_doc)
+
+
+def test_a_repl_prompt_inside_a_listing_is_not_read_as_a_quote_marker():
+    """`>>>` opens a Python REPL line. The guard strips the blockquote prefix the
+    converter adds around a callout's body, and a greedy strip eats the author's
+    prompt with it — reporting a missing word in a listing that is intact."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        "<p>Run it:</p>"
+        '<pre data-type="programlisting">&gt;&gt;&gt; has_close_elements([1.0, 2.0])\nTrue</pre>'
+        "</section>"
+    )
+    assert ">>> has_close_elements([1.0, 2.0])" in convert_chapter(html_doc)
+
+
+def test_a_literal_triple_asterisk_in_prose_survives():
+    """The converter's only bold is a whole-block lead-in, so stripping every
+    `**` to hide it also truncates an author's `***` markdown divider."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        "<p>a markdown divider: *** Length constraints apply.</p></section>"
+    )
+    assert "*** Length constraints" in convert_chapter(html_doc)
+
+
+def test_a_triple_asterisk_at_the_end_of_a_table_cell_survives():
+    """Cell walls are replaced with spaces before markup is stripped, so an
+    author's `***` at the end of a cell lands at the end of the line — where a
+    trailing bold marker would be. Only a matched pair wrapping the whole line
+    is the converter's own."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        "<table><tbody><tr><td><p>Length</p></td>"
+        "<td><p>separate paragraphs using the markdown divider: ***</p></td>"
+        "</tr></tbody></table></section>"
+    )
+    assert "divider: ***" in convert_chapter(html_doc)
+
+
+def test_a_lettered_footnote_marker_is_recognised():
+    """A table footnote is labelled with a letter rather than a number. The
+    marker syntax is the converter's, but the label inside it is the
+    publisher's, so the guard has to recognise both shapes."""
+    html_doc = (
+        '<section data-type="chapter" id="ch"><h1>Ch</h1>'
+        '<p>An example of paradox.<sup><a data-type="noteref" id="m" href="#f">a</a></sup></p>'
+        '<div data-type="footnotes"><p data-type="footnote" id="f">'
+        '<sup><a href="#m">a</a></sup> Group 1 only.</p></div></section>'
+    )
+    md = convert_chapter(html_doc)
+    assert "paradox.[^a]" in md and "[^a]: Group 1 only." in md

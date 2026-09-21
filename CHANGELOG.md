@@ -6,6 +6,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A chapter carrying formulas or spanning table cells now converts.** MathJax
+  renders each formula twice — an image and an accessible MathML copy — and the
+  converter reads the copy once while treating the whole formula as a single run
+  of characters, so a symbol can no longer be split from the punctuation beside
+  it. A display formula, which the publisher gives no paragraph of its own,
+  reaches the output instead of being dropped. A spanning table cell is written
+  where it starts with blanks beneath it, rather than refusing the chapter.
+  Across two O'Reilly titles this takes conversion from 9 of 14 chapters to 13.
+
 ### Added
 
 - **A saved book-chapter page converts to markdown without a model.**
