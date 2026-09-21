@@ -202,6 +202,8 @@ class _ChapterParser(HTMLParser):
         self._pre: list[str] | None = None
         self._footnotes = False
         self._footnote_open = False
+        self._cell_held: list[str] | None = None  # cell suspended by a footnote
+        self._table_notes: list[str] = []  # definitions held until the grid closes
         self._equation = False
         self._math = 0
         self._span = (1, 1)
@@ -344,6 +346,12 @@ class _ChapterParser(HTMLParser):
             self._footnotes = True
             return
         if tag == "p" and kind == "footnote":
+            # A table footnote's definition sits inside the grid, in a trailing
+            # row whose one cell spans it. It is a paragraph, not tabular data,
+            # so cell capture yields to it: left in the cell its body lands in
+            # the grid while its marker reaches a block, splitting one
+            # definition across two structures and emitting the label twice.
+            self._cell_held, self._cell = self._cell, None
             self._open("")
             self._footnote_open = True
             return
@@ -416,6 +424,12 @@ class _ChapterParser(HTMLParser):
         if tag == "p" and self._footnote_open:
             self._footnote_open = False
             self._close()
+            self._cell, self._cell_held = self._cell_held, None
+            if self._rows is not None and self.blocks:
+                # The grid is only emitted when the table closes, so a
+                # definition written inside it would otherwise be read before
+                # the rows it annotates. Hold it until the table is done.
+                self._table_notes.append(self.blocks.pop())
             return
         if tag == "div" and self._footnotes:
             self._footnotes = False
@@ -458,6 +472,8 @@ class _ChapterParser(HTMLParser):
                 self.blocks.append("| " + " | ".join(padded[0]) + " |")
                 self.blocks.append("|" + "---|" * width)
                 self.blocks += ["| " + " | ".join(r) + " |" for r in padded[1:]]
+            self.blocks += self._table_notes
+            self._table_notes = []
             return
         if tag == "caption":
             self._buf.append("**")

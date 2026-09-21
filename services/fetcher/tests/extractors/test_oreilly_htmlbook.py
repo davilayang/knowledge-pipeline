@@ -382,3 +382,28 @@ def test_a_lettered_footnote_marker_is_recognised():
     )
     md = convert_chapter(html_doc)
     assert "paradox.[^a]" in md and "[^a]: Group 1 only." in md
+
+
+# A table footnote's definition sits INSIDE the table, in a trailing row whose
+# single cell spans the grid. Reproduced from a real chapter.
+TABLE_FOOTNOTE = """
+<section data-type="chapter">
+<h1>Ch</h1>
+<table><caption><span class="label">Table 4-6. </span>An example of Simpson's
+paradox.<sup><a data-type="noteref" id="m" href="#d">a</a></sup></caption>
+<thead><tr><th></th><th>Group 1</th></tr></thead>
+<tbody><tr><td>Model A</td><td>93%</td></tr></tbody>
+<tbody><tr class="footnotes"><td colspan="2"><p data-type="footnote" id="d">
+<sup><a href="#m">a</a></sup> Numbers from Charig et al.</p></td></tr></tbody>
+</table>
+</section>
+"""
+
+
+def test_a_footnote_defined_inside_a_table_keeps_its_body():
+    """The definition is a paragraph, not tabular data. Left to cell capture its
+    body lands in the grid while its marker reaches a block, splitting one
+    definition across two structures and emitting the label twice."""
+    md = convert_chapter(TABLE_FOOTNOTE)
+    assert "[^a]: Numbers from Charig et al." in md
+    assert "| Model A | 93% |" in md

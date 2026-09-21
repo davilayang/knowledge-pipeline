@@ -15,6 +15,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   where it starts with blanks beneath it, rather than refusing the chapter.
   Across two O'Reilly titles this takes conversion from 9 of 14 chapters to 13.
 
+- **A table's own footnote keeps its text.** A book defines a table footnote
+  inside the table, in a trailing row whose single cell spans the grid. Read as
+  tabular data its body landed in a cell while its marker became a block,
+  splitting one definition in two and printing its label twice; it is now
+  emitted whole, after the rows it annotates. This takes conversion across two
+  O'Reilly titles to 14 of 14 chapters.
+
 ### Added
 
 - **A saved book-chapter page converts to markdown without a model.**
