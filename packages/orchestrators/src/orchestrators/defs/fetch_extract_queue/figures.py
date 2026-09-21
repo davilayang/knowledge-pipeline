@@ -1,5 +1,4 @@
-"""The figure-description channel: anchors out, descriptions in, and back out
-again for the claims lane.
+"""The figure-description channel: anchors out, operator descriptions in.
 
 A converted book chapter carries `![figure](oreilly:…)` anchors where its
 diagrams were — the pipeline never holds the pixels. An operator describes them

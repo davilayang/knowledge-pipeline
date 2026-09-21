@@ -219,7 +219,7 @@ def test_identity_header_carries_both_authors_and_the_title():
     result = convert_page(PAGE)
     assert "Evals for AI Engineers" in result.markdown
     assert "Shreya Shankar" in result.markdown and "Hamel Husain" in result.markdown
-    assert result.title == "Chapter 3. Error Analysis"
+    assert result.title == "Evals for AI Engineers — Chapter 3. Error Analysis"
 
 
 PAGE_ONE_AUTHOR = PAGE.replace('<meta property="og:book:author" content="Hamel Husain">\n', "")
@@ -480,3 +480,17 @@ def test_the_chapter_title_comes_from_a_heading_not_the_first_block():
         "</section></body></html>"
     )
     assert convert_page(page).title == "Chapter One Title Here"
+
+
+def test_title_names_the_book_as_well_as_the_chapter():
+    """The title becomes the queue row's name. "Chapter 1. Introduction" is
+    unusable in a list of two hundred rows — which book it belongs to is the
+    part that identifies it, and the page's own metadata carries it."""
+    assert convert_page(PAGE).title == "Evals for AI Engineers — Chapter 3. Error Analysis"
+
+
+def test_title_falls_back_to_the_chapter_alone_when_the_book_is_unnamed():
+    page = PAGE.replace(
+        '<script>var t = {"title":"Evals for AI Engineers","other":1};</script>', ""
+    )
+    assert convert_page(page).title == "Chapter 3. Error Analysis"

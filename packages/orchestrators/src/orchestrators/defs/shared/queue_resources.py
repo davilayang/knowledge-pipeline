@@ -296,7 +296,7 @@ class NotionQueueResource(dg.ConfigurableResource):
         name, payload = attachment
         try:
             figure_text = json.loads(payload)
-        except json.JSONDecodeError as exc:
+        except (json.JSONDecodeError, UnicodeDecodeError) as exc:
             raise ValueError(f"Figure Text attachment {name!r} is not valid JSON: {exc}") from None
         if not isinstance(figure_text, dict):
             raise ValueError(f"Figure Text attachment {name!r} is not a JSON object")

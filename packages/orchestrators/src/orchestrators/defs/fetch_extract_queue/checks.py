@@ -68,8 +68,10 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             "figure_text_template": dg.MetadataValue.json(template),
             "summary": dg.MetadataValue.md(
                 f"**{len(template)} figures need a description.** Fill the "
-                f"`figure_text_template` below, attach it to the row's `Figure "
-                f"Text` property as JSON, and flip Status back to Queued."
+                f"`figure_text_template` below, merge it into the map already "
+                f"attached (this template lists only what is still unresolved, "
+                f"and only the first attachment is read), replace the row's "
+                f"`Figure Text` file, and flip Status back to Queued."
             ),
         },
     )

@@ -30,8 +30,8 @@ def test_a_described_figure_is_replaced_by_a_delimited_description():
         f'<figure-description ref="{ANCHOR}">\nOne trace at a time.\n</figure-description>' in out
     )
     assert f"![figure]({ANCHOR})" not in out
-    # Nothing but the anchor line moves: the caption and the prose around it are
-    # the publisher's words and a fidelity check downstream compares them.
+    # Nothing but the anchor line moves. The converter's word-sequence check has
+    # already passed on this text, so a stray edit here would not be caught again.
     assert (
         out.replace(
             f'<figure-description ref="{ANCHOR}">\nOne trace at a time.\n</figure-description>',

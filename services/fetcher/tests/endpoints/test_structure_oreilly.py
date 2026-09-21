@@ -41,7 +41,7 @@ def test_converts_a_saved_page_and_reports_title_and_anchors(tmp_path, monkeypat
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "# Chapter 3. Error Analysis" in body["markdown"]
-    assert body["title"] == "Chapter 3. Error Analysis"
+    assert body["title"] == "Evals for AI Engineers — Chapter 3. Error Analysis"
     assert body["figure_anchors"] == ["oreilly:9798341660717/aiee_0301.png"]
     assert body["figure_captions"] == ["Figure 3-1. The cycle."]
     assert body["cache_hit"] is False

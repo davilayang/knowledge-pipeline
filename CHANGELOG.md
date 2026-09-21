@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   its description, which clears the check (`fetch_extract_queue/figures.py`).
   Every lane reads one body: measuring chapter 10 with and without the
   descriptions found no claim that came from one.
+- **A book chapter's queue row is named for its book as well as its chapter.**
+  `Evals for AI Engineers — Chapter 10. Interfaces for Human Review`, not
+  `Chapter 10. Interfaces for Human Review`, which identifies nothing in a list
+  of rows. The converter already read both off the page.
 
 ---
 

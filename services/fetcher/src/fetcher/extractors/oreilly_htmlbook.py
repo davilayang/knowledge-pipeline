@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 # Half the endpoint's cache key, so bump it for any change to what a caller
 # receives — the markdown or any response field. A field added without a bump is
 # served from warm caches in its old shape for the whole TTL, silently.
-CONVERTER_VERSION = "2"
+CONVERTER_VERSION = "3"
 
 
 class ConversionRejected(Exception):
@@ -580,6 +580,10 @@ def convert_page(page_html: str) -> ChapterConversion:
     title = heading.group(1).strip() if heading else ""
     if not title and chapter_meta:
         title = html.unescape(chapter_meta.group(1)).strip()
+    # The book names the chapter: "Chapter 1. Introduction" identifies nothing in
+    # a queue of two hundred rows, and this title becomes the row's name.
+    if title and book:
+        title = f"{html.unescape(book.group(1))} — {title}"
     header = [f"# {html.unescape(book.group(1))}" if book else "# Book"]
     if authors:
         header.append(f"By {', '.join(authors)}.")
