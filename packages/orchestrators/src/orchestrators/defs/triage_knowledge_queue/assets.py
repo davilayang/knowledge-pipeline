@@ -4,6 +4,7 @@ import textwrap
 import time
 
 import dagster as dg
+from domains.content_urls import ATTACHMENT_BODY_TYPES
 
 from orchestrators.config import TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import (
@@ -14,7 +15,6 @@ from orchestrators.defs.shared.queue_resources import (
 from .classify import (
     ALL_CONTENT_TYPES,
     CONTENT_TYPE_ARXIV,
-    CONTENT_TYPE_BOOK_CHAPTER,
     CONTENT_TYPE_FILE_AUDIO,
     CONTENT_TYPE_YOUTUBE,
     classify_content_type,
@@ -203,7 +203,7 @@ def triaged(
     # move the row off the type that requires an attached file and send it to
     # fetch a URL the publisher answers with Access Denied. Classifying the
     # captured URL is what makes that decidable before the request is made.
-    if classify_content_type(config.url) == CONTENT_TYPE_BOOK_CHAPTER:
+    if classify_content_type(config.url) in ATTACHMENT_BODY_TYPES:
         meta = UrlMeta(redirected_url=config.url, title=None, description=None)
     else:
         meta = fetch_url_meta(config.url)

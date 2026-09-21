@@ -30,6 +30,26 @@ _OREILLY_READER_HOST = "learning.oreilly.com"
 # handler so the classifier and the fetch routing agree on the set.
 AUDIO_SUFFIXES = (".mp3", ".m4a", ".ogg", ".wav", ".opus", ".flac", ".mp4", ".webm", ".mov")
 
+# Behaviour shared by content types, named here so a new type joins by editing one
+# line rather than by matching an equality check scattered across two pipelines.
+# They are separate sets because they are separate questions: a plain-text book
+# would arrive as an attachment without carrying figures, and a source we can
+# fetch may still state its own authors more reliably than a model reads them.
+
+# The body arrives as an attached file, so the URL identifies the source rather
+# than being somewhere to fetch. Triage does not ask such a URL for page metadata
+# or trust its redirect, and a row of this type with no attachment fails.
+ATTACHMENT_BODY_TYPES = frozenset({"book_chapter"})
+
+# The page states its own title and authors, so they beat what a model reads off
+# the body — which for these sources includes publisher furniture an extractor
+# can mistake for a byline.
+SELF_DESCRIBING_TYPES = frozenset({"book_chapter"})
+
+# Figures carry substance here, so a row is held back until each one has a
+# description rather than entering the corpus looking complete.
+FIGURE_GATED_TYPES = frozenset({"book_chapter"})
+
 
 def classify_url_type(url: str) -> str:
     """Pure URL → content-type. Never raises — malformed input falls to `article`."""

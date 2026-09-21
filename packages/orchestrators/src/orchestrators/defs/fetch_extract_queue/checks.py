@@ -1,9 +1,9 @@
 import re
 
 import dagster as dg
+from domains.content_urls import FIGURE_GATED_TYPES
 
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
-from orchestrators.defs.triage_knowledge_queue.classify import CONTENT_TYPE_BOOK_CHAPTER
 
 from .def_config import LIFECYCLE_DRIFT_AGE_MINUTES
 
@@ -73,7 +73,7 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
     """The gate's decision for one row. Separate from the check so it can be
     exercised directly: a partitioned `@asset_check` cannot be invoked without
     a run, and this is where every decision is made."""
-    if (content_type or "") != CONTENT_TYPE_BOOK_CHAPTER:
+    if (content_type or "") not in FIGURE_GATED_TYPES:
         return dg.AssetCheckResult(passed=True, metadata={"gated": dg.MetadataValue.bool(False)})
 
     template = figure_repair_template(raw_content or "")

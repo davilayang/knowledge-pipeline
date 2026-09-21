@@ -8,6 +8,11 @@ from typing import Any
 from urllib.parse import urlparse
 
 import dagster as dg
+
+# enrichment_json is written by triage and read here for the youtube channel;
+# EnrichmentSignals IS that serialisation contract, so it is imported rather than
+# the JSON re-parsed by hand.
+from domains.content_urls import ATTACHMENT_BODY_TYPES, SELF_DESCRIBING_TYPES
 from domains.extraction.records import ExtractionCallRecord
 from domains.extraction.render import render_narrative
 from domains.extraction.schemas import Followups, MetadataPayload, Narrative, TopicCard
@@ -26,11 +31,6 @@ from workflows.wiki_synthesis.prompts import (
 
 from orchestrators.config import FETCH_EXTRACT_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
-
-# enrichment_json is written by triage and read here for the youtube channel;
-# EnrichmentSignals IS that serialisation contract, so it is imported rather than
-# the JSON re-parsed by hand.
-from orchestrators.defs.triage_knowledge_queue.classify import CONTENT_TYPE_BOOK_CHAPTER
 from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
 
 from .def_config import (
@@ -318,7 +318,7 @@ def fetch_content(
             result = fetcher.structure_oreilly(text, source_url=url)
         else:
             result = fetcher.structure(text, source_url=url)
-    elif content_type == CONTENT_TYPE_BOOK_CHAPTER:
+    elif content_type in ATTACHMENT_BODY_TYPES:
         raise dg.Failure(
             description=(
                 f"Book chapter {notion_url} has no Source File attached. "
@@ -440,7 +440,7 @@ def _typed_contributors(row: dict[str, Any]) -> list[dict[str, Any]] | None:
     it was handed, and a name the publisher printed beats a name a model read out
     of page furniture — an editor's contact address, say. A comma-separated value
     is several people, which is how the converter spells a co-authored book."""
-    if (row.get("content_type") or "") != CONTENT_TYPE_BOOK_CHAPTER:
+    if (row.get("content_type") or "") not in SELF_DESCRIBING_TYPES:
         return None
     names = [n.strip() for n in (row.get("author") or "").split(",") if n.strip()]
     return [{"name": n, "role": None, "affiliation": None} for n in names] or None
@@ -912,7 +912,7 @@ def publish_item(
     # stored at fetch time, so the model does not get to re-derive it. Every
     # other type keeps the extracted title, which is sharper than a raw page
     # title — `article` pages in particular carry site chrome in theirs.
-    if (row.get("content_type") or "") == CONTENT_TYPE_BOOK_CHAPTER and row.get("title"):
+    if (row.get("content_type") or "") in SELF_DESCRIBING_TYPES and row.get("title"):
         extracted_title = row["title"]
     notion.update_status(
         page_id,
