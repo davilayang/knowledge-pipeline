@@ -6,45 +6,37 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.38.0] — 2026-09-21
+
 ### Added
 
 - **A book chapter can be read into the queue from a page saved by hand.**
-  O'Reilly's reader answers an automated fetch with an access-denied redirect, so
-  the chapter page is saved from a browser and attached to the row instead.
-  `POST /v1/structure-oreilly` converts it to markdown by reading the publisher's
-  own structural labels — section nesting, definition lists, callouts, code
-  listings, tables, figure captions, footnotes and formulas all survive, where
-  copying the text out of the reader loses every one of them. The conversion is
-  refused rather than returned if any word of the chapter would be lost, so a
-  flattened table or a dropped paragraph cannot reach the corpus as the author's
-  own words. Across two O'Reilly titles, 14 of 14 chapters convert.
+  O'Reilly blocks automated fetching, so the saved page is attached to the row
+  and a deterministic converter turns the publisher's markup into markdown —
+  section depth, callouts, tables, code and footnotes that copy-pasting loses.
+  A conversion that would change a word is refused rather than flattened.
+
+- **A chapter's title and authors come from the page, not a model.** Both are
+  parsed from the publisher's markup at conversion, so the row and the wiki
+  carry the printed values instead of an extractor's reading of page furniture.
+
+- **A book chapter whose figures carry no description is held back.** A blocking
+  check parks it before extraction with a template naming every figure and its
+  caption, rather than letting a chapter whose substance is pictorial enter the
+  corpus looking complete.
 
 - **A queue row can carry its body as an attached file.** A `Source File`
-  attachment is used as the content instead of fetching the URL, dispatched by
-  extension: a saved publisher page converts deterministically, while pasted
-  prose passes through the structurer and is treated exactly as a pasted page
-  body is today. Anything that is not text is refused rather than decoded. The
-  attachment is read when the run starts, because Notion's download links expire
-  about an hour after they are issued.
-
-- **A book chapter whose figures carry no description is held back.** Such a
-  chapter fails before extraction and parks in the queue rather than entering the
-  corpus looking complete, and the failure carries a template naming every figure
-  and its caption so the descriptions can be supplied. The count comes from the
-  chapter body itself: asking the extractor what it could not read returns
-  nothing on chapters carrying as many as ten figures.
-
-- **A chapter's title and authors come from the page rather than a model.** Both
-  are parsed from the publisher's markup and stored with the body, so the queue
-  row and the wiki carry what the page printed instead of an extraction's reading
-  of it.
+  attachment replaces the URL fetch: a publisher page converts deterministically,
+  `.md`/`.txt` goes through the existing structurer, anything else is refused
+  rather than decoded as text.
 
 ### Changed
 
-- **`uv run poe check` now runs the fetcher service's own test suite.** The run is a script, `scripts/test-fetcher.sh`, so it takes a path argument and can be run on its own while working on the service. It lives
-  outside the uv workspace with a separate venv, so its tests — including the
-  page-conversion suite — were invisible to the standard check and a regression
-  there could land unnoticed.
+- **`uv run poe check` now runs the fetcher service's own suite.** It sits
+  outside the uv workspace, so its tests were invisible to the standard check;
+  `scripts/test-fetcher.sh` runs them and takes a path argument.
 
 ---
 

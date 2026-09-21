@@ -161,7 +161,7 @@ packages/
       upstream_sources.py
 
 services/
-  fetcher/         # Standalone FastAPI content service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call. Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
+  fetcher/         # Standalone FastAPI content service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call, and `POST /v1/structure-oreilly`, a deterministic HTML→markdown converter for publisher pages that block automated fetching (no model). Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by the fetcher service's POST /v1/extract; labels resolved in services/fetcher/src/fetcher/extract/tasks.py
@@ -169,7 +169,7 @@ prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo roo
   wiki/            # Wiki entity-extraction + page-synthesis prompts (workflows.wiki_synthesis.prompts)
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
-scripts/           # Deployment scripts — deploy-hcloud.sh
+scripts/           # Deployment scripts — deploy-hcloud.sh; test-fetcher.sh runs the non-workspace fetcher suite
 tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
 notebooks/         # Exploratory notebooks (Phase C / debugging)

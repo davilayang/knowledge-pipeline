@@ -55,9 +55,9 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 | Field | Behavior |
 |---|---|
 | `URL` | Required input. Asset fails fast if missing. |
-| `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`youtube`/`arxiv`/`medium`/`facebook`/`github`/`file_pdf`/`file_audio`/`article`/`other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
+| `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`youtube`/`arxiv`/`medium`/`facebook`/`github`/`file_pdf`/`file_audio`/`book_chapter`/`article`/`other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
 | `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls into the priority chain: arXiv URLs → `research_summary` (fast-path); audio URLs → `podcast_episode` (fast-path); everything else → `ContentShapeClassifier` LLM resource (Groq `llama-3.3-70b-versatile` primary, OpenAI `gpt-4.1-mini` fallback). LLM may return `unknown` honestly when no category fits — user disambiguates in Notion. `content_shape_source` metadata records which path fired (`notion` / `url_fastpath` / `llm_classified` / `unknown`). |
-| `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `fetch_extract_queue.published` later overwrites Name with `topic_card.extracted_title`. |
+| `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`) — except for `book_chapter` rows, which triage never asks for page metadata (its `Source File` attachment carries the body, and a fetch of its URL would follow the publisher's Access-Denied redirect). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `fetch_extract_queue.published` later overwrites Name with `topic_card.extracted_title` (or the row's stored title, for `book_chapter`). |
 
 `Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
 
@@ -83,6 +83,7 @@ The Notion Queue DB must have a `Content Type` SELECT property with options:
 - `github`
 - `file_pdf`
 - `file_audio`
+- `book_chapter`
 - `other`
 
 `article` is the catch-all — `classify_content_type` emits it for anything not
@@ -93,7 +94,11 @@ URLs (`.mp3` / `.m4a` / `.ogg` / `.wav` / `.opus` / `.flac` / `.mp4` / `.webm` /
 substitute a YouTube URL on a map hit (reclassifying the row to `youtube`
 before it reaches the store). Without the `file_audio` option the Notion API
 rejects Content Type writes for audio items that don't hit the substitution
-map.
+map. `book_chapter` is host-matched (`learning.oreilly.com`, O'Reilly's
+reader), not a user override — a row of this type skips the page-metadata
+fetch entirely and keeps the captured URL rather than any redirect (see
+`triaged` in `assets.py`), because the publisher answers an automated fetch
+with an Access-Denied redirect to its marketing host.
 
 A `Content Shape` SELECT property is also required, with options:
 
@@ -118,10 +123,10 @@ The Queue DB also needs a `Use page body` **checkbox** property (exact
 spelling — the sensor matches on this string in `sensors.py`). When the
 user ticks it on a row, the sensor fetches the page's block children,
 converts them to markdown via `notion_blocks.blocks_to_markdown`, and
-writes the result into `queue_items.raw_content_override`. The `fetched`
-asset then dispatches to the fetcher service's `/v1/structure` endpoint
-instead of `/v1/fetch`. Default unset = false; rows without the property
-tick fall through to the normal URL-fetch path.
+writes the result into `queue_items.raw_content_override`. The
+`fetch_content` asset then dispatches to the fetcher service's
+`/v1/structure` endpoint instead of `/v1/fetch`. Default unset = false;
+rows without the property tick fall through to the normal URL-fetch path.
 
 ## Runbooks
 
