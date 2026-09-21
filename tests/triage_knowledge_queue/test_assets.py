@@ -379,6 +379,28 @@ def test_triaged_uses_redirected_url_for_classification_after_redirect(tmp_path:
     assert metadata["content_type"].text == "youtube"
 
 
+def test_triaged_keeps_book_chapter_url_when_the_reader_redirects_to_the_homepage(
+    tmp_path: Path,
+):
+    """O'Reilly answers an automated fetch with a redirect to its marketing
+    homepage. Consuming that redirect would collapse every chapter of every book
+    onto one canonical URL and reclassify the row as `article`, so a chapter is
+    classified and canonicalized from the URL as captured."""
+    resources, _ = _resources(tmp_path)
+    chapter = "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html"
+    meta = UrlMeta(
+        redirected_url="https://www.oreilly.com/",
+        title=None,
+        description=None,
+    )
+    with _patch_fetch(meta):
+        result = _materialize(partition_key="p-1", resources=resources, url=chapter)
+    assert result.success
+    metadata = _get_metadata(result)
+    assert metadata["content_type"].text == "book_chapter"
+    assert metadata["canonical_url"].url == chapter
+
+
 # -------- user override --------
 
 

@@ -18,6 +18,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   Content Type set the extract sensor selects on, so a triaged chapter is
   claimed rather than sitting at Status=Fetching unnoticed.
 
+- **A book chapter keeps the URL it was captured with.** The publisher answers
+  an automated fetch with a redirect to its marketing homepage; triage no longer
+  consumes that redirect for chapter URLs, which would otherwise have collapsed
+  every chapter of every book onto one canonical URL and reclassified the row.
+  Every other source still resolves through its redirect as before.
+
 ---
 
 ## [0.37.2] — 2026-09-12

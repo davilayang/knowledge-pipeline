@@ -30,7 +30,10 @@ from domains.content_urls import classify_url_type
             "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html",
             "book_chapter",
         ),
-        ("https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html#id79", "book_chapter"),
+        (
+            "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch01.html#id79",
+            "book_chapter",
+        ),
         ("https://www.oreilly.com/", "article"),  # marketing host is not the reader
         ("https://example.com/some-article", "article"),
         ("https://medium.com/@a/post-123", "medium"),

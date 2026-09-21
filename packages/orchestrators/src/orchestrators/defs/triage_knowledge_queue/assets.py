@@ -14,6 +14,7 @@ from orchestrators.defs.shared.queue_resources import (
 from .classify import (
     ALL_CONTENT_TYPES,
     CONTENT_TYPE_ARXIV,
+    CONTENT_TYPE_BOOK_CHAPTER,
     CONTENT_TYPE_FILE_AUDIO,
     CONTENT_TYPE_YOUTUBE,
     classify_content_type,
@@ -196,7 +197,17 @@ def triaged(
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
-    effective_url = meta.redirected_url or config.url
+    # A book chapter keeps the URL it was captured with. Its publisher answers an
+    # automated fetch with a redirect to a marketing homepage, and consuming that
+    # would both collapse every chapter of every book onto one canonical URL and
+    # reclassify the row away from book_chapter. Classifying the captured URL
+    # first is what makes that decidable — after the redirect there is nothing
+    # left to recognise. Every other source still resolves through its redirect,
+    # which is what turns a shortener into the platform it points at.
+    if classify_content_type(config.url) == CONTENT_TYPE_BOOK_CHAPTER:
+        effective_url = config.url
+    else:
+        effective_url = meta.redirected_url or config.url
     canonical = normalize_url(effective_url)
     # User override wins if set + valid; typo / empty → URL classifier.
     if config.content_type and config.content_type in ALL_CONTENT_TYPES:

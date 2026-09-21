@@ -73,9 +73,7 @@ def test_query_for_extract_filter_claims_book_chapter_rows():
     client = MagicMock()
     client.data_sources.query.return_value = {"results": []}
     with patch.object(NotionQueueResource, "_client", return_value=client):
-        _resource().query_for_extract(
-            page_size=10, supported_content_types=SUPPORTED_CONTENT_TYPES
-        )
+        _resource().query_for_extract(page_size=10, supported_content_types=SUPPORTED_CONTENT_TYPES)
 
     sent = client.data_sources.query.call_args.kwargs["filter"]
     type_clauses = sent["and"][1]["or"]
