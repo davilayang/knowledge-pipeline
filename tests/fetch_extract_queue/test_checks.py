@@ -7,10 +7,8 @@ figures are present — a gate built on that list would pass them.
 """
 
 import dagster as dg
-from orchestrators.defs.fetch_extract_queue.checks import (
-    figure_gate_result,
-    figure_repair_template,
-)
+from orchestrators.defs.fetch_extract_queue.checks import figure_gate_result
+from orchestrators.defs.fetch_extract_queue.figures import figure_repair_template
 
 ANCHOR = "oreilly:9798341660717/aiee_1001.png"
 SECOND = "oreilly:9798341660717/aiee_1002.png"

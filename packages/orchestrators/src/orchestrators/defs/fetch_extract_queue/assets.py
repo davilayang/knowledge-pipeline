@@ -3,6 +3,7 @@ import json
 import textwrap
 from collections import Counter
 from collections.abc import Iterable
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from typing import Any
 from urllib.parse import urlparse
@@ -37,6 +38,7 @@ from .def_config import (
     PIPELINE_TAG,
     queue_items_partition_def,
 )
+from .figures import inject_figure_descriptions, strip_figure_descriptions
 from .resources import ExtractResult, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
@@ -349,7 +351,12 @@ def fetch_content(
             },
         )
 
-    char_count = len(result.content)
+    # Figure descriptions land in the body before anything measures it: the
+    # gate counts the anchors an injected description has replaced, and the
+    # extraction lanes read what is stored.
+    content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
+
+    char_count = len(content)
     # The fetcher cascade falls back to `best_result` when no tier hits its
     # floor (services/fetcher/cascade.py), so a 200 can carry sub-floor
     # content. Guard the extractor against degenerate inputs before persist.
@@ -365,14 +372,14 @@ def fetch_content(
                 "tier_log": dg.MetadataValue.json(result.tier_log),
             },
         )
-    content_hash = hashlib.sha256(result.content.encode()).hexdigest()
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
     extras = result.extras or {}
     author = _coerce_author(extras.get("authors"))
     published = extras.get("published")
     store.upsert_fetched(
         notion_page_id=page_id,
         url=url,
-        raw_content=result.content,
+        raw_content=content,
         fetch_tier=result.tier,
         fetch_tier_log=result.tier_log,
         fetched_content_char_count=char_count,
@@ -390,7 +397,8 @@ def fetch_content(
         "content_chars": dg.MetadataValue.int(char_count),
         "tier_log": dg.MetadataValue.json(result.tier_log),
         "content_hash_short": dg.MetadataValue.text(content_hash[:12]),
-        "content_preview": dg.MetadataValue.md(f"```\n{_preview(result.content)}\n```"),
+        "content_preview": dg.MetadataValue.md(f"```\n{_preview(content)}\n```"),
+        "figures_described": dg.MetadataValue.int(len(described)),
         "summary": dg.MetadataValue.md(f"**{content_type}** — {char_count:,} chars"),
     }
     if result.title:
@@ -961,7 +969,13 @@ def extract_claims(
     if not row or not row.get("raw_content"):
         return dg.MaterializeResult(metadata={"summary_skipped": dg.MetadataValue.bool(True)})
 
-    item = _ingest_item_from_row(row)
+    # The claims lane reads the body with the figure descriptions cut out.
+    # Provenance is decided by which input produced a claim, never by a prompt
+    # instruction: record_claims writes every claim as something the source
+    # said, and a description is a model's reading of a picture.
+    item = replace(
+        _ingest_item_from_row(row), text=strip_figure_descriptions(row.get("raw_content") or "")
+    )
     content_type = (row.get("content_type") or "").lower()
     summary, call = run_extract_claims(item, content_type=content_type)
     store.record_claims(
@@ -1026,7 +1040,11 @@ def extract_entities(
     if not claims_doc:
         return dg.MaterializeResult(metadata={"entities_skipped": dg.MetadataValue.bool(True)})
 
-    item = _ingest_item_from_row(row)
+    # Same cut as the claims lane: an entity the wiki attributes to this source
+    # must come from the source, not from a description of one of its pictures.
+    item = replace(
+        _ingest_item_from_row(row), text=strip_figure_descriptions(row.get("raw_content") or "")
+    )
     candidates, call = run_extract_entities(item, parse_claims_doc(claims_doc))
     store.record_candidates(
         notion_page_id=page_id,

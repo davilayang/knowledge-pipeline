@@ -12,6 +12,7 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
+import pytest
 from orchestrators.defs.fetch_extract_queue.resources import (
     FetcherResource,
 )
@@ -726,3 +727,54 @@ def test_fetcher_extraction_prompts_reads_the_active_labels():
         "prompt_label": "metadata_v1",
         "prompt_sha256": "b" * 64,
     }
+
+
+# -------- get_figure_text --------
+
+
+def _notion_page_with_figure_text(files: list[dict]) -> MagicMock:
+    client = MagicMock()
+    client.pages.retrieve.return_value = {"properties": {"Figure Text": {"files": files}}}
+    return client
+
+
+def test_figure_text_reads_the_attached_json_map():
+    resource = NotionQueueResource(
+        integration_token="secret_x", queue_db_id="db-123", queue_data_source_id="ds-456"
+    )
+    client = _notion_page_with_figure_text(
+        [{"name": "ch10.json", "file": {"url": "https://files.notion.so/ch10.json"}}]
+    )
+    payload = b'{"oreilly:x/a.png": {"caption": "Figure 10-1.", "description": "A screenshot."}}'
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        with patch("httpx.get", return_value=MagicMock(content=payload)) as get:
+            figure_text = resource.get_figure_text("p-1")
+    assert figure_text == {
+        "oreilly:x/a.png": {"caption": "Figure 10-1.", "description": "A screenshot."}
+    }
+    assert get.call_args.args[0] == "https://files.notion.so/ch10.json"
+
+
+def test_figure_text_is_empty_when_nothing_is_attached():
+    resource = NotionQueueResource(
+        integration_token="secret_x", queue_db_id="db-123", queue_data_source_id="ds-456"
+    )
+    with patch.object(
+        NotionQueueResource, "_client", return_value=_notion_page_with_figure_text([])
+    ):
+        assert resource.get_figure_text("p-1") == {}
+
+
+def test_figure_text_fails_loudly_when_the_attachment_is_not_a_json_map():
+    """An operator who attaches the wrong file must hear about it. Returning {}
+    would park the row again with no hint that the file was read at all."""
+    resource = NotionQueueResource(
+        integration_token="secret_x", queue_db_id="db-123", queue_data_source_id="ds-456"
+    )
+    client = _notion_page_with_figure_text(
+        [{"name": "notes.json", "file": {"url": "https://files.notion.so/notes.json"}}]
+    )
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        with patch("httpx.get", return_value=MagicMock(content=b"not json at all")):
+            with pytest.raises(ValueError, match="Figure Text"):
+                resource.get_figure_text("p-1")

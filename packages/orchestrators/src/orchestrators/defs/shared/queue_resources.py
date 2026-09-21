@@ -14,6 +14,7 @@ class definition.
   `update_extracted`, `mark_failed`) and read helpers.
 """
 
+import json
 from pathlib import Path
 from typing import Any
 
@@ -253,27 +254,50 @@ class NotionQueueResource(dg.ConfigurableResource):
         text = "".join(t.get("plain_text", "") for t in title).strip()
         return text or None
 
-    def get_source_file(self, page_id: str) -> tuple[str, bytes] | None:
-        """Download the row's `Source File` attachment as `(filename, bytes)`,
-        or None when the property is absent or empty.
+    def _download_file_property(self, page_id: str, prop: str) -> tuple[str, bytes] | None:
+        """Download the first attachment on `prop` as `(filename, bytes)`, or
+        None when the property is absent or empty.
 
         Read on every call, never cached: Notion stores the file durably but
         hands out a presigned download URL that expires about an hour after the
-        property is read, so a URL captured earlier answers 403. The filename is
-        returned because the caller dispatches on its extension.
+        property is read, so a URL captured earlier answers 403.
         """
         page = self._client().pages.retrieve(page_id=page_id)
-        files = (page.get("properties", {}).get("Source File", {}) or {}).get("files") or []
+        files = (page.get("properties", {}).get(prop, {}) or {}).get("files") or []
         if not files:
             return None
         entry = files[0]
-        name = entry.get("name") or ""
         url = (entry.get("file") or entry.get("external") or {}).get("url") or ""
         if not url:
             return None
         resp = httpx.get(url, follow_redirects=True, timeout=_SOURCE_FILE_TIMEOUT_S)
         resp.raise_for_status()
-        return name, resp.content
+        return entry.get("name") or "", resp.content
+
+    def get_source_file(self, page_id: str) -> tuple[str, bytes] | None:
+        """The row's `Source File` attachment as `(filename, bytes)`, or None.
+        The filename is returned because the caller dispatches on its extension."""
+        return self._download_file_property(page_id, "Source File")
+
+    def get_figure_text(self, page_id: str) -> dict[str, dict[str, str]]:
+        """The row's `Figure Text` attachment parsed as `{anchor: {caption,
+        description}}`, or `{}` when nothing is attached.
+
+        An attachment that is not that map raises rather than reading as empty:
+        an unparsed file and an absent one both park the row, and the operator
+        needs to know which happened.
+        """
+        attachment = self._download_file_property(page_id, "Figure Text")
+        if not attachment:
+            return {}
+        name, payload = attachment
+        try:
+            figure_text = json.loads(payload)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"Figure Text attachment {name!r} is not valid JSON: {exc}") from exc
+        if not isinstance(figure_text, dict):
+            raise ValueError(f"Figure Text attachment {name!r} is not a JSON object")
+        return figure_text
 
     def get_page_body_markdown(self, page_id: str) -> str:
         """Fetch all top-level block children of a page and convert to markdown.
