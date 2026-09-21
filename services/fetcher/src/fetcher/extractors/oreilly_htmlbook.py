@@ -1,14 +1,12 @@
 """O'Reilly HTMLBook chapter page -> markdown. Deterministic, stdlib only.
 
 The publisher's markup already names every structure it uses — `data-type`
-attributes label sections, code listings, callouts and footnotes, and tables are
-real `<table>` elements — so this reads those labels instead of inferring shape
-from layout. No model is involved and nothing is rewritten: the conversion moves
-markup, never words.
+labels sections, listings, callouts and footnotes; tables are real `<table>`
+elements — so this reads those labels rather than inferring shape from layout.
 
-That last property is enforced rather than assumed. `assert_word_sequence_preserved`
-compares the chapter's source text against the produced markdown, and the
-converter refuses to return output that would drop or reorder a word.
+The conversion moves markup, never words, and that is enforced:
+`assert_word_sequence_preserved` compares the chapter's source text against the
+markdown and refuses output that would drop or reorder a word.
 """
 
 import html
@@ -17,11 +15,9 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
 
-# Bump whenever the conversion changes what a caller receives — the markdown
-# itself, or any field of the response. It is half the endpoint's cache key, so a
-# stale entry is otherwise served for the whole TTL: adding `authors` without a
-# bump left every warm cache returning responses that still lacked it, and the
-# orchestrator wrote NULL into `queue_items.author` with nothing to show it had.
+# Half the endpoint's cache key, so bump it for any change to what a caller
+# receives — the markdown or any response field. A field added without a bump is
+# served from warm caches in its old shape for the whole TTL, silently.
 CONVERTER_VERSION = "2"
 
 
@@ -31,11 +27,10 @@ class ConversionRejected(Exception):
     returned: a caller that receives markdown must be able to trust it."""
 
 
-# Markup this converter is defined to add. The guard strips these before
-# comparing words, so the list is part of the fidelity contract — anything added
-# to the output and missing here would be read as a word the source never had.
-# Order matters: the blockquote prefix is stripped first, because a heading
-# inside a callout starts the line with `>` and its `#` would not match yet.
+# Markup this converter adds, stripped before the guard compares words — so this
+# list is part of the fidelity contract: anything emitted and missing here reads
+# as a word the source never had. Order matters, because a heading inside a
+# callout starts its line with `>` and its `#` will not match until that is gone.
 _ADDED_MARKUP = (
     re.compile(r"^(?:\s*>\s?)+", re.M),  # callout blockquote prefix, any depth
     re.compile(r"^\s*#{1,6}\s+", re.M),  # heading markers
@@ -43,22 +38,16 @@ _ADDED_MARKUP = (
     re.compile(r"^\s*\d+\.\s+(?=\S)", re.M),  # ordered list markers
     re.compile(r"!\[figure\]\([^)]*\)"),  # figure references
     re.compile(r"\*\*\[[A-Z]+\]\*\*"),  # callout kind labels
-    # A bold lead-in wraps a whole block, so the markers are anchored. Stripping
-    # every `**` instead truncates an author's own `***` divider.
 )
 # Deliberately absent: a bare `*` or backtick. Both appear in the book's own
 # prose — a glob pattern, an inline code span — and stripping every occurrence
 # to hide the converter's markup deletes the author's too, which the guard then
 # reports as missing words.
 
-# A footnote marker carries a label that IS source text — a digit in the body,
-# a letter under a table (the publisher renders
-# the number inside the note and its reference), so the marker syntax is removed
-# while the number it names is kept.
-# The converter's bold always wraps a whole block, so only a matched pair around
-# an entire line is its own. Stripping every `**` instead truncates an author's
-# `***` — in prose, and at the end of a table cell once the cell walls have
-# become spaces.
+# A footnote marker's label is source text — a digit in the body, a letter under
+# a table — so the syntax goes and the label stays. The converter's bold always
+# wraps a whole block, so only a pair around an entire line is its own: stripping
+# every `**` truncates an author's `***`.
 _BOLD_BLOCK = re.compile(r"^(\s*)\*\*(.*?)\*\*\s*$")
 _FOOTNOTE_DEFINITION = re.compile(r"^\s*\[\^(\w+)\]:\s", re.M)
 _FOOTNOTE_REFERENCE = re.compile(r"\[\^(\w+)\]")
@@ -133,18 +122,14 @@ def assert_word_sequence_preserved(source_text: str, markdown: str) -> None:
     )
 
 
-# `svg` is here because MathJax renders every formula twice inside one
-# `<mjx-container>`: an `<svg>` for sighted readers and an `<mjx-assistive-mml>`
-# carrying the same symbols as text. The svg holds no text of its own, so
-# skipping its subtree loses nothing and stops its child tags marking word
-# boundaries in the middle of a sentence.
+# MathJax renders each formula twice in one `<mjx-container>`: an `<svg>` and an
+# `<mjx-assistive-mml>` carrying the same symbols as text. Skipping the svg loses
+# nothing and stops its children marking boundaries mid-sentence.
 _SKIP_TAGS = {"script", "style", "svg"}
 _HEADINGS = {f"h{n}" for n in range(1, 7)}
-# Tags that do not separate words. Everything else is block-level and implies a
-# boundary: `<dt>Visual hierarchy</dt><dd>Emphasize` carries no whitespace in the
-# markup, and joining its text nodes raw would fuse two words into one. Inline
-# tags must not add a boundary — a footnote reference renders as `testing.1`,
-# and a `<span class="label">` sits mid-phrase.
+# Tags that do not separate words; everything else is block-level and implies a
+# boundary. `<dt>Visual hierarchy</dt><dd>Emphasize` has no whitespace between
+# them, while a footnote reference renders as `testing.1` and must not gain any.
 _INLINE_TAGS = {
     "span",
     "a",
@@ -160,10 +145,8 @@ _INLINE_TAGS = {
     # `math` opens a formula; everything inside it is handled by the subtree
     # rule in `_is_inline`, not by name.
     "math",
-    # MathJax's own wrappers. Both sit inside a sentence, so closing one must
-    # not separate the formula from the full stop after it: a block tag's close
-    # marks a word boundary in the source text, and in the markdown the block
-    # separation does the same job — an inline tag must do neither.
+    # MathJax's own wrappers, which sit inside a sentence: closing one must not
+    # separate the formula from the full stop after it.
     "mjx-container",
     "mjx-assistive-mml",
 }
@@ -199,13 +182,6 @@ class _ChapterParser(HTMLParser):
         self.figure_captions: list[str] = []
         self._in_figure = 0
         self._noteref: list[str] | None = None
-        # Collection is gated on being inside the chapter: a saved page wraps it
-        # in site nav, a sidebar and a cookie banner, none of which are the
-        # author's words. Slicing the markup by text search instead would have to
-        # find the matching close of a tag that nests.
-        self._in_chapter = False
-        self.found_chapter = False
-        self._section_depth = 0
         self._pre: list[str] | None = None
         self._footnotes = False
         self._footnote_open = False
@@ -215,10 +191,8 @@ class _ChapterParser(HTMLParser):
         self._math = 0
         self._span = (1, 1)
         self._held: dict[int, int] = {}  # column -> rows a span still covers
-        # Collection is gated on being inside the chapter: a saved page wraps it
-        # in site nav, a sidebar and a cookie banner, none of which are the
-        # author's words. Slicing the markup by text search instead would have to
-        # find the matching close of a tag that nests.
+        # Gated on being inside the chapter: a saved page wraps it in site nav, a
+        # sidebar and a cookie banner, none of which are the author's words.
         self._in_chapter = False
         self.found_chapter = False
         self._section_depth = 0
@@ -306,11 +280,9 @@ class _ChapterParser(HTMLParser):
             src = attrmap.get("src") or ""
             anchor = _figure_anchor(src)
             if not anchor:
-                # An `<img>` carries no text, so a figure the anchor cannot name
-                # would pass the word guard and leave `figure_anchors` empty —
-                # the gate would then report no figures and let a chapter whose
-                # substance is pictorial through as complete. Refusing says so
-                # while the save can still be redone.
+                # An `<img>` carries no text, so an unnameable figure would pass
+                # the word guard with `figure_anchors` empty, and the gate would
+                # let a pictorial chapter through. Refuse while the save can be redone.
                 raise ConversionRejected(
                     f"figure image source {src!r} is not a publisher asset URL, so no "
                     "stable anchor can name it — re-save the page from a reader that "
@@ -329,11 +301,9 @@ class _ChapterParser(HTMLParser):
         elif tag == "tr" and self._rows is not None:
             self._row = []
         elif tag in ("td", "th") and self._row is not None:
-            # A spanning cell is written where it starts and the cells it covers
-            # are left empty. Repeating its value instead would add words the
-            # chapter never had, which is the one thing the grid may not do;
-            # refusing the chapter over one table would be worse than a grid
-            # that is merely imperfect.
+            # Written where it starts, with the cells it covers left empty.
+            # Repeating its value would add words the chapter never had, and
+            # refusing over one table is worse than an imperfect grid.
             self._span = (_span_of(attrmap, "colspan"), _span_of(attrmap, "rowspan"))
             self._cell = []
         elif tag == "caption":
@@ -341,8 +311,7 @@ class _ChapterParser(HTMLParser):
         kind = attrmap.get("data-type") or ""
         # A reference carries `data-type="noteref"`; the definition's back-link
         # carries nothing, so inside an open footnote the leading anchor is the
-        # marker. Both render as a bare digit otherwise, which an extractor reads
-        # as prose fused to the neighbouring sentence.
+        # marker. Untagged, both render as a digit fused to the next sentence.
         if tag == "a" and kind == "indexterm":
             return
         if tag == "a" and (
@@ -351,10 +320,8 @@ class _ChapterParser(HTMLParser):
             self._noteref = []
             return
         if tag == "div" and kind == "equation":
-            # A display formula has no paragraph of its own, so without a block
-            # opened for it its symbols reach the source text and never the
-            # output — a loss the guard reports as a divergence on the prose
-            # that follows.
+            # A display formula has no paragraph of its own: without a block opened
+            # for it, its symbols reach the source text and never the output.
             self._open("")
             self._equation = True
             return
@@ -364,11 +331,9 @@ class _ChapterParser(HTMLParser):
             self._footnotes = True
             return
         if tag == "p" and kind == "footnote":
-            # A table footnote's definition sits inside the grid, in a trailing
-            # row whose one cell spans it. It is a paragraph, not tabular data,
-            # so cell capture yields to it: left in the cell its body lands in
-            # the grid while its marker reaches a block, splitting one
-            # definition across two structures and emitting the label twice.
+            # A table footnote's definition sits inside the grid, in a trailing row
+            # whose one cell spans it — a paragraph, not tabular data. Left in the
+            # cell, its body lands in the grid while its marker reaches a block.
             self._cell_held, self._cell = self._cell, None
             self._open("")
             self._footnote_open = True
@@ -437,10 +402,8 @@ class _ChapterParser(HTMLParser):
             number = "".join(self._noteref).strip()
             self._noteref = None
             if number:
-                # A reference sits in tabular data as readily as in prose, and in
-                # a cell the open buffer is the cell — not `_buf`. Its label is
-                # source text, so writing it to neither loses a word and the
-                # guard refuses the chapter over a cell it never names.
+                # In a cell the open buffer is the cell, not `_buf`. The label is
+                # source text, so writing it to neither loses a word.
                 marker = f"[^{number}]" + (": " if self._footnote_open else "")
                 if self._cell is not None:
                     self._cell.append(marker)
@@ -610,10 +573,9 @@ def convert_page(page_html: str) -> ChapterConversion:
     book = _BOOK_TITLE.search(page_html)
     chapter_meta = _META_TITLE.search(page_html)
 
-    # The first heading, not the first line: a chapter may open with a figure,
-    # and its reference would otherwise become the title that `publish_item`
-    # writes to Notion in preference to the model's. A caption is emitted bold
-    # rather than as a heading, so it cannot be mistaken for one here.
+    # The first heading, not the first line: a chapter may open with a figure, and
+    # its reference would become the title written to Notion in preference to the
+    # model's. Captions are emitted bold, so they cannot be mistaken for one here.
     heading = _FIRST_HEADING.search(conversion.markdown)
     title = heading.group(1).strip() if heading else ""
     if not title and chapter_meta:

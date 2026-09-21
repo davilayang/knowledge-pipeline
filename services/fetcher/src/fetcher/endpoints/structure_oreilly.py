@@ -1,10 +1,8 @@
 """POST /v1/structure-oreilly: a saved O'Reilly reader page -> markdown.
 
-Deterministic, unlike its sibling routes: the publisher's markup already names
-every structure, so there is no model, no network call and no cascade. That also
-decides the cache key — `/v1/structure` keys on prompt and chain shas, which
-name nothing here, so this route keys on the page content and the converter's
-own version. A converter change must invalidate what it produced.
+Deterministic, unlike its sibling routes — no model, no network call, no cascade.
+That decides the cache key too: `/v1/structure` keys on prompt and chain shas,
+which name nothing here, so this route keys on the page and the converter version.
 
 The publisher answers an automated fetch with an access-denied redirect, so the
 page can only arrive as a payload a human captured.

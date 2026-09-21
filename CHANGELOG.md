@@ -6,131 +6,45 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-- **A chapter's figures can no longer go missing unnoticed.** A saved page whose
-  image sources were rewritten to local paths — what Chrome's "Webpage,
-  Complete" produces — yielded no figure anchors at all, so the gate that holds
-  back undescribed figures saw none and let the chapter through as complete. The
-  conversion is now refused, naming the source and saying to re-save from a
-  reader that keeps absolute asset URLs.
+### Added
 
-- **A footnote reference inside a table cell no longer refuses the chapter.** The
-  marker's label is the publisher's text, and in a cell it was written to neither
-  buffer, so the fidelity guard reported a lost word and rejected the whole
-  chapter — pointing at the prose after the table rather than the cell that
-  caused it.
+- **A book chapter can be read into the queue from a page saved by hand.**
+  O'Reilly's reader answers an automated fetch with an access-denied redirect, so
+  the chapter page is saved from a browser and attached to the row instead.
+  `POST /v1/structure-oreilly` converts it to markdown by reading the publisher's
+  own structural labels — section nesting, definition lists, callouts, code
+  listings, tables, figure captions, footnotes and formulas all survive, where
+  copying the text out of the reader loses every one of them. The conversion is
+  refused rather than returned if any word of the chapter would be lost, so a
+  flattened table or a dropped paragraph cannot reach the corpus as the author's
+  own words. Across two O'Reilly titles, 14 of 14 chapters convert.
 
-- **A callout keeps its body when it wraps an inner div.** The closing tag of any
-  nested div ended the blockquote, so the tail of a note, warning or tip reached
-  the reader as ordinary prose. The fidelity guard cannot see this, because it
-  strips quote markers before comparing words.
+- **A queue row can carry its body as an attached file.** A `Source File`
+  attachment is used as the content instead of fetching the URL, dispatched by
+  extension: a saved publisher page converts deterministically, while pasted
+  prose passes through the structurer and is treated exactly as a pasted page
+  body is today. Anything that is not text is refused rather than decoded. The
+  attachment is read when the run starts, because Notion's download links expire
+  about an hour after they are issued.
 
-- **An attachment that is not text is refused rather than decoded.** A PDF or
-  screenshot attached to a row — as a note, not as its body — was decoded with
-  UTF-8 replacement and posted to the structurer, landing mojibake in the stored
-  body where nothing downstream could tell it from prose.
+- **A book chapter whose figures carry no description is held back.** Such a
+  chapter fails before extraction and parks in the queue rather than entering the
+  corpus looking complete, and the failure carries a template naming every figure
+  and its caption so the descriptions can be supplied. The count comes from the
+  chapter body itself: asking the extractor what it could not read returns
+  nothing on chapters carrying as many as ten figures.
 
-- **A chapter that opens with a figure keeps its real title.** The title was the
-  first line of the markdown, which in that case is the image reference; because
-  a book chapter's stored title is preferred over the model's, that literal
-  became the item's name. It now comes from the first heading, falling back to
-  the page's own chapter title.
+- **A chapter's title and authors come from the page rather than a model.** Both
+  are parsed from the publisher's markup and stored with the body, so the queue
+  row and the wiki carry what the page printed instead of an extraction's reading
+  of it. A manually set author still wins — the page only fills a blank.
 
-- **A converted chapter's authors reach the row that the wiki reads.** The
-  converter already parsed them for the identity header; now it returns them and
-  the fetch stores them, so a book chapter's claims carry an author instead of
-  attributing to nobody. The converter version is bumped alongside, because the
-  response contract changed and a warm cache would otherwise keep serving
-  responses without the field.
-
-- **A book chapter reaches the wiki attributed to its authors.** The converter
-  already read them off the page to build the chapter's identity header; it now
-  also reports them, so they fill the queue row's author column rather than that
-  column staying empty. A manually set author still wins — the page only fills a
-  blank.
-
-- **A typed author survives the fetch.** An `Author` set on the Notion row is
-  written at triage and no longer overwritten by whatever the fetch found — the
-  first non-null value sticks, matching how `Publish Date` already behaves. It
-  is the fallback for sources whose own markup names nobody; where a page does
-  name its authors, those still come through unchanged.
-
-- **A book chapter keeps the title printed on the page.** The chapter title
-  parsed from the publisher's own markup is written back to Notion instead of
-  the model's extracted title, and a typed author wins over the model's reading
-  of the page furniture. Both answers the model gave are kept in the extraction
-  ledger, so a repeated disagreement is still visible.
+### Changed
 
 - **`uv run poe check` now runs the fetcher service's own test suite.** It lives
   outside the uv workspace with a separate venv, so its tests — including the
   page-conversion suite — were invisible to the standard check and a regression
   there could land unnoticed.
-
-- **A queue row can carry its body as an attached file.** A `Source File`
-  attachment on the Notion row is used as the content instead of fetching the
-  URL, dispatched by extension: a saved publisher page converts deterministically
-  while pasted prose still passes through the structurer, so text that arrives
-  this way is treated exactly as a pasted page body is today. The attachment is
-  read when the run starts, because Notion's download links expire about an hour
-  after they are issued.
-
-- **A book chapter with no attached page fails saying why.** Its publisher
-  answers an automated fetch with an access-denied redirect, so the row names
-  the missing file as the cause rather than reporting a fetch failure that no
-  additional tier could have avoided.
-
-- **A chapter's title comes from the page, not from a model.** The converter
-  parses the real chapter title and it is stored with the body, so nothing
-  downstream needs to guess at it.
-
-- **A chapter carrying formulas or spanning table cells now converts.** MathJax
-  renders each formula twice — an image and an accessible MathML copy — and the
-  converter reads the copy once while treating the whole formula as a single run
-  of characters, so a symbol can no longer be split from the punctuation beside
-  it. A display formula, which the publisher gives no paragraph of its own,
-  reaches the output instead of being dropped. A spanning table cell is written
-  where it starts with blanks beneath it, rather than refusing the chapter.
-  Across two O'Reilly titles this takes conversion from 9 of 14 chapters to 13.
-
-- **A table's own footnote keeps its text.** A book defines a table footnote
-  inside the table, in a trailing row whose single cell spans the grid. Read as
-  tabular data its body landed in a cell while its marker became a block,
-  splitting one definition in two and printing its label twice; it is now
-  emitted whole, after the rows it annotates. This takes conversion across two
-  O'Reilly titles to 14 of 14 chapters.
-
-### Added
-
-- **A book chapter whose figures carry no description is held back.** Such a
-  chapter now fails before extraction and parks in the queue rather than
-  entering the corpus looking complete, and the failure carries a template
-  naming every figure and its caption so the descriptions can be supplied. The
-  count comes from the chapter body itself: asking the extractor what it could
-  not read returns nothing on chapters carrying as many as ten figures.
-
-- **A saved book-chapter page converts to markdown without a model.**
-  `POST /v1/structure-oreilly` turns a chapter page saved from O'Reilly's reader
-  into markdown by reading the publisher's own structural labels — section
-  nesting, definition lists, callouts, code listings, tables, figure captions and
-  footnotes all survive, where copying the text out of the reader loses every one
-  of them. The conversion is refused rather than returned if any word of the
-  chapter would be lost, so a silently flattened table or a dropped paragraph
-  cannot reach the corpus as the author's own words.
-
-- **A chapter captured from O'Reilly's reader is recognised as its own content
-  type.** URLs on `learning.oreilly.com` classify as `book_chapter` rather than
-  falling to the `article` catch-all, so the queue can route them to the capture
-  path a publisher that blocks automated fetching requires. `www.oreilly.com`
-  is unaffected and stays `article`.
-
-- **Book-chapter rows reach the extraction pipeline.** `book_chapter` joins the
-  Content Type set the extract sensor selects on, so a triaged chapter is
-  claimed rather than sitting at Status=Fetching unnoticed.
-
-- **A book chapter keeps the URL it was captured with.** The publisher answers
-  an automated fetch with a redirect to its marketing homepage; triage no longer
-  consumes that redirect for chapter URLs, which would otherwise have collapsed
-  every chapter of every book onto one canonical URL and reclassified the row.
-  Every other source still resolves through its redirect as before.
 
 ---
 

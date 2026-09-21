@@ -55,11 +55,9 @@ _EXTRACT_ENTITIES_PROMPT_SHA = hashlib.sha256(
     (EXTRACT_SHARED_SYSTEM + EXTRACT_ARTICLE_ENVELOPE + EXTRACT_ENTITIES_TASK).encode()
 ).hexdigest()
 
-# What an attached `Source File` may be, and where each kind goes. A saved
-# publisher page converts deterministically; pasted prose keeps the structurer
-# cleaning that the page-body override has always given it. Anything else is
-# refused rather than decoded, because bytes forced through UTF-8 replacement
-# reach `raw_content` looking like prose.
+# What an attached `Source File` may be, and where each kind goes. Anything else
+# is refused rather than decoded: bytes forced through UTF-8 replacement reach
+# `raw_content` looking like prose.
 _CONVERTED_EXTENSIONS = (".html", ".htm")
 _STRUCTURED_EXTENSIONS = (".md", ".markdown", ".txt")
 _ATTACHMENT_EXTENSIONS = _CONVERTED_EXTENSIONS + _STRUCTURED_EXTENSIONS
@@ -288,9 +286,8 @@ def fetch_content(
             },
         )
 
-    # An attached file IS the body. Dispatch on its extension: the publisher's
-    # own markup converts deterministically, while pasted prose still goes
-    # through the structurer, which is what `raw_content_override` does today.
+    # An attached file IS the body. A publisher page converts deterministically;
+    # pasted prose keeps the structurer cleaning the page-body override gives it.
     source_file = notion.get_source_file(page_id)
     override = row.get("raw_content_override") or ""
     if source_file:

@@ -201,13 +201,11 @@ def triaged(
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
     meta = fetch_url_meta(config.url)
-    # A book chapter keeps the URL it was captured with. Its publisher answers an
-    # automated fetch with a redirect to a marketing homepage, and consuming that
-    # would both collapse every chapter of every book onto one canonical URL and
-    # reclassify the row away from book_chapter. Classifying the captured URL
-    # first is what makes that decidable — after the redirect there is nothing
-    # left to recognise. Every other source still resolves through its redirect,
-    # which is what turns a shortener into the platform it points at.
+    # A book chapter keeps the URL it was captured with: its publisher redirects an
+    # automated fetch to a marketing homepage, which would collapse every chapter of
+    # every book onto one canonical URL and reclassify the row. Classifying the
+    # captured URL first is what makes that decidable. Every other source still
+    # resolves through its redirect, which is what turns a shortener into a platform.
     if classify_content_type(config.url) == CONTENT_TYPE_BOOK_CHAPTER:
         effective_url = config.url
     else:
