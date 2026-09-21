@@ -41,6 +41,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
+- **A book chapter whose figures carry no description is held back.** Such a
+  chapter now fails before extraction and parks in the queue rather than
+  entering the corpus looking complete, and the failure carries a template
+  naming every figure and its caption so the descriptions can be supplied. The
+  count comes from the chapter body itself: asking the extractor what it could
+  not read returns nothing on chapters carrying as many as ten figures.
+
 - **A saved book-chapter page converts to markdown without a model.**
   `POST /v1/structure-oreilly` turns a chapter page saved from O'Reilly's reader
   into markdown by reading the publisher's own structural labels — section
