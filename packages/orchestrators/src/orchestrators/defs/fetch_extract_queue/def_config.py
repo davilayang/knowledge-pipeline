@@ -24,6 +24,7 @@ SUPPORTED_CONTENT_TYPES: tuple[str, ...] = (
     "github",
     "file_pdf",
     "file_audio",
+    "book_chapter",
     "article",
     "other",
 )

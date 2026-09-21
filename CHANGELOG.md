@@ -14,6 +14,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
   path a publisher that blocks automated fetching requires. `www.oreilly.com`
   is unaffected and stays `article`.
 
+- **Book-chapter rows reach the extraction pipeline.** `book_chapter` joins the
+  Content Type set the extract sensor selects on, so a triaged chapter is
+  claimed rather than sitting at Status=Fetching unnoticed.
+
 ---
 
 ## [0.37.2] — 2026-09-12
