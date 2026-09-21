@@ -71,6 +71,12 @@ def poll_notion_for_triage(
         )
         publish_date_iso = publish_date_date.get("start") if publish_date_date else None
 
+        # User-set "Author" rich text (None if unset). The fallback for sources
+        # whose markup names nobody — a converter that parses real authors off
+        # the page supplies them in the body instead.
+        author_chunks = row.get("properties", {}).get("Author", {}).get("rich_text") or []
+        author = "".join(c.get("plain_text") or "" for c in author_chunks).strip() or None
+
         use_body_prop = row.get("properties", {}).get("Use page body", {})
         use_body = bool(use_body_prop.get("checkbox", False))
         raw_content_override = triage_notion.get_page_body_markdown(page_id) if use_body else ""
@@ -92,6 +98,7 @@ def poll_notion_for_triage(
                             name=existing_name,
                             added_at_iso=added_at_iso,
                             publish_date_iso=publish_date_iso,
+                            author=author,
                             raw_content_override=raw_content_override,
                         ),
                     }

@@ -159,6 +159,10 @@ class TriageInput(dg.Config):
     # types the fetcher can't auto-date: PDF, podcast, date-less sites). Wins over
     # the fetcher's auto-detected date, which fills only when this is blank.
     publish_date_iso: str | None = None
+    # User-set Notion "Author" — the fallback for sources whose own markup names
+    # nobody. A converter that parses an author from the page still wins for the
+    # body it produces; this fills the column when nothing else can.
+    author: str | None = None
     raw_content_override: str = ""
 
 
@@ -307,6 +311,7 @@ def triaged(
         raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
         content_date=config.publish_date_iso,
+        author=config.author,
     )
     # Per-content-type display sources avoid YouTube's '- YouTube' static
     # title and generic og:description boilerplate. See display.py.

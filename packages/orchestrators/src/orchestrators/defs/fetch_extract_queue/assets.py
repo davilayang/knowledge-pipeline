@@ -406,6 +406,19 @@ def _deterministic_publisher(row: dict[str, Any]) -> str | None:
             return None
 
 
+def _typed_contributors(row: dict[str, Any]) -> list[dict[str, Any]] | None:
+    """The row's own author as contributors, or None to let the model decide.
+
+    Only `book_chapter` carries one: its publisher blocks automated fetching, so
+    nothing but a human types that column, and a name somebody typed beats a name
+    a model read out of page furniture. A comma-separated value is several people,
+    which is how the Notion property spells a co-authored book."""
+    if (row.get("content_type") or "") != CONTENT_TYPE_BOOK_CHAPTER:
+        return None
+    names = [n.strip() for n in (row.get("author") or "").split(",") if n.strip()]
+    return [{"name": n, "role": None, "affiliation": None} for n in names] or None
+
+
 def _metadata_inputs_sha(*, content_hash: str | None, model: str, prompt_sha: str) -> str:
     """One hash over everything that decides what this call returns.
 
@@ -589,7 +602,9 @@ def extract_metadata(
         duration_ms = call["duration_ms"]
 
         known_publisher = _deterministic_publisher(row)
-        contributors = [c.model_dump() for c in payload.contributors]
+        # On a disagreement the typed value wins and the model's survives in the
+        # ledger row's `output`, exactly as it does for the publisher below.
+        contributors = _typed_contributors(row) or [c.model_dump() for c in payload.contributors]
         # A channel named after its own presenter is that person, not a second
         # organisation. Letting the deterministic value through would file one
         # human as both a person and an org, and the wiki mints an entity per
@@ -866,6 +881,12 @@ def publish_item(
     topic_card = store.get_latest_topic_card(page_id)
     core_mechanism = topic_card.core_mechanism if topic_card else None
     extracted_title = topic_card.extracted_title if topic_card else None
+    # A book chapter's real title is parsed off the publisher's own page and
+    # stored at fetch time, so the model does not get to re-derive it. Every
+    # other type keeps the extracted title, which is sharper than a raw page
+    # title — `article` pages in particular carry site chrome in theirs.
+    if (row.get("content_type") or "") == CONTENT_TYPE_BOOK_CHAPTER and row.get("title"):
+        extracted_title = row["title"]
     notion.update_status(
         page_id,
         "Ready",

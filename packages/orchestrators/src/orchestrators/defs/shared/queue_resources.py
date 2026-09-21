@@ -390,6 +390,7 @@ class QueueStoreResource(dg.ConfigurableResource):
         raw_content_override: str = "",
         user_comments_json: str | None = None,
         content_date: str | None = None,
+        author: str | None = None,
     ) -> None:
         queue_db.upsert_triaged(
             db_path=self._path(),
@@ -401,6 +402,7 @@ class QueueStoreResource(dg.ConfigurableResource):
             raw_content_override=raw_content_override,
             user_comments_json=user_comments_json,
             content_date=content_date,
+            author=author,
         )
 
     def upsert_enriched(

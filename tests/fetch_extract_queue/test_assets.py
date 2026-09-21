@@ -771,6 +771,35 @@ def test_published_flips_notion_and_writes_topic_card_to_name_and_description(tm
     )
 
 
+def test_published_prefers_the_parsed_title_for_a_book_chapter(tmp_path: Path):
+    """A chapter's real title is parsed off the page and stored at fetch time,
+    so the model must not re-derive it. Every other content type keeps using the
+    extracted title, which is sharper than a publisher's raw page title."""
+    db_path = tmp_path / "q.db"
+    _seed_with_raw_content(db_path, "p-book", "book_chapter", "b" * 5000)
+    queue_db.upsert_fetched(
+        db_path=db_path,
+        notion_page_id="p-book",
+        url="https://example.com/x",
+        raw_content="b" * 5000,
+        fetch_tier="oreilly-htmlbook",
+        fetch_tier_log=[],
+        fetched_content_char_count=5000,
+        content_hash="h",
+        title="Chapter 1. Introduction",
+    )
+    _record_three_call_extraction(db_path, "p-book")
+    store = QueueStoreResource(db_path=str(db_path))
+    notion = MagicMock()
+    result = _materialize(
+        publish_item,
+        partition_key="p-book",
+        resources={"notion": notion, "store": store},
+    )
+    assert result.success
+    assert notion.update_status.call_args.kwargs["name"] == "Chapter 1. Introduction"
+
+
 def test_published_writes_content_date_back_to_notion(tmp_path: Path):
     # A content_date on the row (user-set or fetcher-discovered) is written back to
     # Notion's Publish Date in the same status flip, so the date surfaces there.
@@ -1169,6 +1198,56 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     assert row["publisher"] == "AI Engineer"
     call = store.get_latest_extraction_calls("p-1")["metadata"]
     assert json.loads(call["output"])["publisher"] == "Together AI"
+
+
+def test_extract_metadata_prefers_a_typed_author_for_a_book_chapter(tmp_path: Path):
+    """A typed Notion Author is the fallback for a source whose markup names
+    nobody, and it must reach the reading card as well as the wiki — a value
+    that lands in one and not the other is the split this was chosen to avoid.
+    The model's answer survives in the call ledger."""
+    from orchestrators.defs.fetch_extract_queue.assets import extract_metadata
+
+    db_path = tmp_path / "q.db"
+    queue_db.create_schema(db_path=db_path)
+    # Triage first, then the fetch — re-triage clears raw_content, so seeding the
+    # body before the typed author would leave the row with nothing to extract.
+    queue_db.upsert_triaged(
+        db_path=db_path,
+        notion_page_id="p-book",
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="book_chapter",
+        author="Ada Lovelace",
+    )
+    body = "chapter " * 400
+    queue_db.upsert_fetched(
+        db_path=db_path,
+        notion_page_id="p-book",
+        url="https://example.com/x",
+        raw_content=body,
+        fetch_tier="oreilly-htmlbook",
+        fetch_tier_log=[],
+        fetched_content_char_count=len(body),
+        content_hash="h",
+    )
+    store = QueueStoreResource(db_path=str(db_path))
+    from domains.extraction.schemas import Contributor
+
+    payload = _metadata_payload(
+        contributors=[Contributor(name="arufino@oreilly.com", role=None, affiliation=None)]
+    )
+    fetcher = _metadata_fetcher(payload)
+    result = _materialize(
+        extract_metadata,
+        partition_key="p-book",
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
+    )
+
+    assert result.success
+    row = store.get_row("p-book")
+    assert [c["name"] for c in json.loads(row["contributors_json"])] == ["Ada Lovelace"]
+    call = store.get_latest_extraction_calls("p-book")["metadata"]
+    assert json.loads(call["output"])["contributors"][0]["name"] == "arufino@oreilly.com"
 
 
 @pytest.mark.parametrize(

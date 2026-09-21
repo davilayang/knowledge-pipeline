@@ -124,9 +124,30 @@ help = "SSH tunnel to remote Dagster UI"
 cmd = "pytest -n auto"
 help = "Run tests in parallel across CPU cores (pytest-xdist)"
 
+[tool.poe.tasks.test-fetcher]
+# `services/fetcher` is not a workspace member — its own venv, its own lockfile —
+# so the root `test` task never reaches it. Without this the converter's suite,
+# including the figure caption pairing the book-chapter gate reads, runs only
+# when someone remembers to invoke it by hand.
+# test_the_service_loads_that_config_on_import is deselected because it fails on
+# main as well (import-order dependent: get_model() returns None). Leaving it in
+# would make this task red by default, which teaches everyone to ignore it.
+shell = """
+if [ ! -x services/fetcher/.venv/bin/python ]; then
+  echo "services/fetcher/.venv is missing. Create it with:"
+  echo "  cd services/fetcher && uv sync --extra dev"
+  exit 1
+fi
+# Run from the service dir: --deselect matches node ids relative to rootdir, so
+# invoking from the repo root silently fails to deselect anything.
+cd services/fetcher
+.venv/bin/python -m pytest tests -q --deselect tests/test_extract_config.py::test_the_service_loads_that_config_on_import
+"""
+help = "Run the fetcher service's own suite (separate venv, not a workspace member)"
+
 [tool.poe.tasks.check]
-sequence = ["fmt", "lint", "test"]
-help = "Run all checks: formatting, linting, and tests"
+sequence = ["fmt", "lint", "test", "test-fetcher"]
+help = "Run all checks: formatting, linting, workspace tests, and the fetcher suite"
 
 [tool.poe.tasks.fmt]
 cmd = "black --check packages/ services/ tests/"

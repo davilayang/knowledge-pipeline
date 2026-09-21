@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A typed author survives the fetch.** An `Author` set on the Notion row is
+  written at triage and no longer overwritten by whatever the fetch found — the
+  first non-null value sticks, matching how `Publish Date` already behaves. It
+  is the fallback for sources whose own markup names nobody; where a page does
+  name its authors, those still come through unchanged.
+
+- **A book chapter keeps the title printed on the page.** The chapter title
+  parsed from the publisher's own markup is written back to Notion instead of
+  the model's extracted title, and a typed author wins over the model's reading
+  of the page furniture. Both answers the model gave are kept in the extraction
+  ledger, so a repeated disagreement is still visible.
+
+- **`uv run poe check` now runs the fetcher service's own test suite.** It lives
+  outside the uv workspace with a separate venv, so its tests — including the
+  page-conversion suite — were invisible to the standard check and a regression
+  there could land unnoticed.
+
 - **A queue row can carry its body as an attached file.** A `Source File`
   attachment on the Notion row is used as the content instead of fetching the
   URL, dispatched by extension: a saved publisher page converts deterministically
