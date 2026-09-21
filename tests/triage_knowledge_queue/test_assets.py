@@ -1033,3 +1033,22 @@ def test_triaged_stores_null_when_no_comments(tmp_path: Path):
     assert result.success
     row = queue_db.get_row(db_path=tmp_path / "q.db", notion_page_id="p-2")
     assert row["user_comments_json"] is None
+
+
+def test_triaged_does_not_ask_a_book_chapter_for_page_metadata(tmp_path: Path):
+    """The reader answers an automated fetch with every field empty and a redirect
+    to the marketing host, so a book chapter is not asked at all — the round trip
+    buys nothing and its one non-empty field is the one that must be ignored."""
+    resources, _ = _resources(tmp_path)
+    with patch("orchestrators.defs.triage_knowledge_queue.assets.fetch_url_meta") as fetch_meta:
+        result = _materialize(
+            partition_key="p-book",
+            resources=resources,
+            url="https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch11.html",
+        )
+    assert result.success
+    fetch_meta.assert_not_called()
+    row = queue_db.get_row(db_path=resources["triage_store"].db_path, notion_page_id="p-book")
+    assert row["canonical_url"] == (
+        "https://learning.oreilly.com/library/view/evals-for-ai/9798341660717/ch11.html"
+    )

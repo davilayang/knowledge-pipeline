@@ -31,7 +31,7 @@ from .def_config import PIPELINE_TAG, queue_items_partition_def
 from .display import resolve_display_description, resolve_display_title
 from .enrich import EnrichmentSignals, enrich_url
 from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
-from .url_meta import fetch_url_meta
+from .url_meta import UrlMeta, fetch_url_meta
 
 GROUP_NAME = "triage_knowledge_queue"
 
@@ -196,18 +196,18 @@ def triaged(
 
     # Best-effort URL enrichment: follow redirects, extract page title + short
     # description from HTML head. Never raises — empty meta on any failure.
-    meta = fetch_url_meta(config.url)
-    # A book chapter keeps the URL it was captured with. The reader redirects an
-    # automated fetch to the same path on the marketing host, which classifies as
-    # `article` — so consuming the redirect would move the row off the type that
-    # requires an attached file, and it would try to fetch a URL the publisher
-    # answers with Access Denied. Classifying the captured URL first is what makes
-    # that decidable. Every other source still resolves through its redirect, which
-    # is what turns a shortener into the platform it points at.
+    #
+    # A book chapter is not asked at all. The reader answers an automated fetch
+    # with every metadata field empty and a redirect to the same path on the
+    # marketing host — a host that classifies as `article`, so consuming it would
+    # move the row off the type that requires an attached file and send it to
+    # fetch a URL the publisher answers with Access Denied. Classifying the
+    # captured URL is what makes that decidable before the request is made.
     if classify_content_type(config.url) == CONTENT_TYPE_BOOK_CHAPTER:
-        effective_url = config.url
+        meta = UrlMeta(redirected_url=config.url, title=None, description=None)
     else:
-        effective_url = meta.redirected_url or config.url
+        meta = fetch_url_meta(config.url)
+    effective_url = meta.redirected_url or config.url
     canonical = normalize_url(effective_url)
     # User override wins if set + valid; typo / empty → URL classifier.
     if config.content_type and config.content_type in ALL_CONTENT_TYPES:
