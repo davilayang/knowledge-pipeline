@@ -18,7 +18,7 @@ from html.parser import HTMLParser
 # Half the endpoint's cache key, so bump it for any change to what a caller
 # receives — the markdown or any response field. A field added without a bump is
 # served from warm caches in its old shape for the whole TTL, silently.
-CONVERTER_VERSION = "3"
+CONVERTER_VERSION = "4"
 
 
 class ConversionRejected(Exception):
@@ -562,15 +562,27 @@ def convert_chapter_with_metadata(chapter_html: str) -> ChapterConversion:
 
 _META_AUTHOR = re.compile(r'<meta[^>]+og:book:author[^>]+content="([^"]*)"', re.I)
 _META_TITLE = re.compile(r'<meta[^>]+og:title[^>]+content="([^"]*)"', re.I)
-_BOOK_TITLE = re.compile(r'"title"\s*:\s*"([^"]{3,120})"')
+# The book, from the page's own `<title>`: "10. Interfaces for Human Review |
+# Evals for AI Engineers". The reader also serialises a table of contents as
+# JSON, every entry carrying its own "title" key, so reading titles out of the
+# page's JSON names the book after whichever object was serialised first.
+_PAGE_TITLE = re.compile(r"<title[^>]*>(.*?)</title>", re.I | re.S)
 _FIRST_HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.M)
+
+
+def _book_title(page_html: str) -> str:
+    """The book's name from the page title's last `|` segment, or "" if absent."""
+    match = _PAGE_TITLE.search(page_html)
+    if not match or "|" not in match.group(1):
+        return ""
+    return html.unescape(re.sub(r"\s+", " ", match.group(1)).rsplit("|", 1)[1]).strip()
 
 
 def convert_page(page_html: str) -> ChapterConversion:
     """Convert a saved O'Reilly reader page: chrome stripped, identity prepended."""
     conversion = convert_chapter_with_metadata(page_html)
     authors = [html.unescape(a) for a in _META_AUTHOR.findall(page_html)]
-    book = _BOOK_TITLE.search(page_html)
+    book = _book_title(page_html)
     chapter_meta = _META_TITLE.search(page_html)
 
     # The first heading, not the first line: a chapter may open with a figure, and
@@ -583,8 +595,8 @@ def convert_page(page_html: str) -> ChapterConversion:
     # This title becomes the queue row's name, and "Chapter 1. Introduction"
     # identifies nothing in a list of rows.
     if title and book:
-        title = f"{html.unescape(book.group(1))} — {title}"
-    header = [f"# {html.unescape(book.group(1))}" if book else "# Book"]
+        title = f"{book} — {title}"
+    header = [f"# {book}" if book else "# Book"]
     if authors:
         header.append(f"By {', '.join(authors)}.")
     if chapter_meta:

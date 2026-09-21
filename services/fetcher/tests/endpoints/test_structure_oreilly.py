@@ -14,7 +14,8 @@ PAGE = """<html><head>
 <meta property="og:title" content="03. Error Analysis">
 <meta property="og:book:author" content="Shreya Shankar">
 <meta property="og:book:author" content="Hamel Husain">
-<script>var t = {"title":"Evals for AI Engineers"};</script>
+<title>03. Error Analysis | Evals for AI Engineers</title>
+<script>var toc = {"title":"Preface","fragment":"id33"};</script>
 </head><body><nav>Explore Skills</nav>
 <section data-type="chapter"><h1><span class="label">Chapter 3. </span>Error Analysis</h1>
 <figure><div class="figure">
