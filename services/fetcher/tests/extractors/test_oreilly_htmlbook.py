@@ -222,6 +222,18 @@ def test_identity_header_carries_both_authors_and_the_title():
     assert result.title == "Chapter 3. Error Analysis"
 
 
+PAGE_ONE_AUTHOR = PAGE.replace('<meta property="og:book:author" content="Hamel Husain">\n', "")
+
+
+def test_authors_leave_the_converter_as_data_not_only_as_header_prose():
+    """The wiki attributes a source from the queue row's `author` column, which is
+    filled from the converter's response — not by reading the body back. So the
+    authors the identity header is built from have to leave here as a field too,
+    or a chapter's claims reach the wiki attributed to nobody."""
+    assert convert_page(PAGE).authors == ["Shreya Shankar", "Hamel Husain"]
+    assert convert_page(PAGE_ONE_AUTHOR).authors == ["Shreya Shankar"]
+
+
 def test_page_chrome_is_excluded_from_the_chapter():
     """A saved page carries the site's nav and footer around the chapter. They
     are not the author's words and must not become claims."""

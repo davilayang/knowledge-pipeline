@@ -47,6 +47,18 @@ def test_converts_a_saved_page_and_reports_title_and_anchors(tmp_path, monkeypat
     assert body["cache_hit"] is False
 
 
+def test_authors_are_reported_so_the_row_can_attribute_the_source(tmp_path, monkeypatch):
+    """`fetch_content` fills the queue row's `author` column from this response,
+    and the wiki attributes a source from that column. Without it a chapter's
+    claims render with no author even though the page names two."""
+    with TestClient(_app(tmp_path, monkeypatch)) as client:
+        resp = client.post("/v1/structure-oreilly", json={"page_html": PAGE})
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["metadata"]["authors"] == ["Shreya Shankar", "Hamel Husain"]
+    assert body["authors"] == ["Shreya Shankar", "Hamel Husain"]
+
+
 def test_second_request_is_served_from_cache(tmp_path, monkeypatch):
     """The key is the page content plus the converter version — not the prompt
     and chain shas the LLM routes use, which name nothing here."""

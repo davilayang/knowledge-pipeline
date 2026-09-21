@@ -60,6 +60,7 @@ def _body(
         "fetched_at": fetched_at,
         "cache_hit": cache_hit,
         "title": metadata.get("title", ""),
+        "authors": metadata.get("authors", []),
         "figure_anchors": metadata.get("figure_anchors", []),
         "figure_captions": metadata.get("figure_captions", []),
         "metadata": metadata,
@@ -120,6 +121,7 @@ async def structure_oreilly(req: StructureOreillyRequest, request: Request) -> A
 
     metadata: dict[str, Any] = {
         "title": conversion.title,
+        "authors": conversion.authors,
         "figure_anchors": conversion.figure_anchors,
         "figure_captions": conversion.figure_captions,
         "converter_version": CONVERTER_VERSION,

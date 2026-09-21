@@ -6,6 +6,12 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A book chapter reaches the wiki attributed to its authors.** The converter
+  already read them off the page to build the chapter's identity header; it now
+  also reports them, so they fill the queue row's author column rather than that
+  column staying empty. A manually set author still wins — the page only fills a
+  blank.
+
 - **A typed author survives the fetch.** An `Author` set on the Notion row is
   written at triage and no longer overwritten by whatever the fetch found — the
   first non-null value sticks, matching how `Publish Date` already behaves. It

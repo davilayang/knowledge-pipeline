@@ -1866,3 +1866,34 @@ def test_fetched_stores_the_converters_title(tmp_path: Path):
     assert row is not None
     assert row["title"] == "Chapter 1. Introduction"
     assert row["fetch_tier"] == "oreilly-htmlbook"
+
+
+def test_fetched_persists_the_converter_authors_for_a_book_chapter(tmp_path: Path):
+    """The wiki attributes a source from `queue_items.author`, so the authors the
+    converter reads off the page have to reach that column — the identity header
+    in the body serves the extractor, not the wiki."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content="c" * 5000,
+        tier="oreilly-htmlbook",
+        tier_log=[],
+        title="Chapter 1. Introduction",
+        extras={"authors": ["Shreya Shankar", "Hamel Husain"]},
+    )
+    _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={
+            "fetcher": fetcher,
+            "store": store,
+            "notion": _notion_with_file("ch01.html", b"<html>x</html>"),
+        },
+        url=url,
+    )
+    row = store.get_row("p-1")
+    assert row is not None
+    assert row["author"] == "Shreya Shankar, Hamel Husain"

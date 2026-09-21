@@ -542,6 +542,7 @@ class ChapterConversion:
 
     markdown: str
     title: str = ""
+    authors: list[str] = field(default_factory=list)
     figure_anchors: list[str] = field(default_factory=list)
     figure_captions: list[str] = field(default_factory=list)
 
@@ -586,6 +587,7 @@ def convert_page(page_html: str) -> ChapterConversion:
     return ChapterConversion(
         markdown=markdown,
         title=title,
+        authors=authors,
         figure_anchors=conversion.figure_anchors,
         figure_captions=conversion.figure_captions,
     )
