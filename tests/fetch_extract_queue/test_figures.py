@@ -26,34 +26,16 @@ def test_a_described_figure_is_replaced_by_a_delimited_description():
     )
 
     assert described == [ANCHOR]
-    block = (
-        f'<figure-description ref="{ANCHOR}">\n'
-        "Figure 10-1 shows:\n"
-        "One trace at a time.\n</figure-description>"
+    assert (
+        f'<figure-description ref="{ANCHOR}">\nOne trace at a time.\n</figure-description>' in out
     )
-    assert block in out
     assert f"![figure]({ANCHOR})" not in out
     # Nothing but the anchor line moves. The converter's word-sequence check has
     # already passed on this text, so a stray edit here would not be caught again.
-    assert out.replace(block, f"![figure]({ANCHOR})") == body
-
-
-def test_the_injected_block_says_which_figure_it_describes():
-    """The body has to carry that fact, not a prompt. Measured on a real chapter:
-    an unlabelled block left the metadata lane reporting all seven figures
-    missing though every one was described; naming the figure cleared it."""
-    out, _ = inject_figure_descriptions(
-        _body(ANCHOR),
-        {ANCHOR: {"caption": "Figure 10-1. A caption for 1.", "description": "Grade buttons."}},
+    assert (
+        out.replace(
+            f'<figure-description ref="{ANCHOR}">\nOne trace at a time.\n</figure-description>',
+            f"![figure]({ANCHOR})",
+        )
+        == body
     )
-
-    assert "Figure 10-1 shows:" in out
-    assert "Grade buttons." in out
-
-
-def test_a_figure_with_no_caption_is_still_announced_as_described():
-    out, _ = inject_figure_descriptions(
-        _body(ANCHOR), {ANCHOR: {"caption": "", "description": "Grade buttons."}}
-    )
-
-    assert "The figure here shows:" in out

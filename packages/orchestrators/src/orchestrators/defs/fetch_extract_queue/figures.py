@@ -18,10 +18,6 @@ _FIGURE = re.compile(
 )
 _ANCHOR = re.compile(r"!\[figure\]\((?P<anchor>oreilly:[^)]+)\)")
 
-# The figure's own number, from the front of its caption — "Figure 10-1. The
-# EvalGen v2 interface…" -> "Figure 10-1".
-_FIGURE_LABEL = re.compile(r"^\s*((?:Figure|Table|Example)\s+[\w.\-]*\w)")
-
 
 def figure_repair_template(markdown: str) -> dict[str, dict[str, str]]:
     """Every undescribed figure in `markdown`, keyed by the anchor an injector
@@ -57,16 +53,6 @@ def inject_figure_descriptions(
         if not description:
             return match.group(0)
         described.append(anchor)
-        label = _FIGURE_LABEL.match((figure_text.get(anchor, {}) or {}).get("caption", "") or "")
-        # The block says which figure it carries, in the plainest words available.
-        # Measured on a described chapter: an unlabelled block leaves the metadata
-        # lane reporting all seven figures missing, and a lead-in mentioning that
-        # the image is absent makes it enumerate them one by one. "Figure 10-1
-        # shows:" reports none missing, three runs out of three.
-        lead = label.group(1) if label else "The figure here"
-        return (
-            f'<figure-description ref="{anchor}">\n'
-            f"{lead} shows:\n{description}\n</figure-description>"
-        )
+        return f'<figure-description ref="{anchor}">\n{description}\n</figure-description>'
 
     return _ANCHOR.sub(swap, markdown), described
