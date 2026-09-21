@@ -280,7 +280,7 @@ def test_fetched_fails_when_row_missing(tmp_path: Path):
         _materialize(
             fetch_content,
             partition_key="p-missing",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
 
@@ -303,7 +303,7 @@ def test_fetched_fails_when_content_type_null(tmp_path: Path):
         _materialize(
             fetch_content,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
 
@@ -315,7 +315,7 @@ def test_fetched_skips_when_raw_content_cached(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert result.success
     metadata = _materialization_metadata(result)
@@ -335,7 +335,7 @@ def test_fetched_dispatches_youtube(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         url="https://youtube.com/watch?v=abc",
     )
     assert result.success
@@ -364,7 +364,7 @@ def test_fetched_dispatches_arxiv_and_surfaces_extras(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         url="https://arxiv.org/abs/2401.00001",
     )
     assert result.success
@@ -398,7 +398,7 @@ def test_fetched_fails_when_below_extraction_floor(tmp_path: Path):
         _materialize(
             fetch_content,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
             url="https://youtube.com/watch?v=abc",
         )
 
@@ -437,7 +437,7 @@ def test_fetched_calls_structure_when_override_present(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-ovr",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         url="https://example.com/x",
     )
 
@@ -465,7 +465,7 @@ def test_fetched_falls_through_to_fetch_when_override_empty(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         url="https://example.com/x",
     )
 
@@ -498,7 +498,7 @@ def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
         _materialize(
             fetch_content,
             partition_key="p-ovr",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
             url="https://example.com/x",
         )
 
@@ -513,7 +513,7 @@ def test_fetched_metadata_includes_content_preview(tmp_path: Path):
     result = _materialize(
         fetch_content,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         url="https://youtube.com/watch?v=abc",
     )
     assert result.success
@@ -535,7 +535,7 @@ def test_extracted_persists_three_calls_and_passes_check(tmp_path: Path):
     result = _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert result.success
 
@@ -574,7 +574,7 @@ def test_extracted_records_the_model_the_service_actually_ran(tmp_path: Path):
     result = _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert _materialization_metadata(result)["extraction_model"].text == "gpt-5.6-luna"
 
@@ -601,7 +601,7 @@ def test_extracted_passes_content_type_to_the_service(tmp_path: Path):
     _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     fetcher.extract.assert_called_once()
     assert fetcher.extract.call_args.kwargs["content_type"] == "arXiv"
@@ -622,7 +622,7 @@ def test_extracted_asks_for_all_three_in_one_request(tmp_path: Path):
     _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert fetcher.extract.call_count == 1
 
@@ -638,7 +638,7 @@ def test_extracted_records_the_generic_shape_whatever_the_row_claims(tmp_path: P
     _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     latest = store.get_latest_extraction_calls("p-1")
     assert latest["narrative"]["prompt_set_shape"] == "unknown"
@@ -663,7 +663,7 @@ def test_extracted_fails_the_item_when_a_task_did_not_produce_its_payload(tmp_pa
         _materialize(
             extract_reading_card,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
 
@@ -676,7 +676,7 @@ def test_extracted_fails_the_item_when_the_service_is_unreachable(tmp_path: Path
         _materialize(
             extract_reading_card,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
 
@@ -688,7 +688,7 @@ def test_extracted_metadata_includes_narrative_and_topic_card_previews(tmp_path:
     result = _materialize(
         extract_reading_card,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert result.success
     metadata = _materialization_metadata(result)
@@ -1063,7 +1063,7 @@ def test_extract_metadata_writes_nothing_but_still_materializes_on_failure(
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1120,7 +1120,7 @@ def test_extract_metadata_persists_columns_and_a_call_row(tmp_path: Path):
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1161,7 +1161,7 @@ def test_extract_metadata_prefers_the_youtube_channel_over_the_models_publisher(
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1202,7 +1202,7 @@ def test_extract_metadata_never_takes_a_site_name_as_the_publisher(
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1222,7 +1222,7 @@ def _materialize_metadata_twice(tmp_path: Path, *, refetch_body: str | None = No
     _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     if refetch_body is not None:
         queue_db.upsert_fetched(
@@ -1238,7 +1238,7 @@ def _materialize_metadata_twice(tmp_path: Path, *, refetch_body: str | None = No
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
     assert result.success
     return fetcher.extract, store
@@ -1281,7 +1281,7 @@ def test_extract_metadata_still_materializes_when_the_store_write_fails(tmp_path
         result = _materialize(
             extract_metadata,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
     assert result.success
@@ -1310,7 +1310,7 @@ def test_extract_metadata_migrates_the_schema_it_writes_to(tmp_path: Path):
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1369,7 +1369,7 @@ def test_extract_metadata_uses_the_repo_owner_as_the_github_publisher(tmp_path: 
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1390,7 +1390,7 @@ def test_extract_metadata_records_call_latency(tmp_path: Path):
     _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     call_row = store.get_latest_extraction_calls("p-1")["metadata"]
@@ -1426,7 +1426,7 @@ def test_extract_metadata_fails_the_row_when_the_fetch_arrived_damaged(tmp_path:
         _materialize(
             extract_metadata,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
     # The Notion row gets this text verbatim, so it has to name the specific
@@ -1463,7 +1463,7 @@ def test_extract_metadata_records_visual_dependence_without_failing(tmp_path: Pa
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
@@ -1499,7 +1499,7 @@ def test_extract_metadata_keeps_failing_a_damaged_row_it_does_not_recall(tmp_pat
             _materialize(
                 extract_metadata,
                 partition_key="p-1",
-                resources={"fetcher": fetcher, "store": store},
+                resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
             )
     call = fetcher.extract
 
@@ -1543,7 +1543,7 @@ def test_extract_metadata_still_fails_a_damaged_row_when_the_wal_checkpoint_trip
             _materialize(
                 extract_metadata,
                 partition_key="p-1",
-                resources={"fetcher": fetcher, "store": store},
+                resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
             )
 
     assert "the repository README" in exc.value.description
@@ -1580,7 +1580,7 @@ def test_extract_metadata_fails_a_body_that_does_not_stand_alone(tmp_path: Path)
         _materialize(
             extract_metadata,
             partition_key="p-1",
-            resources={"fetcher": fetcher, "store": store},
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
         )
 
     assert "every benchmark score is read off a chart" in exc.value.description
@@ -1672,8 +1672,118 @@ def test_a_channel_named_after_its_presenter_does_not_become_a_second_entity(tmp
     result = _materialize(
         extract_metadata,
         partition_key="p-1",
-        resources={"fetcher": fetcher, "store": store},
+        resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
     )
 
     assert result.success
     assert store.get_row("p-1")["publisher"] is None
+
+
+# -------- fetch_content: Source File attachment (C4) --------
+
+
+def _notion_with_file(filename: str | None, payload: bytes = b"") -> MagicMock:
+    """A Notion resource whose `Source File` property holds one attachment,
+    or none when `filename` is None."""
+    notion = MagicMock()
+    notion.get_source_file.return_value = (filename, payload) if filename else None
+    return notion
+
+
+def test_fetched_fails_when_book_chapter_has_no_attachment(tmp_path: Path):
+    """A book chapter's publisher answers an automated fetch with Access Denied,
+    so there is no URL to fall back to — the row must fail naming that reason
+    rather than attempting a fetch nobody can complete."""
+    db_path = tmp_path / "q.db"
+    _seed_triaged(
+        db_path,
+        "p-1",
+        "book_chapter",
+        url="https://learning.oreilly.com/library/view/x/9798341660717/ch01.html",
+    )
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    with pytest.raises(Exception, match="Access Denied"):
+        _materialize(
+            fetch_content,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store, "notion": _notion_with_file(None)},
+        )
+    fetcher.fetch_for_type.assert_not_called()
+    fetcher.structure.assert_not_called()
+
+
+def test_fetched_routes_attached_html_to_the_converter(tmp_path: Path):
+    """The publisher's own markup converts deterministically, so an attached
+    page goes to the converter route rather than the structurer's LLM cascade.
+    The property is read during the run: Notion's download URL expires about an
+    hour after it is handed out."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content="c" * 5000, tier="oreilly-htmlbook", tier_log=[], title="Chapter 1. Introduction"
+    )
+    notion = _notion_with_file("ch01.html", b"<html>chapter</html>")
+    result = _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store, "notion": notion},
+        url=url,
+    )
+    assert result.success
+    notion.get_source_file.assert_called_once_with("p-1")
+    fetcher.structure_oreilly.assert_called_once_with("<html>chapter</html>", source_url=url)
+    fetcher.structure.assert_not_called()
+    fetcher.fetch_for_type.assert_not_called()
+
+
+def test_fetched_routes_attached_markdown_to_the_structurer(tmp_path: Path):
+    """Pasted prose still passes through the structurer's cleaning, exactly as
+    the page-body override does. This is what lets the override's existing rows
+    move to an attachment without changing what happens to their text."""
+    db_path = tmp_path / "q.db"
+    url = "https://medium.com/@a/post-123"
+    _seed_triaged(db_path, "p-1", "medium", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure.return_value = FetchResult(content="m" * 5000, tier="structurer", tier_log=[])
+    notion = _notion_with_file("paste.md", b"# pasted prose")
+    result = _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store, "notion": notion},
+        url=url,
+    )
+    assert result.success
+    fetcher.structure.assert_called_once_with("# pasted prose", source_url=url)
+    fetcher.structure_oreilly.assert_not_called()
+
+
+def test_fetched_stores_the_converters_title(tmp_path: Path):
+    """A chapter's real title is in the page, so it is persisted at fetch time
+    rather than left for a model to re-derive downstream."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content="c" * 5000, tier="oreilly-htmlbook", tier_log=[], title="Chapter 1. Introduction"
+    )
+    _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={
+            "fetcher": fetcher,
+            "store": store,
+            "notion": _notion_with_file("ch01.html", b"<html>x</html>"),
+        },
+        url=url,
+    )
+    row = store.get_row("p-1")
+    assert row is not None
+    assert row["title"] == "Chapter 1. Introduction"
+    assert row["fetch_tier"] == "oreilly-htmlbook"

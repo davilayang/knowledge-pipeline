@@ -6,6 +6,23 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A queue row can carry its body as an attached file.** A `Source File`
+  attachment on the Notion row is used as the content instead of fetching the
+  URL, dispatched by extension: a saved publisher page converts deterministically
+  while pasted prose still passes through the structurer, so text that arrives
+  this way is treated exactly as a pasted page body is today. The attachment is
+  read when the run starts, because Notion's download links expire about an hour
+  after they are issued.
+
+- **A book chapter with no attached page fails saying why.** Its publisher
+  answers an automated fetch with an access-denied redirect, so the row names
+  the missing file as the cause rather than reporting a fetch failure that no
+  additional tier could have avoided.
+
+- **A chapter's title comes from the page, not from a model.** The converter
+  parses the real chapter title and it is stored with the body, so nothing
+  downstream needs to guess at it.
+
 - **A chapter carrying formulas or spanning table cells now converts.** MathJax
   renders each formula twice — an image and an accessible MathML copy — and the
   converter reads the copy once while treating the whole formula as a single run

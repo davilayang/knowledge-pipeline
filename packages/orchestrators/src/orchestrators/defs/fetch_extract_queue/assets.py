@@ -30,6 +30,7 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource, Queue
 # enrichment_json is written by triage and read here for the youtube channel;
 # EnrichmentSignals IS that serialisation contract, so it is imported rather than
 # the JSON re-parsed by hand.
+from orchestrators.defs.triage_knowledge_queue.classify import CONTENT_TYPE_BOOK_CHAPTER
 from orchestrators.defs.triage_knowledge_queue.enrich import EnrichmentSignals
 
 from .def_config import (
@@ -211,6 +212,7 @@ def fetch_content(
     context: dg.AssetExecutionContext,
     fetcher: FetcherResource,
     store: QueueStoreResource,
+    notion: NotionQueueResource,
 ) -> dg.MaterializeResult:
     page_id = context.partition_key
     notion_url = f"https://www.notion.so/{page_id.replace('-', '')}"
@@ -277,8 +279,34 @@ def fetch_content(
             },
         )
 
+    # An attached file IS the body. Dispatch on its extension: the publisher's
+    # own markup converts deterministically, while pasted prose still goes
+    # through the structurer, which is what `raw_content_override` does today.
+    source_file = notion.get_source_file(page_id)
     override = row.get("raw_content_override") or ""
-    if override:
+    if source_file:
+        filename, payload = source_file
+        text = payload.decode("utf-8", errors="replace")
+        if filename.lower().endswith((".html", ".htm")):
+            result = fetcher.structure_oreilly(text, source_url=url)
+        else:
+            result = fetcher.structure(text, source_url=url)
+    elif content_type == CONTENT_TYPE_BOOK_CHAPTER:
+        raise dg.Failure(
+            description=(
+                f"Book chapter {notion_url} has no Source File attached. "
+                f"Its publisher answers an automated fetch with Access Denied, so there "
+                f"is no URL to fall back to — save the chapter page and attach it. "
+                f"Adding a fetch tier cannot serve this source."
+            ),
+            allow_retries=False,
+            metadata={
+                "notion_url": dg.MetadataValue.url(notion_url),
+                "notion_page_id": dg.MetadataValue.text(page_id),
+                "url": dg.MetadataValue.url(url),
+            },
+        )
+    elif override:
         result = fetcher.structure(override, source_url=url)
     else:
         result = fetcher.fetch_for_type(url, content_type=content_type)
