@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Added
 
+- **A saved book-chapter page converts to markdown without a model.**
+  `POST /v1/structure-oreilly` turns a chapter page saved from O'Reilly's reader
+  into markdown by reading the publisher's own structural labels — section
+  nesting, definition lists, callouts, code listings, tables, figure captions and
+  footnotes all survive, where copying the text out of the reader loses every one
+  of them. The conversion is refused rather than returned if any word of the
+  chapter would be lost, so a silently flattened table or a dropped paragraph
+  cannot reach the corpus as the author's own words.
+
 - **A chapter captured from O'Reilly's reader is recognised as its own content
   type.** URLs on `learning.oreilly.com` classify as `book_chapter` rather than
   falling to the `article` catch-all, so the queue can route them to the capture
