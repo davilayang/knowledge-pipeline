@@ -41,7 +41,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **`uv run poe check` now runs the fetcher service's own test suite.** It lives
+- **`uv run poe check` now runs the fetcher service's own test suite.** The run is a script, `scripts/test-fetcher.sh`, so it takes a path argument and can be run on its own while working on the service. It lives
   outside the uv workspace with a separate venv, so its tests — including the
   page-conversion suite — were invisible to the standard check and a regression
   there could land unnoticed.
