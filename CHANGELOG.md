@@ -6,6 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A converted chapter's authors reach the row that the wiki reads.** The
+  converter already parsed them for the identity header; now it returns them and
+  the fetch stores them, so a book chapter's claims carry an author instead of
+  attributing to nobody. The converter version is bumped alongside, because the
+  response contract changed and a warm cache would otherwise keep serving
+  responses without the field.
+
 - **A book chapter reaches the wiki attributed to its authors.** The converter
   already read them off the page to build the chapter's identity header; it now
   also reports them, so they fill the queue row's author column rather than that

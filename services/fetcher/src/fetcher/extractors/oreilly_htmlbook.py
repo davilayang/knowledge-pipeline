@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 from html.parser import HTMLParser
 
 
-CONVERTER_VERSION = "1"
+# Bump whenever the conversion changes what a caller receives — the markdown
+# itself, or any field of the response. It is half the endpoint's cache key, so a
+# stale entry is otherwise served for the whole TTL: adding `authors` without a
+# bump left every warm cache returning responses that still lacked it, and the
+# orchestrator wrote NULL into `queue_items.author` with nothing to show it had.
+CONVERTER_VERSION = "2"
 
 
 class ConversionRejected(Exception):
