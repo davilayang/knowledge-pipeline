@@ -419,3 +419,64 @@ def test_a_footnote_defined_inside_a_table_keeps_its_body():
     md = convert_chapter(TABLE_FOOTNOTE)
     assert "[^a]: Numbers from Charig et al." in md
     assert "| Model A | 93% |" in md
+
+
+def test_a_figure_whose_src_is_not_the_publishers_url_is_refused():
+    """A saved page may carry rewritten image sources — Chrome's "Webpage,
+    Complete" makes every `src` a local relative path. No anchor can be minted
+    from one, and an `<img>` contributes no text, so the chapter would otherwise
+    convert cleanly with the figure invisible to the gate that exists to catch
+    exactly this."""
+    html_doc = (
+        '<section data-type="chapter"><h1>Ch</h1>'
+        '<figure><img src="page_files/fig0101.png"/>'
+        "<h6>Figure 1-1. A diagram.</h6></figure>"
+        "<p>Some following prose.</p></section>"
+    )
+    with pytest.raises(ConversionRejected, match="image source"):
+        convert_chapter(html_doc)
+
+
+def test_a_footnote_reference_inside_a_table_cell_survives():
+    """A reference can sit in tabular data, not only in prose. The marker's
+    label is source text, so dropping it in a cell loses a word and the guard
+    refuses the whole chapter — over a defect that points at the prose after the
+    table rather than at the cell that caused it."""
+    html_doc = (
+        '<section data-type="chapter"><h1>Chapter One Title Here</h1>'
+        "<table><tr><th>Name</th></tr><tr><td>Alpha"
+        '<a data-type="noteref" href="#fn1"><sup>a</sup></a></td></tr></table>'
+        "<p>Some following prose here.</p></section>"
+    )
+    assert "| Alpha[^a] |" in convert_chapter(html_doc)
+
+
+def test_a_div_nested_in_a_callout_does_not_close_it():
+    """Callout bodies routinely wrap an inner `<div>`. Popping the callout on
+    any closing div ends the quote at the wrapper, so the rest of the note
+    reaches the reader as ordinary prose. The guard strips `>` prefixes, so it
+    cannot see this: the structure is corrupted silently."""
+    html_doc = (
+        '<section data-type="chapter"><h1>Chapter One Title Here</h1>'
+        '<div data-type="note"><p>First para</p><div class="wrap"><p>Second para</p></div>'
+        "<p>Third para</p></div><p>After the note here.</p></section>"
+    )
+    md = convert_chapter(html_doc)
+    assert "> Third para" in md
+    assert "\nAfter the note here." in md
+
+
+def test_the_chapter_title_comes_from_a_heading_not_the_first_block():
+    """Taking the first line assumes the chapter opens with its heading. A
+    chapter that opens with a figure yields the image reference instead, and
+    that literal becomes the item's name in Notion, which prefers the stored
+    title over the model's for a book chapter."""
+    page = (
+        '<html><head><meta property="og:title" content="1. Introduction"/></head><body>'
+        '<section data-type="chapter">'
+        '<figure><img src="https://x/urn:orm:book:9781098166298/files/assets/f1.png"/>'
+        "<h6>Figure 1-1. A diagram.</h6></figure>"
+        "<h1>Chapter One Title Here</h1><p>Some prose follows here.</p>"
+        "</section></body></html>"
+    )
+    assert convert_page(page).title == "Chapter One Title Here"

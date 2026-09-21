@@ -6,6 +6,35 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+- **A chapter's figures can no longer go missing unnoticed.** A saved page whose
+  image sources were rewritten to local paths — what Chrome's "Webpage,
+  Complete" produces — yielded no figure anchors at all, so the gate that holds
+  back undescribed figures saw none and let the chapter through as complete. The
+  conversion is now refused, naming the source and saying to re-save from a
+  reader that keeps absolute asset URLs.
+
+- **A footnote reference inside a table cell no longer refuses the chapter.** The
+  marker's label is the publisher's text, and in a cell it was written to neither
+  buffer, so the fidelity guard reported a lost word and rejected the whole
+  chapter — pointing at the prose after the table rather than the cell that
+  caused it.
+
+- **A callout keeps its body when it wraps an inner div.** The closing tag of any
+  nested div ended the blockquote, so the tail of a note, warning or tip reached
+  the reader as ordinary prose. The fidelity guard cannot see this, because it
+  strips quote markers before comparing words.
+
+- **An attachment that is not text is refused rather than decoded.** A PDF or
+  screenshot attached to a row — as a note, not as its body — was decoded with
+  UTF-8 replacement and posted to the structurer, landing mojibake in the stored
+  body where nothing downstream could tell it from prose.
+
+- **A chapter that opens with a figure keeps its real title.** The title was the
+  first line of the markdown, which in that case is the image reference; because
+  a book chapter's stored title is preferred over the model's, that literal
+  became the item's name. It now comes from the first heading, falling back to
+  the page's own chapter title.
+
 - **A converted chapter's authors reach the row that the wiki reads.** The
   converter already parsed them for the identity header; now it returns them and
   the fetch stores them, so a book chapter's claims carry an author instead of

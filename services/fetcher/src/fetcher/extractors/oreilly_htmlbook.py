@@ -189,7 +189,9 @@ class _ChapterParser(HTMLParser):
         self._lead: str | None = None  # markdown prefix for the open block
         self._depth = 0  # section nesting
         self._item = 0  # open <li>/<dd> — a nested <p> belongs to them
-        self._callout: list[str] = []  # open callouts; their bodies are quoted
+        # Open callouts as [kind, unmatched nested div/aside]; bodies are quoted.
+        # The counter is what tells a wrapper's close from the callout's own.
+        self._callout: list[list] = []
         self._rows: list[list[str]] | None = None  # open table
         self._row: list[str] | None = None
         self._cell: list[str] | None = None
@@ -301,10 +303,21 @@ class _ChapterParser(HTMLParser):
             self._close()
             self._in_figure += 1
         elif tag == "img" and self._in_figure:
-            anchor = _figure_anchor(attrmap.get("src") or "")
-            if anchor:
-                self.figure_anchors.append(anchor)
-                self.blocks.append(f"![figure]({anchor})")
+            src = attrmap.get("src") or ""
+            anchor = _figure_anchor(src)
+            if not anchor:
+                # An `<img>` carries no text, so a figure the anchor cannot name
+                # would pass the word guard and leave `figure_anchors` empty —
+                # the gate would then report no figures and let a chapter whose
+                # substance is pictorial through as complete. Refusing says so
+                # while the save can still be redone.
+                raise ConversionRejected(
+                    f"figure image source {src!r} is not a publisher asset URL, so no "
+                    "stable anchor can name it — re-save the page from a reader that "
+                    "keeps absolute asset URLs"
+                )
+            self.figure_anchors.append(anchor)
+            self.blocks.append(f"![figure]({anchor})")
         elif tag in _HEADINGS and self._in_figure:
             # A caption names a figure; it is not a section turn, and emitting it
             # as a heading makes the chapter look like it changes subject here.
@@ -360,10 +373,14 @@ class _ChapterParser(HTMLParser):
             self._open("")
             self._footnote_open = True
             return
+        if tag in ("aside", "div") and self._callout and kind not in _CALLOUT_KINDS:
+            # A callout body routinely wraps an inner div. Counting it here is
+            # what stops its close being read as the callout's own.
+            self._callout[-1][1] += 1
         if tag in ("aside", "div", "section") and kind in _CALLOUT_KINDS:
             self._close()
             self.blocks.append("**[" + kind.upper() + "]**")
-            self._callout.append(kind)
+            self._callout.append([kind, 0])
         elif tag == "section" and kind.startswith("sect"):
             self._close()
             self._depth += 1
@@ -419,8 +436,16 @@ class _ChapterParser(HTMLParser):
         if tag == "a" and self._noteref is not None:
             number = "".join(self._noteref).strip()
             self._noteref = None
-            if number and self._lead is not None:
-                self._buf.append(f"[^{number}]" + (": " if self._footnote_open else ""))
+            if number:
+                # A reference sits in tabular data as readily as in prose, and in
+                # a cell the open buffer is the cell — not `_buf`. Its label is
+                # source text, so writing it to neither loses a word and the
+                # guard refuses the chapter over a cell it never names.
+                marker = f"[^{number}]" + (": " if self._footnote_open else "")
+                if self._cell is not None:
+                    self._cell.append(marker)
+                elif self._lead is not None:
+                    self._buf.append(marker)
             return
         if tag == "div" and self._equation:
             self._equation = False
@@ -483,6 +508,9 @@ class _ChapterParser(HTMLParser):
         if tag == "caption":
             self._buf.append("**")
             self._close()
+            return
+        if tag in ("aside", "div") and self._callout and self._callout[-1][1]:
+            self._callout[-1][1] -= 1
             return
         if tag in ("aside", "div", "section") and self._callout:
             self._close()
@@ -572,6 +600,7 @@ def convert_chapter_with_metadata(chapter_html: str) -> ChapterConversion:
 _META_AUTHOR = re.compile(r'<meta[^>]+og:book:author[^>]+content="([^"]*)"', re.I)
 _META_TITLE = re.compile(r'<meta[^>]+og:title[^>]+content="([^"]*)"', re.I)
 _BOOK_TITLE = re.compile(r'"title"\s*:\s*"([^"]{3,120})"')
+_FIRST_HEADING = re.compile(r"^#{1,6}\s+(.+)$", re.M)
 
 
 def convert_page(page_html: str) -> ChapterConversion:
@@ -581,7 +610,14 @@ def convert_page(page_html: str) -> ChapterConversion:
     book = _BOOK_TITLE.search(page_html)
     chapter_meta = _META_TITLE.search(page_html)
 
-    title = conversion.markdown.split("\n", 1)[0].lstrip("# ").strip()
+    # The first heading, not the first line: a chapter may open with a figure,
+    # and its reference would otherwise become the title that `publish_item`
+    # writes to Notion in preference to the model's. A caption is emitted bold
+    # rather than as a heading, so it cannot be mistaken for one here.
+    heading = _FIRST_HEADING.search(conversion.markdown)
+    title = heading.group(1).strip() if heading else ""
+    if not title and chapter_meta:
+        title = html.unescape(chapter_meta.group(1)).strip()
     header = [f"# {html.unescape(book.group(1))}" if book else "# Book"]
     if authors:
         header.append(f"By {', '.join(authors)}.")

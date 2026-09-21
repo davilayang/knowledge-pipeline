@@ -1897,3 +1897,26 @@ def test_fetched_persists_the_converter_authors_for_a_book_chapter(tmp_path: Pat
     row = store.get_row("p-1")
     assert row is not None
     assert row["author"] == "Shreya Shankar, Hamel Husain"
+
+
+def test_fetched_refuses_a_binary_attachment_rather_than_decoding_it(tmp_path: Path):
+    """An attachment on a non-book row may be a note rather than the body — a
+    PDF, a screenshot. Decoding those bytes as UTF-8 with replacement posts
+    mojibake to the structurer and lands it in `raw_content`, where nothing
+    downstream can tell it from prose. Refuse instead, naming the file."""
+    db_path = tmp_path / "q.db"
+    url = "https://example.com/an-article"
+    _seed_triaged(db_path, "p-1", "article", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    notion = _notion_with_file("scan.pdf", b"%PDF-1.7\x00\x01binary")
+    with pytest.raises(Exception, match="scan.pdf"):
+        _materialize(
+            fetch_content,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store, "notion": notion},
+            url=url,
+        )
+    fetcher.structure.assert_not_called()
+    fetcher.structure_oreilly.assert_not_called()
+    fetcher.fetch_for_type.assert_not_called()

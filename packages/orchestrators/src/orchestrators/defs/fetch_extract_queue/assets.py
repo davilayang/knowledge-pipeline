@@ -55,6 +55,15 @@ _EXTRACT_ENTITIES_PROMPT_SHA = hashlib.sha256(
     (EXTRACT_SHARED_SYSTEM + EXTRACT_ARTICLE_ENVELOPE + EXTRACT_ENTITIES_TASK).encode()
 ).hexdigest()
 
+# What an attached `Source File` may be, and where each kind goes. A saved
+# publisher page converts deterministically; pasted prose keeps the structurer
+# cleaning that the page-body override has always given it. Anything else is
+# refused rather than decoded, because bytes forced through UTF-8 replacement
+# reach `raw_content` looking like prose.
+_CONVERTED_EXTENSIONS = (".html", ".htm")
+_STRUCTURED_EXTENSIONS = (".md", ".markdown", ".txt")
+_ATTACHMENT_EXTENSIONS = _CONVERTED_EXTENSIONS + _STRUCTURED_EXTENSIONS
+
 _PREVIEW_HEAD = 500
 _PREVIEW_TAIL = 500
 
@@ -286,8 +295,29 @@ def fetch_content(
     override = row.get("raw_content_override") or ""
     if source_file:
         filename, payload = source_file
+        lowered = filename.lower()
+        if not lowered.endswith(_ATTACHMENT_EXTENSIONS):
+            # An attachment on a row is not always its body — a PDF or a
+            # screenshot may be a note. Decoding those bytes with replacement
+            # posts mojibake to the structurer and stores it as prose, which
+            # nothing downstream can tell from the real thing.
+            raise dg.Failure(
+                description=(
+                    f"{notion_url} has {filename!r} attached, which is not a text "
+                    f"format this pipeline can read as a body. Attach the publisher's "
+                    f"saved page ({'/'.join(_CONVERTED_EXTENSIONS)}) or pasted prose "
+                    f"({'/'.join(_STRUCTURED_EXTENSIONS)}), or remove the attachment "
+                    f"to fetch the URL instead."
+                ),
+                allow_retries=False,
+                metadata={
+                    "notion_url": dg.MetadataValue.url(notion_url),
+                    "notion_page_id": dg.MetadataValue.text(page_id),
+                    "filename": dg.MetadataValue.text(filename),
+                },
+            )
         text = payload.decode("utf-8", errors="replace")
-        if filename.lower().endswith((".html", ".htm")):
+        if lowered.endswith(_CONVERTED_EXTENSIONS):
             result = fetcher.structure_oreilly(text, source_url=url)
         else:
             result = fetcher.structure(text, source_url=url)
