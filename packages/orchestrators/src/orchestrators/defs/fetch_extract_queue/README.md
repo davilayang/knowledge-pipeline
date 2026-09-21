@@ -58,7 +58,10 @@ fetch_content ──► extract_metadata ──► extract_reading_card ──�
 fetch_content ──► book_chapter_figures_described (blocking asset check)
                    a book_chapter whose figure anchors carry no description
                    parks at Status=Failed with a repair template, rather than
-                   reaching extract_metadata looking complete.
+                   reaching extract_metadata looking complete. The operator
+                   fills the template, attaches it as `Figure Text`, and flips
+                   Status back to Queued; the next fetch injects the
+                   descriptions and the check passes.
 
 `fetch_content` calls the standalone `fetcher` service over dagster_network —
 POST `/v1/fetch` for normal URLs, POST `/v1/structure` when the queue_items
@@ -70,7 +73,11 @@ POST `/v1/structure` for `.md`/`.txt`/`.markdown` — any other attachment
 extension fails the item rather than being decoded as prose. A
 `book_chapter` (an `ATTACHMENT_BODY_TYPES` content type) with no Source File
 attached fails outright: its publisher answers an automated fetch with
-Access Denied, so there is no URL fetch to fall back to. For
+Access Denied, so there is no URL fetch to fall back to. A description attached as `Figure Text`
+replaces its figure anchor (`figures.inject_figure_descriptions`), which clears
+the figure check below — it counts the anchors that remain. Injection sits after
+the extraction floor and before the content hash, and every lane reads that one
+body. For
 `/v1/fetch`, the service is authoritative for source matching
 (arxiv / youtube / medium / facebook / github / file_pdf / file_audio / article)
 and quality-floor enforcement. `extract_metadata` asks the same service for one
@@ -138,7 +145,8 @@ dg launch --job fetch_extract_queue --partition <notion_page_id>
   a `URL` url property, a `Content Type` select property (youtube, arxiv, …),
   a `Source File` files-and-media property (the body for `book_chapter` rows,
   and an optional body override for any other type — see `fetch_content`
-  above), and an `Error` rich-text property.
+  above), a `Figure Text` files-and-media property (the JSON map of figure
+  descriptions — see `figures.py`), and an `Error` rich-text property.
 - **Fetcher service** — `FETCHER_URL` must point to a reachable
   `services/fetcher/` instance. In docker-compose the sidecar container
   resolves at `http://fetcher:8000` over `dagster_network`; for laptop

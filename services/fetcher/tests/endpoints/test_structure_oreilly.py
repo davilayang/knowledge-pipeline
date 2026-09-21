@@ -14,7 +14,8 @@ PAGE = """<html><head>
 <meta property="og:title" content="03. Error Analysis">
 <meta property="og:book:author" content="Shreya Shankar">
 <meta property="og:book:author" content="Hamel Husain">
-<script>var t = {"title":"Evals for AI Engineers"};</script>
+<title>03. Error Analysis | Evals for AI Engineers</title>
+<script>var toc = {"title":"Preface","fragment":"id33"};</script>
 </head><body><nav>Explore Skills</nav>
 <section data-type="chapter"><h1><span class="label">Chapter 3. </span>Error Analysis</h1>
 <figure><div class="figure">
@@ -41,7 +42,7 @@ def test_converts_a_saved_page_and_reports_title_and_anchors(tmp_path, monkeypat
     assert resp.status_code == 200, resp.text
     body = resp.json()
     assert "# Chapter 3. Error Analysis" in body["markdown"]
-    assert body["title"] == "Chapter 3. Error Analysis"
+    assert body["title"] == "Evals for AI Engineers — Chapter 3. Error Analysis"
     assert body["figure_anchors"] == ["oreilly:9798341660717/aiee_0301.png"]
     assert body["figure_captions"] == ["Figure 3-1. The cycle."]
     assert body["cache_hit"] is False

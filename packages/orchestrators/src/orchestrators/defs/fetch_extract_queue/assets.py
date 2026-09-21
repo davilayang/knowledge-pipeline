@@ -37,6 +37,7 @@ from .def_config import (
     PIPELINE_TAG,
     queue_items_partition_def,
 )
+from .figures import inject_figure_descriptions
 from .resources import ExtractResult, FetcherResource
 
 GROUP_NAME = "fetch_extract_queue"
@@ -349,30 +350,35 @@ def fetch_content(
             },
         )
 
-    char_count = len(result.content)
-    # The fetcher cascade falls back to `best_result` when no tier hits its
-    # floor (services/fetcher/cascade.py), so a 200 can carry sub-floor
-    # content. Guard the extractor against degenerate inputs before persist.
-    if char_count < 500:
+    # Measured before any description is added: the floor asks whether the source
+    # carried enough to extract from, and operator text is not the source. The
+    # fetcher cascade falls back to `best_result` when no tier hits its own floor
+    # (services/fetcher/cascade.py), so a 200 can carry sub-floor content.
+    source_chars = len(result.content)
+    if source_chars < 500:
         raise dg.Failure(
-            description=f"{content_type} fetch below extraction floor: {char_count} chars",
+            description=f"{content_type} fetch below extraction floor: {source_chars} chars",
             allow_retries=False,
             metadata={
                 "content_type": dg.MetadataValue.text(content_type),
                 "url": dg.MetadataValue.url(url),
                 "fetch_tier": dg.MetadataValue.text(result.tier),
-                "content_chars": dg.MetadataValue.int(char_count),
+                "content_chars": dg.MetadataValue.int(source_chars),
                 "tier_log": dg.MetadataValue.json(result.tier_log),
             },
         )
-    content_hash = hashlib.sha256(result.content.encode()).hexdigest()
+
+    # Before the hash, so a revised description map re-runs extraction.
+    content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
+    char_count = len(content)
+    content_hash = hashlib.sha256(content.encode()).hexdigest()
     extras = result.extras or {}
     author = _coerce_author(extras.get("authors"))
     published = extras.get("published")
     store.upsert_fetched(
         notion_page_id=page_id,
         url=url,
-        raw_content=result.content,
+        raw_content=content,
         fetch_tier=result.tier,
         fetch_tier_log=result.tier_log,
         fetched_content_char_count=char_count,
@@ -390,7 +396,8 @@ def fetch_content(
         "content_chars": dg.MetadataValue.int(char_count),
         "tier_log": dg.MetadataValue.json(result.tier_log),
         "content_hash_short": dg.MetadataValue.text(content_hash[:12]),
-        "content_preview": dg.MetadataValue.md(f"```\n{_preview(result.content)}\n```"),
+        "content_preview": dg.MetadataValue.md(f"```\n{_preview(content)}\n```"),
+        "figures_described": dg.MetadataValue.int(len(described)),
         "summary": dg.MetadataValue.md(f"**{content_type}** — {char_count:,} chars"),
     }
     if result.title:

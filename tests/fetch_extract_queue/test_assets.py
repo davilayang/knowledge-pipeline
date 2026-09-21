@@ -26,6 +26,7 @@ from orchestrators.defs.fetch_extract_queue.assets import (
     fetch_content,
     publish_item,
 )
+from orchestrators.defs.fetch_extract_queue.checks import figure_gate_result
 from orchestrators.defs.fetch_extract_queue.def_config import (
     queue_items_partition_def,
 )
@@ -1765,6 +1766,7 @@ def _notion_with_file(filename: str | None, payload: bytes = b"") -> MagicMock:
     or none when `filename` is None."""
     notion = MagicMock()
     notion.get_source_file.return_value = (filename, payload) if filename else None
+    notion.get_figure_text.return_value = {}
     return notion
 
 
@@ -1919,3 +1921,97 @@ def test_fetched_refuses_a_binary_attachment_rather_than_decoding_it(tmp_path: P
     fetcher.structure.assert_not_called()
     fetcher.structure_oreilly.assert_not_called()
     fetcher.fetch_for_type.assert_not_called()
+
+
+def test_fetched_injects_figure_descriptions_so_the_gate_passes(tmp_path: Path):
+    """A filled `Figure Text` map is applied to the converted body before it is
+    stored, which is what clears the gate: the gate counts anchors, and an
+    injected description has taken its anchor's place."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch10.html"
+    anchor = "oreilly:9798341660717/aiee_1001.png"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content=f"# Ch 10\n\n![figure]({anchor})\n\n**Figure 10-1. EvalGen.**\n\n{'c' * 5000}",
+        tier="oreilly-htmlbook",
+        tier_log=[],
+    )
+    notion = _notion_with_file("ch10.html", b"<html>chapter</html>")
+    notion.get_figure_text.return_value = {
+        anchor: {"caption": "Figure 10-1. EvalGen.", "description": "Binary grade buttons."}
+    }
+
+    result = _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store, "notion": notion},
+        url=url,
+    )
+
+    assert result.success
+    stored = store.get_row("p-1")["raw_content"]
+    assert "Binary grade buttons." in stored
+    assert f"![figure]({anchor})" not in stored
+    assert figure_gate_result("book_chapter", stored).passed
+
+
+def test_extract_claims_reads_the_body_including_figure_descriptions(tmp_path: Path):
+    """One body, every lane. Measured over chapter 10 with and without the
+    descriptions: no claim came from one — the figures illustrate what the prose
+    already argues."""
+    from domains.wiki.claims import ClaimSet
+    from orchestrators.defs.fetch_extract_queue.assets import extract_claims as extract_claims_asset
+    from workflows.llm import LLMCall
+
+    db_path = tmp_path / "q.db"
+    body = (
+        "# Ch 10\n\n"
+        '<figure-description ref="oreilly:x/a.png">\nBinary grade buttons.\n'
+        "</figure-description>\n\n**Figure 10-1. EvalGen.**\n\n" + "c" * 5000
+    )
+    _seed_with_raw_content(db_path, "p-1", "book_chapter", body)
+    store = QueueStoreResource(db_path=str(db_path))
+    captured = {}
+
+    def fake_summarize(item, *, content_type=None):
+        captured["text"] = item.text
+        return (
+            ClaimSet(item_id=item.item_id, content_date=None, claims=[]),
+            LLMCall(content="x", model="gpt-4.1-mini", input_tokens=1, output_tokens=1),
+        )
+
+    with patch(
+        "orchestrators.defs.fetch_extract_queue.assets.run_extract_claims",
+        side_effect=fake_summarize,
+    ):
+        result = _materialize(extract_claims_asset, partition_key="p-1", resources={"store": store})
+
+    assert result.success
+    assert captured["text"] == store.get_row("p-1")["raw_content"]
+
+
+def test_fetched_floors_the_converted_body_not_the_descriptions(tmp_path: Path):
+    """The extraction floor asks whether the source carried enough to extract
+    from. Operator-written descriptions are not the source, so a body that only
+    clears 500 characters once they are added still fails."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch10.html"
+    anchor = "oreilly:9798341660717/aiee_1001.png"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content=f"# Ch 10\n\n![figure]({anchor})\n", tier="oreilly-htmlbook", tier_log=[]
+    )
+    notion = _notion_with_file("ch10.html", b"<html>chapter</html>")
+    notion.get_figure_text.return_value = {anchor: {"caption": "", "description": "d" * 5000}}
+
+    with pytest.raises(Exception, match="below extraction floor"):
+        _materialize(
+            fetch_content,
+            partition_key="p-1",
+            resources={"fetcher": fetcher, "store": store, "notion": notion},
+            url=url,
+        )

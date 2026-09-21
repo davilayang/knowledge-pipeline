@@ -1,36 +1,10 @@
-import re
-
 import dagster as dg
 from domains.content_urls import FIGURE_GATED_TYPES
 
 from orchestrators.defs.shared.queue_resources import NotionQueueResource, QueueStoreResource
 
 from .def_config import LIFECYCLE_DRIFT_AGE_MINUTES
-
-# An unresolved figure anchor as the converter emits it, with the caption that
-# follows it on the next block. The caption may sit inside a callout, so the
-# blockquote marker is optional. A described figure has had its anchor replaced
-# by the description, so an anchor still present IS an undescribed figure.
-_FIGURE = re.compile(
-    r"!\[figure\]\((?P<anchor>oreilly:[^)]+)\)\s*\n+(?:> )?\*\*(?P<caption>[^*]+)\*\*"
-)
-_ANCHOR = re.compile(r"!\[figure\]\((?P<anchor>oreilly:[^)]+)\)")
-
-
-def figure_repair_template(markdown: str) -> dict[str, dict[str, str]]:
-    """Every undescribed figure in `markdown`, keyed by the anchor an injector
-    will match on, with the caption beside it so an operator can tell which
-    picture is which.
-
-    Keyed by the full anchor rather than a short alias: the key is what the
-    description has to be matched back to, and an alias would reintroduce the
-    mapping step the template exists to remove.
-    """
-    captions = {m.group("anchor"): m.group("caption").strip() for m in _FIGURE.finditer(markdown)}
-    return {
-        anchor: {"caption": captions.get(anchor, ""), "description": ""}
-        for anchor in dict.fromkeys(m.group("anchor") for m in _ANCHOR.finditer(markdown))
-    }
+from .figures import figure_repair_template
 
 
 @dg.asset_check(
@@ -82,9 +56,8 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             passed=True,
             metadata={"gated": dg.MetadataValue.bool(True), "figures": dg.MetadataValue.int(0)},
         )
-    # The template rides in check metadata, not in the exception: the run-failure
-    # handler copies a message into Notion's Error, which truncates at 1,900
-    # characters and would cut a template of any size in half.
+    # In check metadata, not the exception: the run-failure handler copies a
+    # message into Notion's Error, which truncates at 1,900 characters.
     return dg.AssetCheckResult(
         passed=False,
         severity=dg.AssetCheckSeverity.ERROR,
@@ -94,7 +67,10 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             "figure_text_template": dg.MetadataValue.json(template),
             "summary": dg.MetadataValue.md(
                 f"**{len(template)} figures need a description.** Fill the "
-                f"`figure_text_template` below and re-queue the row."
+                f"`figure_text_template` below, merge it into any map already "
+                f"attached — it lists only what is still unresolved, and only "
+                f"the first file is read — then replace the row's `Figure Text` "
+                f"and set Status to Queued."
             ),
         },
     )

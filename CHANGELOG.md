@@ -8,6 +8,22 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.1] — 2026-09-21
+
+### Added
+
+- **A chapter parked on the figure gate can be repaired by describing its
+  figures.** Fill the template the check emits, attach it to the row's new
+  Notion `Figure Text` property, re-queue: `fetch_content` swaps each anchor for
+  its description (`fetch_extract_queue/figures.py`), which clears the gate.
+  Descriptions reach every extraction lane — measured on one chapter, none
+  produced a claim.
+- **A book chapter's row is named for its book as well as its chapter** —
+  `Evals for AI Engineers — Chapter 10. Interfaces for Human Review`. The
+  converter already read both off the page.
+
+---
+
 ## [0.38.0] — 2026-09-21
 
 ### Added
