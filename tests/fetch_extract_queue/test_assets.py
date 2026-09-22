@@ -86,7 +86,14 @@ def _instance_with_partition(page_id: str) -> dg.DagsterInstance:
     return instance
 
 
-def _materialize(asset, *, partition_key: str, resources: dict, url: str | None = None):
+def _materialize(
+    asset,
+    *,
+    partition_key: str,
+    resources: dict,
+    url: str | None = None,
+    raise_on_error: bool = True,
+):
     instance = _instance_with_partition(partition_key)
     tags = {"notion_page_id": partition_key}
     if url:
@@ -97,6 +104,7 @@ def _materialize(asset, *, partition_key: str, resources: dict, url: str | None 
         resources=resources,
         instance=instance,
         tags=tags,
+        raise_on_error=raise_on_error,
     )
 
 
@@ -416,16 +424,9 @@ def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
         tier_log=[{"tier": "structurer", "error": "timeout"}],
     )
 
-    # The `fetched` asset carries retry_policy(delay=120); Dagster's in-process
-    # executor waits that delay (against a wall-clock deadline) before its one
-    # retry. The assertion here is only that a transient structurer failure
-    # surfaces as a raised failure — not that Dagster honours the delay — so
-    # zero out the computed retry delay.
-    with (
-        pytest.raises(Exception, match="Structurer cascade exhausted|fetch failed"),
-        patch.object(dg.RetryPolicy, "calculate_delay", return_value=0),
-    ):
-        _materialize(
+    # retry_policy(delay=120) is waited out against a wall clock; zero it.
+    with patch.object(dg.RetryPolicy, "calculate_delay", return_value=0):
+        result = _materialize(
             fetch_content,
             partition_key="p-ovr",
             resources={
@@ -434,7 +435,16 @@ def test_fetched_surfaces_structurer_502_as_retryable_failure(tmp_path: Path):
                 "notion": _notion_with_file("paste.txt", b"noisy paste " * 500),
             },
             url="https://example.com/x",
+            raise_on_error=False,
         )
+
+    assert not result.success
+    # Both halves are load-bearing: without the retry, a transient outage looks
+    # like a dead row; without the cause, retry_policy retrying an unrelated
+    # crash would satisfy the assertion.
+    retries = [e for e in result.events_for_node(fetch_content.op.name) if e.is_step_up_for_retry]
+    assert len(retries) == 1
+    assert "Structurer cascade exhausted: timeout" in str(retries[0].step_retry_data.error)
 
 
 def test_fetched_metadata_includes_content_preview(tmp_path: Path):

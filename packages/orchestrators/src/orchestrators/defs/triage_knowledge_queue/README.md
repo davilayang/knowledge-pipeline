@@ -50,7 +50,7 @@ Triage seeds Notion's `Name` from the fetched page title (via `fetch_url_meta`) 
 
 ## User overrides
 
-The sensor reads three fields from each Notion row and passes them as typed config to the asset:
+The sensor reads six fields from each Notion row and passes them as typed config to the asset:
 
 | Field | Behavior |
 |---|---|
@@ -58,6 +58,8 @@ The sensor reads three fields from each Notion row and passes them as typed conf
 | `Content Type` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_TYPES` (`youtube`/`arxiv`/`medium`/`facebook`/`github`/`file_pdf`/`file_audio`/`book_chapter`/`article`/`other`), used as-is and written back unchanged. If empty or typo'd, falls back to URL classifier. The materialization metadata field `content_type_source` records which path was taken (`notion` vs `classified`). |
 | `Content Shape` (SELECT) | **User override.** If set to a value in `ALL_CONTENT_SHAPES` (`conference_talk`/`podcast_episode`/`tutorial`/`opinion_essay`/`research_summary`/`unknown`), used as-is and written back unchanged. If empty or typo'd, falls into the priority chain: arXiv URLs → `research_summary` (fast-path); audio URLs → `podcast_episode` (fast-path); everything else → `ContentShapeClassifier` LLM resource (Groq `llama-3.3-70b-versatile` primary, OpenAI `gpt-4.1-mini` fallback). LLM may return `unknown` honestly when no category fits — user disambiguates in Notion. `content_shape_source` metadata records which path fired (`notion` / `url_fastpath` / `llm_classified` / `unknown`). |
 | `Name` (title) | When the user left Name blank, triage seeds it from the fetched page title (`fetch_url_meta`) — except for `book_chapter` rows, which triage never asks for page metadata (its `Source File` attachment carries the body, and a fetch of its URL would follow the publisher's Access-Denied redirect). When the user set a Name, triage leaves it untouched. Either way, Name is not persisted to the local store; `fetch_extract_queue.published` later overwrites Name with `topic_card.extracted_title` (or the row's stored title, for `book_chapter`). |
+| `Added At` (date) | Backfill, not an override: the sensor passes the page's `created_time` only when Added At is blank, so mobile captures that omit it still sort chronologically. A user-set value is left alone. |
+| `Publish Date` (date) | **User override.** Passed through to `queue_items.content_date` and beats any date the fetcher finds. Most types are auto-dated at fetch; this covers the ones that aren't (PDF, podcast, date-less sites). |
 
 `Status` is system-controlled — never set by user before triage. The sensor's filter is `Status=Queued OR empty`; triage writes `Fetching` / `Ready` / `Failed` as the workflow signal.
 
