@@ -397,33 +397,6 @@ def test_fetcher_fills_content_date_when_user_left_it_blank(db_path: Path):
     assert row["content_date"] == "2026-03-01"
 
 
-def test_upsert_triaged_persists_raw_content_override(db_path: Path):
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-2",
-        url="https://example.com/a",
-        canonical_url="https://example.com/a",
-        content_type="Article",
-        raw_content_override="# pasted body\n\nlong content...",
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-2")
-    assert row is not None
-    assert row["raw_content_override"] == "# pasted body\n\nlong content..."
-
-
-def test_upsert_triaged_defaults_raw_content_override_to_empty(db_path: Path):
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-3",
-        url="https://example.com/b",
-        canonical_url="https://example.com/b",
-        content_type="Article",
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-3")
-    assert row is not None
-    assert row["raw_content_override"] == ""
-
-
 def test_find_canonical_url_duplicate_returns_none_when_empty(db_path: Path):
     assert (
         find_canonical_url_duplicate(

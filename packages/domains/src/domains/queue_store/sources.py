@@ -54,7 +54,9 @@ CREATE TABLE IF NOT EXISTS queue_items (
     content_shape               TEXT,              -- conference_talk/... NULL→"unknown"
     enrichment_json             TEXT,              -- JSON; signals cache from `enriched` asset
     raw_content                 TEXT,              -- fetched body
-    raw_content_override        TEXT NOT NULL DEFAULT '',  -- user-pasted body
+    raw_content_override        TEXT NOT NULL DEFAULT '',  -- retired: bodies pasted
+                                                   -- into Notion before `Source File`
+                                                   -- attachments replaced that route
     user_comments_json          TEXT,              -- verbatim Notion comments; cohort-scoped
     fetched_at                  TEXT,              -- ISO-8601 UTC
     fetch_tier                  TEXT,              -- winning fetcher
@@ -242,7 +244,6 @@ def upsert_triaged(
     canonical_url: str,
     content_type: str,
     content_shape: str | None = None,
-    raw_content_override: str = "",
     user_comments_json: str | None = None,
     content_date: str | None = None,
 ) -> None:
@@ -264,15 +265,14 @@ def upsert_triaged(
             """
             INSERT INTO queue_items (
                 notion_page_id, url, canonical_url, content_type, content_shape,
-                raw_content_override, user_comments_json, content_date
+                user_comments_json, content_date
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(notion_page_id) DO UPDATE SET
                 url = excluded.url,
                 canonical_url = excluded.canonical_url,
                 content_type = excluded.content_type,
                 content_shape = excluded.content_shape,
-                raw_content_override = excluded.raw_content_override,
                 user_comments_json = excluded.user_comments_json,
                 -- content_date is the "Publish Date" — a bidirectional signal, NOT
                 -- a purely fetcher-produced column: it holds the user's Notion
@@ -307,7 +307,6 @@ def upsert_triaged(
                 canonical_url,
                 content_type,
                 content_shape,
-                raw_content_override,
                 user_comments_json,
                 content_date,
             ),

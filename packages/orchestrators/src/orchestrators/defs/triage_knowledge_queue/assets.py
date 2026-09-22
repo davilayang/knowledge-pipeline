@@ -144,11 +144,7 @@ class TriageInput(dg.Config):
     write it back).
     `added_at_iso` is an Added At backfill — the sensor sets it to the
     Notion page's `created_time` when the row has no Added At (mobile
-    captures often omit it); None means "leave Added At alone."
-    `raw_content_override` carries the user-pasted Notion page body when
-    the row has `Use page body` ticked — sensor converts blocks
-    to markdown and passes them through; default empty string means the
-    downstream fetcher dispatches on the URL instead of the pasted body."""
+    captures often omit it); None means "leave Added At alone."."""
 
     url: str
     content_type: str | None = None
@@ -159,7 +155,6 @@ class TriageInput(dg.Config):
     # types the fetcher can't auto-date: PDF, podcast, date-less sites). Wins over
     # the fetcher's auto-detected date, which fills only when this is blank.
     publish_date_iso: str | None = None
-    raw_content_override: str = ""
 
 
 @dg.asset(
@@ -304,7 +299,6 @@ def triaged(
         canonical_url=canonical,
         content_type=content_type,
         content_shape=content_shape,
-        raw_content_override=config.raw_content_override,
         user_comments_json=user_comments_json,
         content_date=config.publish_date_iso,
     )

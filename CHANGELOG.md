@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Removed
+
+- **The Notion `Use page body` checkbox is gone; attach the body as `Source
+  File` instead.** The triage sensor no longer reads the checkbox or converts
+  page blocks (`notion_blocks.py` deleted), and `fetch_content` no longer
+  dispatches on `queue_items.raw_content_override`. The column stays: ten
+  already-extracted rows hold their body there, and the fetcher's
+  structure-fidelity eval reads them as fixtures. Those ten are no longer
+  re-fetchable from their Notion body.
+
 ---
 
 ## [0.38.1] — 2026-09-21

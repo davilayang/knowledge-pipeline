@@ -287,10 +287,9 @@ def fetch_content(
             },
         )
 
-    # An attached file IS the body. A publisher page converts deterministically;
-    # pasted prose keeps the structurer cleaning the page-body override gives it.
+    # An attached file IS the body: a publisher page converts deterministically,
+    # pasted prose goes through the structurer.
     source_file = notion.get_source_file(page_id)
-    override = row.get("raw_content_override") or ""
     if source_file:
         filename, payload = source_file
         lowered = filename.lower()
@@ -334,8 +333,6 @@ def fetch_content(
                 "url": dg.MetadataValue.url(url),
             },
         )
-    elif override:
-        result = fetcher.structure(override, source_url=url)
     else:
         result = fetcher.fetch_for_type(url, content_type=content_type)
     if result.error:
