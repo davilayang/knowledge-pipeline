@@ -61,7 +61,14 @@ fetch_content ──► book_chapter_figures_described (blocking asset check)
                    reaching extract_metadata looking complete. The operator
                    fills the template, attaches it as `Figure Text`, and flips
                    Status back to Queued; the next fetch injects the
-                   descriptions and the check passes.
+                   descriptions and the check passes. Notion's Error carries the
+                   check's `summary`, not Dagster's wrapper text
+                   (`shared/run_failure`); the template stays in the run,
+                   which Notion's 1,900-char Error could not hold.
+
+Once the body is stored, `fetch_content` seeds Notion's Name from the fetched
+title for a still-unnamed `SELF_DESCRIBING_TYPES` row, so a chapter parked on
+the gate above is identifiable; best-effort, and never retried.
 
 `fetch_content` calls the standalone `fetcher` service over dagster_network —
 POST `/v1/fetch` for normal URLs, or, when the row carries a Notion `Source File`

@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.38.3] — 2026-09-22
+
 ### Changed
 
 - **A row parked on a blocking asset check now says what to fix in Notion.**
