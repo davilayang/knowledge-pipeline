@@ -1,5 +1,4 @@
 import json
-import re
 import textwrap
 import time
 
@@ -10,6 +9,7 @@ from orchestrators.config import TRIAGE_KNOWLEDGE_QUEUE_DAG_VERSION
 from orchestrators.defs.shared.queue_resources import (
     NotionQueueResource,
     QueueStoreResource,
+    is_user_set_name,
 )
 
 from .classify import (
@@ -34,29 +34,6 @@ from .podcast_canonicalize import maybe_redirect_podcast_to_youtube
 from .url_meta import UrlMeta, fetch_url_meta
 
 GROUP_NAME = "triage_knowledge_queue"
-
-
-# Notion auto-assigns a default title to fresh rows: "Untitled", or for
-# database rows the locale-specific "New <db_name> page" pattern (e.g.
-# "New queued page" for a "Queue" database). Treat these as blank so
-# triage seeds the Name from the fetched page title — without this guard,
-# the auto-default counts as a user-set title and triage refuses to
-# overwrite it.
-_NOTION_AUTO_NAMES = {"untitled"}
-_NOTION_NEW_PAGE_RE = re.compile(r"^new\s+\S.*\s+page$", re.IGNORECASE)
-
-
-def _is_user_set_name(name: str | None) -> bool:
-    if not name:
-        return False
-    stripped = name.strip()
-    if not stripped:
-        return False
-    if stripped.lower() in _NOTION_AUTO_NAMES:
-        return False
-    if _NOTION_NEW_PAGE_RE.match(stripped):
-        return False
-    return True
 
 
 def _oneline(s: str) -> str:
@@ -313,7 +290,7 @@ def triaged(
     # counts as blank so triage can replace it with the real page title.
     # Description is operational and safe to (re)write.
     name_for_notion = (
-        display_title if (not _is_user_set_name(config.name) and display_title) else None
+        display_title if (not is_user_set_name(config.name) and display_title) else None
     )
     status_after = "Fetching"
     triage_notion.write_triaged(

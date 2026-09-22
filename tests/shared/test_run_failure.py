@@ -32,6 +32,86 @@ def test_step_failure_message_uses_terminal_step_not_first():
     assert step_failure_message(context) == "LlamaParse rejected PDF"
 
 
+def _check_event(
+    *,
+    passed: bool,
+    check_name: str,
+    summary: str | None,
+    blocking: bool = True,
+    severity: str = "ERROR",
+) -> SimpleNamespace:
+    """One ASSET_CHECK_EVALUATION log entry, shaped as `instance.all_logs` returns it."""
+    metadata = {"summary": SimpleNamespace(value=summary)} if summary is not None else {}
+    return SimpleNamespace(
+        dagster_event=SimpleNamespace(
+            event_specific_data=SimpleNamespace(
+                passed=passed,
+                check_name=check_name,
+                metadata=metadata,
+                blocking=blocking,
+                severity=SimpleNamespace(name=severity),
+            )
+        )
+    )
+
+
+def _context_with_check(**check_kwargs) -> MagicMock:
+    """A run that failed on a RuntimeError, alongside one failed check."""
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        _step_event(user_description=None, error_message="RuntimeError: fetcher timed out")
+    ]
+    context.instance.all_logs.return_value = [
+        _check_event(
+            passed=False,
+            check_name="metadata_columns_populated",
+            summary="**Metadata looked thin.** Consider a re-run.",
+            **check_kwargs,
+        )
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+    return context
+
+
+# Asserted apart: one fixture varying both would stay green if either half of
+# the filter were lost.
+def test_step_failure_message_ignores_a_warning_check_even_when_blocking():
+    context = _context_with_check(blocking=True, severity="WARN")
+    assert step_failure_message(context) == "RuntimeError: fetcher timed out"
+
+
+def test_step_failure_message_ignores_a_non_blocking_check_even_at_error_severity():
+    context = _context_with_check(blocking=False, severity="ERROR")
+    assert step_failure_message(context) == "RuntimeError: fetcher timed out"
+
+
+def test_step_failure_message_prefers_a_failed_blocking_check_summary():
+    """DagsterAssetCheckFailedError names the check but not what to do about it;
+    the repair instructions live in the check's metadata."""
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        _step_event(
+            user_description=None,
+            error_message=(
+                "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset "
+                "check failed with ERROR severity:\nfetch_content: book_chapter_figures_described"
+            ),
+        )
+    ]
+    context.instance.all_logs.return_value = [
+        _check_event(
+            passed=False,
+            check_name="book_chapter_figures_described",
+            summary="**2 figures need a description.** Fill the template and re-queue.",
+        )
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+
+    assert step_failure_message(context) == (
+        "**2 figures need a description.** Fill the template and re-queue."
+    )
+
+
 def test_step_failure_message_falls_back_to_error_message_when_no_user_failure_data():
     context = MagicMock()
     context.get_step_failure_events.return_value = [

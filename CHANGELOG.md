@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.3] — 2026-09-22
+
+### Changed
+
+- **A row parked on a blocking asset check now says what to fix in Notion.**
+  `step_failure_message` prefers a failed blocking ERROR check's `summary` over
+  Dagster's generic wrapper, which named the check and nothing else — a figure
+  park read as "1 blocking asset check failed", with no repair instructions.
+- **A book chapter is named in Notion as soon as it is fetched**, not only once
+  it reaches `publish_item` — a chapter parked on the figure gate was left as
+  `New queued page`. Seeding takes the first-touch rule triage already applies
+  to every other type (`is_user_set_name`, now shared).
+
+---
+
 ## [0.38.2] — 2026-09-22
 
 ### Removed

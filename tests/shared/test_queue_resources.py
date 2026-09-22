@@ -78,3 +78,37 @@ def test_query_for_extract_filter_claims_book_chapter_rows():
     sent = client.data_sources.query.call_args.kwargs["filter"]
     type_clauses = sent["and"][1]["or"]
     assert {"property": "Content Type", "select": {"equals": "book_chapter"}} in type_clauses
+
+
+def _page_named(name: str) -> dict:
+    return {"properties": {"Name": {"title": [{"plain_text": name}] if name else []}}}
+
+
+def test_seed_name_leaves_a_title_the_user_chose():
+    """Seeding is the first-touch rule triage already applies to every other
+    content type: fill a blank Name, never replace one that is already set."""
+    res = _resource()
+    client = MagicMock()
+    client.pages.retrieve.return_value = _page_named("My own title for this chapter")
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        res.seed_name("p1", "Evals for AI Engineers — Chapter 1. Introduction")
+    client.pages.update.assert_not_called()
+
+
+def test_seed_name_replaces_notions_own_placeholder():
+    """`New queued page` is what Notion puts on a row created in the database
+    rather than captured, so it is blank for seeding purposes — the three
+    chapters that parked in production all carried exactly this."""
+    res = _resource()
+    client = MagicMock()
+    client.pages.retrieve.return_value = _page_named("New queued page")
+    with patch.object(NotionQueueResource, "_client", return_value=client):
+        res.seed_name("p1", "Evals for AI Engineers — Chapter 1. Introduction")
+    client.pages.update.assert_called_once_with(
+        page_id="p1",
+        properties={
+            "Name": {
+                "title": [{"text": {"content": "Evals for AI Engineers — Chapter 1. Introduction"}}]
+            }
+        },
+    )

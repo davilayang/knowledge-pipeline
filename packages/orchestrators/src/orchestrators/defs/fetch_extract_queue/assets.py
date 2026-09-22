@@ -385,6 +385,15 @@ def fetch_content(
         content_date=str(published) if published else None,
     )
 
+    # `publish_item` names the row, which a parked row never reaches. After the
+    # body is stored and best-effort: a name is not worth losing a converted
+    # chapter over. Not retried — only a re-queue, which clears the cache, is.
+    if content_type in SELF_DESCRIBING_TYPES and result.title:
+        try:
+            notion.seed_name(page_id, result.title)
+        except Exception as exc:
+            context.log.warning("naming %s from its own title failed: %r", page_id, exc)
+
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),
         "url": dg.MetadataValue.url(url),

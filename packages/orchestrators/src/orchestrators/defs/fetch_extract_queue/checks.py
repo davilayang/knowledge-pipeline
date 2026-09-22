@@ -66,7 +66,8 @@ def figure_gate_result(content_type: str, raw_content: str) -> dg.AssetCheckResu
             "figures": dg.MetadataValue.int(len(template)),
             "figure_text_template": dg.MetadataValue.json(template),
             "summary": dg.MetadataValue.md(
-                f"**{len(template)} figures need a description.** Fill the "
+                f"**{len(template)} figure{'s' if len(template) > 1 else ''} "
+                f"need{'' if len(template) > 1 else 's'} a description.** Fill the "
                 f"`figure_text_template` below, merge it into any map already "
                 f"attached — it lists only what is still unresolved, and only "
                 f"the first file is read — then replace the row's `Figure Text` "

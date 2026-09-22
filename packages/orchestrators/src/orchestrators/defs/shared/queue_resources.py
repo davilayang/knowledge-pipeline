@@ -15,6 +15,7 @@ class definition.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,22 @@ from notion_client import Client as NotionClient
 from orchestrators.config import LOCAL_QUEUE_DB
 
 _NOTION_ERROR_RICH_TEXT_CAP = 1900
+# What Notion titles a row nobody named: "Untitled", or the locale's
+# "New <database> page" — "New queued page" for the Queue.
+_NOTION_AUTO_NAMES = {"untitled"}
+_NOTION_NEW_PAGE_RE = re.compile(r"^new\s+\S.*\s+page$", re.IGNORECASE)
+
+
+def is_user_set_name(name: str | None) -> bool:
+    """Whether a row's Name was chosen by someone rather than left as one of
+    Notion's placeholders. Shared so triage and fetch-time seeding cannot drift
+    on what counts as blank."""
+    stripped = (name or "").strip()
+    if not stripped or stripped.lower() in _NOTION_AUTO_NAMES:
+        return False
+    return not _NOTION_NEW_PAGE_RE.match(stripped)
+
+
 # A saved chapter page runs to a few hundred KB; the ceiling is generous so a
 # slow link fails as a timeout rather than a truncated body.
 _SOURCE_FILE_TIMEOUT_S = 60.0
@@ -214,6 +231,19 @@ class NotionQueueResource(dg.ConfigurableResource):
             if clean_date:
                 properties["Publish Date"] = {"date": {"start": clean_date}}
         self._client().pages.update(page_id=page_id, properties=properties)
+
+    def seed_name(self, page_id: str, name: str) -> None:
+        """Name a row that nobody has named, without touching Status.
+
+        Triage's seeding rule — fill a blank Name, never replace a chosen one —
+        applied at fetch time, for a source whose page triage never fetched.
+        """
+        clean = name.strip()
+        if not clean or is_user_set_name(self.get_page_name(page_id)):
+            return
+        self._client().pages.update(
+            page_id=page_id, properties={"Name": {"title": [{"text": {"content": clean}}]}}
+        )
 
     def update_status_failed(self, page_id: str, error: str) -> None:
         self._client().pages.update(
