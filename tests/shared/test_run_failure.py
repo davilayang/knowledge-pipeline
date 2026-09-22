@@ -55,10 +55,8 @@ def _check_event(
     )
 
 
-def test_step_failure_message_ignores_a_warning_check_and_keeps_the_real_error():
-    """Only a blocking ERROR check is what stopped the run. A WARN check, or a
-    non-blocking one, reports alongside a failure it did not cause — letting its
-    summary stand in would replace the actual error with unrelated advice."""
+def _context_with_check(**check_kwargs) -> MagicMock:
+    """A run that failed on a RuntimeError, alongside one failed check."""
     context = MagicMock()
     context.get_step_failure_events.return_value = [
         _step_event(user_description=None, error_message="RuntimeError: fetcher timed out")
@@ -68,12 +66,24 @@ def test_step_failure_message_ignores_a_warning_check_and_keeps_the_real_error()
             passed=False,
             check_name="metadata_columns_populated",
             summary="**Metadata looked thin.** Consider a re-run.",
-            blocking=False,
-            severity="WARN",
+            **check_kwargs,
         )
     ]
     context.failure_event.message = "Steps failed: [...]"
+    return context
 
+
+# Blocking and ERROR are asserted apart: together they are Dagster's condition
+# for stopping a run, so a check missing either one reports alongside a failure
+# it did not cause, and its advice must not stand in for the real error. One
+# fixture varying both would stay green if either half of the filter were lost.
+def test_step_failure_message_ignores_a_warning_check_even_when_blocking():
+    context = _context_with_check(blocking=True, severity="WARN")
+    assert step_failure_message(context) == "RuntimeError: fetcher timed out"
+
+
+def test_step_failure_message_ignores_a_non_blocking_check_even_at_error_severity():
+    context = _context_with_check(blocking=False, severity="ERROR")
     assert step_failure_message(context) == "RuntimeError: fetcher timed out"
 
 

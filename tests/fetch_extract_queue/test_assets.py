@@ -1780,7 +1780,14 @@ def test_fetched_keeps_the_body_when_naming_the_notion_row_fails(tmp_path: Path)
         content="c" * 5000, tier="oreilly-htmlbook", tier_log=[], title="Chapter 1. Introduction"
     )
     notion = _notion_with_file("ch01.html", b"<html>chapter</html>")
-    notion.seed_name.side_effect = RuntimeError("notion 502")
+
+    stored_when_named: dict[str, bool] = {}
+
+    def _fail_after_noting_what_was_stored(page_id: str, name: str) -> None:
+        stored_when_named["body"] = bool((store.get_row(page_id) or {}).get("raw_content"))
+        raise RuntimeError("notion 502")
+
+    notion.seed_name.side_effect = _fail_after_noting_what_was_stored
 
     result = _materialize(
         fetch_content,
@@ -1790,6 +1797,10 @@ def test_fetched_keeps_the_body_when_naming_the_notion_row_fails(tmp_path: Path)
     )
 
     assert result.success
+    notion.seed_name.assert_called_once()
+    # Read inside the raising call: asserting only the end state would pass just
+    # as well if naming had moved back in front of the write, or gone entirely.
+    assert stored_when_named["body"] is True
     assert (store.get_row("p-1") or {}).get("raw_content")
 
 

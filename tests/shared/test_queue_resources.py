@@ -104,8 +104,11 @@ def test_seed_name_replaces_notions_own_placeholder():
     client.pages.retrieve.return_value = _page_named("New queued page")
     with patch.object(NotionQueueResource, "_client", return_value=client):
         res.seed_name("p1", "Evals for AI Engineers — Chapter 1. Introduction")
-    client.pages.update.assert_called_once()
-    props = client.pages.update.call_args.kwargs["properties"]
-    assert props["Name"]["title"][0]["text"]["content"] == (
-        "Evals for AI Engineers — Chapter 1. Introduction"
+    client.pages.update.assert_called_once_with(
+        page_id="p1",
+        properties={
+            "Name": {
+                "title": [{"text": {"content": "Evals for AI Engineers — Chapter 1. Introduction"}}]
+            }
+        },
     )
