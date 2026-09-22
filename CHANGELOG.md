@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.38.2] — 2026-09-22
+
 ### Removed
 
 - **The Notion `Use page body` checkbox is gone; attach the body as `Source
