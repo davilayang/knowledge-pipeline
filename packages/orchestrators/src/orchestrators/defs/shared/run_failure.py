@@ -10,15 +10,12 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource
 
 
 def _failed_check_summary(context: Any) -> str | None:
-    """The `summary` metadata of a blocking ERROR check that failed in this run.
+    """The `summary` of a blocking ERROR check that failed in this run.
 
-    A blocking check raises DagsterAssetCheckFailedError, which names the check
-    and nothing else — what to do about it is in the check's own metadata, and
-    that is what the operator needs in Notion.
-
-    Only blocking ERROR checks qualify: those are the ones that stop a run. A
-    WARN or non-blocking check reports alongside a failure it did not cause, and
-    its advice would otherwise replace the error that actually stopped the run.
+    DagsterAssetCheckFailedError names the check and nothing else; what to do
+    about it is in the check's metadata. Blocking ERROR is Dagster's own
+    condition for stopping a run — any other failed check reports alongside a
+    failure it did not cause, and must not speak for it.
     """
     try:
         entries = context.instance.all_logs(

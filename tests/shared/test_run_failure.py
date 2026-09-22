@@ -73,10 +73,8 @@ def _context_with_check(**check_kwargs) -> MagicMock:
     return context
 
 
-# Blocking and ERROR are asserted apart: together they are Dagster's condition
-# for stopping a run, so a check missing either one reports alongside a failure
-# it did not cause, and its advice must not stand in for the real error. One
-# fixture varying both would stay green if either half of the filter were lost.
+# Asserted apart: one fixture varying both would stay green if either half of
+# the filter were lost.
 def test_step_failure_message_ignores_a_warning_check_even_when_blocking():
     context = _context_with_check(blocking=True, severity="WARN")
     assert step_failure_message(context) == "RuntimeError: fetcher timed out"
@@ -88,9 +86,8 @@ def test_step_failure_message_ignores_a_non_blocking_check_even_at_error_severit
 
 
 def test_step_failure_message_prefers_a_failed_blocking_check_summary():
-    """A blocking check raises DagsterAssetCheckFailedError, which names the check
-    but not what to do about it — the repair instructions live in the check's own
-    metadata. Without this the Notion row says only that some check failed."""
+    """DagsterAssetCheckFailedError names the check but not what to do about it;
+    the repair instructions live in the check's metadata."""
     context = MagicMock()
     context.get_step_failure_events.return_value = [
         _step_event(

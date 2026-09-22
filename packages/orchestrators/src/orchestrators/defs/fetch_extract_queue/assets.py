@@ -385,12 +385,9 @@ def fetch_content(
         content_date=str(published) if published else None,
     )
 
-    # After the body is stored, and best-effort: `publish_item` names the row
-    # from the extracted title, which a row parked on a gate never reaches, so
-    # these types are named here instead. Naming is not worth losing a converted
-    # chapter over, and a failure here is not retried — the next run serves the
-    # cached body and returns before this point. Re-queueing clears that cache
-    # and names the row on the fresh fetch.
+    # `publish_item` names the row, which a parked row never reaches. After the
+    # body is stored and best-effort: a name is not worth losing a converted
+    # chapter over. Not retried — only a re-queue, which clears the cache, is.
     if content_type in SELF_DESCRIBING_TYPES and result.title:
         try:
             notion.seed_name(page_id, result.title)

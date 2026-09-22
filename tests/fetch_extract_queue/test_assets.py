@@ -1737,10 +1737,9 @@ def test_fetched_fails_when_book_chapter_has_no_attachment(tmp_path: Path):
 
 
 def test_fetched_names_the_notion_row_from_a_self_describing_title(tmp_path: Path):
-    """A chapter that parks on the figure gate never reaches `publish_item`, which
-    is what normally names the row — so without this the operator sees a queue of
-    identically-named rows with no way to tell which chapter each one is. The
-    publisher states the title, so it is known here and worth writing now."""
+    """A chapter parked on the figure gate never reaches `publish_item`, which is
+    what names the row — so the queue shows rows nobody can tell apart. The
+    publisher states the title, so it is already known here."""
     db_path = tmp_path / "q.db"
     url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
     _seed_triaged(db_path, "p-1", "book_chapter", url=url)
@@ -1769,8 +1768,7 @@ def test_fetched_names_the_notion_row_from_a_self_describing_title(tmp_path: Pat
 
 def test_fetched_keeps_the_body_when_naming_the_notion_row_fails(tmp_path: Path):
     """Naming is a convenience; the converted body is the work. A Notion outage
-    during the name write must not discard a chapter that converted cleanly —
-    the retry would re-download and re-convert it to reach the same place."""
+    must not discard a chapter that converted cleanly."""
     db_path = tmp_path / "q.db"
     url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
     _seed_triaged(db_path, "p-1", "book_chapter", url=url)
@@ -1798,8 +1796,8 @@ def test_fetched_keeps_the_body_when_naming_the_notion_row_fails(tmp_path: Path)
 
     assert result.success
     notion.seed_name.assert_called_once()
-    # Read inside the raising call: asserting only the end state would pass just
-    # as well if naming had moved back in front of the write, or gone entirely.
+    # Read inside the raising call: the end state alone would pass with naming
+    # back in front of the write, or gone.
     assert stored_when_named["body"] is True
     assert (store.get_row("p-1") or {}).get("raw_content")
 
