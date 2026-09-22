@@ -54,9 +54,9 @@ CREATE TABLE IF NOT EXISTS queue_items (
     content_shape               TEXT,              -- conference_talk/... NULL→"unknown"
     enrichment_json             TEXT,              -- JSON; signals cache from `enriched` asset
     raw_content                 TEXT,              -- fetched body
-    raw_content_override        TEXT NOT NULL DEFAULT '',  -- retired: bodies pasted
-                                                   -- into Notion before `Source File`
-                                                   -- attachments replaced that route
+    -- Nothing writes this any more. Don't drop or clear it: the nine rows still
+    -- holding a body are fixtures for services/fetcher/evals/structure_fidelity.py.
+    raw_content_override        TEXT NOT NULL DEFAULT '',
     user_comments_json          TEXT,              -- verbatim Notion comments; cohort-scoped
     fetched_at                  TEXT,              -- ISO-8601 UTC
     fetch_tier                  TEXT,              -- winning fetcher

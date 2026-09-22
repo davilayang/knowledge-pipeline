@@ -30,7 +30,7 @@ EXTRACT_CLAIMS_MODEL = "gpt-4.1-mini"
 # spoken production rows.
 #
 # Still misses when a human overrides: a Notion `Content Type` of `other` on a YouTube
-# URL skips the prime.
+# URL skips the prime, and a body attached to a `youtube` row is primed as speech.
 SPOKEN_CONTENT_TYPES = frozenset({"youtube", "file_audio"})
 
 _SPOKEN_DESC = {

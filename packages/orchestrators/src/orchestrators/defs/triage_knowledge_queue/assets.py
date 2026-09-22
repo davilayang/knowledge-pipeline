@@ -144,7 +144,7 @@ class TriageInput(dg.Config):
     write it back).
     `added_at_iso` is an Added At backfill — the sensor sets it to the
     Notion page's `created_time` when the row has no Added At (mobile
-    captures often omit it); None means "leave Added At alone."."""
+    captures often omit it); None means Added At is left alone."""
 
     url: str
     content_type: str | None = None

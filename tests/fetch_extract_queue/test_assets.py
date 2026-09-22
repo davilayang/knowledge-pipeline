@@ -1754,9 +1754,7 @@ def test_fetched_routes_attached_html_to_the_converter(tmp_path: Path):
 
 
 def test_fetched_routes_attached_markdown_to_the_structurer(tmp_path: Path):
-    """Pasted prose still passes through the structurer's cleaning, exactly as
-    the page-body override does. This is what lets the override's existing rows
-    move to an attachment without changing what happens to their text."""
+    """Pasted prose reaches the structurer to be cleaned, not the store raw."""
     db_path = tmp_path / "q.db"
     url = "https://medium.com/@a/post-123"
     _seed_triaged(db_path, "p-1", "medium", url=url)

@@ -624,6 +624,37 @@ def test_get_content_shape_returns_stored_value_when_set(db_path: Path):
     assert get_content_shape(db_path=db_path, notion_page_id="p-set") == "tutorial"
 
 
+def test_upsert_triaged_preserves_an_archived_pasted_body(db_path: Path):
+    """The one column re-triage must not clear: nothing can refill it, and the
+    structure-fidelity eval's fixtures are the rows that still hold a body."""
+    page_id = "t-archived"
+    sqlite3.connect(db_path).close()
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE queue_items SET raw_content_override = ? WHERE notion_page_id = ?",
+            ("# pasted body\n\nthe words themselves", page_id),
+        )
+
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x?utm=2",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert row["raw_content_override"] == "# pasted body\n\nthe words themselves"
+
+
 def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):
     """Re-triage is a cohort boundary: a row that already has fetched +
     extracted state from a prior cycle must lose all of it on re-triage so
