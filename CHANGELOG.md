@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.38.2] — 2026-09-22
+
+### Removed
+
+- **The Notion `Use page body` checkbox is gone; attach the body as `Source
+  File` instead.** The sensor's checkbox read, `notion_blocks.py` and
+  `fetch_content`'s `raw_content_override` branch are deleted. The column stays
+  as the structure-fidelity eval's fixtures; its nine rows can no longer be
+  re-fetched from Notion.
+
+---
+
 ## [0.38.1] — 2026-09-21
 
 ### Added

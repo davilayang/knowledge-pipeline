@@ -397,33 +397,6 @@ def test_fetcher_fills_content_date_when_user_left_it_blank(db_path: Path):
     assert row["content_date"] == "2026-03-01"
 
 
-def test_upsert_triaged_persists_raw_content_override(db_path: Path):
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-2",
-        url="https://example.com/a",
-        canonical_url="https://example.com/a",
-        content_type="Article",
-        raw_content_override="# pasted body\n\nlong content...",
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-2")
-    assert row is not None
-    assert row["raw_content_override"] == "# pasted body\n\nlong content..."
-
-
-def test_upsert_triaged_defaults_raw_content_override_to_empty(db_path: Path):
-    upsert_triaged(
-        db_path=db_path,
-        notion_page_id="t-3",
-        url="https://example.com/b",
-        canonical_url="https://example.com/b",
-        content_type="Article",
-    )
-    row = get_row(db_path=db_path, notion_page_id="t-3")
-    assert row is not None
-    assert row["raw_content_override"] == ""
-
-
 def test_find_canonical_url_duplicate_returns_none_when_empty(db_path: Path):
     assert (
         find_canonical_url_duplicate(
@@ -649,6 +622,37 @@ def test_get_content_shape_returns_stored_value_when_set(db_path: Path):
         content_shape="tutorial",
     )
     assert get_content_shape(db_path=db_path, notion_page_id="p-set") == "tutorial"
+
+
+def test_upsert_triaged_preserves_an_archived_pasted_body(db_path: Path):
+    """The one column re-triage must not clear: nothing can refill it, and the
+    structure-fidelity eval's fixtures are the rows that still hold a body."""
+    page_id = "t-archived"
+    sqlite3.connect(db_path).close()
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+    with sqlite3.connect(db_path) as conn:
+        conn.execute(
+            "UPDATE queue_items SET raw_content_override = ? WHERE notion_page_id = ?",
+            ("# pasted body\n\nthe words themselves", page_id),
+        )
+
+    upsert_triaged(
+        db_path=db_path,
+        notion_page_id=page_id,
+        url="https://example.com/x?utm=2",
+        canonical_url="https://example.com/x",
+        content_type="Article",
+    )
+
+    row = get_row(db_path=db_path, notion_page_id=page_id)
+    assert row is not None
+    assert row["raw_content_override"] == "# pasted body\n\nthe words themselves"
 
 
 def test_upsert_triaged_clears_stale_fetch_and_extraction_state(db_path: Path):

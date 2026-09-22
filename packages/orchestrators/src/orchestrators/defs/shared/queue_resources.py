@@ -306,31 +306,6 @@ class NotionQueueResource(dg.ConfigurableResource):
                 )
         return figure_text
 
-    def get_page_body_markdown(self, page_id: str) -> str:
-        """Fetch all top-level block children of a page and convert to markdown.
-
-        Walks pagination via `has_more` / `next_cursor`. Skips block types that
-        the converter doesn't handle (see notion_blocks.blocks_to_markdown).
-        Empty page → empty string.
-        """
-        from orchestrators.defs.triage_knowledge_queue.notion_blocks import blocks_to_markdown
-
-        client = self._client()
-        results: list[dict[str, Any]] = []
-        cursor: str | None = None
-        while True:
-            kwargs: dict[str, Any] = {"block_id": page_id}
-            if cursor:
-                kwargs["start_cursor"] = cursor
-            resp = client.blocks.children.list(**kwargs)
-            results.extend(resp.get("results") or [])
-            if not resp.get("has_more"):
-                break
-            cursor = resp.get("next_cursor")
-            if not cursor:
-                break
-        return blocks_to_markdown(results)
-
     def get_page_comments(self, page_id: str) -> list[dict[str, str]]:
         """Fetch all unresolved comments on a page. Each entry: {author (Notion user id),
         text (concatenated rich_text), created_at (ISO-8601)}. Comments whose text is
@@ -418,7 +393,6 @@ class QueueStoreResource(dg.ConfigurableResource):
         canonical_url: str,
         content_type: str,
         content_shape: str | None = None,
-        raw_content_override: str = "",
         user_comments_json: str | None = None,
         content_date: str | None = None,
     ) -> None:
@@ -429,7 +403,6 @@ class QueueStoreResource(dg.ConfigurableResource):
             canonical_url=canonical_url,
             content_type=content_type,
             content_shape=content_shape,
-            raw_content_override=raw_content_override,
             user_comments_json=user_comments_json,
             content_date=content_date,
         )

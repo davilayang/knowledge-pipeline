@@ -64,10 +64,7 @@ fetch_content ──► book_chapter_figures_described (blocking asset check)
                    descriptions and the check passes.
 
 `fetch_content` calls the standalone `fetcher` service over dagster_network —
-POST `/v1/fetch` for normal URLs, POST `/v1/structure` when the queue_items
-row has `raw_content_override` set (user ticked `Use page body` in Notion; see
-`FetcherResource.structure` in `resources.py` and the override branch in
-`assets.fetch_content`), or, when the row carries a Notion `Source File`
+POST `/v1/fetch` for normal URLs, or, when the row carries a Notion `Source File`
 attachment, POST `/v1/structure-oreilly` for an `.html`/`.htm` file or
 POST `/v1/structure` for `.md`/`.txt`/`.markdown` — any other attachment
 extension fails the item rather than being decoded as prose. A
