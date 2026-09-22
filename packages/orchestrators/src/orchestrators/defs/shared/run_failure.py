@@ -4,17 +4,43 @@ from __future__ import annotations
 
 from typing import Any
 
+import dagster as dg
+
 from orchestrators.defs.shared.queue_resources import NotionQueueResource
+
+
+def _failed_check_summary(context: Any) -> str | None:
+    """The `summary` metadata of the first failed asset check in this run.
+
+    A blocking check raises DagsterAssetCheckFailedError, which names the check
+    and nothing else — what to do about it is in the check's own metadata, and
+    that is what the operator needs in Notion.
+    """
+    try:
+        entries = context.instance.all_logs(
+            context.dagster_run.run_id, of_type=dg.DagsterEventType.ASSET_CHECK_EVALUATION
+        )
+    except Exception:
+        return None
+    for entry in entries or []:
+        data = getattr(getattr(entry, "dagster_event", None), "event_specific_data", None)
+        if data is None or getattr(data, "passed", True):
+            continue
+        summary = (getattr(data, "metadata", None) or {}).get("summary")
+        text = (getattr(summary, "value", None) or "").strip()
+        if text:
+            return text
+    return None
 
 
 def step_failure_message(context: Any) -> str | None:
     """Underlying step error for a failed run.
 
     Prefers (in order): `user_failure_data.description` from the terminal
-    step failure event (the `dg.Failure(description=...)` text), then the
-    step's raw `error.message`, then the run-level `failure_event.message`.
-    Uses `step_events[-1]` so retried runs show the terminal cause, not the
-    historical first attempt."""
+    step failure event (the `dg.Failure(description=...)` text), then a failed
+    asset check's `summary`, then the step's raw `error.message`, then the
+    run-level `failure_event.message`. Uses `step_events[-1]` so retried runs
+    show the terminal cause, not the historical first attempt."""
     try:
         step_events = list(context.get_step_failure_events() or [])
     except AttributeError:
@@ -25,6 +51,12 @@ def step_failure_message(context: Any) -> str | None:
         description = getattr(getattr(data, "user_failure_data", None), "description", None)
         if description:
             return description
+        # Before the raw message: a blocking check's failure arrives as
+        # Dagster's own wrapper, which says a check failed but not what to fix.
+        check_summary = _failed_check_summary(context)
+        if check_summary:
+            return check_summary
+
         # Dagster wraps op exceptions in DagsterExecutionStepExecutionError
         # ("Error occurred while executing op ..."); the real exception is
         # deeper in the `cause` chain. Take the innermost link that actually

@@ -1736,6 +1736,37 @@ def test_fetched_fails_when_book_chapter_has_no_attachment(tmp_path: Path):
     fetcher.structure.assert_not_called()
 
 
+def test_fetched_names_the_notion_row_from_a_self_describing_title(tmp_path: Path):
+    """A chapter that parks on the figure gate never reaches `publish_item`, which
+    is what normally names the row — so without this the operator sees a queue of
+    identically-named rows with no way to tell which chapter each one is. The
+    publisher states the title, so it is known here and worth writing now."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content="c" * 5000,
+        tier="oreilly-htmlbook",
+        tier_log=[],
+        title="Evals for AI Engineers — Chapter 1. Introduction",
+    )
+    notion = _notion_with_file("ch01.html", b"<html>chapter</html>")
+
+    result = _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store, "notion": notion},
+        url=url,
+    )
+
+    assert result.success
+    notion.update_name.assert_called_once_with(
+        "p-1", "Evals for AI Engineers — Chapter 1. Introduction"
+    )
+
+
 def test_fetched_routes_attached_html_to_the_converter(tmp_path: Path):
     """The publisher's own markup converts deterministically, so an attached
     page goes to the converter route rather than the structurer's LLM cascade.

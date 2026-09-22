@@ -365,6 +365,11 @@ def fetch_content(
             },
         )
 
+    # `publish_item` names the row from the extracted title, which a row parked
+    # on a gate never reaches. These types state their own title, so name it now.
+    if content_type in SELF_DESCRIBING_TYPES and result.title:
+        notion.update_name(page_id, result.title)
+
     # Before the hash, so a revised description map re-runs extraction.
     content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
     char_count = len(content)

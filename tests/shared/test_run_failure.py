@@ -32,6 +32,46 @@ def test_step_failure_message_uses_terminal_step_not_first():
     assert step_failure_message(context) == "LlamaParse rejected PDF"
 
 
+def _check_event(*, passed: bool, check_name: str, summary: str | None) -> SimpleNamespace:
+    """One ASSET_CHECK_EVALUATION log entry, shaped as `instance.all_logs` returns it."""
+    metadata = {"summary": SimpleNamespace(value=summary)} if summary is not None else {}
+    return SimpleNamespace(
+        dagster_event=SimpleNamespace(
+            event_specific_data=SimpleNamespace(
+                passed=passed, check_name=check_name, metadata=metadata
+            )
+        )
+    )
+
+
+def test_step_failure_message_prefers_a_failed_blocking_check_summary():
+    """A blocking check raises DagsterAssetCheckFailedError, which names the check
+    but not what to do about it — the repair instructions live in the check's own
+    metadata. Without this the Notion row says only that some check failed."""
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        _step_event(
+            user_description=None,
+            error_message=(
+                "dagster._core.errors.DagsterAssetCheckFailedError: 1 blocking asset "
+                "check failed with ERROR severity:\nfetch_content: book_chapter_figures_described"
+            ),
+        )
+    ]
+    context.instance.all_logs.return_value = [
+        _check_event(
+            passed=False,
+            check_name="book_chapter_figures_described",
+            summary="**2 figures need a description.** Fill the template and re-queue.",
+        )
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+
+    assert step_failure_message(context) == (
+        "**2 figures need a description.** Fill the template and re-queue."
+    )
+
+
 def test_step_failure_message_falls_back_to_error_message_when_no_user_failure_data():
     context = MagicMock()
     context.get_step_failure_events.return_value = [

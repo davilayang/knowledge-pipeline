@@ -215,6 +215,17 @@ class NotionQueueResource(dg.ConfigurableResource):
                 properties["Publish Date"] = {"date": {"start": clean_date}}
         self._client().pages.update(page_id=page_id, properties=properties)
 
+    def update_name(self, page_id: str, name: str) -> None:
+        """Set the row's title without touching Status. For a source that states
+        its own title: the row is named as soon as the body is fetched, so a row
+        that later parks on a gate is still identifiable in the queue."""
+        clean = name.strip()
+        if not clean:
+            return
+        self._client().pages.update(
+            page_id=page_id, properties={"Name": {"title": [{"text": {"content": clean}}]}}
+        )
+
     def update_status_failed(self, page_id: str, error: str) -> None:
         self._client().pages.update(
             page_id=page_id,

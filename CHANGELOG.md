@@ -6,6 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **A row parked on a blocking asset check now says what to fix in Notion.**
+  `step_failure_message` prefers a failed check's `summary` metadata over
+  Dagster's generic wrapper, which named the check and nothing else — a figure
+  park read as "1 blocking asset check failed" with no repair instructions.
+- **A book chapter is named in Notion as soon as it is fetched**, not only once
+  it reaches `publish_item`. A chapter that parks on the figure gate was left
+  as `New queued page`, so several parked chapters were indistinguishable.
+
 ---
 
 ## [0.38.2] — 2026-09-22
