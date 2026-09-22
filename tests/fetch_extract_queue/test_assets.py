@@ -1762,9 +1762,35 @@ def test_fetched_names_the_notion_row_from_a_self_describing_title(tmp_path: Pat
     )
 
     assert result.success
-    notion.update_name.assert_called_once_with(
+    notion.seed_name.assert_called_once_with(
         "p-1", "Evals for AI Engineers — Chapter 1. Introduction"
     )
+
+
+def test_fetched_keeps_the_body_when_naming_the_notion_row_fails(tmp_path: Path):
+    """Naming is a convenience; the converted body is the work. A Notion outage
+    during the name write must not discard a chapter that converted cleanly —
+    the retry would re-download and re-convert it to reach the same place."""
+    db_path = tmp_path / "q.db"
+    url = "https://learning.oreilly.com/library/view/x/9798341660717/ch01.html"
+    _seed_triaged(db_path, "p-1", "book_chapter", url=url)
+    store = QueueStoreResource(db_path=str(db_path))
+    fetcher = MagicMock()
+    fetcher.structure_oreilly.return_value = FetchResult(
+        content="c" * 5000, tier="oreilly-htmlbook", tier_log=[], title="Chapter 1. Introduction"
+    )
+    notion = _notion_with_file("ch01.html", b"<html>chapter</html>")
+    notion.seed_name.side_effect = RuntimeError("notion 502")
+
+    result = _materialize(
+        fetch_content,
+        partition_key="p-1",
+        resources={"fetcher": fetcher, "store": store, "notion": notion},
+        url=url,
+    )
+
+    assert result.success
+    assert (store.get_row("p-1") or {}).get("raw_content")
 
 
 def test_fetched_routes_attached_html_to_the_converter(tmp_path: Path):

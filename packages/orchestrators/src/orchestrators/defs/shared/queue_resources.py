@@ -15,6 +15,7 @@ class definition.
 """
 
 import json
+import re
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,23 @@ from notion_client import Client as NotionClient
 from orchestrators.config import LOCAL_QUEUE_DB
 
 _NOTION_ERROR_RICH_TEXT_CAP = 1900
+# Notion titles a row created in the database itself, not captured: "Untitled",
+# or the locale's "New <database> page" ("New queued page" for the Queue). Both
+# mean nobody chose a title, so seeding may replace them.
+_NOTION_AUTO_NAMES = {"untitled"}
+_NOTION_NEW_PAGE_RE = re.compile(r"^new\s+\S.*\s+page$", re.IGNORECASE)
+
+
+def is_user_set_name(name: str | None) -> bool:
+    """Whether a row's Name was chosen by someone, rather than left as one of
+    Notion's own placeholders. Shared so triage's seeding and the fetch-time
+    seeding of a self-describing source cannot drift on what counts as blank."""
+    stripped = (name or "").strip()
+    if not stripped or stripped.lower() in _NOTION_AUTO_NAMES:
+        return False
+    return not _NOTION_NEW_PAGE_RE.match(stripped)
+
+
 # A saved chapter page runs to a few hundred KB; the ceiling is generous so a
 # slow link fails as a timeout rather than a truncated body.
 _SOURCE_FILE_TIMEOUT_S = 60.0
@@ -215,12 +233,16 @@ class NotionQueueResource(dg.ConfigurableResource):
                 properties["Publish Date"] = {"date": {"start": clean_date}}
         self._client().pages.update(page_id=page_id, properties=properties)
 
-    def update_name(self, page_id: str, name: str) -> None:
-        """Set the row's title without touching Status. For a source that states
-        its own title: the row is named as soon as the body is fetched, so a row
-        that later parks on a gate is still identifiable in the queue."""
+    def seed_name(self, page_id: str, name: str) -> None:
+        """Name a row that nobody has named, without touching Status.
+
+        The seeding half of the naming rule triage applies to every other content
+        type — fill a blank Name, never replace a chosen one. A source that states
+        its own title reaches this at fetch time rather than at triage, because
+        triage never fetched its page.
+        """
         clean = name.strip()
-        if not clean:
+        if not clean or is_user_set_name(self.get_page_name(page_id)):
             return
         self._client().pages.update(
             page_id=page_id, properties={"Name": {"title": [{"text": {"content": clean}}]}}

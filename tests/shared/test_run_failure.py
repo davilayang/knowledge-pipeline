@@ -32,16 +32,49 @@ def test_step_failure_message_uses_terminal_step_not_first():
     assert step_failure_message(context) == "LlamaParse rejected PDF"
 
 
-def _check_event(*, passed: bool, check_name: str, summary: str | None) -> SimpleNamespace:
+def _check_event(
+    *,
+    passed: bool,
+    check_name: str,
+    summary: str | None,
+    blocking: bool = True,
+    severity: str = "ERROR",
+) -> SimpleNamespace:
     """One ASSET_CHECK_EVALUATION log entry, shaped as `instance.all_logs` returns it."""
     metadata = {"summary": SimpleNamespace(value=summary)} if summary is not None else {}
     return SimpleNamespace(
         dagster_event=SimpleNamespace(
             event_specific_data=SimpleNamespace(
-                passed=passed, check_name=check_name, metadata=metadata
+                passed=passed,
+                check_name=check_name,
+                metadata=metadata,
+                blocking=blocking,
+                severity=SimpleNamespace(name=severity),
             )
         )
     )
+
+
+def test_step_failure_message_ignores_a_warning_check_and_keeps_the_real_error():
+    """Only a blocking ERROR check is what stopped the run. A WARN check, or a
+    non-blocking one, reports alongside a failure it did not cause — letting its
+    summary stand in would replace the actual error with unrelated advice."""
+    context = MagicMock()
+    context.get_step_failure_events.return_value = [
+        _step_event(user_description=None, error_message="RuntimeError: fetcher timed out")
+    ]
+    context.instance.all_logs.return_value = [
+        _check_event(
+            passed=False,
+            check_name="metadata_columns_populated",
+            summary="**Metadata looked thin.** Consider a re-run.",
+            blocking=False,
+            severity="WARN",
+        )
+    ]
+    context.failure_event.message = "Steps failed: [...]"
+
+    assert step_failure_message(context) == "RuntimeError: fetcher timed out"
 
 
 def test_step_failure_message_prefers_a_failed_blocking_check_summary():

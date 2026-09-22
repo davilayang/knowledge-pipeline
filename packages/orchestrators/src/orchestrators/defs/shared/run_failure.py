@@ -10,24 +10,31 @@ from orchestrators.defs.shared.queue_resources import NotionQueueResource
 
 
 def _failed_check_summary(context: Any) -> str | None:
-    """The `summary` metadata of the first failed asset check in this run.
+    """The `summary` metadata of a blocking ERROR check that failed in this run.
 
     A blocking check raises DagsterAssetCheckFailedError, which names the check
     and nothing else — what to do about it is in the check's own metadata, and
     that is what the operator needs in Notion.
+
+    Only blocking ERROR checks qualify: those are the ones that stop a run. A
+    WARN or non-blocking check reports alongside a failure it did not cause, and
+    its advice would otherwise replace the error that actually stopped the run.
     """
     try:
         entries = context.instance.all_logs(
             context.dagster_run.run_id, of_type=dg.DagsterEventType.ASSET_CHECK_EVALUATION
         )
-    except Exception:
+    except Exception as exc:
+        context.log.warning("could not read asset check evaluations: %r", exc)
         return None
     for entry in entries or []:
         data = getattr(getattr(entry, "dagster_event", None), "event_specific_data", None)
-        if data is None or getattr(data, "passed", True):
+        if data is None or getattr(data, "passed", True) or not getattr(data, "blocking", False):
             continue
-        summary = (getattr(data, "metadata", None) or {}).get("summary")
-        text = (getattr(summary, "value", None) or "").strip()
+        if getattr(getattr(data, "severity", None), "name", None) != "ERROR":
+            continue
+        value = getattr((getattr(data, "metadata", None) or {}).get("summary"), "value", None)
+        text = value.strip() if isinstance(value, str) else ""
         if text:
             return text
     return None

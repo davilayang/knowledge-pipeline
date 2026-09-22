@@ -365,11 +365,6 @@ def fetch_content(
             },
         )
 
-    # `publish_item` names the row from the extracted title, which a row parked
-    # on a gate never reaches. These types state their own title, so name it now.
-    if content_type in SELF_DESCRIBING_TYPES and result.title:
-        notion.update_name(page_id, result.title)
-
     # Before the hash, so a revised description map re-runs extraction.
     content, described = inject_figure_descriptions(result.content, notion.get_figure_text(page_id))
     char_count = len(content)
@@ -389,6 +384,17 @@ def fetch_content(
         author=author,
         content_date=str(published) if published else None,
     )
+
+    # After the body is stored, and best-effort: `publish_item` names the row
+    # from the extracted title, which a row parked on a gate never reaches, so
+    # these types are named here instead. A naming failure must not discard a
+    # chapter that converted cleanly — the retry would re-fetch and re-convert
+    # it to reach the same place.
+    if content_type in SELF_DESCRIBING_TYPES and result.title:
+        try:
+            notion.seed_name(page_id, result.title)
+        except Exception as exc:
+            context.log.warning("naming %s from its own title failed: %r", page_id, exc)
 
     metadata: dict[str, dg.MetadataValue] = {
         "content_type": dg.MetadataValue.text(content_type),

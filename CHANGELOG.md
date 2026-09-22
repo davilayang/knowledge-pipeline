@@ -15,6 +15,9 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 - **A book chapter is named in Notion as soon as it is fetched**, not only once
   it reaches `publish_item`. A chapter that parks on the figure gate was left
   as `New queued page`, so several parked chapters were indistinguishable.
+  Seeding follows the same first-touch rule triage applies to every other
+  content type (`is_user_set_name`, now shared): fill a blank Name, never
+  replace a chosen one.
 
 ---
 
