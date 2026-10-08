@@ -8,6 +8,21 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.39.0] — 2026-10-08
+
+### Added
+
+- **`pull-wiki` command mirrors the wiki and newsletter-assistant notes into a local Obsidian vault.** `scripts/deploy-hcloud.sh pull-wiki` rsyncs into the absolute path `WIKI_VAULT_DIR`, keeping dot-folders and `data/`. It refuses to run over a folder that is not empty, not a vault and not previously pulled.
+- **Wiki pages now link to each other.** The first mention of another page-worthy entity in a claim bullet becomes a markdown link (never inside code, links or URLs), and a `## Related` section lists co-occurring entities. Implementation: `_link_first_mentions` in `domains.wiki.attributed`, `link_targets` built in `attributed_synthesis.py`.
+- **Manual wiki-on-Obsidian checks.** `scripts/check_wiki_links.py` verifies that every link in a wiki folder resolves, and `scripts/check_agent_recall.sh` verifies that a fresh Claude Code session reaches the knowledge graph through the `knowledge-os` MCP.
+
+### Changed
+
+- **Rendered wiki pages change once on deploy, so the wiki vector collection re-embeds once.** Links alter every `page_hash`, and `SYNTHESIZE_WIKI_DAG_VERSION` goes from "3" to "4".
+- **`poe check` now also runs the `pull-wiki` script check.** The new `test-pull-wiki` task (`scripts/test-pull-wiki.sh`) runs against local fixture dirs, with no server needed.
+
+---
+
 ## [0.38.4] — 2026-10-08
 
 ### Changed

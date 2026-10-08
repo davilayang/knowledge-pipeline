@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.38.4"
+version = "0.39.0"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -128,9 +128,13 @@ help = "Run tests in parallel across CPU cores (pytest-xdist)"
 cmd = "./scripts/test-fetcher.sh"
 help = "Run the fetcher service's own suite (separate venv, not a workspace member)"
 
+[tool.poe.tasks.test-pull-wiki]
+cmd = "./scripts/test-pull-wiki.sh"
+help = "Check deploy-hcloud.sh pull-wiki against local fixture dirs (no server)"
+
 [tool.poe.tasks.check]
-sequence = ["fmt", "lint", "test", "test-fetcher"]
-help = "Run all checks: formatting, linting, workspace tests, and the fetcher suite"
+sequence = ["fmt", "lint", "test", "test-pull-wiki", "test-fetcher"]
+help = "Run all checks: formatting, linting, workspace tests, the pull-wiki script, and the fetcher suite"
 
 [tool.poe.tasks.fmt]
 cmd = "black --check packages/ services/ tests/"
