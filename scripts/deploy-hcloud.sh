@@ -8,6 +8,8 @@
 #   ./scripts/deploy-hcloud.sh deploy --branch fix/foo          # Deploy a feature branch (testing)
 #   ./scripts/deploy-hcloud.sh deploy --branch fix/foo --no-build
 #   ./scripts/deploy-hcloud.sh push-creds                       # Sync rclone.conf to server
+#   WIKI_VAULT_DIR=~/Documents/kos-wiki ./scripts/deploy-hcloud.sh pull-wiki
+#                                                               # Mirror the wiki + NA notes into an Obsidian vault
 #
 # Config is loaded from .env.deploy (create from .env.deploy.example).
 # Env vars can also be set inline: DEPLOY_TARGET=... ./scripts/deploy-hcloud.sh deploy
@@ -18,6 +20,9 @@
 #   DEPLOY_USER       Non-root user (default: deploy)
 #   DEPLOY_PASSWORD   Sudo password for DEPLOY_USER (required for setup/push-creds
 #                     since both chown bind-mount dirs over a non-TTY SSH session)
+#   WIKI_VAULT_DIR    Local Obsidian vault folder (required for pull-wiki; no default).
+#                     pull-wiki deletes anything in it that is not upstream, except .obsidian/.
+#   PULL_WIKI_SRC, PULL_NOTES_SRC   rsync sources for pull-wiki (default: the hcloud paths)
 
 set -euo pipefail
 
@@ -237,6 +242,30 @@ do_push_creds() {
 }
 
 # ==============================================================================
+# PULL-WIKI — mirror the entity wiki and NA notes into a local Obsidian vault
+# ==============================================================================
+#
+# The wiki lands at the vault root and the notes at <vault>/data/notes/ (the
+# path wiki pages already link notes at). Both are deleting mirrors, so the vault
+# is read-only: local edits are overwritten. The wiki mirror excludes .obsidian/
+# (Obsidian's settings) and data/notes/ (the notes mirror) from deletion.
+
+do_pull_wiki() {
+    [ -n "${WIKI_VAULT_DIR:-}" ] || error "Set WIKI_VAULT_DIR to the local Obsidian vault folder"
+
+    local target wiki_src notes_src
+    target="$(deploy_target)"
+    wiki_src="${PULL_WIKI_SRC:-${target}:~/knowledge-pipeline/data/wiki/}"
+    notes_src="${PULL_NOTES_SRC:-${target}:~/newsletter-assistant/data/notes/}"
+
+    info "Pulling wiki and notes into ${WIKI_VAULT_DIR}..."
+    mkdir -p "${WIKI_VAULT_DIR}/data/notes"
+    rsync -az --delete --exclude '.obsidian/' --exclude 'data/notes/' \
+        -e "ssh $(ssh_opts)" "${wiki_src}" "${WIKI_VAULT_DIR}/"
+    rsync -az --delete -e "ssh $(ssh_opts)" "${notes_src}" "${WIKI_VAULT_DIR}/data/notes/"
+}
+
+# ==============================================================================
 # Main
 # ==============================================================================
 
@@ -244,5 +273,6 @@ case "${1:-}" in
     setup)      do_setup ;;
     deploy)     shift; do_deploy "$@" ;;
     push-creds) do_push_creds ;;
+    pull-wiki)  do_pull_wiki ;;
     *)          usage ;;
 esac
