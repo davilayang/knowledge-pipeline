@@ -99,7 +99,7 @@ services:
       - ${BACKUP_SRC_DIR:-./data}:/app/source:ro # Mount source data folder at container
     networks:
       - dagster_network
-    restart: on-failure
+    restart: unless-stopped
 
   dagster-webserver:
     image: ${DOCKER_USER:-local}/kp-dagster-webserver
@@ -177,7 +177,7 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
-    restart: on-failure
+    restart: unless-stopped
 
   fetcher:
     image: ${DOCKER_USER:-local}/fetcher
