@@ -5,8 +5,8 @@ FROM python:3.13-slim
 # Pin to the same versions resolved by uv.lock for the code-server image.
 # Mismatched gRPC versions between webserver/daemon and the code server will
 # surface as confusing "incompatible" errors at runtime.
-ARG DAGSTER_VERSION=1.13.3
-ARG DAGSTER_POSTGRES_VERSION=0.29.3
+ARG DAGSTER_VERSION=1.13.8
+ARG DAGSTER_POSTGRES_VERSION=0.29.8
 # SQLAlchemy 2.1 makes a plain postgresql:// URL load the psycopg 3 driver, which
 # this image does not install (dagster-postgres brings psycopg2), so an unpinned
 # rebuild crash-loops the webserver and daemon. Pin to the uv.lock version.
