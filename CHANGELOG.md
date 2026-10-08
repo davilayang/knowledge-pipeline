@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.39.1] — 2026-10-08
+
+### Changed
+
+- **The Dagster webserver and daemon start again after an image rebuild.** `docker/dagster/Dockerfile` pins SQLAlchemy to the `uv.lock` version (2.0.50); an unpinned rebuild pulled 2.1, whose default PostgreSQL driver is psycopg 3, which the image does not install, so both containers crash-looped.
+- **The webserver and daemon now run the same Dagster as the code server.** The image moves from `dagster` 1.13.3 / `dagster-postgres` 0.29.3 to the `uv.lock` versions, 1.13.8 / 0.29.8.
+
+---
+
 ## [0.39.0] — 2026-10-08
 
 ### Added
