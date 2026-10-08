@@ -80,7 +80,7 @@ _CLAIMS = [
         "Anthropic built Claude using the Model Context Protocol.",
         {ANTHROPIC, CLAUDE, MCP},
     ),
-    # About both Claude and Claude Code, but only "Claude Code" appears — so a
+    # About both Claude and Claude Code, but only "Claude Code" appears, so a
     # shortest-first match would wrongly link "Claude" inside it.
     (
         "https://example.com/b",
@@ -190,7 +190,7 @@ def _unlink(text: str) -> str:
 
 
 def _section(page: str, heading: str) -> str:
-    """The body of `## <heading>` up to the next `## ` heading — not the rest of the page."""
+    """The body of `## <heading>` up to the next `## ` heading, not the rest of the page."""
     match = re.search(rf"^## {heading}\n(.*?)(?=^## |\Z)", page, flags=re.M | re.S)
     assert match, f"no ## {heading} section in page:\n{page}"
     return match.group(1)
