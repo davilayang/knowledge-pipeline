@@ -14,9 +14,10 @@ matching `domains.wiki.state`. Open connections with `state.connect` /
 
 import hashlib
 import logging
+import re
 import sqlite3
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from urllib.parse import urlparse
 
 import yaml
@@ -297,6 +298,9 @@ class AttributedClaim:
     fetched_at: str | None = (
         None  # when the source was fetched — a distinct recency signal from published_at
     )
+    entity_ids: tuple[str, ...] = field(
+        default=(), compare=False
+    )  # every entity this claim is about (its claim_entities rows)
 
 
 def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> list[AttributedClaim]:
@@ -308,7 +312,8 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
     rows = conn.execute(
         """
         SELECT c.text, c.provenance, c.stance, s.author, s.publication, s.published_at,
-               s.url, s.title, s.fetched_at
+               s.url, s.title, s.fetched_at,
+               (SELECT group_concat(entity_id) FROM claim_entities WHERE claim_id = c.claim_id)
         FROM claim_entities ce
         JOIN claims c ON c.claim_id = ce.claim_id
         JOIN sources s ON s.source_id = c.source_id
@@ -317,7 +322,7 @@ def attributed_claims_for_entity(conn: sqlite3.Connection, entity_id: str) -> li
         """,
         (entity_id,),
     ).fetchall()
-    return [AttributedClaim(*r) for r in rows]
+    return [AttributedClaim(*r[:-1], entity_ids=tuple((r[-1] or "").split(","))) for r in rows]
 
 
 def count_sources_for_entity(conn: sqlite3.Connection, entity_id: str) -> int:
@@ -424,6 +429,44 @@ def _note_caption(claim: AttributedClaim) -> str:
     )
 
 
+def _link_first_mentions(
+    text: str,
+    own_names: Sequence[str],
+    targets: Mapping[str, tuple[Sequence[str], str]],
+) -> str:
+    """Link the first mention of each target entity in a claim sentence.
+
+    `targets` maps entity_id -> (surface names incl. aliases, page filename).
+    A mention is a name or alias, case-insensitive, on word boundaries; the
+    longest surface form at a position wins ("Claude Code" over "Claude"). The
+    page's own names join the pattern so they shadow a shorter target name, but
+    are never linked."""
+    surface = {}  # lowercased surface form -> filename, or None for the page's own names
+    for name in own_names:
+        surface[name.casefold()] = None
+    for names, filename in targets.values():
+        for name in names:
+            surface.setdefault(name.casefold(), filename)
+    if not surface:
+        return text
+    pattern = re.compile(
+        r"(?<!\w)("
+        + "|".join(re.escape(n) for n in sorted(surface, key=len, reverse=True))
+        + r")(?!\w)",
+        re.IGNORECASE,
+    )
+    linked: set[str] = set()
+
+    def repl(m: re.Match[str]) -> str:
+        filename = surface[m.group(1).casefold()]
+        if filename is None or filename in linked:
+            return m.group(0)
+        linked.add(filename)
+        return f"[{m.group(0)}]({filename})"
+
+    return pattern.sub(repl, text)
+
+
 def render_attributed_markdown(
     *,
     entity: EntityRecord,
@@ -432,6 +475,8 @@ def render_attributed_markdown(
     num_sources: int,
     updated_at: str,
     related: Sequence[str] = (),
+    link_targets: Mapping[str, tuple[Sequence[str], str]] | None = None,
+    related_links: Sequence[tuple[str, str]] = (),
 ) -> str:
     """Render an entity's attributed page to markdown — YAML frontmatter, then the
     claims split into `## Reported` / `## Opinion` sections (the header conveys the
@@ -439,7 +484,15 @@ def render_attributed_markdown(
     section claims keep their dated order from `attributed_claims_for_entity`; an
     empty section is omitted. `aliases`/`related`/`num_sources`/`updated_at` are
     producer-authoritative (derived from wiki.db at write time); `related` is the
-    co-occurring entity names from `get_related_for_entity`."""
+    co-occurring entity names from `get_related_for_entity`.
+
+    `link_targets` (entity_id -> (names + aliases, page filename)) holds the other
+    entities that have a page; the first mention of each in a claim bullet becomes
+    a link, limited to entities the claim is about. `related_links` is
+    (name, filename) pairs for the `## Related` section. Frontmatter is never
+    linked."""
+    link_targets = link_targets or {}
+    own_names = [entity.canonical_name, *aliases]
     frontmatter = [
         "---",
         f"entity_id: {_yaml_scalar(entity.entity_id)}",
@@ -461,7 +514,14 @@ def render_attributed_markdown(
     if user_blocks:
         sections.append("## From my notes\n\n" + "\n\n".join(user_blocks))
     for stance, heading in (("reported", "Reported"), ("opinion", "Opinion")):
-        bullets = [f"- {c.text} — {_attribution(c)}" for c in claims if c.stance == stance]
+        bullets = []
+        for c in claims:
+            if c.stance != stance:
+                continue
+            about = {e: link_targets[e] for e in c.entity_ids if e in link_targets}
+            bullets.append(
+                f"- {_link_first_mentions(c.text, own_names, about)} — {_attribution(c)}"
+            )
         if bullets:
             sections.append(f"## {heading}\n\n" + "\n".join(bullets))
     # A pipeline-`derived` claim reaches no section: "From my notes" is keyed on
@@ -476,6 +536,11 @@ def render_attributed_markdown(
             "provenance='derived' has no render section yet",
             dropped,
             entity.entity_id,
+        )
+    if related_links:
+        sections.append(
+            "## Related\n\n"
+            + "\n".join(f"- [{name}]({filename})" for name, filename in related_links)
         )
     body = f"# {entity.canonical_name}\n\n" + "\n\n".join(sections)
     return "\n".join(frontmatter) + "\n\n" + body + "\n"

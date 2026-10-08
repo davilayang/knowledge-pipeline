@@ -15,10 +15,12 @@ Two grains, matching the pipeline topology:
 """
 
 import os
+import sqlite3
 from datetime import UTC, date, datetime
 from pathlib import Path
 
 from domains.wiki.attributed import (
+    AttributedClaim,
     SourceRecord,
     attributed_claims_for_entity,
     count_sources_for_entity,
@@ -105,6 +107,20 @@ def synthesize_source(
         )
 
 
+def _has_page(
+    conn: sqlite3.Connection, entity_id: str, claims: list[AttributedClaim] | None = None
+) -> bool:
+    """Page-worthiness floor: ≥2 claims, or claims from ≥2 sources, or any `user`
+    claim. Decided from wiki.db rather than from files on disk so a link can
+    target a page the sweep has not rendered yet."""
+    claims = attributed_claims_for_entity(conn, entity_id) if claims is None else claims
+    return (
+        any(c.provenance == "user" for c in claims)
+        or len(claims) >= 2
+        or count_sources_for_entity(conn, entity_id) >= 2
+    )
+
+
 def render_entity_pages(
     *,
     wiki_db_path: Path | str,
@@ -139,12 +155,7 @@ def render_entity_pages(
             # own synthesis — page-worthy on its own, so it's exempt from the floor.
             # A pipeline-`derived` claim is NOT exempt: merging existing claims is
             # not evidence the user cares about the entity.
-            has_user_claim = any(c.provenance == "user" for c in claims)
-            if (
-                not has_user_claim
-                and len(claims) < 2
-                and count_sources_for_entity(conn, entity_id) < 2
-            ):
+            if not _has_page(conn, entity_id, claims):
                 # A re-extraction (claim replacement) can shrink an entity below the
                 # floor after it earned a page. Delete the now-stale page (row + .md)
                 # so it doesn't linger; the source count / claims no longer back it.
@@ -161,6 +172,21 @@ def render_entity_pages(
             related_names = [
                 r.canonical_name for rid in related_ids if (r := get_entity(conn, rid))
             ]
+            link_targets, related_links = {}, []
+            for rid in {*related_ids, *(e for c in claims for e in c.entity_ids)}:
+                if rid == entity_id or (target := get_entity(conn, rid)) is None:
+                    continue
+                if not _has_page(conn, rid):
+                    continue
+                link_targets[rid] = (
+                    [target.canonical_name, *get_aliases_for_entity(conn, rid)],
+                    f"{target.slug}-{shortid(rid)}.md",
+                )
+            related_links = [
+                (link_targets[rid][0][0], link_targets[rid][1])
+                for rid in related_ids
+                if rid in link_targets
+            ]
             markdown = render_attributed_markdown(
                 entity=entity,
                 claims=claims,
@@ -168,6 +194,8 @@ def render_entity_pages(
                 num_sources=count_sources_for_entity(conn, entity_id),
                 updated_at=updated_at,
                 related=related_names,
+                link_targets=link_targets,
+                related_links=related_links,
             )
             filename = f"{entity.slug}-{shortid(entity.entity_id)}.md"
             path = wiki_dir / filename
