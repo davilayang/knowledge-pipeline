@@ -192,7 +192,7 @@ ai-plannings/      # Implementation plans written by Claude Code sessions
 
 ## Deployment
 
-Hetzner Cloud VM, Docker Compose. Entry: `scripts/deploy-hcloud.sh` (`setup`, `deploy`, `push-creds`).
+Hetzner Cloud VM, Docker Compose. Entry: `scripts/deploy-hcloud.sh` (`setup`, `deploy`, `push-creds`, and the laptop-side `pull-wiki`, which mirrors the rendered wiki plus newsletter-assistant's notes into a local Obsidian vault at the absolute path `WIKI_VAULT_DIR`; a read-only mirror that deletes pages not upstream, keeps dot-folders and `data/`).
 
 Three Dagster containers + Postgres:
 - `dagster-code` runs the user-code gRPC server (custom image, uv-built).

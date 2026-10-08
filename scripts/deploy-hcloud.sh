@@ -20,8 +20,11 @@
 #   DEPLOY_USER       Non-root user (default: deploy)
 #   DEPLOY_PASSWORD   Sudo password for DEPLOY_USER (required for setup/push-creds
 #                     since both chown bind-mount dirs over a non-TTY SSH session)
-#   WIKI_VAULT_DIR    Local Obsidian vault folder (required for pull-wiki; no default).
-#                     pull-wiki deletes anything in it that is not upstream, except .obsidian/.
+#   WIKI_VAULT_DIR    Local Obsidian vault folder, absolute path (required for pull-wiki; no
+#                     default). A value given inline wins over the deploy config file. pull-wiki
+#                     deletes any page in it that is not upstream; dot-folders (.obsidian/,
+#                     .trash/) and data/ are kept. It refuses a folder that is neither empty nor
+#                     a vault it pulled before (marked by .kos-wiki-vault) nor an Obsidian vault.
 #   PULL_WIKI_SRC, PULL_NOTES_SRC   rsync sources for pull-wiki (default: the hcloud paths)
 
 set -euo pipefail
@@ -31,6 +34,10 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PROJECT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 
+# The vault pull-wiki mirrors into (and deletes from) must be the one the caller
+# named, so an inline WIKI_VAULT_DIR survives the `set -a` source below.
+INLINE_WIKI_VAULT_DIR="${WIKI_VAULT_DIR:-}"
+
 # Source deploy config if it exists
 if [ -f "${PROJECT_DIR}/.env.deploy" ]; then
     set -a
@@ -39,6 +46,7 @@ if [ -f "${PROJECT_DIR}/.env.deploy" ]; then
     set +a
 fi
 
+[ -z "$INLINE_WIKI_VAULT_DIR" ] || WIKI_VAULT_DIR="$INLINE_WIKI_VAULT_DIR"
 : "${IDENTITY_FILE:=}"
 : "${DEPLOY_USER:=deploy}"
 REMOTE_DIR="knowledge-pipeline"
@@ -242,7 +250,7 @@ do_push_creds() {
 }
 
 # ==============================================================================
-# PULL-WIKI — mirror the entity wiki and NA notes into a local Obsidian vault
+# PULL-WIKI: mirror the entity wiki and NA notes into a local Obsidian vault
 # ==============================================================================
 #
 # The wiki lands at the vault root and the notes at <vault>/data/notes/ (the
@@ -251,18 +259,40 @@ do_push_creds() {
 # (Obsidian's settings) and data/notes/ (the notes mirror) from deletion.
 
 do_pull_wiki() {
-    [ -n "${WIKI_VAULT_DIR:-}" ] || error "Set WIKI_VAULT_DIR to the local Obsidian vault folder"
+    local vault="${WIKI_VAULT_DIR:-}"
+    [ -n "$vault" ] || error "Set WIKI_VAULT_DIR to the local Obsidian vault folder"
+    case "$vault" in
+        /*) ;;
+        *) error "WIKI_VAULT_DIR must be an absolute path (got: $vault)" ;;
+    esac
+    # The mirror deletes what is not upstream, so only mirror into an empty or
+    # missing folder, one this command pulled before, or an Obsidian vault.
+    if [ -d "$vault" ] && [ -n "$(ls -A "$vault")" ] \
+        && [ ! -e "$vault/.kos-wiki-vault" ] && [ ! -d "$vault/.obsidian" ]; then
+        error "WIKI_VAULT_DIR=$vault is not empty and is not a vault; refusing to mirror over it"
+    fi
 
     local target wiki_src notes_src
     target="$(deploy_target)"
-    wiki_src="${PULL_WIKI_SRC:-${target}:~/knowledge-pipeline/data/wiki/}"
+    wiki_src="${PULL_WIKI_SRC:-${target}:~/${REMOTE_DIR}/data/wiki/}"
     notes_src="${PULL_NOTES_SRC:-${target}:~/newsletter-assistant/data/notes/}"
 
-    info "Pulling wiki and notes into ${WIKI_VAULT_DIR}..."
-    mkdir -p "${WIKI_VAULT_DIR}/data/notes"
-    rsync -az --delete --exclude '.obsidian/' --exclude 'data/notes/' \
-        -e "ssh $(ssh_opts)" "${wiki_src}" "${WIKI_VAULT_DIR}/"
-    rsync -az --delete -e "ssh $(ssh_opts)" "${notes_src}" "${WIKI_VAULT_DIR}/data/notes/"
+    # A wiki without its index.md is empty or mid-rebuild; mirroring it with
+    # --delete would empty the vault.
+    case "$wiki_src" in
+        *:*) ssh $(ssh_opts) "${wiki_src%%:*}" "test -s ${wiki_src#*:}index.md" ;;
+        *) [ -s "${wiki_src}index.md" ] ;;
+    esac || error "No index.md in ${wiki_src}; refusing to mirror an empty or partial wiki"
+
+    info "Pulling wiki and notes into ${vault}..."
+    mkdir -p "${vault}/data/notes"
+    # Root dot-entries (.obsidian/, .trash/, the marker) and data/ (the notes
+    # mirror below) are not upstream and must survive; *.tmp are in-flight
+    # atomic writes from a render that is still running.
+    rsync -az --delete --exclude '/.*' --exclude '/data/' --exclude '*.tmp' \
+        -e "ssh $(ssh_opts)" "${wiki_src}" "${vault}/"
+    rsync -az --delete -e "ssh $(ssh_opts)" "${notes_src}" "${vault}/data/notes/"
+    touch "${vault}/.kos-wiki-vault"
 }
 
 # ==============================================================================
