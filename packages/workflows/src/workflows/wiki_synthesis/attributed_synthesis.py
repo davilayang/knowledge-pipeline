@@ -112,7 +112,9 @@ def _has_page(
 ) -> bool:
     """Page-worthiness floor: ≥2 claims, or claims from ≥2 sources, or any `user`
     claim. Decided from wiki.db rather than from files on disk so a link can
-    target a page the sweep has not rendered yet."""
+    target a page the sweep has not rendered yet. That holds for a full sweep
+    (how production renders); a sweep scoped by `entity_ids` can link to a
+    page-worthy entity whose page it does not write."""
     claims = attributed_claims_for_entity(conn, entity_id) if claims is None else claims
     return (
         any(c.provenance == "user" for c in claims)
@@ -172,7 +174,7 @@ def render_entity_pages(
             related_names = [
                 r.canonical_name for rid in related_ids if (r := get_entity(conn, rid))
             ]
-            link_targets, related_links = {}, []
+            link_targets = {}
             for rid in {*related_ids, *(e for c in claims for e in c.entity_ids)}:
                 if rid == entity_id or (target := get_entity(conn, rid)) is None:
                     continue

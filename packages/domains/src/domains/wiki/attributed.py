@@ -429,6 +429,11 @@ def _note_caption(claim: AttributedClaim) -> str:
     )
 
 
+# Spans a mention must never be linked inside: inline code, an existing
+# markdown link, a bare URL.
+_UNLINKABLE = re.compile(r"`[^`]*`|\[[^\]]*\]\([^)]*\)|https?://\S+")
+
+
 def _link_first_mentions(
     text: str,
     own_names: Sequence[str],
@@ -437,18 +442,21 @@ def _link_first_mentions(
     """Link the first mention of each target entity in a claim sentence.
 
     `targets` maps entity_id -> (surface names incl. aliases, page filename).
-    A mention is a name or alias, case-insensitive, on word boundaries; the
-    longest surface form at a position wins ("Claude Code" over "Claude"). The
-    page's own names join the pattern so they shadow a shorter target name, but
-    are never linked."""
-    surface = {}  # lowercased surface form -> filename, or None for the page's own names
+    A mention is a name or alias on word boundaries, matched case-insensitively,
+    except that a name of 3 characters or fewer must match its exact case (so
+    the verb "go" never links the language "Go"). The longest surface form at
+    a position wins ("Claude Code" over "Claude"). The page's own names join the
+    pattern so they shadow a shorter target name, but are never linked. Text
+    inside inline code, an existing markdown link or a URL is left alone."""
+    surface: dict[str, str | None] = {}  # lowercased form -> filename; None = own name
     for name in own_names:
-        surface[name.casefold()] = None
+        surface[name.lower()] = None
     for names, filename in targets.values():
         for name in names:
-            surface.setdefault(name.casefold(), filename)
-    if not surface:
+            surface.setdefault(name.lower(), filename)
+    if not any(surface.values()):
         return text
+    exact_short = {n for n in [*own_names, *(n for ns, _ in targets.values() for n in ns)]}
     pattern = re.compile(
         r"(?<!\w)("
         + "|".join(re.escape(n) for n in sorted(surface, key=len, reverse=True))
@@ -458,13 +466,24 @@ def _link_first_mentions(
     linked: set[str] = set()
 
     def repl(m: re.Match[str]) -> str:
-        filename = surface[m.group(1).casefold()]
+        found = m.group(0)
+        # .get: re.IGNORECASE and str.lower can disagree on a few letters
+        # (dotless ı); such a match is simply not linked.
+        filename = surface.get(found.lower())
         if filename is None or filename in linked:
-            return m.group(0)
+            return found
+        if len(found) <= 3 and found not in exact_short:
+            return found
         linked.add(filename)
-        return f"[{m.group(0)}]({filename})"
+        return f"[{found}]({filename})"
 
-    return pattern.sub(repl, text)
+    out, pos = [], 0
+    for span in _UNLINKABLE.finditer(text):
+        out.append(pattern.sub(repl, text[pos : span.start()]))
+        out.append(span.group(0))
+        pos = span.end()
+    out.append(pattern.sub(repl, text[pos:]))
+    return "".join(out)
 
 
 def render_attributed_markdown(
