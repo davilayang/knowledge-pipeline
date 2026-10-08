@@ -71,6 +71,14 @@ _CLAIMS = [
         "Anthropic built Claude using the Model Context Protocol.",
         {ANTHROPIC, CLAUDE, MCP},
     ),
+    # About both Claude and Claude Code, but only "Claude Code" appears — so a
+    # shortest-first match would wrongly link "Claude" inside it.
+    (
+        "https://example.com/b",
+        "reported",
+        "MCP support shipped in Claude Code first.",
+        {MCP, CLAUDE_CODE, CLAUDE},
+    ),
 ]
 
 
@@ -159,9 +167,11 @@ def test_claim_bullet_links_other_entity_and_not_itself(tmp_path, wiki_db_path):
 
 
 def test_longest_name_wins(tmp_path, wiki_db_path):
-    # "Claude Code" must link as one entity, not as "Claude" followed by " Code".
+    # "Claude Code" must link as one entity, not as "Claude" followed by " Code",
+    # even when the claim is about both.
     wiki_dir = _render(tmp_path, wiki_db_path)
-    line = _bullet(_page(wiki_dir, MCP), "Claude Code uses MCP")
+    line = _bullet(_page(wiki_dir, MCP), "MCP support shipped in Claude Code")
+    assert f"[Claude Code]({_file(CLAUDE_CODE)})" in line
     assert "[Claude](" not in line
 
 
