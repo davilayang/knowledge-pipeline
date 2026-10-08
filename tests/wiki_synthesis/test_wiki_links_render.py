@@ -260,7 +260,7 @@ def test_mentions_inside_urls_code_and_links_are_left_alone(tmp_path, wiki_db_pa
     url = _bullet(page, "See https://claude.ai/docs")
     assert "https://claude.ai/docs" in url
     assert f"how [Claude]({_file(CLAUDE)}) handles" in url
-    code = _bullet(page, "claude is the CLI name")
+    code = _bullet(page, "`claude` is the CLI name")
     assert "`claude`" in code
     assert f"[Claude]({_file(CLAUDE)}) itself" in code
     md = _bullet(page, "Read the Claude guide")
