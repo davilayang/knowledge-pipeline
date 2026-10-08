@@ -36,8 +36,17 @@ CLAUDE_CODE = "e_cc00000000000001"
 CLAUDE = "e_c100000000000002"
 MCP = "e_3c00000000000003"
 ANTHROPIC = "e_a700000000000004"  # one claim from one source: no page
+GO = "e_6000000000000005"  # a two-letter name that is also an English word
+KIRK = "e_4b00000000000006"  # dotless ı: str.lower/casefold and re.IGNORECASE disagree
 
-_NAMES = {CLAUDE_CODE: "Claude Code", CLAUDE: "Claude", MCP: "MCP", ANTHROPIC: "Anthropic"}
+_NAMES = {
+    CLAUDE_CODE: "Claude Code",
+    CLAUDE: "Claude",
+    MCP: "MCP",
+    ANTHROPIC: "Anthropic",
+    GO: "Go",
+    KIRK: "Kırklareli",
+}
 
 # (source url, stance, text, entities the claim is about)
 _CLAIMS = [
@@ -71,7 +80,7 @@ _CLAIMS = [
         "Anthropic built Claude using the Model Context Protocol.",
         {ANTHROPIC, CLAUDE, MCP},
     ),
-    # About both Claude and Claude Code, but only "Claude Code" appears — so a
+    # About both Claude and Claude Code, but only "Claude Code" appears, so a
     # shortest-first match would wrongly link "Claude" inside it.
     (
         "https://example.com/b",
@@ -79,6 +88,31 @@ _CLAIMS = [
         "MCP support shipped in Claude Code first.",
         {MCP, CLAUDE_CODE, CLAUDE},
     ),
+    # Mentions inside a URL, inline code or an existing markdown link must stay
+    # untouched; the first plain mention is the one that links.
+    (
+        "https://example.com/c",
+        "reported",
+        "See https://claude.ai/docs to learn how Claude handles MCP.",
+        {MCP, CLAUDE},
+    ),
+    (
+        "https://example.com/c",
+        "reported",
+        "`claude` is the CLI name; Claude itself speaks MCP.",
+        {MCP, CLAUDE},
+    ),
+    (
+        "https://example.com/c",
+        "reported",
+        "Read [the Claude guide](https://example.com/g) before using MCP with Claude.",
+        {MCP, CLAUDE},
+    ),
+    ("https://example.com/c", "reported", "MCPs are spreading among Claude users.", {CLAUDE, MCP}),
+    ("https://example.com/d", "reported", "Go compiles fast.", {GO}),
+    ("https://example.com/d", "reported", "Teams go faster with Go and MCP.", {GO, MCP}),
+    ("https://example.com/d", "reported", "Kırklareli is a city in Turkey.", {KIRK}),
+    ("https://example.com/d", "reported", "KIRKLARELI hosts an MCP meetup.", {KIRK, MCP}),
 ]
 
 
@@ -155,6 +189,13 @@ def _unlink(text: str) -> str:
     return re.sub(r"\[([^\]]+)\]\([^)]+\)", r"\1", text)
 
 
+def _section(page: str, heading: str) -> str:
+    """The body of `## <heading>` up to the next `## ` heading, not the rest of the page."""
+    match = re.search(rf"^## {heading}\n(.*?)(?=^## |\Z)", page, flags=re.M | re.S)
+    assert match, f"no ## {heading} section in page:\n{page}"
+    return match.group(1)
+
+
 def _frontmatter(page: str) -> str:
     return page.split("---", 2)[1]
 
@@ -191,8 +232,7 @@ def test_alias_mention_links_and_entity_without_page_does_not(tmp_path, wiki_db_
 
 def test_related_section_lists_related_entities_with_pages(tmp_path, wiki_db_path):
     wiki_dir = _render(tmp_path, wiki_db_path)
-    page = _page(wiki_dir, MCP)
-    related = page.split("## Related", 1)[1]
+    related = _section(_page(wiki_dir, MCP), "Related")
     assert f"[Claude Code]({_file(CLAUDE_CODE)})" in related
     assert f"[Claude]({_file(CLAUDE)})" in related
     assert "[Anthropic](" not in related
@@ -212,6 +252,51 @@ def test_every_rendered_link_resolves(tmp_path, wiki_db_path):
         [sys.executable, str(CHECKER), str(wiki_dir)], capture_output=True, text=True
     )
     assert result.returncode == 0, result.stdout
+
+
+def test_mentions_inside_urls_code_and_links_are_left_alone(tmp_path, wiki_db_path):
+    wiki_dir = _render(tmp_path, wiki_db_path)
+    page = _page(wiki_dir, MCP)
+    url = _bullet(page, "See https://claude.ai/docs")
+    assert "https://claude.ai/docs" in url
+    assert f"how [Claude]({_file(CLAUDE)}) handles" in url
+    code = _bullet(page, "claude is the CLI name")
+    assert "`claude`" in code
+    assert f"[Claude]({_file(CLAUDE)}) itself" in code
+    md = _bullet(page, "Read the Claude guide")
+    assert "[the Claude guide](https://example.com/g)" in md
+    assert f"with [Claude]({_file(CLAUDE)})." in md
+
+
+def test_name_must_end_on_a_word_boundary(tmp_path, wiki_db_path):
+    wiki_dir = _render(tmp_path, wiki_db_path)
+    line = _bullet(_page(wiki_dir, CLAUDE), "MCPs are spreading")
+    assert "[MCP" not in line
+
+
+def test_short_names_match_exact_case(tmp_path, wiki_db_path):
+    # "Go" (≤3 characters) must not link the verb "go".
+    wiki_dir = _render(tmp_path, wiki_db_path)
+    line = _bullet(_page(wiki_dir, MCP), "Teams go faster")
+    assert f"Teams go faster with [Go]({_file(GO)})" in line
+
+
+def test_case_folding_mismatch_does_not_break_the_render(tmp_path, wiki_db_path):
+    # A name whose upper/lower case forms do not round-trip must never abort the
+    # sweep: the page still renders, linked or not.
+    wiki_dir = _render(tmp_path, wiki_db_path)
+    assert "KIRKLARELI hosts an" in _unlink(_page(wiki_dir, MCP))
+
+
+def test_checker_accepts_titled_and_same_page_section_links(tmp_path):
+    (tmp_path / "a.md").write_text(
+        '[b](b.md "Page B") [top](a.md#reported) [gone](missing.md "t")\n', encoding="utf-8"
+    )
+    (tmp_path / "b.md").write_text("# B\n", encoding="utf-8")
+    result = subprocess.run(
+        [sys.executable, str(CHECKER), str(tmp_path)], capture_output=True, text=True
+    )
+    assert result.stdout.strip() == "a.md: broken link missing.md"
 
 
 def test_checker_flags_broken_and_self_links(tmp_path):
