@@ -32,7 +32,11 @@ A page's body (`domains.wiki.attributed.render_attributed_markdown`) renders
 `## From my notes` first when the entity carries any `user` claim (a
 promoted note — see `promote_notes.py` below), as a verbatim block captioned
 by the note's title and date, followed by `## Reported` / `## Opinion`
-sections for the source-attributed claims. Frontmatter carries a deterministic
+sections for the source-attributed claims. In each Reported/Opinion bullet the
+first mention of another entity the claim is about (via `claim_entities`) that has
+a page becomes `[name](slug-shortid.md)` (never inside inline code, an existing
+link or a URL; names of 3 characters or fewer match exact case), and a trailing
+`## Related` section links the related entities that have pages. Frontmatter carries a deterministic
 `summary:` field (the lead claim's first line, preferring reported over
 opinion; a user note last, and never a pipeline-`derived` claim) — the text `WikiSource` embeds for the vector lane.
 
@@ -44,7 +48,7 @@ opinion; a user note last, and never a pipeline-`derived` claim) — the text `W
 | Synthesised page | `pages` row (FK → entities) + flat `wiki/{slug}-{shortid}.md` | 1 per entity |
 | Alias | `aliases` row (normalized_alias PK, entity_id FK) | many per entity (display form + variants) |
 | Source contribution | attributed lane's `sources` / `claims` / `claim_entities` tables | `num_sources` derived on read via `attributed.count_sources_for_entity` |
-| Co-occurrence link | none — derived from `claim_entities` at read time | drives the rendered `related` list (`co_count` = distinct shared sources) |
+| Co-occurrence link | none — derived from `claim_entities` at read time | drives the rendered `related` frontmatter list and the `## Related` links (`co_count` = distinct shared sources) |
 | Processed marker | `processed_items` row | 1 per (item_id, source_type) |
 | Claim provenance | `claims.provenance` — `source` / `user` / `derived` | who authored the claim |
 | Claim stance | `claims.stance` — `reported` / `opinion`, NULL otherwise | how a SOURCE presented it |
