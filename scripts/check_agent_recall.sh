@@ -1,9 +1,9 @@
 #!/usr/bin/env bash
 # Verifier for the done-line "if I say 'check my knowledge graph about OKF', the
 # agent can reach it and tell me what I have read": a fresh top-level Claude Code
-# session (not a subagent — it must load the user's normal MCP servers, skills
+# session (not a subagent: it must load the user's normal MCP servers, skills
 # and instructions) must call the knowledge-os MCP `search_knowledge` tool and
-# name at least one OKF article actually in queue.db — by a title phrase or by
+# name at least one OKF article actually in queue.db, by a title phrase or by
 # its source (author / handle), since a good answer cites sources by who wrote them.
 #
 # Usage: scripts/check_agent_recall.sh [extra claude flags...]
@@ -51,7 +51,7 @@ if not (called and named):
     print("--- answer ---")
     print(answer[:1500])
     # An empty answer usually means claude itself failed (auth, PATH, MCP server
-    # down) — show why, so the red is not mistaken for the model's choice.
+    # down); show why, so the red is not mistaken for the model's choice.
     stderr = open(sys.argv[3], encoding="utf-8").read().strip()
     if stderr:
         print("--- claude stderr ---")
