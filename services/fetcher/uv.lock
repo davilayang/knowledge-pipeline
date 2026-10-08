@@ -1,5 +1,5 @@
 version = 1
-revision = 3
+revision = 5
 requires-python = ">=3.13"
 
 [[package]]
@@ -514,7 +514,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.38.3"
+version = "0.38.4"
 source = { directory = "../../packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },

@@ -4,7 +4,7 @@ Usage: check_wiki_links.py <dir> [--allow-missing-prefix PREFIX ...]
 
 Walks every `*.md` under <dir> (skipping `.obsidian/`) and fails on:
 - a relative link whose target file does not exist (`/x.md` resolves from <dir>);
-- a page that links to itself;
+- a page that links to itself (a `#section` link to the same page is fine);
 - a target listed twice in one page's `## Related` section.
 
 Links with a scheme (`https:`, `mailto:`) or a bare `#anchor` are not checked.
@@ -19,7 +19,7 @@ import sys
 from pathlib import Path
 from urllib.parse import unquote
 
-LINK = re.compile(r"\[[^\]]*\]\(([^)\s]+)\)")
+LINK = re.compile(r"\[[^\]]*\]\(<?([^)\s>]+)>?(?:\s+\"[^\"]*\")?\)")  # [text](target "title")
 
 
 def _related_section(text: str) -> str:
@@ -41,7 +41,7 @@ def check(root: Path, allow_missing: list[str]) -> list[str]:
             resolved = (
                 (root / target.lstrip("/")) if target.startswith("/") else (page.parent / target)
             )
-            if resolved.resolve() == page.resolve():
+            if resolved.resolve() == page.resolve() and "#" not in raw:
                 problems.append(f"{rel_page}: links to itself ({raw})")
             elif not resolved.exists() and not any(target.startswith(p) for p in allow_missing):
                 problems.append(f"{rel_page}: broken link {raw}")
