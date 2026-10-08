@@ -6,12 +6,16 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
-### Fixed
+---
 
-- **`dagster-code` and `dagster-daemon` come back after a host reboot.** Both
-  ran under `restart: on-failure`, which Docker skips for a container that
-  exits 0 on a clean shutdown, so a reboot left them stopped while the rest of
-  the stack returned. They now use `unless-stopped`, like every other service.
+## [0.38.4] — 2026-10-08
+
+### Changed
+
+- **The Dagster code server and daemon now come back after a host reboot.**
+  `dagster-code` and `dagster-daemon` in `docker-compose.yml` switch from
+  `restart: on-failure`, which Docker skips after a clean exit 0, to
+  `unless-stopped`, like every other service.
 
 ---
 
