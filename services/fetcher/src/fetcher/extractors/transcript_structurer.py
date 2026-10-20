@@ -13,6 +13,7 @@ oembed dependencies) -- per-source plumbing belongs in handlers / endpoint.
 
 import logging
 import os
+import re
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -73,6 +74,21 @@ _FRAGMENT_NOTE = (
     "\n\nThis input is one fragment of a longer transcript. Do not add a title, "
     "an introduction, or a conclusion. Begin and end mid-conversation."
 )
+
+
+# The prompt's attribution format is `**Speaker Name:**` at the start of a
+# paragraph, falling back to `**Host:**` / `**Guest:**` when only the role is
+# clear. Those two are roles, not names, so they are never carried forward.
+_SPEAKER_LABEL = re.compile(r"^\*\*([^*\n]+?):\*\*", re.MULTILINE)
+_ROLE_LABELS = {"host", "guest"}
+
+
+def _named_speakers(markdown: str) -> list[str]:
+    return [
+        name.strip()
+        for name in _SPEAKER_LABEL.findall(markdown)
+        if name.strip().lower() not in _ROLE_LABELS
+    ]
 
 
 _PROMPT_PATH: Path = Path(
@@ -165,6 +181,7 @@ async def structure_transcript(
     structured: list[str] = []
     usages: list[dict[str, Any]] = []
     tier = ""
+    speakers: list[str] = []
     for segment in segments:
         # Sequential, not gathered: Ollama Cloud's concurrency limits are
         # unknown, and a partial failure mid-gather is harder to reason about.
@@ -177,9 +194,13 @@ async def structure_transcript(
             title=title,
             content_date=content_date,
             author_name=author,
+            speakers=list(speakers) or None,
             min_retention=_MIN_RETENTION,
             max_gaps_per_10k=_MAX_GAPS_PER_10K,
         )
         structured.append(markdown)
         usages.append(usage)
+        for name in _named_speakers(markdown):
+            if name not in speakers:
+                speakers.append(name)
     return "\n\n".join(structured), tier, _merge_usage(usages)

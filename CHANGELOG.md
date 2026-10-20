@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Long transcripts keep naming the guest after the first chunk.** The transcript structurer passes each later chunk the speaker names earlier chunks attributed turns to, as a `Speakers named earlier in this transcript:` line in the user message (`structure_transcript`, `call_cloud_chain(speakers=...)`). Generic `Host` / `Guest` labels are not carried. On one 51.6k-character interview structured by `gpt-5.6-luna`, generic `Guest:` labels fell from 22 to 9. A guest turn credited to the host whenever the labels fall out of step with the turns is not fixed by this.
+
 ---
 
 ## [0.39.1] — 2026-10-08

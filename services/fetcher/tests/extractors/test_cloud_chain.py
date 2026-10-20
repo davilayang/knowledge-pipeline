@@ -7,6 +7,8 @@ prompt content + chain config + hint context, so editing the active structurer p
 silently fails to invalidate cache.
 """
 
+from unittest.mock import MagicMock
+
 from fetcher.extractors._cloud_chain import (
     ChainEntry,
     StructurerChainFailed,
@@ -241,3 +243,46 @@ def test_not_configured_is_a_chain_failed_subclass() -> None:
     from fetcher.extractors._cloud_chain import StructurerNotConfigured
 
     assert issubclass(StructurerNotConfigured, StructurerChainFailed)
+
+
+async def test_call_cloud_chain_sends_known_speakers_in_the_user_message(monkeypatch) -> None:
+    """A transcript chunk after the first is told who the earlier chunks named,
+    so it can attribute turns by name rather than fall back to Host / Guest.
+    The names ride in the user message with the other hints: the system prompt
+    stays byte-identical across calls, which is what keeps it cached."""
+    import openai
+
+    from fetcher.extractors._cloud_chain import call_cloud_chain
+
+    sent: list[list[dict]] = []
+
+    class _FakeCompletions:
+        async def create(self, *, model, messages, **kwargs):
+            sent.append(messages)
+            choice = MagicMock(finish_reason="stop")
+            choice.message.content = messages[1]["content"].split("---\n\n", 1)[1]
+            return MagicMock(choices=[choice], usage=None)
+
+    class _FakeClient:
+        def __init__(self, **kwargs):
+            self.chat = MagicMock(completions=_FakeCompletions())
+
+    monkeypatch.setattr(openai, "AsyncOpenAI", _FakeClient)
+
+    body = "Yeah, we route through Azure Foundry, AWS Bedrock and Google Vertex for clients."
+    await call_cloud_chain(
+        body,
+        "prompt",
+        chain=[ChainEntry(model="gpt-4.1-mini", provider="openai")],
+        openai_key="sk-set",
+        ollama_key=None,
+        author_name="Greg Isenberg",
+        speakers=["Greg Isenberg", "Voss"],
+    )
+
+    system, user = sent[0]
+    assert system["content"] == "prompt"
+    assert user["content"] == (
+        "Author: Greg Isenberg\n"
+        "Speakers named earlier in this transcript: Greg Isenberg, Voss\n\n---\n\n" + body
+    )

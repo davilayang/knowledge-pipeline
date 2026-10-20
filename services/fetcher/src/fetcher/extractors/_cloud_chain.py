@@ -96,6 +96,7 @@ def _build_user_message(
     title: str | None,
     content_date: str | None,
     author_name: str | None,
+    speakers: list[str] | None = None,
 ) -> str:
     """Build the user-role message; hints are prepended as ground-truth context.
 
@@ -108,6 +109,8 @@ def _build_user_message(
         hints.append(f"Author: {author_name}")
     if content_date:
         hints.append(f"Date: {content_date}")
+    if speakers:
+        hints.append(f"Speakers named earlier in this transcript: {', '.join(speakers)}")
     if hints:
         return "\n".join(hints) + "\n\n---\n\n" + raw_content
     return raw_content
@@ -183,6 +186,7 @@ async def call_cloud_chain(
     title: str | None = None,
     content_date: str | None = None,
     author_name: str | None = None,
+    speakers: list[str] | None = None,
     min_retention: float = _MIN_RETENTION,
     max_gaps_per_10k: float | None = None,
 ) -> tuple[str, str, dict[str, Any]]:
@@ -196,7 +200,11 @@ async def call_cloud_chain(
     from openai import AsyncOpenAI
 
     user_message = _build_user_message(
-        content, title=title, content_date=content_date, author_name=author_name
+        content,
+        title=title,
+        content_date=content_date,
+        author_name=author_name,
+        speakers=speakers,
     )
 
     callable_entries = [

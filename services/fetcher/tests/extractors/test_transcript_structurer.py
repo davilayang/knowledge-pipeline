@@ -114,3 +114,32 @@ async def test_long_transcript_is_split_into_chunks_and_rejoined(
     assert len(sent) == expected
     assert all(len(s) <= transcript_structurer._MAX_CHUNK_CHARS for s in sent)
     assert markdown == "\n\n".join(f"[segment {i}]" for i in range(1, expected + 1))
+
+
+async def test_later_chunks_are_told_the_speakers_earlier_chunks_named(
+    freeze_chain: list[ChainEntry], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Only the opening chunk hears the host introduce the guest, so a later
+    chunk structured blind falls back to `Host:` / `Guest:` and can credit a
+    guest's turn to the host. Each chunk after the first gets the names the
+    chunks before it attributed turns to; generic role labels are not names."""
+    monkeypatch.setattr(transcript_structurer, "_PROMPT", "p")
+    replies = iter(
+        [
+            "**Greg Isenberg:** Welcome.\n\n**Voss:** Thanks.\n\n**Host:** So.",
+            "**Voss:** We route through Bedrock.",
+            "**Guest:** Right.",
+        ]
+    )
+    speakers_sent: list[list[str] | None] = []
+
+    async def fake_chain(content, prompt, **kwargs):
+        speakers_sent.append(kwargs.get("speakers"))
+        return next(replies), "structurer:gemma4:31b", {}
+
+    monkeypatch.setattr(transcript_structurer, "call_cloud_chain", fake_chain)
+
+    body = "word " * 7_000  # 35,000 chars -> three segments at a 12k limit
+    await transcript_structurer.structure_transcript(_make_ctx(), body, title=None, author=None)
+
+    assert speakers_sent == [None, ["Greg Isenberg", "Voss"], ["Greg Isenberg", "Voss"]]
