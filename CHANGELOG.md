@@ -8,11 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **Langfuse traces reach Cloud v4 in seconds.** `knowledge-workflows` moves from `langfuse` 3.15.0 to 5.1.0 (`~=5.1`). Langfuse marks SDK v3 deprecated on Cloud v4: a test generation exported on 3.15.0 was visible on the legacy traces API within seconds but took about 7.5 minutes to reach the v2 observations API; on 5.1.0 it was visible on v2 within 10 s. `.env.example` uses `LANGFUSE_BASE_URL`, since v5 treats `LANGFUSE_HOST` as a deprecated fallback.
-
-### Added
-
-- **`tests/test_langfuse_e2e.py` round-trips the `workflows.llm` tracing surface through Langfuse Cloud.** One real OpenAI call, then a REST readback (not through the SDK) asserting one `GENERATION` with environment, model, input/output and usage. Skipped unless `LANGFUSE_E2E=1`, so `poe test` and CI make no call.
+- **Langfuse traces reach Cloud v4 in seconds.** `knowledge-workflows` moves from `langfuse` 3.15.0 to 5.1.0 (`>=5.1,<6.0`). Langfuse marks SDK v3 deprecated on Cloud v4: a test generation exported on 3.15.0 was visible on the legacy traces API within seconds but took about 7.5 minutes to reach the v2 observations API; on 5.1.0 it was visible on v2 within 10 s. `.env.example` uses `LANGFUSE_BASE_URL`, since v5 treats `LANGFUSE_HOST` as a deprecated fallback.
 
 ---
 

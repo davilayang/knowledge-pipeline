@@ -13,7 +13,7 @@ dependencies = [
     # 2.54 is where `prompt_cache_options` lands; capped below 3.0, which
     # switches transport to httpx2 and would strand the httpx used elsewhere.
     "openai>=2.54,<3.0",
-    "langfuse~=5.1",
+    "langfuse>=5.1,<6.0",
 ]
 
 [build-system]

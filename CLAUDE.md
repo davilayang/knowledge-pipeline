@@ -117,12 +117,6 @@ uv run poe test        # pytest -v
 uv run poe fix         # fmt-fix + lint-fix
 ```
 
-After any Langfuse SDK change, run the Cloud round trip (one real OpenAI call; skipped unless `LANGFUSE_E2E=1`):
-
-```bash
-LANGFUSE_E2E=1 uv run --env-file .env pytest tests/test_langfuse_e2e.py -v
-```
-
 Tests live at the repo root (`tests/`), not inside packages — fixtures crossing package boundaries (e.g. `wiki_pg` for Postgres) need a single shared root.
 
 ## DAG Versioning Pattern
@@ -193,7 +187,7 @@ ai-plannings/      # Implementation plans written by Claude Code sessions
 
 - Unit tests in `tests/` with mocked LLMs and `wiki_pg` Postgres fixture for state tests.
 - Sandbox materializations for Dagster assets — see `packages/orchestrators/src/orchestrators/defs/backup_readings/README.md` ("Layer 2").
-- LLM calls in tests **must** be mocked (use `unittest.mock.patch` at the **import** location, not the source location). The one exception is the env-gated `tests/test_langfuse_e2e.py`, whose subject is the export to Langfuse itself.
+- LLM calls in tests **must** be mocked (use `unittest.mock.patch` at the **import** location, not the source location).
 - Postgres tests use `pytest-postgresql` with the `wiki_pg` fixture (fresh psycopg connection to a temp DB with `wiki.sql` loaded).
 
 ## Deployment
