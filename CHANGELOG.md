@@ -6,9 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.40.0] — 2026-10-31
+
 ### Changed
 
-- **Langfuse traces reach Cloud v4 in seconds.** `knowledge-workflows` moves from `langfuse` 3.15.0 to 5.1.0 (`>=5.1,<6.0`). Langfuse marks SDK v3 deprecated on Cloud v4: a test generation exported on 3.15.0 was visible on the legacy traces API within seconds but took about 7.5 minutes to reach the v2 observations API; on 5.1.0 it was visible on v2 within 10 s. `.env.example` uses `LANGFUSE_BASE_URL`, since v5 treats `LANGFUSE_HOST` as a deprecated fallback.
+- **Langfuse traces reach Cloud v4 in seconds.** `knowledge-workflows` moves `langfuse` 3.15.0 to 5.1.0 (`>=5.1,<6.0`); on 3.15.0 a test generation took about 7.5 minutes to reach the v2 observations API, on 5.1.0 under 10 s.
+- **`LANGFUSE_BASE_URL` replaces `LANGFUSE_HOST`** in `.env.example`; SDK v5 reads `LANGFUSE_HOST` only as a deprecated fallback.
 
 ---
 
