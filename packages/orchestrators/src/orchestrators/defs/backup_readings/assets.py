@@ -172,6 +172,21 @@ def snapshot_notes(
 
 
 @dg.asset(
+    key=["snapshots", "briefs"],
+    group_name="backup",
+    kinds={"file"},
+    code_version=BACKUP_READINGS_DAG_VERSION,
+    partitions_def=daily_partition_def,
+    op_tags={"dagster/concurrency_key": PIPELINE_TAG},
+    description="gzip-tar archive of newsletter-assistant/data/briefs/ for the partition's date.",
+)
+def snapshot_briefs(
+    context: dg.AssetExecutionContext, backup: BackupResource
+) -> dg.MaterializeResult:
+    return _snapshot_one_dir(context, backup, backup.get_source_dir() / "briefs", "briefs.tgz")
+
+
+@dg.asset(
     key=["snapshots", "queue"],
     group_name="backup",
     kinds={"sqlite"},
@@ -248,6 +263,7 @@ def snapshot_wiki_pages(
         dg.AssetDep(["snapshots", "raw_store"]),
         dg.AssetDep(["snapshots", "sessions"]),
         dg.AssetDep(["snapshots", "notes"]),
+        dg.AssetDep(["snapshots", "briefs"]),
         dg.AssetDep(["snapshots", "queue"]),
         dg.AssetDep(["snapshots", "wiki"]),
         dg.AssetDep(["snapshots", "wiki_pages"]),
@@ -484,6 +500,7 @@ all_assets = [
     snapshot_raw_store,
     snapshot_sessions,
     snapshot_notes,
+    snapshot_briefs,
     snapshot_queue,
     snapshot_wiki,
     snapshot_wiki_pages,

@@ -27,7 +27,7 @@ LOCAL_WIKI_DIR = DATA_DIR / "wiki"
 # downstream assets as stale until re-materialized. Decoupled from package
 # versions on purpose (the version-bump skill rolls package versions on every
 # release, which would otherwise mark every asset stale on every release).
-BACKUP_READINGS_DAG_VERSION = "8"
+BACKUP_READINGS_DAG_VERSION = "9"
 # BACKUP_WIKI_DAG_VERSION = "1"        # future — wiki PG backup
 # BACKUP_DAGSTER_DAG_VERSION = "1"     # future — Dagster metadata PG backup
 SYNC_WIKI_CURATION_DAG_VERSION = "1"
@@ -52,7 +52,7 @@ WIKI_WRITE_POOL = "synthesize-wiki"
 # BACKUP_SRC_DIR); queue/wiki are kp-owned (read from this repo's DATA_DIR).
 DB_FILES = ["corpus.db", "sessions.db", "queue.db", "wiki.db"]
 
-# Per-partition gzip-tar archives of flat-file directories. notes/ is NA-owned
-# (under BACKUP_SRC_DIR); wiki/ is kp-owned (DATA_DIR/wiki — the synthesized
-# entity-page .md tree plus its _index sidecar).
-ARCHIVE_FILES = ["notes.tgz", "wiki.tgz"]
+# Per-partition gzip-tar archives of flat-file directories. notes/ and briefs/
+# are NA-owned (under BACKUP_SRC_DIR); wiki/ is kp-owned (DATA_DIR/wiki — the
+# synthesized entity-page .md tree plus its _index sidecar).
+ARCHIVE_FILES = ["notes.tgz", "briefs.tgz", "wiki.tgz"]

@@ -8,7 +8,7 @@ into a loud alert.
 Two owners, two source dirs:
 
 - **newsletter-assistant** (read from `BACKUP_SRC_DIR`): `corpus.db`,
-  `sessions.db`, and the `notes/` dir.
+  `sessions.db`, and the `notes/` and `briefs/` dirs.
 - **knowledge-pipeline** (read from this repo's `data/` dir): `queue.db`,
   `wiki.db`, and the `wiki/` rendered-page dir. These are kp-owned and live
   in kp's own data dir, *not* under `BACKUP_SRC_DIR`.
@@ -21,6 +21,7 @@ Failure cascade — what blocks what when a step fails:
 snapshot_raw_store         ─┐
 snapshot_sessions          ─┤
 snapshot_notes             ─┤
+snapshot_briefs            ─┤
 snapshot_queue             ─┤
 snapshot_wiki              ─┤
 snapshot_wiki_pages        ─┼─→ verify_* (blocking) ─→ storage_capacity ─→ uploaded_snapshots ──┐
@@ -80,10 +81,10 @@ sqlite3 backups/<date>/corpus.db "PRAGMA integrity_check;"
 sqlite3 backups/<date>/wiki.db      "PRAGMA integrity_check;"
 ```
 
-**Archive snapshots** (`notes.tgz`, `wiki.tgz`) — check trips when the
+**Archive snapshots** (`notes.tgz`, `briefs.tgz`, `wiki.tgz`) — check trips when the
 archive is suspiciously small, fails to open as a gzip-tar, or contains
-zero files. Common causes: source directory was empty (nothing in `notes/`
-or `wiki/` yet) or disk full on local backup volume.
+zero files. Common causes: source directory was empty (nothing in `notes/`,
+`briefs/` or `wiki/` yet) or disk full on local backup volume.
 
 The downstream upload doesn't run in either case — the corrupt or empty
 snapshot stays local-only.
@@ -98,7 +99,7 @@ has fewer files than expected after `rclone copy`. The metadata records
 ### Restoring a snapshot
 
 Restore each file back to *its owner's* dir — NA-owned files (`corpus.db`,
-`sessions.db`, `notes.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
+`sessions.db`, `notes.tgz`, `briefs.tgz`) go to `<BACKUP_SRC_DIR>`; kp-owned
 files (`queue.db`, `wiki.db`, `wiki.tgz`) go to this repo's `data/` dir.
 
 Snapshots taken on or before 2026-07-11 hold newsletter-assistant's articles
@@ -114,7 +115,8 @@ cp backups/<date>/wiki.db      <KP_DATA_DIR>/wiki.db           # kp-owned
 
 Local (tgz archives — extract back over the source dir):
 ```bash
-tar -xzf backups/<date>/notes.tgz -C <BACKUP_SRC_DIR>    # → notes/
+tar -xzf backups/<date>/notes.tgz  -C <BACKUP_SRC_DIR>   # → notes/
+tar -xzf backups/<date>/briefs.tgz -C <BACKUP_SRC_DIR>   # → briefs/
 tar -xzf backups/<date>/wiki.tgz  -C <KP_DATA_DIR>       # → wiki/  (kp-owned)
 ```
 
