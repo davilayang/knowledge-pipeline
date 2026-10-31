@@ -89,8 +89,8 @@ def _snapshot_one_dir(
     archive_name: str,
 ) -> dg.MaterializeResult:
     """Tar a flat-file directory into the partition's backup dir. `source` is an
-    absolute path: notes/ comes from BACKUP_SRC_DIR (NA's data dir), wiki/ from
-    kp's own DATA_DIR — both resolved by the caller."""
+    absolute path: notes/ and briefs/ come from BACKUP_SRC_DIR (NA's data dir),
+    wiki/ from kp's own DATA_DIR — all resolved by the caller."""
     if not source.is_dir():
         raise dg.Failure(
             description=f"Source dir missing: {source}",
