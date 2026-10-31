@@ -36,7 +36,7 @@ pytestmark = pytest.mark.skipif(
 _READBACK_TIMEOUT_S = 30
 
 
-def _observations(session_id: str) -> list[dict]:
+def _generations(session_id: str) -> list[dict]:
     base = os.environ.get("LANGFUSE_BASE_URL", "https://cloud.langfuse.com").rstrip("/")
     auth = (os.environ["LANGFUSE_PUBLIC_KEY"], os.environ["LANGFUSE_SECRET_KEY"])
     deadline = time.monotonic() + _READBACK_TIMEOUT_S
@@ -48,9 +48,9 @@ def _observations(session_id: str) -> list[dict]:
             timeout=10,
         )
         resp.raise_for_status()
-        data = resp.json()["data"]
-        if data or time.monotonic() > deadline:
-            return data
+        generations = [o for o in resp.json()["data"] if o["type"] == "GENERATION"]
+        if generations or time.monotonic() > deadline:
+            return generations
         time.sleep(2)
 
 
@@ -64,9 +64,8 @@ def test_generation_reaches_langfuse(monkeypatch):
         generate("Reply with the single word: ok")
     get_client().flush()
 
-    observations = _observations(session_id)
-    generations = [o for o in observations if o["type"] == "GENERATION"]
-    assert len(generations) == 1, observations
+    generations = _generations(session_id)
+    assert len(generations) == 1, generations
     gen = generations[0]
     assert gen["environment"] == "e2e"
     assert gen.get("providedModelName") or gen.get("model")
