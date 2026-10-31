@@ -24,6 +24,7 @@ def test_definitions_load_with_expected_shape():
         "snapshots/raw_store",
         "snapshots/sessions",
         "snapshots/notes",
+        "snapshots/briefs",
         "snapshots/queue",
         "snapshots/wiki",
         "snapshots/wiki_pages",
@@ -32,7 +33,7 @@ def test_definitions_load_with_expected_shape():
         "google_drive/pruned_old_backups",
         "local_disk/pruned_old_backups",
     }
-    assert len(defs.asset_checks or []) == 6
+    assert len(defs.asset_checks or []) == 7
     assert sorted(s.name for s in defs.sensors) == ["ping_healthcheck_on_success"]
     assert sorted(j.name for j in defs.jobs) == ["backup_readings"]
     assert sorted(s.name for s in defs.schedules) == ["run_daily_backup"]
@@ -44,6 +45,14 @@ def test_expected_files_cover_wiki_db_and_pages():
     backup = BackupResource(source_data_dir="/tmp/src", backup_dir="/tmp/dst")
     assert "wiki.db" in backup.expected_files
     assert "wiki.tgz" in backup.expected_files
+
+
+def test_expected_files_cover_briefs_archive():
+    """newsletter-assistant's briefs are file-only (data/briefs/*.md, no SQLite
+    store), so briefs.tgz is their only backup; the upload completeness check
+    must enforce it."""
+    backup = BackupResource(source_data_dir="/tmp/src", backup_dir="/tmp/dst")
+    assert "briefs.tgz" in backup.expected_files
 
 
 def test_expected_files_track_the_renamed_articles_db():
