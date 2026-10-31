@@ -142,7 +142,6 @@ All resolved via `dg.EnvVar` at run init — unset → fail fast with a clear
 | `DRIVE_REMOTE` | rclone remote name (e.g. `gdrive`) |
 | `DRIVE_BACKUP_ROOT` | Drive folder under the remote (e.g. `knowledge-pipeline/backups`) |
 | `HEALTHCHECK_PING_URL` | healthchecks.io ping URL |
-| `DATABASE_URL` | Postgres URL for Dagster run history + LangGraph checkpoints |
 
 Set in the deploy `.env` (server) or shell profile (laptop). See
 `.env.example` at the repo root.

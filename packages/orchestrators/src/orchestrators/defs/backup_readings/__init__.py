@@ -1,11 +1,12 @@
 # Backup pipeline — daily-partitioned snapshot of newsletter-assistant SQLite
-# DBs with optional Drive offload (rclone) and healthchecks.io success ping.
+# DBs with Drive offload (rclone) and healthchecks.io success ping.
 #
-# Env vars:
-#   BACKUP_SRC_DIR        — required; absolute path to source DB dir
-#   BACKUP_DST_DIR        — required; absolute path to local snapshot landing dir
-#   DRIVE_REMOTE          — rclone remote name; unset disables Drive flow
-#   HEALTHCHECK_PING_URL  — full ping URL; unset disables success ping
+# Env vars (all required; unset fails the run at init):
+#   BACKUP_SRC_DIR        absolute path to source DB dir
+#   BACKUP_DST_DIR        absolute path to local snapshot landing dir
+#   DRIVE_REMOTE          rclone remote name
+#   DRIVE_BACKUP_ROOT     Drive folder under the remote
+#   HEALTHCHECK_PING_URL  full ping URL
 
 import dagster as dg
 

@@ -21,7 +21,7 @@ backup_readings_job = dg.define_asset_job(
     description=(
         "Daily backup: snapshot newsletter-assistant SQLite DBs, verify integrity, "
         "offload to Google Drive (rclone), prune both sides, ping healthchecks.io. "
-        "Drive + healthcheck steps short-circuit when their env vars are unset."
+        "Every env var is required; an unset one fails the run at init."
     ),
     selection=dg.AssetSelection.assets(*all_assets),
     partitions_def=daily_partition_def,

@@ -6,9 +6,13 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.41.0] — 2026-10-31
+
 ### Added
 
-- **Daily backups now include newsletter-assistant's briefs.** `backup_readings` archives `<BACKUP_SRC_DIR>/briefs/` as `briefs.tgz`, gated by the blocking `verify_snapshot_briefs` check (readable archive, at least one file) and enforced by the Drive upload completeness check. Briefs are file-only in newsletter-assistant (no SQLite store), so this archive is their only backup. `BACKUP_READINGS_DAG_VERSION` 8 → 9.
+- **Daily backups now include newsletter-assistant's briefs.** `backup_readings` archives `<BACKUP_SRC_DIR>/briefs/` as `briefs.tgz` via the new `snapshot_briefs` asset, gated by the blocking `verify_snapshot_briefs` check. Briefs are file-only in newsletter-assistant, so this archive is their only backup; `BACKUP_READINGS_DAG_VERSION` is now 9.
 
 ---
 
