@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.40.0] — 2026-10-31
+
+### Changed
+
+- **Langfuse traces reach Cloud v4 in seconds.** `knowledge-workflows` moves `langfuse` 3.15.0 to 5.1.0 (`>=5.1,<6.0`); on 3.15.0 a test generation took about 7.5 minutes to reach the v2 observations API, on 5.1.0 under 10 s.
+- **`LANGFUSE_BASE_URL` replaces `LANGFUSE_HOST`** in `.env.example`; SDK v5 reads `LANGFUSE_HOST` only as a deprecated fallback.
+
+---
+
 ## [0.39.1] — 2026-10-08
 
 ### Changed
