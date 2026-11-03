@@ -292,45 +292,94 @@ def test_pending_relists_an_emptied_note_only_until_its_stale_chunks_are_gone():
     assert after_purge.value["notes"] == []
 
 
-def _local_chunk(iid: str, file_name: str) -> tuple[str, dict]:
-    return f"{iid}::chunk-0", {"source_ref": f"local:{file_name}"}
+def _local_file(name: str) -> IngestItem:
+    return IngestItem(
+        item_id=f"id-{name}",
+        title=name,
+        date=date(2026, 5, 11),
+        text="body",
+        source_type="local_file",
+        source_ref=f"local:{name}",
+    )
+
+
+def _indexed(*names: str) -> _StubCollection:
+    """Collection holding two chunks per named local file."""
+    ids, metas = [], {}
+    for name in names:
+        for k in range(2):
+            cid = f"id-{name}::chunk-{k}"
+            ids.append(cid)
+            metas[cid] = {"source_ref": f"local:{name}"}
+    return _StubCollection(existing_ids=ids, existing_metas=metas)
+
+
+def _ingest_notes(collection: _StubCollection, source: "_StubSource") -> None:
+    pvs_assets.notes.op.compute_fn.decorated_fn(
+        MagicMock(spec=dg.AssetExecutionContext),
+        pending={"notes": []},
+        sources=_StubSources(notes=source),
+        vector_store=_StubVectorStore({"notes": collection}),
+    )
+
+
+def _refs(collection: _StubCollection) -> set[str]:
+    return {m["source_ref"] for m in collection.get(include=["metadatas"])["metadatas"]}
 
 
 def test_ingest_purges_chunks_of_a_deleted_local_file_even_with_nothing_pending():
     """A deleted note never appears in `pending` (it has no item any more), so
     its chunks are reachable only by a source_ref no file on disk carries.
-    The ingest step must drop those, or recall keeps serving a note the user
-    deleted, while leaving every file still on disk untouched."""
-    live = _item("live", source_type="local_file")
-    gone_id, gone_meta = _local_chunk("gone", "2026-03-10_notes.md")
-    collection = _StubCollection(
-        existing_ids=["live::chunk-0", gone_id],
-        existing_metas={"live::chunk-0": {"source_ref": live.source_ref}, gone_id: gone_meta},
-    )
-    vector_store = _StubVectorStore({"notes": collection})
-    sources = _StubSources(notes=_StubSource([live]))
-    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    The ingest step must drop every chunk of it, or recall keeps serving a note
+    the user deleted, and must leave every file still on disk untouched."""
+    live = [f"2026-11-0{d}_n-abcde{d}.md" for d in range(1, 9)]
+    collection = _indexed(*live, "2026-03-10_notes.md")
 
-    pvs_assets.notes.op.compute_fn.decorated_fn(
-        ctx, pending={"notes": []}, sources=sources, vector_store=vector_store
-    )
+    _ingest_notes(collection, _StubSource([_local_file(n) for n in live]))
 
-    assert collection.get()["ids"] == ["live::chunk-0"]
+    assert _refs(collection) == {f"local:{n}" for n in live}
 
 
 def test_ingest_purges_nothing_when_the_local_source_lists_no_files():
     """An empty listing is what a missing or unmounted source dir looks like;
     treating it as "every file deleted" would wipe the whole collection."""
-    chunk_id, meta = _local_chunk("n", "2026-11-03_evals-a1b2c3.md")
-    collection = _StubCollection(existing_ids=[chunk_id], existing_metas={chunk_id: meta})
-    vector_store = _StubVectorStore({"notes": collection})
-    ctx = MagicMock(spec=dg.AssetExecutionContext)
+    collection = _indexed("2026-11-03_evals-a1b2c3.md")
 
-    pvs_assets.notes.op.compute_fn.decorated_fn(
-        ctx, pending={"notes": []}, sources=_StubSources(), vector_store=vector_store
-    )
+    _ingest_notes(collection, _StubSource())
 
-    assert collection.get()["ids"] == [chunk_id]
+    assert _refs(collection) == {"local:2026-11-03_evals-a1b2c3.md"}
+
+
+def test_ingest_purges_nothing_when_most_indexed_files_look_deleted():
+    """A partial sync or mount lists only some files. Purging everything the
+    listing misses would delete live notes, so a purge reaching more than the
+    ceiling share of indexed files is refused outright."""
+    names = [f"2026-11-0{d}_n-abcde{d}.md" for d in range(1, 9)]
+    collection = _indexed(*names)
+
+    _ingest_notes(collection, _StubSource([_local_file(names[0])]))
+
+    assert _refs(collection) == {f"local:{n}" for n in names}
+
+
+def test_ingest_keeps_a_file_that_reappears_before_the_delete():
+    """A file absent from the first listing but present again by the time the
+    delete runs (a rename or sync in flight) is live and keeps its chunks."""
+    live = [f"2026-11-0{d}_n-abcde{d}.md" for d in range(1, 9)]
+    returning = "2026-11-09_back-abcdef.md"
+    collection = _indexed(*live, returning)
+
+    class _Flicker(_StubSource):
+        calls = 0
+
+        def source_refs(self):
+            self.calls += 1
+            refs = super().source_refs()
+            return refs if self.calls == 1 else refs | {f"local:{returning}"}
+
+    _ingest_notes(collection, _Flicker([_local_file(n) for n in live]))
+
+    assert f"local:{returning}" in _refs(collection)
 
 
 def test_pending_in_batching_caps_at_500_ids():

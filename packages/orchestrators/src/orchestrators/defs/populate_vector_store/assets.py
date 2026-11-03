@@ -181,23 +181,41 @@ def _bodyless_awaiting_purge(source, collection, bodyless_ids: list[str]) -> lis
     return awaiting
 
 
-def _purge_deleted_local_files(source, collection) -> int:
+# A purge reaching more than this share of indexed files is refused: a partial
+# sync or mount lists only some files, and the rest would look deleted. The
+# production cleanup this was built for was 53 of 422 day files (12.6%).
+PURGE_CEILING = 0.25
+
+
+def _purge_deleted_local_files(source, collection, log) -> int:
     """Drop chunks whose `local:` source_ref names a file no longer on disk.
 
     A deleted file has no item, so it never reaches pending or the per-item
-    delete; this is its only purge path. An empty listing is skipped: it is
-    what a missing or unmounted source dir looks like, and purging on it would
-    wipe the collection. Returns the number of files purged.
+    delete; this is its only purge path. Skipped when the listing is empty (a
+    missing or unmounted dir) or the purge would exceed PURGE_CEILING (a partial
+    one); either way nothing is deleted. Candidates are re-checked against a
+    fresh listing just before deleting, so a file renamed or re-synced mid-run
+    keeps its chunks. Returns the number of files purged.
+
+    ponytail: scans every chunk's metadata each tick (no filter can express
+    "ref not in set"); fine at thousands of chunks, page it if the lanes grow.
+    The last file of a lane, once deleted, is never purged (empty listing).
     """
     live = source.source_refs()
     if not live:
         return 0
     metas = collection.get(include=["metadatas"]).get("metadatas") or []
-    gone = {
-        ref
-        for m in metas
-        if (ref := (m or {}).get("source_ref", "")).startswith("local:") and ref not in live
-    }
+    indexed = {ref for m in metas if (ref := (m or {}).get("source_ref", "")).startswith("local:")}
+    gone = indexed - live
+    if len(gone) > PURGE_CEILING * len(indexed):
+        log.warning(
+            "refusing to purge %d of %d indexed files (ceiling %.0f%%): listing looks partial",
+            len(gone),
+            len(indexed),
+            PURGE_CEILING * 100,
+        )
+        return 0
+    gone -= source.source_refs()
     for ref in sorted(gone):
         collection.delete(where={"source_ref": ref})
     return len(gone)
@@ -312,7 +330,9 @@ def _run_ingest(
     purged = 0
     if source_name in LOCAL_FILE_LANES:
         purged = _purge_deleted_local_files(
-            getattr(sources, source_name)(), vector_store.get_collection(collection_name)
+            getattr(sources, source_name)(),
+            vector_store.get_collection(collection_name),
+            context.log,
         )
         if purged:
             context.log.info("purged chunks of %d deleted %s files", purged, source_name)
