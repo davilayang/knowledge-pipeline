@@ -24,6 +24,12 @@ class LocalFileSource:
             items.append(self._to_item(path))
         return items
 
+    def source_refs(self) -> set[str]:
+        """`local:<file name>` of every markdown file in the inbox, without reading them."""
+        if not self._inbox_dir.exists():
+            return set()
+        return {f"local:{path.name}" for path in self._inbox_dir.glob("*.md")}
+
     def get_item_ids(self, with_body: bool = False) -> list[str]:
         """IDs of every markdown file in the inbox.
 

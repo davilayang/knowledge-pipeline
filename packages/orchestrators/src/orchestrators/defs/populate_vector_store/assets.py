@@ -181,6 +181,28 @@ def _bodyless_awaiting_purge(source, collection, bodyless_ids: list[str]) -> lis
     return awaiting
 
 
+def _purge_deleted_local_files(source, collection) -> int:
+    """Drop chunks whose `local:` source_ref names a file no longer on disk.
+
+    A deleted file has no item, so it never reaches pending or the per-item
+    delete; this is its only purge path. An empty listing is skipped: it is
+    what a missing or unmounted source dir looks like, and purging on it would
+    wipe the collection. Returns the number of files purged.
+    """
+    live = source.source_refs()
+    if not live:
+        return 0
+    metas = collection.get(include=["metadatas"]).get("metadatas") or []
+    gone = {
+        ref
+        for m in metas
+        if (ref := (m or {}).get("source_ref", "")).startswith("local:") and ref not in live
+    }
+    for ref in sorted(gone):
+        collection.delete(where={"source_ref": ref})
+    return len(gone)
+
+
 @dg.asset(
     key=["vector_store", "pending"],
     group_name="vector_store",
@@ -287,8 +309,20 @@ def _run_ingest(
     extra_metadata_by_id: dict[str, dict] | None = None,
 ) -> dg.MaterializeResult:
     item_ids = pending.get(source_name, [])
+    purged = 0
+    if source_name in LOCAL_FILE_LANES:
+        purged = _purge_deleted_local_files(
+            getattr(sources, source_name)(), vector_store.get_collection(collection_name)
+        )
+        if purged:
+            context.log.info("purged chunks of %d deleted %s files", purged, source_name)
     if not item_ids:
-        return dg.MaterializeResult(metadata={"summary": dg.MetadataValue.md("_no pending_")})
+        return dg.MaterializeResult(
+            metadata={
+                "summary": dg.MetadataValue.md("_no pending_"),
+                "deleted_files_purged": dg.MetadataValue.int(purged),
+            }
+        )
 
     source = getattr(sources, source_name)()
     chunker_name = CHUNKER_BY_SOURCE[source_name]
@@ -352,6 +386,7 @@ def _run_ingest(
             + (f" ({len(missing)} missing from source)" if missing else "")
         ),
         "items_ingested": dg.MetadataValue.int(len(items) - len(errors)),
+        "deleted_files_purged": dg.MetadataValue.int(purged),
         "chunks_written": dg.MetadataValue.int(chunks_written),
         "tokens_embedded": dg.MetadataValue.int(tokens_embedded),
         "errors": dg.MetadataValue.json(errors),

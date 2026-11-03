@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Deleting a note or brief file now removes it from search.** Each notes/briefs ingest run drops chunks whose `local:` source_ref names a file no longer on disk, and skips the purge when the source dir lists no files so a missing mount cannot wipe the collection. In production the notes index held 53 day files (`<date>_notes.md`) deleted when notes moved to one file per note, which newsletter-assistant's MCP search had to drop as unopenable. (`_purge_deleted_local_files` in `populate_vector_store/assets.py`, `LocalFileSource.source_refs`)
+
 ---
 
 ## [0.41.0] — 2026-10-31

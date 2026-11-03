@@ -48,6 +48,9 @@ vector_store/pending   (30-min partition)
 vector_store/contents             vector_store/conversations
 vector_store/notes                vector_store/wiki
 vector_store/briefings
+  │  notes/briefs first: purge chunks whose `local:` source_ref names a file no
+  │    longer on disk (`_purge_deleted_local_files`; skipped when the source dir
+  │    lists no files, so a missing mount cannot wipe the collection)
   │  sequential per-item loop:
   │    - source.get_item(id) → IngestItem
   │    - chunker(item.text) per CHUNKER_BY_SOURCE
@@ -207,8 +210,9 @@ c.delete_collection('contents')
 
 - Phase F: consumer-side cutover (HttpClient, query-side OpenAI EF on
   `VectorStoreResource`, 4-fan-out recall).
-- Orphan GC for chunks whose upstream items were deleted — including **pruned
-  wiki entities** (merged/renamed/removed): their old `entity_id` vectors linger
+- Orphan GC for chunks whose upstream items were deleted, outside the notes
+  and briefs lanes (which purge deleted files on every ingest run) — including
+  **pruned wiki entities** (merged/renamed/removed): their old `entity_id` vectors linger
   in the `wiki` collection because discovery only iterates live pages. Accepted
   as FM1 noise (NA skips dead `entity_id`s); revisit if merge/rename drift
   measurably pollutes recall.

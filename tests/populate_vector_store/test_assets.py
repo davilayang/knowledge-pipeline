@@ -39,7 +39,11 @@ class _StubCollection:
 
     def get(self, where=None, include=None):
         self.get_calls.append({"where": where, "include": include})
-        where = where or {}
+        if where is None:
+            result = {"ids": list(self._ids)}
+            if include and "metadatas" in include:
+                result["metadatas"] = [self._metas.get(cid, {}) for cid in self._ids]
+            return result
         if "source_ref" in where:
             matched = [
                 cid
@@ -148,6 +152,9 @@ class _StubSource:
 
     def resolve_index(self) -> dict[str, dict]:
         return self._resolve_index
+
+    def source_refs(self) -> set[str]:
+        return {i.source_ref for i in self._items}
 
 
 def _item(iid: str, text: str = "hello world", source_type: str = "raw_store") -> IngestItem:
@@ -283,6 +290,47 @@ def test_pending_relists_an_emptied_note_only_until_its_stale_chunks_are_gone():
     purged = _StubVectorStore({"notes": _StubCollection()})
     after_purge = pending.op.compute_fn.decorated_fn(ctx, sources=sources, vector_store=purged)
     assert after_purge.value["notes"] == []
+
+
+def _local_chunk(iid: str, file_name: str) -> tuple[str, dict]:
+    return f"{iid}::chunk-0", {"source_ref": f"local:{file_name}"}
+
+
+def test_ingest_purges_chunks_of_a_deleted_local_file_even_with_nothing_pending():
+    """A deleted note never appears in `pending` (it has no item any more), so
+    its chunks are reachable only by a source_ref no file on disk carries.
+    The ingest step must drop those, or recall keeps serving a note the user
+    deleted, while leaving every file still on disk untouched."""
+    live = _item("live", source_type="local_file")
+    gone_id, gone_meta = _local_chunk("gone", "2026-03-10_notes.md")
+    collection = _StubCollection(
+        existing_ids=["live::chunk-0", gone_id],
+        existing_metas={"live::chunk-0": {"source_ref": live.source_ref}, gone_id: gone_meta},
+    )
+    vector_store = _StubVectorStore({"notes": collection})
+    sources = _StubSources(notes=_StubSource([live]))
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+
+    pvs_assets.notes.op.compute_fn.decorated_fn(
+        ctx, pending={"notes": []}, sources=sources, vector_store=vector_store
+    )
+
+    assert collection.get()["ids"] == ["live::chunk-0"]
+
+
+def test_ingest_purges_nothing_when_the_local_source_lists_no_files():
+    """An empty listing is what a missing or unmounted source dir looks like;
+    treating it as "every file deleted" would wipe the whole collection."""
+    chunk_id, meta = _local_chunk("n", "2026-11-03_evals-a1b2c3.md")
+    collection = _StubCollection(existing_ids=[chunk_id], existing_metas={chunk_id: meta})
+    vector_store = _StubVectorStore({"notes": collection})
+    ctx = MagicMock(spec=dg.AssetExecutionContext)
+
+    pvs_assets.notes.op.compute_fn.decorated_fn(
+        ctx, pending={"notes": []}, sources=_StubSources(), vector_store=vector_store
+    )
+
+    assert collection.get()["ids"] == [chunk_id]
 
 
 def test_pending_in_batching_caps_at_500_ids():
