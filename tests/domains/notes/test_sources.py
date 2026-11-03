@@ -113,3 +113,11 @@ class TestGetItemIdsBodyFilter:
         (inbox / "blank.md").write_text("   \n\n\t\n")
 
         assert LocalFileSource(inbox_dir=inbox).get_item_ids(with_body=True) == []
+
+
+def test_source_refs_names_every_markdown_file_and_nothing_for_a_missing_dir(tmp_path):
+    (tmp_path / "2026-11-03_a-abcdef.md").write_text("body")
+    (tmp_path / "notes.txt").write_text("not markdown")
+
+    assert LocalFileSource(tmp_path).source_refs() == {"local:2026-11-03_a-abcdef.md"}
+    assert LocalFileSource(tmp_path / "absent").source_refs() == set()
