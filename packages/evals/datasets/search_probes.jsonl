@@ -1,4 +1,4 @@
-{"schema_version": 1, "fixture_kind": "search_probes", "dataset_version": "2026-10-31", "anchored_to_backup": "2026-10-31"}
+{"schema_version": 1, "fixture_kind": "search_probes", "dataset_version": "2026-11-04", "anchored_to_backup": "2026-10-31"}
 {"probe_id": 1, "text": "What are the more advanced RAG structures, with rerank, query expansion, etc.? There should be content about it, maybe more than one piece.", "caller": "both", "type": "sweep", "negative": null}
 {"probe_id": 2, "text": "What are the categories of agent memory? I think one of them is episodic memory, and there are some others. Can you remind me what we read about this?", "caller": "both", "type": "sweep", "negative": null}
 {"probe_id": 3, "text": "A piece by Facebook or Meta mentions an evaluation strategy with a weak and a strong model, with each model handling things differently. Can you remind me of the exact setup between the two?", "caller": "both", "type": "target", "negative": null}

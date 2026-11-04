@@ -1,6 +1,6 @@
 {
   "snapshot": "2026-10-31",
-  "dataset_version": "2026-10-31",
+  "dataset_version": "2026-11-04",
   "embedding_model": "text-embedding-3-small",
   "index_id": null,
   "digests": {
