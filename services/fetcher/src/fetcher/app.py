@@ -3,6 +3,7 @@
 import logging
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -130,7 +131,7 @@ def create_app() -> FastAPI:
         title="kp-fetcher",
         summary="Content acquisition + normalization service for the knowledge-pipeline OS.",
         description=_APP_DESCRIPTION,
-        version="0.1.0",
+        version=version("fetcher"),
         openapi_tags=_OPENAPI_TAGS,
         lifespan=_lifespan,
     )

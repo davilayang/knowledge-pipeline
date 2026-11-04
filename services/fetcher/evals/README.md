@@ -5,8 +5,8 @@ copies `src/`, `config/`, and `prompts/`, so nothing here ships in the service.
 
 ## Why these live here and not in `packages/evals`
 
-`services/fetcher` is not a uv workspace member (own `pyproject.toml`/lock/venv),
-so `knowledge-evals` cannot import it. A/B'ing two prompts also needs passing one
+`knowledge-evals` does not depend on `fetcher`, and adding that edge would pull
+the service's fetch stack into every eval run. A/B'ing two prompts also needs passing one
 *into* the chain call, which `POST /v1/structure` doesn't expose — it only ever
 runs the prompt the service booted with. Living here lets the harness import the
 production `fetcher.extractors._cloud_chain.call_cloud_chain` directly, so there

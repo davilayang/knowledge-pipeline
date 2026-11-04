@@ -6,6 +6,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The fetcher service is now a uv workspace member, versioned with the rest of kp.** It shares the root `uv.lock` and venv, so `uv sync` installs it and its tests need no hand-built venv; `services/fetcher/uv.lock` is gone. The shared lock takes arXiv 2.x's `requests~=2.32` pin (2.34.2 → 2.32.5).
+- **CI now builds every Docker image and checks the fetcher answers `/healthz`.** It also validates the Dagster definitions, so a Dockerfile or definition that no longer loads fails on the PR, not at deploy. (`.github/workflows/ci.yml`)
+
 ---
 
 ## [0.41.2] — 2026-11-04

@@ -11,6 +11,7 @@ dependencies = [
     "knowledge-orchestrators",
     "knowledge-retrievers",
     "knowledge-workflows",
+    "fetcher",
 ]
 
 # For user-facing extras
@@ -36,13 +37,15 @@ dev = [
     "pytest-postgresql>=6.0,<8.0",
     "pytest-timeout>=2.3,<3.0",
     "pytest-xdist>=3.8.0",
+    # The fetcher suite's async tests (asyncio_mode = "auto" in its pyproject).
+    "pytest-asyncio>=0.24,<1.0",
 ]
 
 # No [build-system] — root is a virtual project (uv handles this implicitly)
-# All buildable code lives in workspace members under packages/.
+# All buildable code lives in workspace members under packages/ and services/.
 
 [tool.uv.workspace]
-members = ["packages/*"]
+members = ["packages/*", "services/*"]
 
 [tool.uv.sources]
 # For data models, schemas ...etc
@@ -55,6 +58,8 @@ knowledge-orchestrators = { workspace = true }
 knowledge-retrievers = { workspace = true }
 # For LangGraph-based workflows for complex processing
 knowledge-workflows = { workspace = true }
+# For the fetcher HTTP service (fetch, extract, structure)
+fetcher = { workspace = true }
 
 [tool.dagster]
 module_name = "orchestrators.definitions"
@@ -126,7 +131,7 @@ help = "Run tests in parallel across CPU cores (pytest-xdist)"
 
 [tool.poe.tasks.test-fetcher]
 cmd = "./scripts/test-fetcher.sh"
-help = "Run the fetcher service's own suite (separate venv, not a workspace member)"
+help = "Run the fetcher service's suite (a separate pytest run: its tests/ package name clashes with the root suite's)"
 
 [tool.poe.tasks.test-pull-wiki]
 cmd = "./scripts/test-pull-wiki.sh"
@@ -157,11 +162,8 @@ sequence = ["fmt-fix", "lint-fix"]
 help = "Fix all issues: formatting with black and linting with ruff"
 
 [tool.poe.tasks.lock]
-sequence = [
-    { cmd = "uv lock" },
-    { cmd = "uv lock", cwd = "services/fetcher" },
-]
-help = "Lock workspace + services/fetcher (run after any workspace-member version bump)"
+cmd = "uv lock"
+help = "Lock the workspace, fetcher included (run after any workspace-member version bump)"
 
 ## Workflows ##
 

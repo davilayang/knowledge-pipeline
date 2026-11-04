@@ -1,7 +1,9 @@
 # Everything checkable from the code alone: no API keys, no Postgres, no Chroma.
-# `poe check` runs fmt, lint, the workspace suite, the pull-wiki script check and
-# the fetcher suite. The fetcher is not a workspace member, so its venv is built
-# separately before the checks run.
+# `check` runs `poe check` (fmt, lint, the workspace suite, the pull-wiki script
+# check, the fetcher suite). `images` builds every compose image, validates the
+# Dagster definitions inside the code image, and starts the fetcher far enough
+# to answer /healthz, so an image that no longer matches the workspace fails
+# here rather than at deploy.
 name: CI
 
 on:
@@ -36,9 +38,7 @@ jobs:
           # this the runner would take whatever newest Python uv finds.
           python-version: "3.13"
           enable-cache: true
-          cache-dependency-glob: |
-            uv.lock
-            services/fetcher/uv.lock
+          cache-dependency-glob: uv.lock
 
       # --locked, NOT --frozen: --frozen installs from a stale lockfile without
       # complaint; --locked fails when pyproject.toml and uv.lock disagree.
@@ -50,11 +50,41 @@ jobs:
       - name: Install ffmpeg
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends ffmpeg
 
-      - name: Install fetcher venv
-        working-directory: services/fetcher
-        run: uv sync --locked --extra dev
-
       # --locked again: a bare `uv run` re-locks on the fly and can go green on
       # a tree nobody has committed.
       - name: Run checks
         run: uv run --locked poe check
+
+  images:
+    name: images build + fetcher healthz
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      # Every service sits behind a compose profile, and the app services read
+      # an env_file that is gitignored; an empty one is enough to build.
+      - name: Build every image
+        run: |
+          touch .env
+          docker compose --profile '*' build
+
+      # Inside the image rather than the dev venv, so a dependency or file the
+      # image is missing fails here.
+      - name: Dagster definitions load in the code image
+        run: docker run --rm local/kp-dagster-code /app/.venv/bin/dagster definitions validate -m orchestrators.definitions
+
+      # /healthz answers 503 until the required settings are present; dummy
+      # values are enough, since nothing is fetched.
+      - name: Fetcher answers /healthz
+        run: |
+          docker run -d --name fetcher-smoke -p 8000:8000 \
+            -e FETCHER_SOCKS5_URL=socks5://ci.invalid:1080 \
+            -e FETCHER_LLAMA_PARSE_API_KEY=ci \
+            local/fetcher
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 2 localhost:8000/healthz | grep -q '"ok":true'; then exit 0; fi
+            sleep 1
+          done
+          docker logs fetcher-smoke
+          exit 1
