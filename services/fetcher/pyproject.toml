@@ -1,6 +1,6 @@
 [project]
 name = "fetcher"
-version = "0.41.2"
+version = "0.41.3"
 description = "URL -> markdown fetcher service for Knowledge OS services (single source of truth for content fetching)"
 requires-python = ">=3.13"
 # TODO: arxiv 4.0.0
