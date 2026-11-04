@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **Every pull request and push to `main` now runs the checks in CI.** `.github/workflows/ci.yml` builds the workspace and the fetcher's separate venv with `--locked`, then runs `uv run --locked poe check`: fmt, lint, the workspace suite, the pull-wiki script check and the fetcher suite. It installs ffmpeg so the fetcher's six audio tests run instead of skipping, and needs no secrets, Postgres or Chroma.
+
+### Changed
+
+- **The fetcher suite no longer skips `test_the_service_loads_that_config_on_import`.** It passes whenever the suite runs from `services/fetcher`, which `scripts/test-fetcher.sh` does, and fails only when pytest runs from the repo root, where `config/extraction.yaml` does not exist. The setup hint now says `uv sync --locked --extra dev`. (`scripts/test-fetcher.sh`)
+
 ---
 
 ## [0.41.1] — 2026-11-03

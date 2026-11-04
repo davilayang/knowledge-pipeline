@@ -81,7 +81,7 @@ check "pull '$TMP/fresh/vault' && pull '$TMP/fresh/vault' \
     && [ -f '$TMP/fresh/vault/index.md' ]" \
     "a new vault path can be pulled into, and pulled into again"
 
-check "uv run --quiet --project '$REPO' python '$REPO/scripts/check_wiki_links.py' '$VAULT'" \
+check "uv run --locked --quiet --project '$REPO' python '$REPO/scripts/check_wiki_links.py' '$VAULT'" \
     "every link in the vault resolves (incl. the note link)"
 
 exit $fail
