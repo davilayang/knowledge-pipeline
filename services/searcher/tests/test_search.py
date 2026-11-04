@@ -15,7 +15,7 @@ def test_a_valid_request_is_answered_unavailable_with_every_lane_skipped() -> No
     """Until lanes are wired, no lane runs, so status precedence rule 1 applies:
     no lane finished `ok`, so `unavailable` and no items."""
     resp = _search(
-        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["articles", "wiki"]}
+        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["corpus", "wiki"]}
     )
     assert resp.status_code == 200
     body = resp.json()
@@ -23,7 +23,7 @@ def test_a_valid_request_is_answered_unavailable_with_every_lane_skipped() -> No
     assert body["status"] == "unavailable"
     assert body["items"] == []
     assert body["lanes"] == {
-        "articles": {"outcome": "skipped", "candidates": 0, "returned": 0},
+        "corpus": {"outcome": "skipped", "candidates": 0, "returned": 0},
         "wiki": {"outcome": "skipped", "candidates": 0, "returned": 0},
     }
 

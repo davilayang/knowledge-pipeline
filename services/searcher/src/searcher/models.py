@@ -13,12 +13,13 @@ from pydantic import BaseModel, ConfigDict, Field
 CONTRACT_VERSION = 1
 
 Caller = Literal["voice", "mcp"]
-Source = Literal["articles", "sessions", "notes", "briefs", "wiki"]
-Kind = Literal["article", "session", "note", "brief", "wiki"]
+# `corpus`: one saved item in corpus.db, whatever its medium (article, talk, podcast, paper).
+Source = Literal["corpus", "sessions", "notes", "briefs", "wiki"]
+Kind = Literal["corpus", "session", "note", "brief", "wiki"]
 Status = Literal["ok", "nothing_matched", "partial", "unavailable"]
 Outcome = Literal["ok", "failed", "timed_out", "skipped"]
 
-SOURCES: tuple[Source, ...] = ("articles", "sessions", "notes", "briefs", "wiki")
+SOURCES: tuple[Source, ...] = ("corpus", "sessions", "notes", "briefs", "wiki")
 
 
 class SearchRequest(BaseModel):
