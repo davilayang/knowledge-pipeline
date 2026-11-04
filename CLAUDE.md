@@ -106,8 +106,9 @@ Main is **protected**. All changes go through feature branches and pull requests
 | `knowledge-retrievers` | `packages/retrievers` | RAG infra — chunking, embedding (OpenAI), Chroma HTTP client, retrieval protocols |
 | `knowledge-evals` | `packages/evals` | Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding, reserved), wiki dimensions (reserved) |
 | `knowledge-orchestrators` | `packages/orchestrators` | Dagster definitions — the **only** package allowed to depend on Dagster |
+| `fetcher` | `services/fetcher` | FastAPI content service (fetch, extract, structure); its suite runs separately via `poe test-fetcher` |
 
-**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers`. `orchestrators` is the top — depends on everything below. Nothing outside `orchestrators` may `import dagster`.
+**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers`. `fetcher` depends on `domains` only. `orchestrators` is the top — depends on everything below except `fetcher`, which it calls over HTTP. Nothing outside `orchestrators` may `import dagster`.
 
 ## Common Commands (via `poe`)
 
@@ -161,7 +162,7 @@ packages/
       upstream_sources.py
 
 services/
-  fetcher/         # Standalone FastAPI content service (NOT a uv workspace member — own pyproject.toml + uv.lock + .venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call, and `POST /v1/structure-oreilly`, a deterministic HTML→markdown converter for publisher pages that block automated fetching (no model). Depends on packages/domains via path source. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
+  fetcher/         # Standalone FastAPI content service (uv workspace member, shares the root uv.lock and venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call, and `POST /v1/structure-oreilly`, a deterministic HTML→markdown converter for publisher pages that block automated fetching (no model). Depends on packages/domains. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by the fetcher service's POST /v1/extract; labels resolved in services/fetcher/src/fetcher/extract/tasks.py
@@ -169,7 +170,7 @@ prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo roo
   wiki/            # Wiki entity-extraction + page-synthesis prompts (workflows.wiki_synthesis.prompts)
 configs/           # Dagster config — dagster.yaml, workspace.yaml
 docker/            # Dockerfiles — code/, dagster/, postgres/ subdirs
-scripts/           # Deployment scripts — deploy-hcloud.sh; test-fetcher.sh runs the non-workspace fetcher suite
+scripts/           # Deployment scripts — deploy-hcloud.sh; test-fetcher.sh runs the fetcher suite as its own pytest run
 tests/             # Root-level pytest suite (shared fixtures crossing package boundaries)
 datasets/          # Pinned eval datasets — checked in
 notebooks/         # Exploratory notebooks (Phase C / debugging)

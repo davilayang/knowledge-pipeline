@@ -11,19 +11,25 @@ ENV UV_LINK_MODE=copy \
     UV_PYTHON_DOWNLOADS=never \
     UV_PROJECT_ENVIRONMENT=/app/.venv
 
-WORKDIR /app/services/fetcher
+WORKDIR /app
 
-# Copy manifests first for dependency-layer caching. Keep paths aligned with
-# the source tree so the local knowledge-domains path dependency resolves.
-COPY services/fetcher/pyproject.toml services/fetcher/uv.lock /app/services/fetcher/
+# Copy manifests first for dependency-layer caching. --locked checks uv.lock
+# against every workspace member's manifest, so all of them are copied, though
+# only fetcher and knowledge-domains are installed.
+COPY pyproject.toml uv.lock /app/
 COPY packages/domains/pyproject.toml /app/packages/domains/pyproject.toml
-COPY packages/domains/src /app/packages/domains/src
+COPY packages/evals/pyproject.toml /app/packages/evals/pyproject.toml
+COPY packages/orchestrators/pyproject.toml /app/packages/orchestrators/pyproject.toml
+COPY packages/retrievers/pyproject.toml /app/packages/retrievers/pyproject.toml
+COPY packages/workflows/pyproject.toml /app/packages/workflows/pyproject.toml
+COPY services/fetcher/pyproject.toml /app/services/fetcher/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-install-project --no-dev --no-editable
+    uv sync --locked --package fetcher --no-install-workspace --no-dev --no-editable
 
+COPY packages/domains/src /app/packages/domains/src
 COPY services/fetcher/src /app/services/fetcher/src
 RUN --mount=type=cache,target=/root/.cache/uv \
-    uv sync --locked --no-dev --no-editable
+    uv sync --locked --package fetcher --no-dev --no-editable
 
 
 FROM python:3.13-slim AS runtime

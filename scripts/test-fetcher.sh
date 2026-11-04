@@ -1,24 +1,18 @@
 #!/usr/bin/env bash
-# Run the fetcher service's own test suite.
+# Run the fetcher service's test suite.
 #
 # Usage:
 #   ./scripts/test-fetcher.sh                # the whole suite
 #   ./scripts/test-fetcher.sh tests/cache    # a subset, paths relative to services/fetcher
 #
-# The service is not a uv workspace member — its own venv, its own lockfile, and
-# `fastapi` is absent from the workspace venv — so the root `test` task cannot
-# reach these tests and they need this venv to run at all.
+# The fetcher is a workspace member and shares the root venv, but its suite is a
+# separate pytest run: both suites have a top-level tests/__init__.py, so one
+# collection would clash on the package name.
 set -euo pipefail
-
-VENV="services/fetcher/.venv"
-if [ ! -x "$VENV/bin/python" ]; then
-  echo "$VENV is missing. Create it with:" >&2
-  echo "  cd services/fetcher && uv sync --locked --extra dev" >&2
-  exit 1
-fi
 
 # Run from services/fetcher: the service reads config/extraction.yaml relative
 # to its working directory, as the container does from /app, and
-# test_the_service_loads_that_config_on_import checks exactly that path.
-cd services/fetcher
-exec .venv/bin/python -m pytest "${@:-tests}" -q
+# test_the_service_loads_that_config_on_import checks exactly that path. It also
+# makes pytest pick up the fetcher's own [tool.pytest.ini_options].
+cd "$(dirname "$0")/../services/fetcher"
+exec uv run --locked python -m pytest "${@:-tests}" -q
