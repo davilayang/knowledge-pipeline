@@ -212,6 +212,35 @@ services:
         max-size: "20m"
         max-file: "10"
 
+  # POST /v1/search for newsletter-assistant's voice recall and MCP search.
+  # No caller uses it yet; it answers `unavailable` until its lanes are wired.
+  searcher:
+    image: ${DOCKER_USER:-local}/searcher
+    profiles: [app]
+    platform: ${PLATFORM:-}
+    build:
+      context: .
+      dockerfile: docker/searcher/Dockerfile
+    networks:
+      kos_network:
+        aliases:
+          - kp-searcher
+    restart: unless-stopped
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/healthz', timeout=3).status == 200 else 1)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    logging:
+      driver: json-file
+      options:
+        max-size: "20m"
+        max-file: "10"
+
 networks:
   dagster_network:
     driver: bridge

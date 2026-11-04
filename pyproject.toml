@@ -12,6 +12,7 @@ dependencies = [
     "knowledge-retrievers",
     "knowledge-workflows",
     "fetcher",
+    "searcher",
 ]
 
 # For user-facing extras
@@ -60,6 +61,8 @@ knowledge-retrievers = { workspace = true }
 knowledge-workflows = { workspace = true }
 # For the fetcher HTTP service (fetch, extract, structure)
 fetcher = { workspace = true }
+# For the search HTTP service (POST /v1/search)
+searcher = { workspace = true }
 
 [tool.dagster]
 module_name = "orchestrators.definitions"
@@ -133,13 +136,18 @@ help = "Run tests in parallel across CPU cores (pytest-xdist)"
 cmd = "./scripts/test-fetcher.sh"
 help = "Run the fetcher service's suite (a separate pytest run: its tests/ package name clashes with the root suite's)"
 
+[tool.poe.tasks.test-searcher]
+cmd = "pytest -q tests"
+cwd = "services/searcher"
+help = "Run the searcher service's suite (a separate pytest run, like the fetcher's)"
+
 [tool.poe.tasks.test-pull-wiki]
 cmd = "./scripts/test-pull-wiki.sh"
 help = "Check deploy-hcloud.sh pull-wiki against local fixture dirs (no server)"
 
 [tool.poe.tasks.check]
-sequence = ["fmt", "lint", "test", "test-pull-wiki", "test-fetcher"]
-help = "Run all checks: formatting, linting, workspace tests, the pull-wiki script, and the fetcher suite"
+sequence = ["fmt", "lint", "test", "test-pull-wiki", "test-fetcher", "test-searcher"]
+help = "Run all checks: formatting, linting, workspace tests, the pull-wiki script, the fetcher suite, and the searcher suite"
 
 [tool.poe.tasks.fmt]
 cmd = "black --check packages/ services/ tests/"

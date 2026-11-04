@@ -24,6 +24,7 @@ COPY packages/retrievers/pyproject.toml packages/retrievers/pyproject.toml
 COPY packages/evals/pyproject.toml packages/evals/pyproject.toml
 COPY packages/orchestrators/pyproject.toml packages/orchestrators/pyproject.toml
 COPY services/fetcher/pyproject.toml services/fetcher/pyproject.toml
+COPY services/searcher/pyproject.toml services/searcher/pyproject.toml
 
 ENV UV_PROJECT_ENVIRONMENT=/app/.venv
 # UV_LINK_MODE=copy: copy wheels from the BuildKit cache mount into the venv
