@@ -61,8 +61,8 @@ was returned. A report, not a gate. Entry point:
 `uv run eval-search-score --run <run.json>`.
 
 It does not decide anything about notes, briefs or wiki pages as answers: gold
-targets articles and sessions only, so those lanes score only through the
-articles they lead to.
+targets corpus items (saved items in corpus.db, whatever their medium) and
+sessions only, so those lanes score only through the corpus items they lead to.
 
 ### Provenance
 
@@ -83,7 +83,7 @@ need held-out asks, which are kept outside every repository.
   component that surfaces new pieces needs them graded blind before its
   precision is claimed.
 - Credit counts once per need, so a run returning both copies of a duplicated
-  article finds one need, not two.
+  corpus item finds one need, not two.
 
 ### Identity and safe changes
 
@@ -92,7 +92,7 @@ need held-out asks, which are kept outside every repository.
 - Changing the asks, a grade, or the accepted uris bumps `dataset_version` in
   both headers. A schema change bumps `schema_version`.
 - Negative probes (`negative`: `plain` or `near`) carry no gold. Within a
-  probe, an article belongs to one need; a session may belong to several.
+  probe, a corpus item belongs to one need; a session may belong to several.
 - Validate a change by running the CLI on a saved run: it checks schema and
   dataset versions, uri resolution on the snapshot, negatives, duplicates and the snapshot digest
   before scoring.

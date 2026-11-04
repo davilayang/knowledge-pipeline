@@ -26,10 +26,11 @@ def test_a_newsletter_assistant_run_maps_to_voice_and_mcp_views():
     views = hits_from_legacy_run(run)
     voice = views["voice"][1]
     assert len(voice) == 5 + 3 + 3 + 1
+    assert Hit("corpus", "c1", "x", "2026-01-01") in voice
     assert Hit("session", "s-1", "x", "2026-01-01") in voice
     assert Hit("brief", "local:b.md", "x", "2026-01-01") in voice
     assert views["mcp"][1] == [
-        Hit("article", "c1"),
+        Hit("corpus", "c1"),
         Hit("session", "s-1"),
         Hit("note", "", "## h", "2026-01-01"),
         Hit("wiki"),

@@ -34,5 +34,5 @@ counter.
 ## One need, several uris
 
 A need is one piece of information. When the same piece is stored twice (the
-same article under two urls), both uris go in one need. A session is listed
+same corpus item under two urls), both uris go in one need. A session is listed
 when it is where the piece was delivered.

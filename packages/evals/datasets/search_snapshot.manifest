@@ -4,7 +4,7 @@
   "embedding_model": "text-embedding-3-small",
   "index_id": null,
   "digests": {
-    "articles": "59dbe29b565cfbfbe4d30d1bd1279a6f189abf572b64dfd47bec64addd69aee2",
+    "corpus": "59dbe29b565cfbfbe4d30d1bd1279a6f189abf572b64dfd47bec64addd69aee2",
     "sessions": "019e779d7fab563dd6b9f1bc0f89baf26dd04af5804a526b9417474511577300",
     "notes": "57552df6addb42bb63626c22089739ea86191247c8490465d4fb5e08888bb8ca",
     "briefs": "2264a38da05b7eeb43691cde80f7f8fac8341d1b9b56514d9cfb2a933f9a89fb",

@@ -3,9 +3,9 @@
 from urllib.parse import unquote
 
 from evals.search.dataset import GoldNeed, Probe
-from evals.search.score import SNAPSHOT_LANES, Snapshot, article_uri, session_uri, snapshot_digests
+from evals.search.score import SNAPSHOT_LANES, Snapshot, corpus_uri, session_uri, snapshot_digests
 
-_CANONICAL = {"article": article_uri, "session": session_uri}
+_CANONICAL = {"corpus": corpus_uri, "session": session_uri}
 
 
 def validate(
@@ -14,11 +14,11 @@ def validate(
     """Raise ValueError on the first row or snapshot lane that cannot back a score.
 
     Each need names a real probe, has grade 1 or 2, a unique id and at least one
-    uri. Each uri is an article or session uri in canonical encoding (the form
-    the scorer produces, so it can match) that the snapshot holds: an article if
-    the corpus holds it or a snapshot session fetched it (a fetched id can differ
-    from the stored corpus row), a session if `sessions.db` holds it. Negative
-    probes carry no gold. Within a probe an article belongs to one need; a
+    uri. Each uri is a corpus or session uri in canonical encoding (the form
+    the scorer produces, so it can match) that the snapshot holds: a corpus item
+    if the corpus holds it or a snapshot session fetched it (a fetched id can
+    differ from the stored corpus row), a session if `sessions.db` holds it.
+    Negative probes carry no gold. Within a probe a corpus item belongs to one need; a
     session may belong to several, because one roundup session delivers several
     gold pieces. With a manifest, it names every lane and each lane's content
     digest matches.
@@ -52,8 +52,8 @@ def validate(
             kind, _, ident = uri.removeprefix("kos://piece/").partition("/")
             ident = unquote(ident)
             if kind not in _CANONICAL or _CANONICAL[kind](ident) != uri:
-                raise ValueError(f"{g.gold_id}: {uri} is not a canonical article or session uri")
-            if kind == "article":
+                raise ValueError(f"{g.gold_id}: {uri} is not a canonical corpus or session uri")
+            if kind == "corpus":
                 ok = ident in snapshot.content_ids or ident in snapshot.fetched_ids
                 prev = owner.setdefault((g.probe_id, uri), g.gold_id)
                 if prev != g.gold_id:

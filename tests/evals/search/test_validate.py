@@ -3,12 +3,12 @@ from evals.search.dataset import GoldNeed, Probe
 from evals.search.score import Snapshot
 from evals.search.validate import validate
 
-A1 = "kos://piece/article/medium::https:%2F%2Fa.example%2Fpost-1"
+A1 = "kos://piece/corpus/medium::https:%2F%2Fa.example%2Fpost-1"
 PROBES = [Probe(1, "ask", "both", "sweep", None), Probe(2, "neg ask", "both", "sweep", "plain")]
 
 
 def test_a_gold_uri_the_snapshot_does_not_hold_fails(snapshot_dir):
-    gold = [GoldNeed("p01-g01", 1, 2, False, False, "x", ("kos://piece/article/web::nowhere",))]
+    gold = [GoldNeed("p01-g01", 1, 2, False, False, "x", ("kos://piece/corpus/web::nowhere",))]
     with pytest.raises(ValueError, match="does not resolve"):
         validate(PROBES, gold, Snapshot(snapshot_dir))
 
@@ -19,7 +19,7 @@ def test_a_negative_probe_with_gold_fails(snapshot_dir):
         validate(PROBES, gold, Snapshot(snapshot_dir))
 
 
-def test_one_article_in_two_needs_of_a_probe_fails(snapshot_dir):
+def test_one_corpus_item_in_two_needs_of_a_probe_fails(snapshot_dir):
     gold = [
         GoldNeed("p01-g01", 1, 2, False, False, "x", (A1,)),
         GoldNeed("p01-g02", 1, 2, False, False, "y", (A1,)),
@@ -47,8 +47,8 @@ def test_a_manifest_missing_a_lane_fails(snapshot_dir):
         validate(PROBES, [], Snapshot(snapshot_dir), manifest={"digests": digests})
 
 
-def test_an_article_uri_not_in_canonical_encoding_fails(snapshot_dir):
-    raw = "kos://piece/article/medium::https://a.example/post-1"
+def test_a_corpus_uri_not_in_canonical_encoding_fails(snapshot_dir):
+    raw = "kos://piece/corpus/medium::https://a.example/post-1"
     gold = [GoldNeed("p01-g01", 1, 2, False, False, "x", (raw,))]
     with pytest.raises(ValueError, match="canonical"):
         validate(PROBES, gold, Snapshot(snapshot_dir))

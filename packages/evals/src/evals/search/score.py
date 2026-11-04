@@ -1,12 +1,12 @@
 """Credit search hits against the gold on a frozen snapshot.
 
 A hit credits the needs of its probe whose uris it reaches:
-  article -> that article
-  session -> that session, and every article fetched in it (generous: a roundup
-             session credits every gold piece fetched in it)
-  note    -> the articles its chunk links to (or, with no link, the note file of
-             that day whose text holds the chunk's heading)
-  brief   -> the articles listed in the brief's `content_ids`
+  corpus  -> that corpus item (one saved item in corpus.db, whatever its medium)
+  session -> that session, and every corpus item fetched in it (generous: a
+             roundup session credits every gold piece fetched in it)
+  note    -> the corpus items its chunk links to (or, with no link, the note
+             file of that day whose text holds the chunk's heading)
+  brief   -> the corpus items listed in the brief's `content_ids`
   wiki    -> nothing
 Recall counts grade-2 needs found; precision counts items crediting any need.
 """
@@ -25,8 +25,8 @@ from evals.search.dataset import GoldNeed
 _URL_RX = re.compile(r"https?://[^\s)>\]|]+")
 
 
-def article_uri(content_id: str) -> str:
-    return f"kos://piece/article/{quote(content_id, safe=':')}"
+def corpus_uri(content_id: str) -> str:
+    return f"kos://piece/corpus/{quote(content_id, safe=':')}"
 
 
 def session_uri(session_id: str) -> str:
@@ -42,7 +42,7 @@ def _frontmatter(text: str) -> dict:
 
 
 SNAPSHOT_LANES = {
-    "articles": "corpus.db",
+    "corpus": "corpus.db",
     "sessions": "sessions.db",
     "notes": "notes_x",
     "briefs": "briefs_x",
@@ -114,16 +114,16 @@ class Snapshot:
         return sqlite3.connect(f"file:{path}?immutable=1", uri=True)
 
     def uris_reached(self, hit: Hit) -> set[str]:
-        if hit.kind == "article":
-            return {article_uri(hit.key)}
+        if hit.kind == "corpus":
+            return {corpus_uri(hit.key)}
         if hit.kind == "session":
             pieces = self.session_pieces.get(hit.key, set())
-            return {session_uri(hit.key)} | {article_uri(c) for c in pieces}
+            return {session_uri(hit.key)} | {corpus_uri(c) for c in pieces}
         if hit.kind == "note":
-            return {article_uri(c) for c in self._note_cids(hit.chunk, hit.day)}
+            return {corpus_uri(c) for c in self._note_cids(hit.chunk, hit.day)}
         if hit.kind == "brief":
             cids = self.brief_cids.get(hit.key.removeprefix("local:"), set())
-            return {article_uri(c) for c in cids}
+            return {corpus_uri(c) for c in cids}
         return set()
 
     def _note_cids(self, chunk: str, day: str) -> set[str]:
