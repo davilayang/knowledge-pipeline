@@ -8,6 +8,18 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.41.2] — 2026-11-04
+
+### Added
+
+- **Every pull request and push to `main` now runs `poe check` in CI.** `.github/workflows/ci.yml` builds the workspace and fetcher venvs with `--locked` and installs ffmpeg, so the fetcher's audio tests run too; no secrets or services needed.
+
+### Changed
+
+- **The fetcher suite now runs `test_the_service_loads_that_config_on_import` instead of skipping it.** It fails only from the repo root; `scripts/test-fetcher.sh` runs from `services/fetcher`, as the container does.
+
+---
+
 ## [0.41.1] — 2026-11-03
 
 ### Changed

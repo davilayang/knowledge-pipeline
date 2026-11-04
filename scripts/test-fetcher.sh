@@ -13,15 +13,12 @@ set -euo pipefail
 VENV="services/fetcher/.venv"
 if [ ! -x "$VENV/bin/python" ]; then
   echo "$VENV is missing. Create it with:" >&2
-  echo "  cd services/fetcher && uv sync --extra dev" >&2
+  echo "  cd services/fetcher && uv sync --locked --extra dev" >&2
   exit 1
 fi
 
-# pytest resolves --deselect node ids against rootdir, so running from the repo
-# root silently deselects nothing and the suite reports a failure it was told to
-# skip. test_the_service_loads_that_config_on_import fails on main as well
-# (import-order dependent: get_model() returns None); leaving it in would make
-# this red by default, which teaches everyone to ignore it.
+# Run from services/fetcher: the service reads config/extraction.yaml relative
+# to its working directory, as the container does from /app, and
+# test_the_service_loads_that_config_on_import checks exactly that path.
 cd services/fetcher
-exec .venv/bin/python -m pytest "${@:-tests}" -q \
-  --deselect tests/test_extract_config.py::test_the_service_loads_that_config_on_import
+exec .venv/bin/python -m pytest "${@:-tests}" -q
