@@ -93,3 +93,9 @@ def test_a_request_value_outside_the_contract_is_rejected(field: str, value) -> 
     reading an empty `sources` as "all", would widen a search silently."""
     body = {"contract_version": 1, "query": "rag", "caller": "mcp", field: value}
     assert _search(body).status_code == 422
+
+
+def test_an_iso_date_since_is_accepted() -> None:
+    """`since` arrives as an ISO date string in json (contract §1)."""
+    resp = _search({"contract_version": 1, "query": "rag", "caller": "mcp", "since": "2026-10-01"})
+    assert resp.status_code == 200

@@ -5,10 +5,11 @@ Field order is the contract's arrival order. A field added here without a §2
 entry is a contract breach: `tests/test_search.py` pins the field lists.
 """
 
+import re
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 CONTRACT_VERSION = 1
 
@@ -39,6 +40,15 @@ class SearchRequest(BaseModel):
     k: int = Field(default=None, ge=1, le=50)
     sources: list[Source] = Field(default=None, min_length=1)
     since: date | None = None
+
+    @field_validator("since", mode="before")
+    @classmethod
+    def _iso_date(cls, v: object) -> object:
+        # Strict mode takes only `date` objects, and json carries an ISO string,
+        # so exactly YYYY-MM-DD is parsed here; anything else is still refused.
+        if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+            return date.fromisoformat(v)
+        return v
 
 
 class Lane(BaseModel):

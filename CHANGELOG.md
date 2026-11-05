@@ -9,6 +9,11 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 ### Added
 
 - **A port check compares the searcher's corpus lane with newsletter-assistant's, probe by probe.** `uv run eval-search-port-check --harvest <file>` posts each answerable search probe to `POST /v1/search` at every harvested depth and checks, against a harvest of newsletter-assistant's own results taken at the same moment: the same pieces in the same order, byte-identical uris, equal title, author, url and date (a title blank in newsletter-assistant may be the item's url in the searcher, as the contract requires, and is printed), each passage equal to one whole indexed chunk of that piece, and the expected status. Swaps between items whose distances differ by less than 0.0001 pass and are printed, since the two sides embed the query separately. Run against today's searcher it fails all 44 probe-depth pairs as `unavailable`. (`packages/evals/src/evals/search/port_check.py`)
+- **The searcher now runs a search the way the search contract defines it, though no lane is wired yet.** Requested lanes run concurrently on one shared query embedding; each reports `ok`, `failed`, `timed_out` or `skipped`; a piece found by several lanes is one item keeping every `matched_by` entry and the de-duplicated union of its passages; items are ordered by their best lane rank and cut to `k`; the status follows the contract's precedence; and `trace` carries per-stage milliseconds and `CODE_REV` from the environment. A voice search answers within 5 s, marking unfinished lanes `timed_out`; an MCP search has no deadline. With no lane wired, every request is still answered `unavailable`. (`services/searcher/src/searcher/engine.py`)
+
+### Changed
+
+- **A request with a `since` date is now accepted.** The strict request model refused the ISO date string json carries, so every request setting `since` got a 422; exactly `YYYY-MM-DD` is now parsed, and datetimes, numbers and other strings are still refused. (`services/searcher/src/searcher/models.py`)
 
 ---
 

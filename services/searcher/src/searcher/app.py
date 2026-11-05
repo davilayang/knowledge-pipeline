@@ -2,7 +2,15 @@
 
 from fastapi import FastAPI
 
-from searcher.models import SOURCES, Lane, SearchRequest, SearchResponse
+from searcher.engine import search
+from searcher.models import SearchRequest, SearchResponse
+
+# Voice must answer inside its budget; MCP waits for every lane.
+DEADLINE = {"voice": 5.0, "mcp": None}
+
+
+async def _no_embedder(text: str) -> list[float]:
+    raise RuntimeError("no embedder is wired")
 
 
 def create_app() -> FastAPI:
@@ -13,15 +21,10 @@ def create_app() -> FastAPI:
         return {"ok": True}
 
     @app.post("/v1/search")
-    async def search(req: SearchRequest) -> SearchResponse:
+    async def search_endpoint(req: SearchRequest) -> SearchResponse:
         # No lane is wired yet, so every requested lane is skipped and, by the
         # contract's status precedence, the answer is `unavailable`.
-        sources = list(SOURCES) if req.sources is None else req.sources
-        return SearchResponse(
-            status="unavailable",
-            lanes={s: Lane(outcome="skipped", candidates=0, returned=0) for s in sources},
-            items=[],
-        )
+        return await search(req, {}, _no_embedder, DEADLINE[req.caller])
 
     return app
 
