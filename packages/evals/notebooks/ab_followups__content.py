@@ -23,7 +23,7 @@
 
 # %% tags=["config", "parameters"]
 NOTEBOOK_STEM = "ab_followups__content"
-FIXTURE_SET = "packages/evals/datasets/extraction_eval.jsonl"
+FIXTURE_SET = "packages/evals/datasets/extraction/extraction_eval.jsonl"
 CONTENT_ID_INDEX = 0
 BASELINE_FOLLOWUPS = "followups_v1.md"
 CANDIDATE_FOLLOWUPS = "followups_v1.md"  # override to candidate when iterating

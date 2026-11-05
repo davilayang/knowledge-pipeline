@@ -244,12 +244,12 @@ The submodule shape (`types.py` → `variants.py` → `workbench.py` → `benchm
 4. **Add a `workbench.py`** with notebook-friendly helpers (`run_variant`, `run_variants`, render-results-as-HTML).
 5. **Score through the shared runner if the shape fits.** A `variant.run(fixture) → FixtureRun → score` harness calls `evals.core.run_and_report` (or `run_repeated` for N-run mean+range) — don't hand-roll the loop/aggregation/persistence. Harnesses whose shape doesn't fit (retrieval's index-then-query, claims' source-level aggregation) keep their own run model.
 6. **Attach a `RunManifest`** at the entrypoint (see `evals.core.manifest`) — persisted into the result JSON or printed with `format_manifest_line`. This is the one provenance contract every harness shares, regardless of run model. `code_rev()` fills the git sha.
-7. **Drop a sibling dataset** at `packages/evals/datasets/<target>_eval.jsonl` with a schema-versioned header, and add a console script in `pyproject.toml` only if the harness gates or reports from the CLI.
+7. **Drop a sibling dataset** in `packages/evals/datasets/<target>/` (with a `README.md` for its section) with a schema-versioned header, and add a console script in `pyproject.toml` only if the harness gates or reports from the CLI.
 
 See [`STYLEGUIDE.md`](STYLEGUIDE.md) for the cross-surface conventions (subject seam, judge family, run mode, when a category needs its own README).
 
 ## Reference
 
-- Retrieval dataset details: [`datasets/README.md`](datasets/README.md)
+- Retrieval dataset details: [`datasets/retrieval/README.md`](datasets/retrieval/README.md)
 - Workspace overview: [`../../CLAUDE.md`](../../CLAUDE.md)
 - Release history: [`../../CHANGELOG.md`](../../CHANGELOG.md)

@@ -98,7 +98,9 @@ def test_ab_topic_card_notebook_runs_end_to_end(tmp_path):
         parameters={
             "CONTENT_ID_INDEX": 0,
             "MAX_COST_USD_PER_RUN": 1.0,
-            "FIXTURE_SET": str(repo_root / "packages/evals/datasets/extraction_eval.jsonl"),
+            "FIXTURE_SET": str(
+                repo_root / "packages/evals/datasets/extraction/extraction_eval.jsonl"
+            ),
         },
         kernel_name="kp-eval",
         cwd=str(repo_root),

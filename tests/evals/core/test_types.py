@@ -95,7 +95,7 @@ def test_run_record_roundtrips_to_json():
         variant_name="v5_baseline",
         variant_config={"prompt_label": "v5_kp_copy_2026_06_01"},
         variant_provenance=_provenance(),
-        fixture_set="packages/evals/datasets/extraction_eval.jsonl",
+        fixture_set="packages/evals/datasets/extraction/extraction_eval.jsonl",
         fixture_anchor="2026-05-30",
         started_at="2026-06-06T10:00:00Z",
         completed_at="2026-06-06T10:00:42Z",

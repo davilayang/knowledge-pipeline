@@ -26,7 +26,7 @@
 
 # %% tags=["config", "parameters"]
 NOTEBOOK_STEM = "ab_narrative__content"
-FIXTURE_SET = "packages/evals/datasets/extraction_eval.jsonl"
+FIXTURE_SET = "packages/evals/datasets/extraction/extraction_eval.jsonl"
 CONTENT_ID_INDEX = 0
 BASELINE_NARRATIVE = "narrative_v3.md"
 CANDIDATE_NARRATIVE = "narrative_v3.md"  # override to candidate when iterating

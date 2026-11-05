@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **Eval datasets live in one folder per harness.** `retrieval/`, `extraction/` and `wiki/` under `packages/evals/datasets/`, each with its own README; the harnesses, tests and notebooks read the new paths. Datasets no harness reads by path (`extract_metadata_gold.jsonl`, `narrative_fidelity_gold_seed.jsonl`, `wiki_eval_*.jsonl`) stay in the top folder.
+
 ---
 
 ## [0.42.0] — 2026-11-05
