@@ -20,7 +20,8 @@ packages/evals/
 ├── README.md                     # this file
 ├── datasets/
 │   ├── README.md                 # dataset cadence + Option 1 rationale
-│   └── retrieval_eval.jsonl      # pinned eval pairs (145 pairs; research source dropped 2026-06-25)
+│   ├── retrieval_eval.jsonl      # pinned eval pairs (145 pairs; research source dropped 2026-06-25)
+│   └── search/                   # search probes, graded gold, snapshot manifest, codebook + README
 ├── src/evals/
 │   ├── core/                     # ✅ pure-function substrate (no LLM, no Dagster, no Postgres)
 │   │   ├── types.py              # RunStatus, FixtureRun, RunRecord, ScoreReport, StageTrace, ...
@@ -48,6 +49,12 @@ packages/evals/
 │   │   ├── coverage_cli.py       # eval-narrative-coverage CLI (narrative coverage, mean-of-N)
 │   │   ├── fidelity.py           # faithful_recall/distortion_rate/fabrication_rate + conservative merge substrate for NarrativeFidelityScorer
 │   │   └── scorers.py            # TopicCardScorer + NarrativeCoverageScorer + NarrativeFidelityScorer (seed, no CLI)
+│   ├── search/                   # ✅ search service eval: score a saved run per caller on the frozen snapshot
+│   │   ├── dataset.py            # load probes + gold (datasets/search/)
+│   │   ├── validate.py           # fail-closed checks before scoring
+│   │   ├── score.py              # credit hits against the gold
+│   │   ├── legacy_run.py         # read runs harvested from newsletter-assistant's own search tools
+│   │   └── cli.py                # eval-search-score console script
 │   └── wiki/                     # ✅ active wiki page-quality judges + extract-claims harness
 │       ├── judges.py             # FaithfulnessJudge, SpecificityJudge, TaggingJudge (injected chat_fn)
 │       ├── chat.py               # production chat_fn builders (workflows.llm)

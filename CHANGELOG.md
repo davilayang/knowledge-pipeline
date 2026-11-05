@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.42.0] — 2026-11-05
+
 ### Added
 
 - **A `searcher` service now answers `POST /v1/search` in the search contract's shape.** It validates requests (unknown fields and unserved `contract_version` rejected) and answers `unavailable` with every lane `skipped` until lanes are wired; no caller uses it yet. Builds and health-checks in CI. (`services/searcher`)
