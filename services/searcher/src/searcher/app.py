@@ -1,20 +1,23 @@
 """FastAPI app factory for the search service."""
 
+from collections.abc import Mapping
+
 from fastapi import FastAPI
 
-from searcher.engine import search
-from searcher.models import SearchRequest, SearchResponse
+from searcher.engine import Embedder, LaneFn, search
+from searcher.models import SearchRequest, SearchResponse, Source
 
 # Voice must answer inside its budget; MCP waits for every lane.
 DEADLINE = {"voice": 5.0, "mcp": None}
 
 
-async def _no_embedder(text: str) -> list[float]:
-    raise RuntimeError("no embedder is wired")
-
-
-def create_app() -> FastAPI:
+def create_app(
+    lanes: Mapping[Source, LaneFn] | None = None, embed: Embedder | None = None
+) -> FastAPI:
+    """With no lanes wired, every requested lane is skipped and, by the contract's
+    status precedence, the answer is `unavailable`."""
     app = FastAPI(title="kp-searcher")
+    wired = lanes or {}
 
     @app.get("/healthz")
     async def healthz() -> dict[str, bool]:
@@ -22,9 +25,7 @@ def create_app() -> FastAPI:
 
     @app.post("/v1/search")
     async def search_endpoint(req: SearchRequest) -> SearchResponse:
-        # No lane is wired yet, so every requested lane is skipped and, by the
-        # contract's status precedence, the answer is `unavailable`.
-        return await search(req, {}, _no_embedder, DEADLINE[req.caller])
+        return await search(req, wired, embed, DEADLINE[req.caller])
 
     return app
 

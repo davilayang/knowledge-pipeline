@@ -46,7 +46,7 @@ class SearchRequest(BaseModel):
     def _iso_date(cls, v: object) -> object:
         # Strict mode takes only `date` objects, and json carries an ISO string,
         # so exactly YYYY-MM-DD is parsed here; anything else is still refused.
-        if isinstance(v, str) and re.fullmatch(r"\d{4}-\d{2}-\d{2}", v):
+        if isinstance(v, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", v):
             return date.fromisoformat(v)
         return v
 

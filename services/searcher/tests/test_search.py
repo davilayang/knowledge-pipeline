@@ -99,3 +99,28 @@ def test_an_iso_date_since_is_accepted() -> None:
     """`since` arrives as an ISO date string in json (contract §1)."""
     resp = _search({"contract_version": 1, "query": "rag", "caller": "mcp", "since": "2026-10-01"})
     assert resp.status_code == 200
+
+
+@pytest.mark.parametrize("since", ["2026-1-1", "２０２６-１０-０１", "20261001"])
+def test_a_since_not_written_as_yyyy_mm_dd_is_rejected(since: str) -> None:
+    resp = _search({"contract_version": 1, "query": "rag", "caller": "mcp", "since": since})
+    assert resp.status_code == 422
+
+
+def test_voice_searches_get_a_deadline_and_mcp_searches_none() -> None:
+    """The app's caller-to-deadline table, read through what a lane is given."""
+    seen: dict[str, float | None] = {}
+
+    async def lane(query: str, embedding: list[float], deadline_at: float | None) -> list:
+        seen[query] = deadline_at
+        return []
+
+    async def embed(text: str) -> list[float]:
+        return [0.0]
+
+    with TestClient(create_app(lanes={"notes": lane}, embed=embed)) as client:
+        for caller in ("voice", "mcp"):
+            body = {"contract_version": 1, "query": caller, "caller": caller, "sources": ["notes"]}
+            assert client.post("/v1/search", json=body).status_code == 200
+    assert seen["voice"] is not None
+    assert seen["mcp"] is None
