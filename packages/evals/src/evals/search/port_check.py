@@ -79,8 +79,9 @@ def compare(record: dict, response: dict) -> tuple[list[str], list[str]]:
         for p in it["passages"]:
             if not p:
                 failures.append(f"{it['uri']} has an empty passage")
-            elif not any(p in c for c in chunks):
-                failures.append(f"passage of {it['uri']} is not verbatim: {p[:80]!r}")
+            # A 3b passage is one whole chunk; 3d loosens this when it sets per-caller length.
+            elif p not in chunks:
+                failures.append(f"passage of {it['uri']} is not a whole chunk: {p[:80]!r}")
     return status_failure + failures, ties
 
 

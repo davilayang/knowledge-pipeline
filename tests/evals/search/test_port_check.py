@@ -24,7 +24,7 @@ def _record(*, a: float = 0.30, b: float = 0.50) -> dict:
 
 
 def _response(record: dict) -> dict:
-    passages = {"src::a1": ["alpha chunk"], "src::b2": ["beta chunk"]}
+    passages = {"src::a1": ["alpha chunk text"], "src::b2": ["beta chunk text"]}
     items = [{**it, "passages": passages[it["uri"].rsplit("/", 1)[-1]]} for it in record["items"]]
     return {"status": "ok", "items": items}
 
@@ -172,4 +172,12 @@ def test_passage_from_the_tail_of_a_truncated_harvested_chunk_fails():
     resp = _response(rec)
     resp["items"][0]["passages"] = ["chunk text"]
     failures, _ = compare(rec, resp)
-    assert len(failures) == 1 and "not verbatim" in failures[0]
+    assert len(failures) == 1 and "not a whole chunk" in failures[0]
+
+
+def test_truncated_searcher_passage_fails():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk"]
+    failures, _ = compare(rec, resp)
+    assert len(failures) == 1 and "not a whole chunk" in failures[0]
