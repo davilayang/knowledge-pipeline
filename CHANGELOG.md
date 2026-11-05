@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.42.1] — 2026-11-05
+
 ### Changed
 
 - **Eval datasets live in one folder per harness.** `retrieval/`, `extraction/` and `wiki/` under `packages/evals/datasets/`, each with its own README carrying its datasets' sections; the top folder holds only the shared conventions and an index. The harnesses, tests, notebooks and the `metadata_v1` prompt's design notes read the new paths.
