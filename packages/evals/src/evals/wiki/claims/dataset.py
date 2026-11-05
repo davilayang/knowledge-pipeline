@@ -1,6 +1,6 @@
 """Pinned extract-claims eval cohort — loader over the checked-in JSONL.
 
-The cohort (`packages/evals/datasets/extract_claims_eval.jsonl`) is the
+The cohort (`packages/evals/datasets/wiki/extract_claims_eval.jsonl`) is the
 load-bearing pinned artifact: a fixed set of real sources (2 per content shape)
 scored run-over-run so faithfulness / tagging / stability trends are comparable.
 The JSONL is the checked-in artifact; this module reads it.
@@ -11,9 +11,11 @@ from pathlib import Path
 
 from evals.core.fixtures import load_fixtures
 
-# packages/evals/datasets/extract_claims_eval.jsonl, resolved from this module:
-# dataset.py → extract_claims → wiki → evals → src → evals(pkg) → datasets/.
-DATASET_PATH = Path(__file__).resolve().parents[4] / "datasets" / "extract_claims_eval.jsonl"
+# packages/evals/datasets/wiki/extract_claims_eval.jsonl, resolved from this module:
+# dataset.py → extract_claims → wiki → evals → src → evals(pkg) → datasets/wiki/.
+DATASET_PATH = (
+    Path(__file__).resolve().parents[4] / "datasets" / "wiki" / "extract_claims_eval.jsonl"
+)
 
 SCHEMA_VERSION = 2
 

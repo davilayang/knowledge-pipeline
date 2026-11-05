@@ -23,7 +23,7 @@
 
 # %% tags=["config", "parameters"]
 NOTEBOOK_STEM = "_template"
-FIXTURE_SET = "packages/evals/datasets/extraction_eval.jsonl"
+FIXTURE_SET = "packages/evals/datasets/extraction/extraction_eval.jsonl"
 CONTENT_ID_INDEX = 0
 MAX_FIXTURES = 5
 MAX_COST_USD_PER_RUN = 0.50

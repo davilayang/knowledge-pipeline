@@ -15,7 +15,9 @@ from domains.wiki.claims import SourceClaim
 
 from evals.core.fixtures import load_fixtures
 
-GOLD_PATH = Path(__file__).resolve().parents[4] / "datasets" / "extract_claims_tagging_gold.jsonl"
+GOLD_PATH = (
+    Path(__file__).resolve().parents[4] / "datasets" / "wiki" / "extract_claims_tagging_gold.jsonl"
+)
 SCHEMA_VERSION = 1
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.42.0"
+version = "0.42.1"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -193,7 +193,7 @@ help = "Run the research agent workflow from the CLI"
 cmd = "python -m evals.retrieval.cli"
 help = """
   Run the retrieval eval harness — scores a (model, dims, chunker) config on
-  Recall@5 / MRR@10 / nDCG@10 against datasets/retrieval_eval.jsonl.
+  Recall@5 / MRR@10 / nDCG@10 against packages/evals/datasets/retrieval/retrieval_eval.jsonl.
   Pass CLI flags after `--`, e.g.
     uv run poe retrieval-eval -- --raw-store-db /backup/raw_store.db --limit 50
 """

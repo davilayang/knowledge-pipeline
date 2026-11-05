@@ -19,9 +19,11 @@ Cross-surface conventions (the shared runner + manifest, subject seam, judge fam
 packages/evals/
 ├── README.md                     # this file
 ├── datasets/
-│   ├── README.md                 # dataset cadence + Option 1 rationale
-│   ├── retrieval_eval.jsonl      # pinned eval pairs (145 pairs; research source dropped 2026-06-25)
-│   └── search/                   # search probes, graded gold, snapshot manifest, codebook + README
+│   ├── README.md                 # shared dataset conventions + index of the subfolders
+│   ├── search/                   # search service probes, graded gold, snapshot manifest
+│   ├── retrieval/                # retrieval_eval.jsonl + wiki_eval_*.jsonl (evals.retrieval)
+│   ├── extraction/               # extraction, narrative and metadata gold (evals.extraction)
+│   └── wiki/                     # claim extraction + tagging gold (evals.wiki.claims)
 ├── src/evals/
 │   ├── core/                     # ✅ pure-function substrate (no LLM, no Dagster, no Postgres)
 │   │   ├── types.py              # RunStatus, FixtureRun, RunRecord, ScoreReport, StageTrace, ...
@@ -109,7 +111,7 @@ The `extract_claims` producer tags every extracted claim as one of two types, an
 
 Three independent axes, easy to conflate: (1) **faithfulness** — is the claim actually in the source; (2) **this tag** — `reported` vs `opinion` *type*; (3) **world-truth** — not assessed in this pipeline. A claim can be faithful + `reported` + false all at once.
 
-The harness uses `reported`/`opinion` across the prompts (`prompts/eval/tagging_v1.md`, and the producer prompt — `extract_claims_task_v1.md` at the time the gold was frozen, `extract_claims_task_v2.md` since citations were added), the tagging judge, and the gold dataset. The only retained legacy name is the internal `SourceClaim.speculative` bool (`speculative=True` ⟺ `opinion`), kept to bound rename churn. Calibration against the 60-claim human gold: producer 85% (51/60, exact — producer tags are frozen in the gold); judge ~90% (88–98% across runs — LLM variance, and the judge sees the producer's tag while grading, so it's anchored). The rename was made for naming clarity, not a measured judge gain. See `packages/evals/datasets/README.md` for the per-shape breakdown. Canonical decision + worked examples: [Knowledge OS — Decisions: claim tag taxonomy](https://app.notion.com/p/38fd130d61318176bc97f7949db84843).
+The harness uses `reported`/`opinion` across the prompts (`prompts/eval/tagging_v1.md`, and the producer prompt — `extract_claims_task_v1.md` at the time the gold was frozen, `extract_claims_task_v2.md` since citations were added), the tagging judge, and the gold dataset. The only retained legacy name is the internal `SourceClaim.speculative` bool (`speculative=True` ⟺ `opinion`), kept to bound rename churn. Calibration against the 60-claim human gold: producer 85% (51/60, exact — producer tags are frozen in the gold); judge ~90% (88–98% across runs — LLM variance, and the judge sees the producer's tag while grading, so it's anchored). The rename was made for naming clarity, not a measured judge gain. See `packages/evals/datasets/wiki/README.md` for the per-shape breakdown. Canonical decision + worked examples: [Knowledge OS — Decisions: claim tag taxonomy](https://app.notion.com/p/38fd130d61318176bc97f7949db84843).
 
 ## Substrate primitives + composition patterns
 
@@ -244,12 +246,12 @@ The submodule shape (`types.py` → `variants.py` → `workbench.py` → `benchm
 4. **Add a `workbench.py`** with notebook-friendly helpers (`run_variant`, `run_variants`, render-results-as-HTML).
 5. **Score through the shared runner if the shape fits.** A `variant.run(fixture) → FixtureRun → score` harness calls `evals.core.run_and_report` (or `run_repeated` for N-run mean+range) — don't hand-roll the loop/aggregation/persistence. Harnesses whose shape doesn't fit (retrieval's index-then-query, claims' source-level aggregation) keep their own run model.
 6. **Attach a `RunManifest`** at the entrypoint (see `evals.core.manifest`) — persisted into the result JSON or printed with `format_manifest_line`. This is the one provenance contract every harness shares, regardless of run model. `code_rev()` fills the git sha.
-7. **Drop a sibling dataset** at `packages/evals/datasets/<target>_eval.jsonl` with a schema-versioned header, and add a console script in `pyproject.toml` only if the harness gates or reports from the CLI.
+7. **Drop a sibling dataset** in `packages/evals/datasets/<target>/` (with a `README.md` for its section) with a schema-versioned header, and add a console script in `pyproject.toml` only if the harness gates or reports from the CLI.
 
 See [`STYLEGUIDE.md`](STYLEGUIDE.md) for the cross-surface conventions (subject seam, judge family, run mode, when a category needs its own README).
 
 ## Reference
 
-- Retrieval dataset details: [`datasets/README.md`](datasets/README.md)
+- Retrieval dataset details: [`datasets/retrieval/README.md`](datasets/retrieval/README.md)
 - Workspace overview: [`../../CLAUDE.md`](../../CLAUDE.md)
 - Release history: [`../../CHANGELOG.md`](../../CHANGELOG.md)

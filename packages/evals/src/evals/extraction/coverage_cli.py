@@ -3,7 +3,7 @@
 The committed surface for re-scoring narrative coverage when the narrative
 prompt (or model) changes. Builds the three-call extractor with a chosen
 narrative prompt, scores each candidate narrative present/absent against the
-pinned gold threads (`datasets/narrative_coverage_gold.jsonl`), and reports
+pinned gold threads (`datasets/extraction/narrative_coverage_gold.jsonl`), and reports
 `coverage@present` as the **mean of N full re-runs + observed range**,
 stratified by content shape. `--baseline` diffs two prompts in one pass — both
 must be written against the current `Narrative`; an older one is refused rather
@@ -42,7 +42,7 @@ from evals.extraction import (
     make_three_call_variant,
 )
 
-_DEFAULT_GOLD = "packages/evals/datasets/narrative_coverage_gold.jsonl"
+_DEFAULT_GOLD = "packages/evals/datasets/extraction/narrative_coverage_gold.jsonl"
 
 
 def _repo_root() -> Path:

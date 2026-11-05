@@ -27,7 +27,7 @@
 
 # %% tags=["config", "parameters"]
 NOTEBOOK_STEM = "ab_topic_card__content"
-FIXTURE_SET = "packages/evals/datasets/extraction_eval.jsonl"
+FIXTURE_SET = "packages/evals/datasets/extraction/extraction_eval.jsonl"
 CONTENT_ID_INDEX = 0
 BASELINE_TOPIC_CARD = "topic_card_v1.md"
 CANDIDATE_TOPIC_CARD = "topic_card_v1.md"  # override to candidate when iterating
