@@ -87,3 +87,89 @@ def test_status_other_than_expected_fails():
 def test_empty_on_both_sides_expects_nothing_matched():
     rec = {"chunks": [], "items": []}
     assert compare(rec, {"status": "nothing_matched", "items": []}) == ([], [])
+
+
+def _harvest_files(tmp_path, depths=(5, 10)):
+    import json
+
+    head = {"schema_version": 1, "fixture_kind": "search_probes", "dataset_version": "v1"}
+    rows = [
+        {"probe_id": i, "text": "q", "caller": "both", "type": "sweep", "negative": None}
+        for i in (1, 2)
+    ]
+    probes = tmp_path / "probes.jsonl"
+    probes.write_text("\n".join(json.dumps(r) for r in [head, *rows]))
+    rec = _record()
+    harvest = {
+        "depths": list(depths),
+        "probes": {
+            str(i): {"ask": f"ask {i}", "depths": {str(d): rec for d in depths}} for i in (1, 2)
+        },
+    }
+    path = tmp_path / "harvest.json"
+    path.write_text(json.dumps(harvest))
+    return path, probes
+
+
+def test_searcher_error_fails_that_probe_and_the_run_continues(tmp_path, monkeypatch, capsys):
+    import httpx
+    import pytest
+    from evals.search import port_check
+
+    calls = []
+
+    def boom(searcher, query, k):
+        calls.append((query, k))
+        if query == "ask 1":
+            raise httpx.ConnectError("refused")
+        raise ValueError("not json")
+
+    monkeypatch.setattr(port_check, "_search", boom)
+    harvest, probes = _harvest_files(tmp_path)
+    with pytest.raises(SystemExit) as exc:
+        port_check.main(["--harvest", str(harvest), "--probes", str(probes)])
+    assert exc.value.code == 1
+    assert len(calls) == 4
+    out = capsys.readouterr().out
+    assert out.count("fail: searcher request:") == 4
+
+
+def test_empty_passages_and_empty_string_passage_fail():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][0]["passages"] = []
+    resp["items"][1]["passages"] = [""]
+    failures, _ = compare(rec, resp)
+    assert len(failures) == 2
+    assert URI_A in failures[0] and "no passages" in failures[0]
+    assert URI_B in failures[1] and "empty passage" in failures[1]
+
+
+def test_swap_with_an_item_missing_from_chunks_fails_as_unknown_distance():
+    rec = _record()
+    rec["chunks"] = rec["chunks"][:1]
+    resp = _response(rec)
+    resp["items"].reverse()
+    failures, ties = compare(rec, resp)
+    assert ties == []
+    assert any("order" in f and "distance unknown" in f for f in failures)
+
+
+def test_harvest_with_other_depths_is_refused(tmp_path, monkeypatch):
+    import pytest
+    from evals.search import port_check
+
+    monkeypatch.setattr(port_check, "_search", lambda *a: pytest.fail("searched"))
+    harvest, probes = _harvest_files(tmp_path, depths=(5,))
+    with pytest.raises(SystemExit) as exc:
+        port_check.main(["--harvest", str(harvest), "--probes", str(probes)])
+    assert "depths" in str(exc.value.code)
+
+
+def test_passage_from_the_tail_of_a_truncated_harvested_chunk_fails():
+    rec = _record()
+    rec["chunks"][0]["chunk"] = "alpha chu"
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["chunk text"]
+    failures, _ = compare(rec, resp)
+    assert len(failures) == 1 and "not verbatim" in failures[0]

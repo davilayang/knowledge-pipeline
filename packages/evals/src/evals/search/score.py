@@ -16,7 +16,7 @@ import re
 import sqlite3
 from dataclasses import dataclass
 from pathlib import Path
-from urllib.parse import quote
+from urllib.parse import quote, unquote
 
 import yaml
 
@@ -27,6 +27,11 @@ _URL_RX = re.compile(r"https?://[^\s)>\]|]+")
 
 def corpus_uri(content_id: str) -> str:
     return f"kos://piece/corpus/{quote(content_id, safe=':')}"
+
+
+def corpus_content_id(uri: str) -> str:
+    """Inverse of `corpus_uri`."""
+    return unquote(uri.removeprefix("kos://piece/corpus/"))
 
 
 def session_uri(session_id: str) -> str:
