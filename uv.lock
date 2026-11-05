@@ -4446,14 +4446,18 @@ name = "searcher"
 version = "0.42.1"
 source = { editable = "services/searcher" }
 dependencies = [
+    { name = "chromadb-client" },
     { name = "fastapi" },
+    { name = "knowledge-retrievers" },
     { name = "pydantic" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
 [package.metadata]
 requires-dist = [
+    { name = "chromadb-client", specifier = ">=1.5,<2.0" },
     { name = "fastapi", specifier = ">=0.115,<1.0" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "pydantic", specifier = ">=2.9,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32,<1.0" },
 ]

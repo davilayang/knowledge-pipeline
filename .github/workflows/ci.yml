@@ -63,11 +63,12 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # Every service sits behind a compose profile, and the app services read
-      # an env_file that is gitignored; an empty one is enough to build.
+      # an env_file that is gitignored; an empty one is enough to build. The
+      # searcher's data mount is required, so any directory stands in for it.
       - name: Build every image
         run: |
           touch .env
-          docker compose --profile '*' build
+          BACKUP_SRC_DIR=/tmp docker compose --profile '*' build
 
       # Inside the image rather than the dev venv, so a dependency or file the
       # image is missing fails here.

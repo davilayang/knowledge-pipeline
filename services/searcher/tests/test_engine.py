@@ -2,9 +2,8 @@
 §2 and §3), with fake lanes: no network."""
 
 import asyncio
-from collections.abc import Awaitable, Callable
 
-from searcher.engine import LaneFn, search
+from searcher.engine import EmbedFn, LaneFn, search
 from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Source
 
 
@@ -12,7 +11,7 @@ def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate({"contract_version": 1, "query": "rag", **kw})
 
 
-async def _embed(text: str) -> list[float]:
+async def _embed(text: str, deadline_at: float | None) -> list[float]:
     return [0.0]
 
 
@@ -32,13 +31,17 @@ def _item(uri: str, lane: str, rank: int, passage: str) -> Item:
 
 
 def _lane(*items: Item) -> LaneFn:
-    async def run(query: str, embedding: list[float], deadline_at: float | None) -> list[Item]:
+    async def run(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
         return list(items)
 
     return run
 
 
-async def _boom(query: str, embedding: list[float], deadline_at: float | None) -> list[Item]:
+async def _boom(
+    req: SearchRequest, embedding: list[float], deadline_at: float | None
+) -> list[Item]:
     raise RuntimeError("index missing")
 
 
@@ -46,7 +49,7 @@ def _search_now(
     req: SearchRequest,
     lanes: dict[Source, LaneFn],
     deadline: float | None = None,
-    embed: Callable[[str], Awaitable[list[float]]] = _embed,
+    embed: EmbedFn = _embed,
 ) -> SearchResponse:
     return asyncio.run(search(req, lanes, embed, deadline))
 
@@ -107,7 +110,9 @@ def test_a_piece_found_by_two_lanes_is_one_item_keeping_both_contributions() -> 
 
 
 def _slow(seconds: float, *items: Item) -> LaneFn:
-    async def run(query: str, embedding: list[float], deadline_at: float | None) -> list[Item]:
+    async def run(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
         await asyncio.sleep(seconds)
         return list(items)
 
@@ -144,7 +149,7 @@ def test_a_search_with_no_deadline_waits_for_a_slow_lane() -> None:
 def test_two_lanes_on_one_query_embed_it_once() -> None:
     calls: list[str] = []
 
-    async def counting_embed(text: str) -> list[float]:
+    async def counting_embed(text: str, deadline_at: float | None) -> list[float]:
         calls.append(text)
         return [0.0]
 
@@ -176,7 +181,9 @@ def test_a_piece_found_by_two_lanes_counts_in_both_lanes_returned() -> None:
 def test_a_lane_is_given_the_deadline_so_its_clients_can_time_out_inside_it() -> None:
     seen: list[float | None] = []
 
-    async def lane(query: str, embedding: list[float], deadline_at: float | None) -> list[Item]:
+    async def lane(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
         seen.append(deadline_at)
         return []
 
@@ -194,7 +201,9 @@ def test_a_lane_is_given_the_deadline_so_its_clients_can_time_out_inside_it() ->
 def test_a_lane_cut_off_by_the_deadline_is_cancelled_and_finished_before_the_answer() -> None:
     cleaned: list[bool] = []
 
-    async def lane(query: str, embedding: list[float], deadline_at: float | None) -> list[Item]:
+    async def lane(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
         try:
             await asyncio.sleep(5)
         finally:
@@ -220,7 +229,7 @@ def test_timed_out_and_skipped_lanes_give_unavailable() -> None:
 
 
 def test_an_embedding_that_uses_up_the_deadline_times_out_every_lane_in_time() -> None:
-    async def slow_embed(text: str) -> list[float]:
+    async def slow_embed(text: str, deadline_at: float | None) -> list[float]:
         await asyncio.sleep(5)
         return [0.0]
 
@@ -272,3 +281,74 @@ def test_a_failed_lane_is_logged_with_its_traceback(caplog) -> None:
         _search_now(_req(caller="mcp", sources=["notes"]), {"notes": _boom})
     record = next(r for r in caplog.records if "lane notes failed" in r.getMessage())
     assert record.exc_info and "index missing" in str(record.exc_info[1])
+
+
+def test_the_embedder_is_given_the_same_deadline_as_the_lanes() -> None:
+    """The embedding counts inside the deadline, so its client sets its timeout from it."""
+    given: list[float | None] = []
+
+    async def embed(text: str, deadline_at: float | None) -> list[float]:
+        given.append(deadline_at)
+        return [0.0]
+
+    async def lane(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        given.append(deadline_at)
+        return []
+
+    _search_now(
+        _req(caller="voice", sources=["corpus"]), {"corpus": lane}, deadline=1.0, embed=embed
+    )
+    assert len(given) == 2 and given[0] is not None and given[0] == given[1]
+
+
+def test_cancelling_a_search_cancels_its_lanes() -> None:
+    """A client that hangs up must not leave lanes running after the request is gone."""
+    lane_cancelled = asyncio.Event()
+
+    async def lane(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            lane_cancelled.set()
+            raise
+        return []
+
+    async def scenario() -> bool:
+        outer = asyncio.create_task(
+            search(_req(caller="mcp", sources=["corpus"]), {"corpus": lane}, _embed, None)
+        )
+        await asyncio.sleep(0.05)
+        outer.cancel()
+        await asyncio.gather(outer, return_exceptions=True)
+        await asyncio.sleep(0)
+        return lane_cancelled.is_set()
+
+    assert asyncio.run(scenario())
+
+
+def test_a_lane_slow_to_unwind_after_the_deadline_is_timed_out_and_not_waited_for() -> None:
+    async def stubborn(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        try:
+            await asyncio.sleep(10)
+        except asyncio.CancelledError:
+            await asyncio.sleep(1)  # unwinds slowly
+            raise
+        return []
+
+    async def timed() -> tuple[SearchResponse, float]:
+        loop = asyncio.get_running_loop()
+        start = loop.time()
+        resp = await search(
+            _req(caller="voice", sources=["corpus"]), {"corpus": stubborn}, _embed, 0.1
+        )
+        return resp, loop.time() - start
+
+    resp, took = asyncio.run(timed())
+    assert resp.lanes["corpus"].outcome == "timed_out"
+    assert took < 0.5

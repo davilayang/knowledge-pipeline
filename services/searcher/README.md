@@ -15,14 +15,22 @@ the contract's precedence.
 
 - **Deadlines:** a voice search answers within 5 s, embedding included, and
   lanes still running then are cancelled and reported `timed_out`. An MCP search
-  has no deadline. Each lane is given the deadline so its clients can time out
-  inside it.
+  has no deadline; each of its network calls still stops after 30 s. Lanes and
+  the embedder are given the deadline so their calls stop inside it.
 - **Trace:** `trace.stages_ms` holds each stage's own duration (`embed`,
   `lanes`, `merge`) and the `total`; `code_rev` comes from the `CODE_REV`
   environment variable.
 
-No lane is wired yet, so every request is answered `unavailable` with each
-requested lane `skipped`, and no caller uses the service yet.
+- **Corpus lane** (`src/searcher/corpus.py`): Chroma's `contents` collection,
+  each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is
+  dropped; a blank title becomes the url; the date is when the item was saved.
+  `corpus.db` is opened read-only through SQLite on a read-write mount of
+  newsletter-assistant's data directory (`NEWSLETTER_DATA_DIR`; compose mounts
+  `BACKUP_SRC_DIR`, which it requires), so SQLite can recreate the `-shm` file of a WAL database its
+  writer has closed. The container runs as UID 1000, the writers' UID.
+
+The other lanes are not wired yet, so they are `skipped` and a request for them
+gets `partial`. No caller uses the service yet.
 
 ## Run
 

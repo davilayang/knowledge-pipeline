@@ -1,6 +1,8 @@
 # Definition-time config for the populate_vector_store pipeline.
 
 import dagster as dg
+from retrievers.embedding import INDEX_DIMS, INDEX_MODEL
+from retrievers.vector_store.chroma import COLLECTION_CONTENTS as COLLECTION_CONTENTS
 
 # 30-min partition; schedule emits the current half-hour key. start set to
 # pipeline land date so backfills don't accidentally enumerate empty history.
@@ -15,12 +17,11 @@ vector_store_partition_def = dg.TimeWindowPartitionsDefinition(
 
 MAX_PER_TICK_DEFAULT = 50
 
-# Embedding model + dims are coupled and locked-in: changing either
-# invalidates every vector in the Chroma collections. Not a deploy knob.
-EMBEDDING_MODEL_DEFAULT = "text-embedding-3-small"
-EMBEDDING_DIMS_DEFAULT = 1536
+# Embedding model + dims are coupled and locked-in, shared with search's query
+# embedder: changing either invalidates every vector in the Chroma collections.
+EMBEDDING_MODEL_DEFAULT = INDEX_MODEL
+EMBEDDING_DIMS_DEFAULT = INDEX_DIMS
 
-COLLECTION_CONTENTS = "contents"
 COLLECTION_CONVERSATIONS = "conversations"
 COLLECTION_NOTES = "notes"
 COLLECTION_WIKI = "wiki"

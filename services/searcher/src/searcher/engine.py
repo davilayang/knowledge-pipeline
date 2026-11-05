@@ -5,6 +5,7 @@ import asyncio
 import logging
 import os
 from collections.abc import Awaitable, Callable, Mapping
+from contextlib import AbstractAsyncContextManager
 from typing import NamedTuple
 
 from searcher.models import (
@@ -21,16 +22,29 @@ from searcher.models import (
 
 log = logging.getLogger(__name__)
 
-# A lane gets the query, its embedding and the deadline as an event-loop time
-# (None: no deadline), and returns its pieces best first, each carrying exactly
-# one `matched_by` entry, its own. Lanes must be async all the way down (no
-# `to_thread`): the deadline cancels them, and cancellation cannot stop a thread.
-LaneFn = Callable[[str, list[float], float | None], Awaitable[list[Item]]]
-Embedder = Callable[[str], Awaitable[list[float]]]
+# A lane gets the request, the query's embedding and the deadline as an
+# event-loop time (None: no deadline), and returns its pieces best first, each
+# carrying exactly one `matched_by` entry, its own. Lanes must be async all the
+# way down (no `to_thread`): the deadline cancels them, and cancellation cannot
+# stop a thread.
+LaneFn = Callable[[SearchRequest, list[float], float | None], Awaitable[list[Item]]]
+# An embedder gets the query and the same deadline as the lanes.
+EmbedFn = Callable[[str, float | None], Awaitable[list[float]]]
 
 # ponytail: one default until per-caller defaults are set from today's callers.
 K_DEFAULT = 10
 CODE_REV = os.environ.get("CODE_REV")
+CLEANUP_S = 0.1
+# An MCP search has no deadline; each network call in it still gets a finite one.
+NO_DEADLINE_S = 30.0
+
+
+def time_limit(deadline_at: float | None) -> AbstractAsyncContextManager[None]:
+    """The search deadline as an elapsed-time limit for one lane's or the
+    embedder's network calls, or `NO_DEADLINE_S` when the search has none."""
+    if deadline_at is None:
+        return asyncio.timeout(NO_DEADLINE_S)
+    return asyncio.timeout_at(deadline_at)
 
 
 class Contribution(NamedTuple):
@@ -43,7 +57,7 @@ class Contribution(NamedTuple):
 async def search(
     req: SearchRequest,
     lanes: Mapping[Source, LaneFn],
-    embed: Embedder | None,
+    embed: EmbedFn | None,
     deadline: float | None,
 ) -> SearchResponse:
     """Answer one request. `deadline` is seconds for the whole search, embedding
@@ -57,19 +71,24 @@ async def search(
     tasks: dict[Source, asyncio.Task[list[Item]]] = {}
     wired = [s for s in sources if s in lanes]
     if wired and embed is not None:
-        embedding = asyncio.create_task(embed(req.query))
+        embedding = asyncio.create_task(embed(req.query, deadline_at))
         embedding.add_done_callback(lambda _: stages.setdefault("embed", _ms(loop, began)))
 
         async def lane_task(lane: LaneFn) -> list[Item]:
             # Shielded: one lane timing out must not cancel the embedding the others share.
-            return await lane(req.query, await asyncio.shield(embedding), deadline_at)
+            return await lane(req, await asyncio.shield(embedding), deadline_at)
 
         tasks = {s: asyncio.create_task(lane_task(lanes[s])) for s in wired}
-        await asyncio.wait(tasks.values(), timeout=deadline)
-        late = [t for t in (embedding, *tasks.values()) if not t.done()]
-        for t in late:
-            t.cancel()
-        await asyncio.gather(*late, return_exceptions=True)
+        try:
+            await asyncio.wait(tasks.values(), timeout=deadline)
+        finally:
+            # Also runs when the search itself is cancelled, so no lane outlives it.
+            late = [t for t in (embedding, *tasks.values()) if not t.done()]
+            for t in late:
+                t.cancel()
+            if late:
+                # Bounded: a lane slow to unwind must not hold the answer past the deadline.
+                await asyncio.wait(late, timeout=CLEANUP_S)
         stages["lanes"] = round(_ms(loop, began) - stages.get("embed", 0.0), 1)
 
     merge_began = loop.time()
@@ -79,7 +98,7 @@ async def search(
         task = tasks.get(source)
         if task is None:
             outcome[source] = "skipped"
-        elif task.cancelled():
+        elif not task.done() or task.cancelled():
             outcome[source] = "timed_out"
         elif (exc := task.exception()) is not None:
             log.warning("lane %s failed", source, exc_info=exc)

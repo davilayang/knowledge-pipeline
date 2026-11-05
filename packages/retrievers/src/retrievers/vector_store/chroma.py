@@ -1,6 +1,6 @@
 import chromadb
 
-COLLECTION_NAME = "contents"
+COLLECTION_CONTENTS = "contents"
 
 
 def get_http_client(host: str, port: int) -> chromadb.ClientAPI:

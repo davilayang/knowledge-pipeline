@@ -2,8 +2,10 @@
 
 from typing import Protocol
 
+import httpx
 from openai import (
     APIConnectionError,
+    AsyncOpenAI,
     InternalServerError,
     OpenAI,
     RateLimitError,
@@ -19,6 +21,11 @@ from tenacity import (
 # API errors including 4xx (BadRequestError, AuthenticationError) — retrying
 # those would burn the attempt budget on a misconfigured key.
 _TRANSIENT_OPENAI_ERRORS = (RateLimitError, APIConnectionError, InternalServerError)
+
+# Indexing and search embed with the same model and dims: changing either
+# invalidates every vector in the Chroma collections.
+INDEX_MODEL = "text-embedding-3-small"
+INDEX_DIMS = 1536
 
 # OpenAI's `/embeddings` accepts at most 300k input tokens per request. We
 # under-shoot to leave headroom for tokenizer drift between our cheap char-based
@@ -117,3 +124,18 @@ class OpenAIEmbedder:
         if cur:
             batches.append(cur)
         return batches
+
+
+class AsyncQueryEmbedder:
+    """Embeds one search query with indexing's model and dims. One try, no
+    retries: the caller bounds the call with its deadline, which a retry would
+    outlive."""
+
+    def __init__(self, *, api_key: str | None = None, http_client: httpx.AsyncClient | None = None):
+        self._client = AsyncOpenAI(api_key=api_key, http_client=http_client, max_retries=0)
+
+    async def embed(self, text: str) -> list[float]:
+        resp = await self._client.embeddings.create(
+            input=[text], model=INDEX_MODEL, dimensions=INDEX_DIMS
+        )
+        return list(resp.data[0].embedding)
