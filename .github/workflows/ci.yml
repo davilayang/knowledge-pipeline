@@ -1,9 +1,9 @@
 # Everything checkable from the code alone: no API keys, no Postgres, no Chroma.
 # `check` runs `poe check` (fmt, lint, the workspace suite, the pull-wiki script
-# check, the fetcher suite). `images` builds every compose image, validates the
-# Dagster definitions inside the code image, and starts the fetcher far enough
-# to answer /healthz, so an image that no longer matches the workspace fails
-# here rather than at deploy.
+# check, the fetcher and searcher suites). `images` builds every compose image,
+# validates the Dagster definitions inside the code image, and starts the
+# fetcher and searcher far enough to answer /healthz, so an image that no longer
+# matches the workspace fails here rather than at deploy.
 name: CI
 
 on:
@@ -87,4 +87,14 @@ jobs:
             sleep 1
           done
           docker logs fetcher-smoke
+          exit 1
+
+      - name: Searcher answers /healthz
+        run: |
+          docker run -d --name searcher-smoke -p 8001:8000 local/searcher
+          for _ in $(seq 1 30); do
+            if curl -fsS --max-time 2 localhost:8001/healthz | grep -q '"ok":true'; then exit 0; fi
+            sleep 1
+          done
+          docker logs searcher-smoke
           exit 1

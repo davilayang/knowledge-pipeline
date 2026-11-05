@@ -23,6 +23,7 @@ COPY packages/orchestrators/pyproject.toml /app/packages/orchestrators/pyproject
 COPY packages/retrievers/pyproject.toml /app/packages/retrievers/pyproject.toml
 COPY packages/workflows/pyproject.toml /app/packages/workflows/pyproject.toml
 COPY services/fetcher/pyproject.toml /app/services/fetcher/pyproject.toml
+COPY services/searcher/pyproject.toml /app/services/searcher/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --package fetcher --no-install-workspace --no-dev --no-editable
 

@@ -107,8 +107,9 @@ Main is **protected**. All changes go through feature branches and pull requests
 | `knowledge-evals` | `packages/evals` | Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding, reserved), wiki dimensions (reserved) |
 | `knowledge-orchestrators` | `packages/orchestrators` | Dagster definitions — the **only** package allowed to depend on Dagster |
 | `fetcher` | `services/fetcher` | FastAPI content service (fetch, extract, structure); its suite runs separately via `poe test-fetcher` |
+| `searcher` | `services/searcher` | FastAPI search service (`POST /v1/search`, contract in the hub's `contracts/search.md`); its suite runs separately via `poe test-searcher` |
 
-**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers`. `fetcher` depends on `domains` only. `orchestrators` is the top — depends on everything below except `fetcher`, which it calls over HTTP. Nothing outside `orchestrators` may `import dagster`.
+**Dependency rule:** `domains` is the foundation, no internal imports. `workflows` and `retrievers` depend on `domains`. `evals` depends on `domains` + `retrievers`. `fetcher` depends on `domains` only; `searcher` depends on no workspace package yet. `orchestrators` is the top — depends on everything below except `fetcher`, which it calls over HTTP. Nothing outside `orchestrators` may `import dagster`.
 
 ## Common Commands (via `poe`)
 
@@ -163,6 +164,7 @@ packages/
 
 services/
   fetcher/         # Standalone FastAPI content service (uv workspace member, shares the root uv.lock and venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call, and `POST /v1/structure-oreilly`, a deterministic HTML→markdown converter for publisher pages that block automated fetching (no model). Depends on packages/domains. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
+  searcher/        # FastAPI search service: `POST /v1/search` for newsletter-assistant's voice recall and MCP search, per the hub's `contracts/search.md`. Answers `unavailable` until its lanes are wired; no caller uses it yet.
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by the fetcher service's POST /v1/extract; labels resolved in services/fetcher/src/fetcher/extract/tasks.py
