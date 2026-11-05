@@ -44,6 +44,12 @@ The test for where a new fact goes: *would handing this to a labeler bias them?*
 *Does a labeler need it to do the job?* → codebook. A dataset with mechanically-derived rows needs
 no codebook; adding one only creates a second place to go stale.
 
+## Datasets in subfolders
+
+A dataset family in its own folder keeps its README there, with the five headings above.
+
+- [`search/`](search/README.md): recall probes, graded gold and the snapshot manifest for the search service.
+
 ## `retrieval_eval.jsonl`
 
 JSONL of `{query, source, expected_content_id}` rows consumed by `uv run eval-retrieval` (default `--eval-set` resolves to `packages/evals/datasets/retrieval_eval.jsonl` from repo root). Schema validated by `evals.retrieval.dataset.load_eval_set` — bad rows fail loudly.
