@@ -181,3 +181,22 @@ def test_truncated_searcher_passage_fails():
     resp["items"][0]["passages"] = ["alpha chunk"]
     failures, _ = compare(rec, resp)
     assert len(failures) == 1 and "not a whole chunk" in failures[0]
+
+
+def test_blank_na_title_matched_by_searcher_url_passes_and_is_listed():
+    rec = _record()
+    rec["items"][1]["title"] = ""
+    resp = _response(rec)
+    resp["items"][1]["title"] = "https://b"
+    failures, listed = compare(rec, resp)
+    assert failures == []
+    assert listed == [f"title: {URI_B} blank in newsletter-assistant, searcher uses its url"]
+
+
+def test_blank_na_title_against_another_searcher_title_fails():
+    rec = _record()
+    rec["items"][1]["title"] = ""
+    resp = _response(rec)
+    resp["items"][1]["title"] = "Beta"
+    failures, _ = compare(rec, resp)
+    assert len(failures) == 1 and "title" in failures[0]

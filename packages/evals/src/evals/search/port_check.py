@@ -5,7 +5,7 @@ results taken at the same moment against the same Chroma and `corpus.db`.
     uv run eval-search-port-check --harvest data/eval_runs/search/harvest.json \
         --searcher http://localhost:8001
 
-Exits non-zero on any failure. Tie swaps pass and are printed.
+Exits non-zero on any failure. Tie swaps and blank titles replaced by the url pass and are printed.
 """
 
 import argparse
@@ -27,7 +27,10 @@ DEPTHS = [5, 10]
 
 
 def compare(record: dict, response: dict) -> tuple[list[str], list[str]]:
-    """Return (failures, tie swaps) for one probe at one depth.
+    """Return (failures, listed differences) for one probe at one depth.
+
+    Listed differences pass but are always reported: tie swaps, and a blank
+    newsletter-assistant title the searcher replaced with the item's url.
 
     Order matches when every pair the searcher returns in the opposite order to
     newsletter-assistant was tied there (best chunk distances within `TIE_GAP`);
@@ -65,11 +68,19 @@ def compare(record: dict, response: dict) -> tuple[list[str], list[str]]:
     for it in response["items"]:
         if it["uri"] not in na:
             continue
+        want_it = na[it["uri"]]
         for field in FIELDS:
-            if it.get(field) != na[it["uri"]][field]:
+            if field == "title" and want_it["title"] == "" and want_it["url"] is not None:
+                if it.get("title") == want_it["url"]:
+                    # The contract turns a blank stored title into the url.
+                    ties.append(
+                        f"title: {it['uri']} blank in newsletter-assistant, searcher uses its url"
+                    )
+                    continue
+            if it.get(field) != want_it[field]:
                 failures.append(
                     f"{field} of {it['uri']}: searcher {it.get(field)!r}, "
-                    f"newsletter-assistant {na[it['uri']][field]!r}"
+                    f"newsletter-assistant {want_it[field]!r}"
                 )
         chunks = [
             c["chunk"] for c in record["chunks"] if c["content_id"] == corpus_content_id(it["uri"])
@@ -144,7 +155,7 @@ def main(argv: list[str] | None = None) -> None:
             for line in failures:
                 print(f"  fail: {line}")
             for line in ties:
-                print(f"  tie: {line}")
+                print(f"  listed: {line}")
     total = len(harvest["probes"]) * len(harvest["depths"])
     print(f"{total - failed} of {total} passed")
     sys.exit(1 if failed else 0)
