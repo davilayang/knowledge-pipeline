@@ -198,6 +198,14 @@ help = """
     uv run poe retrieval-eval -- --raw-store-db /backup/raw_store.db --limit 50
 """
 
+[tool.poe.tasks.eval-search-port-check]
+cmd = "eval-search-port-check"
+help = """
+  Compare the searcher's corpus lane with newsletter-assistant's on the search
+  probes, from a harvest taken at the same moment. Pass flags after `--`, e.g.
+    uv run poe eval-search-port-check -- --harvest data/eval_runs/search/harvest.json
+"""
+
 [tool.poe.tasks.wiki-eval]
 cmd = "python -m evals.wiki.cli"
 help = "Run the wiki-quality eval harness — six quality dimensions across synthesized wiki pages. Not yet implemented; reserved for the layer that evaluates wiki output beyond plain retrieval."
