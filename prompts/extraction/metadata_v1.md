@@ -54,7 +54,7 @@ the listener cannot check; recording the gap is what lets the agent say so
 instead of reading it out flat.
 
 **The contributors section is shaped by a measured failure.** Scored over the 58
-gold rows in `packages/evals/datasets/extract_metadata_gold.jsonl`, an earlier
+gold rows in `packages/evals/datasets/extraction/extract_metadata_gold.jsonl`, an earlier
 revision reached recall 1.00 at precision 0.67: it missed nobody and emitted 36
 people who had not made the piece. The loss was entirely over-production, so the
 section now leads with a test a name must pass rather than with instructions for

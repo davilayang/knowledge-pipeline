@@ -19,9 +19,11 @@ Cross-surface conventions (the shared runner + manifest, subject seam, judge fam
 packages/evals/
 ├── README.md                     # this file
 ├── datasets/
-│   ├── README.md                 # dataset cadence + Option 1 rationale
-│   ├── retrieval_eval.jsonl      # pinned eval pairs (145 pairs; research source dropped 2026-06-25)
-│   └── search/                   # search probes, graded gold, snapshot manifest, codebook + README
+│   ├── README.md                 # shared dataset conventions + index of the subfolders
+│   ├── search/                   # search service probes, graded gold, snapshot manifest
+│   ├── retrieval/                # retrieval_eval.jsonl + wiki_eval_*.jsonl (evals.retrieval)
+│   ├── extraction/               # extraction, narrative and metadata gold (evals.extraction)
+│   └── wiki/                     # claim extraction + tagging gold (evals.wiki.claims)
 ├── src/evals/
 │   ├── core/                     # ✅ pure-function substrate (no LLM, no Dagster, no Postgres)
 │   │   ├── types.py              # RunStatus, FixtureRun, RunRecord, ScoreReport, StageTrace, ...
@@ -109,7 +111,7 @@ The `extract_claims` producer tags every extracted claim as one of two types, an
 
 Three independent axes, easy to conflate: (1) **faithfulness** — is the claim actually in the source; (2) **this tag** — `reported` vs `opinion` *type*; (3) **world-truth** — not assessed in this pipeline. A claim can be faithful + `reported` + false all at once.
 
-The harness uses `reported`/`opinion` across the prompts (`prompts/eval/tagging_v1.md`, and the producer prompt — `extract_claims_task_v1.md` at the time the gold was frozen, `extract_claims_task_v2.md` since citations were added), the tagging judge, and the gold dataset. The only retained legacy name is the internal `SourceClaim.speculative` bool (`speculative=True` ⟺ `opinion`), kept to bound rename churn. Calibration against the 60-claim human gold: producer 85% (51/60, exact — producer tags are frozen in the gold); judge ~90% (88–98% across runs — LLM variance, and the judge sees the producer's tag while grading, so it's anchored). The rename was made for naming clarity, not a measured judge gain. See `packages/evals/datasets/README.md` for the per-shape breakdown. Canonical decision + worked examples: [Knowledge OS — Decisions: claim tag taxonomy](https://app.notion.com/p/38fd130d61318176bc97f7949db84843).
+The harness uses `reported`/`opinion` across the prompts (`prompts/eval/tagging_v1.md`, and the producer prompt — `extract_claims_task_v1.md` at the time the gold was frozen, `extract_claims_task_v2.md` since citations were added), the tagging judge, and the gold dataset. The only retained legacy name is the internal `SourceClaim.speculative` bool (`speculative=True` ⟺ `opinion`), kept to bound rename churn. Calibration against the 60-claim human gold: producer 85% (51/60, exact — producer tags are frozen in the gold); judge ~90% (88–98% across runs — LLM variance, and the judge sees the producer's tag while grading, so it's anchored). The rename was made for naming clarity, not a measured judge gain. See `packages/evals/datasets/wiki/README.md` for the per-shape breakdown. Canonical decision + worked examples: [Knowledge OS — Decisions: claim tag taxonomy](https://app.notion.com/p/38fd130d61318176bc97f7949db84843).
 
 ## Substrate primitives + composition patterns
 

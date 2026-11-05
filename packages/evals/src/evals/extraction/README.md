@@ -38,7 +38,7 @@ also carries `merge_fidelity_verdicts` / `merge_invented` — conservative (fals
 two-juror aggregation for scoring the same axis with two backends — but the scorer doesn't call
 them; only the metric functions (`faithful_recall`, `distortion_rate`, `fabrication_rate`,
 `severe_omission_count`) are wired in today. The gold lives at
-[`datasets/narrative_fidelity_gold_seed.jsonl`](../../../datasets/README.md#narrative_fidelity_gold_seedjsonl)
+[`datasets/extraction/narrative_fidelity_gold_seed.jsonl`](../../../datasets/extraction/README.md#narrative_fidelity_gold_seedjsonl)
 (11 fixtures). This is substrate only — no `eval-*` CLI entry point and not yet re-exported from
 `evals.extraction.__init__` — until a runner lands.
 
