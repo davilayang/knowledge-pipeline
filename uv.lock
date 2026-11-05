@@ -4447,6 +4447,7 @@ version = "0.42.1"
 source = { editable = "services/searcher" }
 dependencies = [
     { name = "fastapi" },
+    { name = "knowledge-retrievers" },
     { name = "pydantic" },
     { name = "uvicorn", extra = ["standard"] },
 ]
@@ -4454,6 +4455,7 @@ dependencies = [
 [package.metadata]
 requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1.0" },
+    { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "pydantic", specifier = ">=2.9,<3.0" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32,<1.0" },
 ]

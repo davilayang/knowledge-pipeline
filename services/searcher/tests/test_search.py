@@ -4,6 +4,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from searcher.app import create_app
+from searcher.models import SearchRequest
 
 
 def _search(body: dict):
@@ -111,11 +112,11 @@ def test_voice_searches_get_a_deadline_and_mcp_searches_none() -> None:
     """The app's caller-to-deadline table, read through what a lane is given."""
     seen: dict[str, float | None] = {}
 
-    async def lane(query: str, embedding: list[float], deadline_at: float | None) -> list:
-        seen[query] = deadline_at
+    async def lane(req: SearchRequest, embedding: list[float], deadline_at: float | None) -> list:
+        seen[req.query] = deadline_at
         return []
 
-    async def embed(text: str) -> list[float]:
+    async def embed(text: str, deadline_at: float | None) -> list[float]:
         return [0.0]
 
     with TestClient(create_app(lanes={"notes": lane}, embed=embed)) as client:

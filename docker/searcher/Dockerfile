@@ -25,6 +25,8 @@ COPY services/searcher/pyproject.toml /app/services/searcher/pyproject.toml
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --package searcher --no-install-workspace --no-dev --no-editable
 
+COPY packages/domains/src /app/packages/domains/src
+COPY packages/retrievers/src /app/packages/retrievers/src
 COPY services/searcher/src /app/services/searcher/src
 RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --locked --package searcher --no-dev --no-editable
@@ -36,8 +38,11 @@ RUN useradd --create-home --uid 1000 searcher
 
 COPY --from=builder --chown=searcher:searcher /app/.venv /app/.venv
 
+# The commit the image was built from, reported in every search's trace.
+ARG CODE_REV=""
 ENV PATH="/app/.venv/bin:$PATH" \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    CODE_REV=${CODE_REV}
 
 USER searcher
 WORKDIR /app
