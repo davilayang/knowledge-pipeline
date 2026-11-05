@@ -1,4 +1,4 @@
-"""Loaders for the search probes and gold (`packages/evals/datasets/search_*.jsonl`)."""
+"""Loaders for the search probes and gold (`packages/evals/datasets/search/`)."""
 
 from dataclasses import dataclass
 from pathlib import Path

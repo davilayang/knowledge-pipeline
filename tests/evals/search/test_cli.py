@@ -5,7 +5,7 @@ import pytest
 from evals.search.cli import main
 from evals.search.score import snapshot_digests
 
-DATASETS = Path(__file__).parents[3] / "packages/evals/datasets"
+DATASETS = Path(__file__).parents[3] / "packages/evals/datasets/search"
 
 
 def _datasets(tmp_path: Path, snapshot_dir: Path, *, gold_version: str = "v1") -> Path:
@@ -13,14 +13,14 @@ def _datasets(tmp_path: Path, snapshot_dir: Path, *, gold_version: str = "v1") -
     d.mkdir()
     head = {"schema_version": 1, "dataset_version": "v1"}
     rows = [{"probe_id": 1, "text": "q", "caller": "both", "type": "sweep", "negative": None}]
-    (d / "search_probes.jsonl").write_text(
+    (d / "probes.jsonl").write_text(
         "\n".join(json.dumps(r) for r in [{**head, "fixture_kind": "search_probes"}, *rows])
     )
-    (d / "search_gold.jsonl").write_text(
+    (d / "gold.jsonl").write_text(
         json.dumps({**head, "fixture_kind": "search_gold", "dataset_version": gold_version})
     )
     manifest = {"dataset_version": "v1", "digests": snapshot_digests(snapshot_dir)}
-    (d / "search_snapshot.manifest").write_text(json.dumps(manifest))
+    (d / "snapshot.manifest").write_text(json.dumps(manifest))
     return d
 
 
@@ -50,7 +50,7 @@ def test_the_committed_dataset_agrees_with_its_own_versions():
     """Guards the shipped files without the snapshot: headers and manifest agree."""
     from evals.search.dataset import load_gold, load_probes
 
-    p_head, _ = load_probes(DATASETS / "search_probes.jsonl")
-    g_head, _ = load_gold(DATASETS / "search_gold.jsonl")
-    manifest = json.loads((DATASETS / "search_snapshot.manifest").read_text())
+    p_head, _ = load_probes(DATASETS / "probes.jsonl")
+    g_head, _ = load_gold(DATASETS / "gold.jsonl")
+    manifest = json.loads((DATASETS / "snapshot.manifest").read_text())
     assert p_head["dataset_version"] == g_head["dataset_version"] == manifest["dataset_version"]

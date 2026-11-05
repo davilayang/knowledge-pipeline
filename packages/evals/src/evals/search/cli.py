@@ -21,7 +21,7 @@ from evals.search.legacy_run import hits_from_legacy_run
 from evals.search.score import Snapshot, score_view
 from evals.search.validate import validate
 
-DATASETS = Path("packages/evals/datasets")
+DATASETS = Path("packages/evals/datasets/search")
 
 
 def main(argv: list[str] | None = None) -> None:
@@ -31,9 +31,9 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--datasets", type=Path, default=DATASETS)
     args = ap.parse_args(argv)
 
-    p_head, probes = load_probes(args.datasets / "search_probes.jsonl")
-    g_head, gold = load_gold(args.datasets / "search_gold.jsonl")
-    manifest = json.loads((args.datasets / "search_snapshot.manifest").read_text())
+    p_head, probes = load_probes(args.datasets / "probes.jsonl")
+    g_head, gold = load_gold(args.datasets / "gold.jsonl")
+    manifest = json.loads((args.datasets / "snapshot.manifest").read_text())
     versions = {p_head.get("dataset_version"), g_head.get("dataset_version")}
     versions.add(manifest.get("dataset_version"))
     if len(versions) != 1 or None in versions:
