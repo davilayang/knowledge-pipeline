@@ -3,7 +3,7 @@
 
 import asyncio
 
-from searcher.engine import Embedder, LaneFn, search
+from searcher.engine import EmbedFn, LaneFn, search
 from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Source
 
 
@@ -49,7 +49,7 @@ def _search_now(
     req: SearchRequest,
     lanes: dict[Source, LaneFn],
     deadline: float | None = None,
-    embed: Embedder = _embed,
+    embed: EmbedFn = _embed,
 ) -> SearchResponse:
     return asyncio.run(search(req, lanes, embed, deadline))
 

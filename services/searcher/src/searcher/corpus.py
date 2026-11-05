@@ -3,12 +3,12 @@ Chroma's `contents` collection and resolved in corpus.db."""
 
 import sqlite3
 from collections.abc import Awaitable, Callable
+from datetime import date, datetime
 from pathlib import Path
-from datetime import datetime
 from typing import Any
 from urllib.parse import quote
 
-from retrievers.vector_store.chroma import COLLECTION_NAME
+from retrievers.vector_store.chroma import COLLECTION_CONTENTS
 
 from searcher.engine import K_DEFAULT, LaneFn, time_limit
 from searcher.models import Item, MatchedBy, SearchRequest
@@ -21,7 +21,7 @@ def corpus_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
         async with time_limit(deadline_at):
             client = await chroma()
             # get_collection, never get_or_create: a search creates nothing.
-            collection = await client.get_collection(COLLECTION_NAME, embedding_function=None)
+            collection = await client.get_collection(COLLECTION_CONTENTS, embedding_function=None)
             res = await collection.query(
                 query_embeddings=[embedding],
                 n_results=req.k or K_DEFAULT,
@@ -31,18 +31,20 @@ def corpus_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
         rows = _resolve(db_path, sorted({str(m.get("content_id", "")) for _, m, _ in hits}))
         items: dict[str, Item] = {}
         for chunk, meta, dist in hits:
-            cid = str(meta.get("content_id", ""))
-            if cid in items:
-                if chunk not in items[cid].passages:
-                    items[cid].passages.append(chunk)
+            content_id = str(meta.get("content_id", ""))
+            if content_id in items:
+                if chunk not in items[content_id].passages:
+                    items[content_id].passages.append(chunk)
                 continue
-            row = rows.get(cid)
+            row = rows.get(content_id)
             if row is None:
                 continue
-            item = _item(req, cid, chunk, meta, dist, row, rank=len(items) + 1)
-            # stored_at is NOT NULL, so no corpus item is undated.
-            if req.since is None or (item.date is not None and item.date >= req.since):
-                items[cid] = item
+            # stored_at is NOT NULL, so every corpus item has a saved date.
+            saved = datetime.fromisoformat(row["stored_at"]).date()
+            if req.since is None or saved >= req.since:
+                items[content_id] = _item(
+                    req.query, content_id, chunk, meta, dist, row, saved, rank=len(items) + 1
+                )
         return list(items.values())
 
     return lane
@@ -70,12 +72,13 @@ def _resolve(db_path: Path, content_ids: list[str]) -> dict[str, sqlite3.Row]:
 
 
 def _item(
-    req: SearchRequest,
-    cid: str,
+    query: str,
+    content_id: str,
     chunk: str,
     meta: dict[str, Any],
     dist: float,
     row: sqlite3.Row,
+    saved: date,
     rank: int,
 ) -> Item:
     # As newsletter-assistant fills them: a chunk carrying a url keeps its own
@@ -86,17 +89,18 @@ def _item(
         url = row["url"] or ""
         author = author or row["author"] or ""
     return Item(
-        uri=f"kos://piece/corpus/{quote(cid, safe=':')}",
+        uri=f"kos://piece/corpus/{quote(content_id, safe=':')}",
         kind="corpus",
-        # The contract never returns a blank title: it becomes the url.
-        title=meta.get("title") or row["title"] or url or cid,
+        # Contract §2: a title is never empty; a blank one becomes the url, and
+        # the content id only where there is no url either.
+        title=meta.get("title") or row["title"] or url or content_id,
         author=author or None,
-        date=datetime.fromisoformat(row["stored_at"]).date(),
+        date=saved,
         url=url or None,
         summary=None,
         passages=[chunk],
         meta={},
         matched_by=[
-            MatchedBy(query=req.query, lane="corpus", method="dense", rank=rank, score=1 - dist)
+            MatchedBy(query=query, lane="corpus", method="dense", rank=rank, score=1 - dist)
         ],
     )

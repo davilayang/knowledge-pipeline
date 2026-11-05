@@ -29,7 +29,7 @@ log = logging.getLogger(__name__)
 # stop a thread.
 LaneFn = Callable[[SearchRequest, list[float], float | None], Awaitable[list[Item]]]
 # An embedder gets the query and the same deadline as the lanes.
-Embedder = Callable[[str, float | None], Awaitable[list[float]]]
+EmbedFn = Callable[[str, float | None], Awaitable[list[float]]]
 
 # ponytail: one default until per-caller defaults are set from today's callers.
 K_DEFAULT = 10
@@ -57,7 +57,7 @@ class Contribution(NamedTuple):
 async def search(
     req: SearchRequest,
     lanes: Mapping[Source, LaneFn],
-    embed: Embedder | None,
+    embed: EmbedFn | None,
     deadline: float | None,
 ) -> SearchResponse:
     """Answer one request. `deadline` is seconds for the whole search, embedding

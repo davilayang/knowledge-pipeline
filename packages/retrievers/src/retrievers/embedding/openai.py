@@ -128,19 +128,14 @@ class OpenAIEmbedder:
 
 class AsyncQueryEmbedder:
     """Embeds one search query with indexing's model and dims. One try, no
-    retries: the caller's deadline sets the timeout, and a retry would outlive it."""
+    retries: the caller bounds the call with its deadline, which a retry would
+    outlive."""
 
     def __init__(self, *, api_key: str | None = None, http_client: httpx.AsyncClient | None = None):
-        self._api_key = api_key
-        self._http_client = http_client
-        self._client: AsyncOpenAI | None = None
+        self._client = AsyncOpenAI(api_key=api_key, http_client=http_client, max_retries=0)
 
-    async def embed(self, text: str, timeout: float) -> list[float]:
-        if self._client is None:  # built on first use, so importing needs no key
-            self._client = AsyncOpenAI(
-                api_key=self._api_key, http_client=self._http_client, max_retries=0
-            )
+    async def embed(self, text: str) -> list[float]:
         resp = await self._client.embeddings.create(
-            input=[text], model=INDEX_MODEL, dimensions=INDEX_DIMS, timeout=timeout
+            input=[text], model=INDEX_MODEL, dimensions=INDEX_DIMS
         )
         return list(resp.data[0].embedding)

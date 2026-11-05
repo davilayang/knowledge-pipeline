@@ -1,4 +1,4 @@
-"""The query embedder search uses: indexing's model and dims, one try, a caller-set timeout."""
+"""The query embedder search uses: indexing's model and dims, one try."""
 
 import asyncio
 import json
@@ -30,7 +30,7 @@ def test_it_embeds_with_indexing_model_and_dims() -> None:
             },
         )
 
-    vec = asyncio.run(_embedder(handler).embed("rag", timeout=2.0))
+    vec = asyncio.run(_embedder(handler).embed("rag"))
     assert vec == [0.1, 0.2]
     assert sent[0]["model"] == INDEX_MODEL and sent[0]["dimensions"] == INDEX_DIMS
     assert sent[0]["input"] == ["rag"]
@@ -45,5 +45,5 @@ def test_it_never_retries() -> None:
         raise httpx.ReadTimeout("slow", request=request)
 
     with pytest.raises(APITimeoutError):
-        asyncio.run(_embedder(handler).embed("rag", timeout=0.5))
+        asyncio.run(_embedder(handler).embed("rag"))
     assert calls == 1

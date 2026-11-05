@@ -25,8 +25,8 @@ the contract's precedence.
   each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is
   dropped; a blank title becomes the url; the date is when the item was saved.
   `corpus.db` is opened read-only through SQLite on a read-write mount of
-  newsletter-assistant's data directory (`NA_DATA_DIR`, compose mounts
-  `BACKUP_SRC_DIR`), so SQLite can recreate the `-shm` file of a WAL database its
+  newsletter-assistant's data directory (`NEWSLETTER_DATA_DIR`; compose mounts
+  `BACKUP_SRC_DIR`, which it requires), so SQLite can recreate the `-shm` file of a WAL database its
   writer has closed. The container runs as UID 1000, the writers' UID.
 
 The other lanes are not wired yet, so they are `skipped` and a request for them

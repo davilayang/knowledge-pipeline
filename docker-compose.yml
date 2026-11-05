@@ -226,15 +226,18 @@ services:
     # UID 1000, like newsletter-assistant's datasette, so the SQLite `-shm` files
     # it creates in the shared data directory have the owner the writers expect.
     user: "1000:1000"
-    env_file: .env
+    # Only what the searcher reads, not the whole .env; CODE_REV is baked in at build.
     environment:
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
-      NA_DATA_DIR: /na-data
+      NEWSLETTER_DATA_DIR: /newsletter-data
     volumes:
-      # Read-write so SQLite can recreate `-shm` for a cleanly closed WAL
-      # database; the searcher opens it `mode=ro` and never writes data.
-      - ${BACKUP_SRC_DIR:-./data}:/na-data
+      # newsletter-assistant's data directory. Required: falling back to kp's own
+      # data/ would start a searcher with no corpus.db. Read-write so SQLite can
+      # recreate `-shm` for a cleanly closed WAL database; the searcher opens it
+      # `mode=ro` and never writes data.
+      - ${BACKUP_SRC_DIR:?set BACKUP_SRC_DIR to newsletter-assistant's data directory}:/newsletter-data
     networks:
       kos_network:
         aliases:

@@ -10,7 +10,8 @@ import pytest
 from chromadb.errors import NotFoundError
 
 from searcher.corpus import corpus_lane
-from searcher.models import Item, SearchRequest
+from searcher.engine import search
+from searcher.models import Item, SearchRequest, SearchResponse
 
 
 def _req(**kw: object) -> SearchRequest:
@@ -47,6 +48,10 @@ class FakeChroma:
 
     async def create_collection(self, *a: Any, **kw: Any) -> None:
         self.created = True
+
+
+async def _embed(text: str, deadline_at: float | None) -> list[float]:
+    return [0.0]
 
 
 def _lane(chroma: FakeChroma, db: Path):  # type: ignore[no-untyped-def]
@@ -101,10 +106,10 @@ def _corpus_db(path: Path, rows: list[dict[str, str | None]]) -> Path:
     return path
 
 
-def _row(cid: str, **kw: str | None) -> dict[str, str | None]:
+def _row(content_id: str, **kw: str | None) -> dict[str, str | None]:
     return {
-        "content_id": cid,
-        "title": "T " + cid,
+        "content_id": content_id,
+        "title": "T " + content_id,
         "author": "",
         "url": None,
         "stored_at": "2026-10-02T09:30:00+00:00",
@@ -112,8 +117,10 @@ def _row(cid: str, **kw: str | None) -> dict[str, str | None]:
     }
 
 
-def _hit(cid: str, chunk: str, dist: float, **meta: str) -> tuple[str, dict[str, Any], float]:
-    return chunk, {"content_id": cid, **meta}, dist
+def _hit(
+    content_id: str, chunk: str, dist: float, **meta: str
+) -> tuple[str, dict[str, Any], float]:
+    return chunk, {"content_id": content_id, **meta}, dist
 
 
 def test_a_hit_resolves_in_a_closed_wal_database(tmp_path: Path) -> None:
@@ -176,3 +183,16 @@ def test_since_keeps_items_saved_on_or_after_it(
     db = _corpus_db(tmp_path / "corpus.db", [_row("d")])  # saved 2026-10-02
     items = _run(_lane(FakeChroma(FakeCollection([_hit("d", "x", 0.1)])), db), _req(since=since))
     assert [i.uri.rsplit("/", 1)[1] for i in items] == kept
+
+
+def test_a_missing_corpus_db_fails_the_lane_and_creates_no_file(tmp_path: Path) -> None:
+    db = tmp_path / "corpus.db"
+    chroma = FakeChroma(FakeCollection([_hit("d", "x", 0.1)]))
+
+    async def go() -> SearchResponse:
+        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, None)
+
+    resp = asyncio.run(go())
+    assert resp.lanes["corpus"].outcome == "failed"
+    assert resp.status == "unavailable"
+    assert list(tmp_path.iterdir()) == []
