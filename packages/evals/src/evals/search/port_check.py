@@ -22,7 +22,8 @@ from evals.core.manifest import RunManifest, code_rev, format_manifest_line
 from evals.search.cli import DATASETS
 from evals.search.dataset import load_probes
 
-TIE_GAP = 1e-4
+# The two sides embed the query separately; that alone moves distances by up to 1.1e-3.
+TIE_GAP = 2e-3
 # Voice reads 5 corpus chunks; MCP defaults to k=10.
 DEPTHS = [5, 10]
 FORMAT_VERSION = 2
@@ -39,15 +40,17 @@ def _uri_id(uri: str) -> str:
 def _chunks_of(lane: str, uri: str, chunks: list[dict]) -> list[dict]:
     """The harvested chunks that belong to the item at `uri`.
 
-    Notes are indexed under `local:<note_id>.md`. A brief's file is
-    `<date>_<slug>-<first 8 chars of brief_id>.md`, so it is matched on that suffix.
+    Notes are indexed under `local:<note_id>.md`; the other lanes carry the id itself.
     """
     i = _uri_id(uri)
     if lane == "notes":
         return [c for c in chunks if c["source_ref"] == f"local:{i}.md"]
-    if lane == "briefs":
-        return [c for c in chunks if c["source_ref"].removesuffix(".md").endswith(f"-{i[:8]}")]
-    key = {"corpus": "content_id", "sessions": "session_id", "wiki": "entity_id"}[lane]
+    key = {
+        "corpus": "content_id",
+        "sessions": "session_id",
+        "briefs": "brief_id",
+        "wiki": "entity_id",
+    }[lane]
     return [c for c in chunks if c[key] == i]
 
 

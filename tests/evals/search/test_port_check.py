@@ -284,6 +284,7 @@ def _briefs() -> dict:
         "chunks": [
             {
                 "source_ref": "local:2026-10-01_try-evals-0192a6f0.md",
+                "brief_id": "0192a6f0-1111-7000-8000-000000000001",
                 "distance": 0.3,
                 "chunk": "a brief chunk",
             },
@@ -427,3 +428,44 @@ def test_lane_filter_searches_only_those_lanes_one_lane_per_request(tmp_path, mo
     out = capsys.readouterr().out
     assert out.count("harvest has no sessions lane") == 4
     assert "0 of 8 passed" in out
+
+
+def test_brief_chunks_are_matched_by_brief_id_not_filename_suffix():
+    other = "kos://piece/brief/0192a6f0-2222-7000-8000-000000000002"
+    rec = {
+        "chunks": [
+            {
+                "source_ref": "local:2026-10-01_try-evals-0192a6f0.md",
+                "brief_id": "0192a6f0-1111-7000-8000-000000000001",
+                "distance": 0.3,
+                "chunk": "first brief chunk",
+            },
+            {
+                "source_ref": "local:2026-10-02_other-0192a6f0.md",
+                "brief_id": "0192a6f0-2222-7000-8000-000000000002",
+                "distance": 0.4,
+                "chunk": "second brief chunk",
+            },
+        ],
+        "items": [
+            {"uri": B1, "title": "Try evals", "date": "2026-10-01"},
+            {"uri": other, "title": "Other", "date": "2026-10-02"},
+        ],
+    }
+    resp = _lane_response(rec)
+    resp["items"][0]["passages"] = ["second brief chunk"]
+    failures, _ = compare("briefs", rec, resp)
+    assert len(failures) == 1 and "not a whole chunk" in failures[0] and B1 in failures[0]
+
+
+def test_swap_within_query_embedding_jitter_passes_and_beyond_it_fails():
+    rec = _sessions(a=0.4000, b=0.4015)
+    resp = _lane_response(rec)
+    resp["items"].reverse()
+    failures, ties = compare("sessions", rec, resp)
+    assert failures == [] and len(ties) == 1
+    rec = _sessions(a=0.4000, b=0.4025)
+    resp = _lane_response(rec)
+    resp["items"].reverse()
+    failures, ties = compare("sessions", rec, resp)
+    assert len(failures) == 1 and "order" in failures[0] and ties == []
