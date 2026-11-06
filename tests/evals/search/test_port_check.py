@@ -124,13 +124,13 @@ def test_searcher_error_fails_that_probe_and_the_run_continues(tmp_path, monkeyp
 
     calls = []
 
-    def boom(searcher, query, k, lane):
-        calls.append((query, k, lane))
-        if query == "ask 1":
+    def boom(url, json, timeout):
+        calls.append((json["query"], json["k"], json["sources"]))
+        if json["query"] == "ask 1":
             raise httpx.ConnectError("refused")
-        raise ValueError("not json")
+        return httpx.Response(200, content=b"not json", request=httpx.Request("POST", url))
 
-    monkeypatch.setattr(port_check, "_search", boom)
+    monkeypatch.setattr(port_check.httpx, "post", boom)
     harvest, probes = _harvest_files(tmp_path)
     with pytest.raises(SystemExit) as exc:
         port_check.main(["--harvest", str(harvest), "--probes", str(probes), "--lanes", "corpus"])
@@ -165,7 +165,7 @@ def test_harvest_with_other_depths_is_refused(tmp_path, monkeypatch):
     import pytest
     from evals.search import port_check
 
-    monkeypatch.setattr(port_check, "_search", lambda *a: pytest.fail("searched"))
+    monkeypatch.setattr(port_check.httpx, "post", lambda *a, **k: pytest.fail("searched"))
     harvest, probes = _harvest_files(tmp_path, depths=(5,))
     with pytest.raises(SystemExit) as exc:
         port_check.main(["--harvest", str(harvest), "--probes", str(probes)])
@@ -547,3 +547,19 @@ def test_empty_session_summary_against_null_fails():
     resp["items"][1]["summary"] = ""
     failures, _ = compare("sessions", rec, resp)
     assert failures == [f"summary of {S2}: searcher '', newsletter-assistant None"]
+
+
+@pytest.mark.parametrize(
+    "lane, stem",
+    [("notes", "2026-10-01_evals-a1b2c3"), ("briefs", "2026-10-01_try-evals-0192a6f0")],
+)
+def test_blank_note_or_brief_title_replaced_by_its_filename_without_md_is_listed(lane, stem):
+    rec = {"notes": _notes, "briefs": _briefs}[lane]()
+    rec["items"][0]["title"] = ""
+    resp = _lane_response(rec)
+    resp["items"][0]["title"] = stem
+    uri = rec["items"][0]["uri"]
+    assert compare(lane, rec, resp) == (
+        [],
+        [f"title: {uri} blank in newsletter-assistant, searcher uses its filename"],
+    )

@@ -158,8 +158,10 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
                     c["source_ref"].removeprefix("local:")
                     for c in _chunks_of(lane, it["uri"], record["chunks"])
                 }
+                files |= {f.removesuffix(".md") for f in files}
                 if got_value in files:
-                    # A note or brief with no title is shown by its file name.
+                    # A note or brief with no title is shown by its file name, with or
+                    # without `.md`: the lanes have not fixed which form yet.
                     ties.append(
                         f"title: {it['uri']} blank in newsletter-assistant, "
                         "searcher uses its filename"
@@ -184,9 +186,9 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
 
 def _search(searcher: str, query: str, k: int, lane: str) -> dict:
     """The one network call: a search of one lane at depth `k`."""
-    # Always `mcp`, also for briefs and wiki: a lane returns the same items whoever
-    # calls, and `caller` only picks the deadline. `mcp` has none, so the check never
-    # sees a partial answer cut off by voice's.
+    # Lanes and `k` are given explicitly, so the reference does not depend on the caller;
+    # `mcp` has no deadline, so no answer is cut short. Per-caller passage length is not
+    # checked until it is set.
     body = {
         "contract_version": 1,
         "query": query,
