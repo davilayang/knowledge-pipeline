@@ -4450,6 +4450,7 @@ dependencies = [
     { name = "fastapi" },
     { name = "knowledge-retrievers" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -4459,6 +4460,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1.0" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "pydantic", specifier = ">=2.9,<3.0" },
+    { name = "pyyaml" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32,<1.0" },
 ]
 

@@ -164,7 +164,7 @@ packages/
 
 services/
   fetcher/         # Standalone FastAPI content service (uv workspace member, shares the root uv.lock and venv). URL→markdown fetching, plus `POST /v1/extract`, the single LLM-extraction implementation both this repo and newsletter-assistant call, and `POST /v1/structure-oreilly`, a deterministic HTML→markdown converter for publisher pages that block automated fetching (no model). Depends on packages/domains. Served with uvicorn --workers 1 (single-worker is a load-bearing correctness invariant).
-  searcher/        # FastAPI search service: `POST /v1/search` for newsletter-assistant's voice recall and MCP search, per the hub's `contracts/search.md`. The corpus lane is wired; the other lanes are not, and no caller uses it yet.
+  searcher/        # FastAPI search service: `POST /v1/search` for newsletter-assistant's voice recall and MCP search, per the hub's `contracts/search.md`. The corpus and wiki lanes are wired; sessions, notes and briefs are not, and no caller uses it yet.
 
 prompts/           # Versioned prompt assets (KP_PROMPTS_ROOT; default: repo root)
   extraction/      # Prompt files consumed by the fetcher service's POST /v1/extract; labels resolved in services/fetcher/src/fetcher/extract/tasks.py

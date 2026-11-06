@@ -563,3 +563,61 @@ def test_blank_note_or_brief_title_replaced_by_its_filename_without_md_is_listed
         [],
         [f"title: {uri} blank in newsletter-assistant, searcher uses its filename"],
     )
+
+
+def _wiki_tie() -> dict:
+    """Four wiki pages at one distance at the cut-off; newsletter-assistant kept two."""
+    ids = ["ent_a", "ent_b", "ent_c", "ent_d", "ent_e"]
+    dists = [0.40, 0.56464, 0.56464, 0.56464, 0.56464]
+    return {
+        "chunks": [
+            {"entity_id": i, "distance": d, "chunk": f"{i} summary."}
+            for i, d in zip(ids[:3], dists[:3], strict=True)
+        ],
+        "items": [
+            {
+                "uri": f"kos://piece/wiki/{i}",
+                "title": i,
+                "summary": f"{i} summary.",
+                "meta": {"num_sources": 1, "stale": False, "related": [], "has_user_notes": False},
+            }
+            for i in ids[:3]
+        ],
+    }
+
+
+def _scored(rec: dict, swap_in: str, distance: float) -> dict:
+    """The searcher's answer: the reference's items with the last one swapped for
+    `swap_in` at `distance`."""
+    items = [dict(it) for it in rec["items"]]
+    last = dict(items[-1])
+    last["uri"] = f"kos://piece/wiki/{swap_in}"
+    last["title"] = swap_in
+    last["summary"] = f"{swap_in} summary."
+    items[-1] = last
+    for it, d in zip(items, [0.40, 0.56464, distance], strict=True):
+        it["matched_by"] = [{"score": 1 - d}]
+    return {"status": "ok", "items": items}
+
+
+def test_a_different_piece_tied_at_the_cut_off_is_listed():
+    failures, listed = compare("wiki", _wiki_tie(), _scored(_wiki_tie(), "ent_d", 0.56464))
+    assert failures == []
+    assert len(listed) == 1 and "cut-off" in listed[0]
+
+
+def test_a_different_piece_not_tied_at_the_cut_off_fails():
+    failures, listed = compare("wiki", _wiki_tie(), _scored(_wiki_tie(), "ent_d", 0.60))
+    assert len(failures) == 1 and "pieces differ" in failures[0]
+    assert listed == []
+
+
+@pytest.mark.parametrize("shown", ["Evals", "ent_evals"])
+def test_blank_wiki_title_replaced_by_the_searcher_is_listed(shown):
+    rec = _wiki()
+    rec["items"][0]["title"] = ""
+    resp = _lane_response(_wiki())
+    resp["items"][0]["title"] = shown
+    failures, listed = compare("wiki", rec, resp)
+    assert failures == []
+    assert len(listed) == 1 and "blank" in listed[0]
