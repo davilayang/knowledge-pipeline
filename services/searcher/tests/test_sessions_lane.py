@@ -93,8 +93,14 @@ def _row(session_id: str, **kw: str | None) -> dict[str, str | None]:
     }
 
 
-def _hit(session_id: str, chunk: str, dist: float) -> tuple[str, dict[str, Any], float]:
-    return chunk, {"source_ref": f"sessions:{session_id}"}, dist
+def _hit(
+    session_id: str, chunk: str, dist: float, title: str | None = None
+) -> tuple[str, dict[str, Any], float]:
+    """A conversations chunk as the indexer writes it: titled by the summary's
+    first line, or `Session <first 8 of the id>` when there is no summary."""
+    meta: dict[str, Any] = {"source_ref": f"sessions:{session_id}"}
+    meta["title"] = title if title is not None else f"Session {session_id[:8]}"
+    return chunk, meta, dist
 
 
 def test_a_hit_resolves_to_its_session(tmp_path: Path) -> None:
@@ -104,6 +110,7 @@ def test_a_hit_resolves_to_its_session(tmp_path: Path) -> None:
     assert item.kind == "session"
     assert item.date is not None and item.date.isoformat() == "2026-10-02"
     assert item.summary == "Talked about s1"
+    assert item.title == "Session s1"
     assert item.passages == ["chunk one"]
     assert item.matched_by[0].lane == "sessions" and item.matched_by[0].rank == 1
 
@@ -130,7 +137,14 @@ def test_a_session_with_no_summary_yet_is_kept_with_a_null_summary(tmp_path: Pat
     hits = [_hit("a", "x", 0.1), _hit("b", "y", 0.2)]
     a, b = _run(_lane(FakeChroma(FakeCollection(hits)), db), _req())
     assert (a.summary, b.summary) == (None, None)
-    assert a.title == "Session 2026-10-02"
+
+
+def test_a_chunk_with_no_title_metadata_gets_the_indexers_own_form(tmp_path: Path) -> None:
+    db = _sessions_db(tmp_path / "sessions.db", [_row("0123456789abcdef")])
+    chunk, meta, dist = _hit("0123456789abcdef", "x", 0.1)
+    del meta["title"]
+    [item] = _run(_lane(FakeChroma(FakeCollection([(chunk, meta, dist)])), db), _req())
+    assert item.title == "Session 01234567"
 
 
 @pytest.mark.parametrize(
@@ -174,4 +188,14 @@ def test_the_sessions_db_read_is_timed_in_the_trace(tmp_path: Path) -> None:
         return await search(_req(), {"sessions": _lane(chroma, db)}, _embed, None)
 
     stages = asyncio.run(go()).trace.stages_ms
-    assert stages["sessions.db"] >= 0
+    assert isinstance(stages["sessions.db"], float)
+
+
+def test_the_date_and_since_use_the_utc_date_of_the_start(tmp_path: Path) -> None:
+    # 23:30 at UTC-5 is 04:30 the next day in UTC.
+    db = _sessions_db(
+        tmp_path / "sessions.db", [_row("s1", started_at="2026-10-02T23:30:00-05:00")]
+    )
+    lane = _lane(FakeChroma(FakeCollection([_hit("s1", "x", 0.1)])), db)
+    [item] = _run(lane, _req(since="2026-10-03"))
+    assert item.date is not None and item.date.isoformat() == "2026-10-03"

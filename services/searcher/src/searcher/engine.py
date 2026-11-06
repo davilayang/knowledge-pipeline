@@ -81,11 +81,24 @@ async def search(
     """Answer one request. `deadline` is seconds for the whole search, embedding
     included; past it, unfinished lanes are `timed_out`. None waits for every lane.
     `embed` is only called when a requested lane is wired."""
+    stages: dict[str, float] = {}
+    token = _STAGES.set(stages)
+    try:
+        return await _search(req, lanes, embed, deadline, stages)
+    finally:
+        _STAGES.reset(token)
+
+
+async def _search(
+    req: SearchRequest,
+    lanes: Mapping[Source, LaneFn],
+    embed: EmbedFn | None,
+    deadline: float | None,
+    stages: dict[str, float],
+) -> SearchResponse:
     loop = asyncio.get_running_loop()
     began = loop.time()
     deadline_at = None if deadline is None else began + deadline
-    stages: dict[str, float] = {}
-    _STAGES.set(stages)
     sources = list(SOURCES) if req.sources is None else req.sources
     tasks: dict[Source, asyncio.Task[list[Item]]] = {}
     wired = [s for s in sources if s in lanes]
@@ -118,6 +131,10 @@ async def search(
         if task is None:
             outcome[source] = "skipped"
         elif not task.done() or task.cancelled():
+            outcome[source] = "timed_out"
+        elif isinstance(task.exception(), TimeoutError):
+            # The lane's own `time_limit` fires at the deadline, a moment before
+            # the wait above gives up on it: still a timeout (contract §3).
             outcome[source] = "timed_out"
         elif (exc := task.exception()) is not None:
             log.warning("lane %s failed", source, exc_info=exc)

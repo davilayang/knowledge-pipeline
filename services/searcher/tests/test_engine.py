@@ -3,7 +3,7 @@
 
 import asyncio
 
-from searcher.engine import EmbedFn, LaneFn, search
+from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Source
 
 
@@ -352,3 +352,18 @@ def test_a_lane_slow_to_unwind_after_the_deadline_is_timed_out_and_not_waited_fo
     resp, took = asyncio.run(timed())
     assert resp.lanes["corpus"].outcome == "timed_out"
     assert took < 0.5
+
+
+def test_a_lane_stopped_by_its_own_time_limit_is_timed_out_not_failed() -> None:
+    """A lane bounds its network calls with `time_limit(deadline_at)`, which fires at
+    the deadline, before the engine stops waiting; that is a timeout, not a failure."""
+
+    async def bounded(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        async with time_limit(deadline_at):
+            await asyncio.sleep(5)
+        return []
+
+    resp = _search_now(_req(caller="voice", sources=["notes"]), {"notes": bounded}, deadline=0.2)
+    assert resp.lanes["notes"].outcome == "timed_out"
