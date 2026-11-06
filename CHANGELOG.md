@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The port check compares every search lane, not only corpus.** `eval-search-port-check` reads harvest format v2, where each probe and depth holds `corpus`, `sessions`, `notes`, `briefs` and `wiki` under `lanes`, and refuses any other `format_version`. It searches one lane per request (`--lanes` picks which, default all five) and checks each against newsletter-assistant's reference caller for that lane. Every field the harvested item carries must be equal, including each `meta` key (a brief's `status`; a wiki page's `num_sources`, `stale`, `related` and `has_user_notes`). A uri returned twice fails as a duplicate, and an item newsletter-assistant dropped but the searcher returns is named. Corpus, sessions and notes items need whole-chunk passages; briefs and wiki items may have none. Checked on a synthetic v2 harvest served by a stub searcher: 20 of 20 probe-depth-lane pairs pass, and one planted fault per lane is caught each time (19 of 20). (`packages/evals/src/evals/search/port_check.py`)
+
 ---
 
 ## [0.43.0] — 2026-11-05

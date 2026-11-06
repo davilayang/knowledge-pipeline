@@ -31,14 +31,14 @@ def _response(record: dict) -> dict:
 
 def test_exact_match_passes():
     rec = _record()
-    assert compare(rec, _response(rec)) == ([], [])
+    assert compare("corpus", rec, _response(rec)) == ([], [])
 
 
 def test_reorder_of_untied_items_fails():
     rec = _record()
     resp = _response(rec)
     resp["items"].reverse()
-    failures, ties = compare(rec, resp)
+    failures, ties = compare("corpus", rec, resp)
     assert len(failures) == 1 and "order" in failures[0]
     assert ties == []
 
@@ -47,7 +47,7 @@ def test_swap_of_tied_items_passes_and_is_listed():
     rec = _record(a=0.41203, b=0.41207)
     resp = _response(rec)
     resp["items"].reverse()
-    failures, ties = compare(rec, resp)
+    failures, ties = compare("corpus", rec, resp)
     assert failures == []
     assert len(ties) == 1 and URI_A in ties[0] and URI_B in ties[0]
 
@@ -56,7 +56,7 @@ def test_uri_encoding_difference_fails():
     rec = _record()
     resp = _response(rec)
     resp["items"][0]["uri"] = "kos://piece/corpus/src%3A%3Aa1"
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "uri encoding" in failures[0]
 
 
@@ -64,7 +64,7 @@ def test_field_difference_fails():
     rec = _record()
     resp = _response(rec)
     resp["items"][1]["date"] = "2026-09-30"
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "date" in failures[0] and URI_B in failures[0]
 
 
@@ -72,7 +72,7 @@ def test_non_verbatim_passage_fails():
     rec = _record()
     resp = _response(rec)
     resp["items"][0]["passages"] = ["alpha chunk, reworded"]
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "passage" in failures[0] and URI_A in failures[0]
 
 
@@ -80,13 +80,13 @@ def test_status_other_than_expected_fails():
     rec = _record()
     resp = _response(rec)
     resp["status"] = "partial"
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert failures == ["status: searcher 'partial', expected 'ok'"]
 
 
 def test_empty_on_both_sides_expects_nothing_matched():
     rec = {"chunks": [], "items": []}
-    assert compare(rec, {"status": "nothing_matched", "items": []}) == ([], [])
+    assert compare("corpus", rec, {"status": "nothing_matched", "items": []}) == ([], [])
 
 
 def _harvest_files(tmp_path, depths=(5, 10)):
@@ -101,9 +101,14 @@ def _harvest_files(tmp_path, depths=(5, 10)):
     probes.write_text("\n".join(json.dumps(r) for r in [head, *rows]))
     rec = _record()
     harvest = {
+        "format_version": 2,
         "depths": list(depths),
         "probes": {
-            str(i): {"ask": f"ask {i}", "depths": {str(d): rec for d in depths}} for i in (1, 2)
+            str(i): {
+                "ask": f"ask {i}",
+                "depths": {str(d): {"lanes": {"corpus": rec}} for d in depths},
+            }
+            for i in (1, 2)
         },
     }
     path = tmp_path / "harvest.json"
@@ -118,8 +123,8 @@ def test_searcher_error_fails_that_probe_and_the_run_continues(tmp_path, monkeyp
 
     calls = []
 
-    def boom(searcher, query, k):
-        calls.append((query, k))
+    def boom(searcher, query, k, lane):
+        calls.append((query, k, lane))
         if query == "ask 1":
             raise httpx.ConnectError("refused")
         raise ValueError("not json")
@@ -127,7 +132,7 @@ def test_searcher_error_fails_that_probe_and_the_run_continues(tmp_path, monkeyp
     monkeypatch.setattr(port_check, "_search", boom)
     harvest, probes = _harvest_files(tmp_path)
     with pytest.raises(SystemExit) as exc:
-        port_check.main(["--harvest", str(harvest), "--probes", str(probes)])
+        port_check.main(["--harvest", str(harvest), "--probes", str(probes), "--lanes", "corpus"])
     assert exc.value.code == 1
     assert len(calls) == 4
     out = capsys.readouterr().out
@@ -139,7 +144,7 @@ def test_empty_passages_and_empty_string_passage_fail():
     resp = _response(rec)
     resp["items"][0]["passages"] = []
     resp["items"][1]["passages"] = [""]
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 2
     assert URI_A in failures[0] and "no passages" in failures[0]
     assert URI_B in failures[1] and "empty passage" in failures[1]
@@ -150,7 +155,7 @@ def test_swap_with_an_item_missing_from_chunks_fails_as_unknown_distance():
     rec["chunks"] = rec["chunks"][:1]
     resp = _response(rec)
     resp["items"].reverse()
-    failures, ties = compare(rec, resp)
+    failures, ties = compare("corpus", rec, resp)
     assert ties == []
     assert any("order" in f and "distance unknown" in f for f in failures)
 
@@ -171,7 +176,7 @@ def test_passage_from_the_tail_of_a_truncated_harvested_chunk_fails():
     rec["chunks"][0]["chunk"] = "alpha chu"
     resp = _response(rec)
     resp["items"][0]["passages"] = ["chunk text"]
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "not a whole chunk" in failures[0]
 
 
@@ -179,7 +184,7 @@ def test_truncated_searcher_passage_fails():
     rec = _record()
     resp = _response(rec)
     resp["items"][0]["passages"] = ["alpha chunk"]
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "not a whole chunk" in failures[0]
 
 
@@ -188,7 +193,7 @@ def test_blank_na_title_matched_by_searcher_url_passes_and_is_listed():
     rec["items"][1]["title"] = ""
     resp = _response(rec)
     resp["items"][1]["title"] = "https://b"
-    failures, listed = compare(rec, resp)
+    failures, listed = compare("corpus", rec, resp)
     assert failures == []
     assert listed == [f"title: {URI_B} blank in newsletter-assistant, searcher uses its url"]
 
@@ -198,5 +203,227 @@ def test_blank_na_title_against_another_searcher_title_fails():
     rec["items"][1]["title"] = ""
     resp = _response(rec)
     resp["items"][1]["title"] = "Beta"
-    failures, _ = compare(rec, resp)
+    failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "title" in failures[0]
+
+
+def test_harvest_without_format_version_2_is_refused(tmp_path, monkeypatch):
+    import json
+
+    import pytest
+    from evals.search import port_check
+
+    monkeypatch.setattr(port_check, "_search", lambda *a: pytest.fail("searched"))
+    harvest, probes = _harvest_files(tmp_path)
+    data = json.loads(harvest.read_text())
+    del data["format_version"]
+    harvest.write_text(json.dumps(data))
+    with pytest.raises(SystemExit) as exc:
+        port_check.main(["--harvest", str(harvest), "--probes", str(probes)])
+    assert "format_version" in str(exc.value.code)
+
+
+S1 = "kos://piece/session/newsletter-s1"
+S2 = "kos://piece/session/newsletter-s2"
+
+
+def _sessions(*, a: float = 0.30, b: float = 0.50) -> dict:
+    return {
+        "chunks": [
+            {"session_id": "newsletter-s1", "distance": a, "chunk": "first session window"},
+            {"session_id": "newsletter-s2", "distance": b, "chunk": "second session window"},
+        ],
+        "items": [
+            {
+                "uri": S1,
+                "date": "2026-10-01",
+                "summary": "Talked about evals.",
+                "passages": ["first session window"],
+            },
+            {
+                "uri": S2,
+                "date": "2026-10-02",
+                "summary": None,
+                "passages": ["second session window"],
+            },
+        ],
+    }
+
+
+def _lane_response(rec: dict) -> dict:
+    return {"status": "ok", "items": [dict(it) for it in rec["items"]]}
+
+
+def test_sessions_exact_match_passes():
+    rec = _sessions()
+    assert compare("sessions", rec, _lane_response(rec)) == ([], [])
+
+
+N1 = "kos://piece/note/2026-10-01_evals-a1b2c3"
+B1 = "kos://piece/brief/0192a6f0-1111-7000-8000-000000000001"
+W1 = "kos://piece/wiki/ent_evals"
+
+
+def _notes() -> dict:
+    return {
+        "chunks": [
+            {
+                "source_ref": "local:2026-10-01_evals-a1b2c3.md",
+                "distance": 0.3,
+                "chunk": "a note chunk",
+            },
+        ],
+        "items": [
+            {"uri": N1, "title": "Evals", "date": "2026-10-01", "passages": ["a note chunk"]}
+        ],
+    }
+
+
+def _briefs() -> dict:
+    return {
+        "chunks": [
+            {
+                "source_ref": "local:2026-10-01_try-evals-0192a6f0.md",
+                "distance": 0.3,
+                "chunk": "a brief chunk",
+            },
+        ],
+        "items": [
+            {"uri": B1, "title": "Try evals", "date": "2026-10-01", "meta": {"status": "queued"}}
+        ],
+    }
+
+
+def _wiki() -> dict:
+    return {
+        "chunks": [{"entity_id": "ent_evals", "distance": 0.3, "chunk": "Evals summary."}],
+        "items": [
+            {
+                "uri": W1,
+                "title": "Evals",
+                "summary": "Evals summary.",
+                "meta": {
+                    "num_sources": 3,
+                    "stale": False,
+                    "related": ["Judges"],
+                    "has_user_notes": False,
+                },
+            }
+        ],
+    }
+
+
+def test_notes_and_briefs_and_wiki_exact_matches_pass():
+    for lane, rec in (("notes", _notes()), ("briefs", _briefs()), ("wiki", _wiki())):
+        assert compare(lane, rec, _lane_response(rec)) == ([], []), lane
+
+
+def test_note_passage_that_is_not_a_whole_chunk_of_that_note_fails():
+    rec = _notes()
+    resp = _lane_response(rec)
+    resp["items"][0]["passages"] = ["a note chunk, reworded"]
+    failures, _ = compare("notes", rec, resp)
+    assert len(failures) == 1 and "not a whole chunk" in failures[0]
+
+
+def test_brief_status_difference_fails():
+    rec = _briefs()
+    resp = _lane_response(rec)
+    resp["items"][0]["meta"] = {"status": "done"}
+    failures, _ = compare("briefs", rec, resp)
+    assert failures == [f"meta.status of {B1}: searcher 'done', newsletter-assistant 'queued'"]
+
+
+def test_each_wiki_field_difference_fails():
+    for key, wrong in (
+        ("num_sources", 4),
+        ("stale", True),
+        ("related", []),
+        ("has_user_notes", True),
+    ):
+        rec = _wiki()
+        resp = _lane_response(rec)
+        resp["items"][0]["meta"] = {**rec["items"][0]["meta"], key: wrong}
+        failures, _ = compare("wiki", rec, resp)
+        assert len(failures) == 1 and f"meta.{key}" in failures[0], key
+    rec = _wiki()
+    resp = _lane_response(rec)
+    resp["items"][0]["summary"] = "Another summary."
+    failures, _ = compare("wiki", rec, resp)
+    assert len(failures) == 1 and "summary" in failures[0]
+
+
+def test_session_summary_difference_fails():
+    rec = _sessions()
+    resp = _lane_response(rec)
+    resp["items"][1]["summary"] = "Invented."
+    failures, _ = compare("sessions", rec, resp)
+    assert len(failures) == 1 and "summary" in failures[0] and S2 in failures[0]
+
+
+def test_session_reorder_fails_and_tied_swap_is_listed():
+    rec = _sessions()
+    resp = _lane_response(rec)
+    resp["items"].reverse()
+    failures, ties = compare("sessions", rec, resp)
+    assert len(failures) == 1 and "order" in failures[0] and ties == []
+    rec = _sessions(a=0.41203, b=0.41207)
+    resp = _lane_response(rec)
+    resp["items"].reverse()
+    failures, ties = compare("sessions", rec, resp)
+    assert failures == [] and len(ties) == 1
+
+
+def test_non_ok_status_fails_in_every_lane():
+    for lane, rec in (
+        ("sessions", _sessions()),
+        ("notes", _notes()),
+        ("briefs", _briefs()),
+        ("wiki", _wiki()),
+    ):
+        resp = _lane_response(rec)
+        resp["status"] = "partial"
+        failures, _ = compare(lane, rec, resp)
+        assert failures == ["status: searcher 'partial', expected 'ok'"], lane
+
+
+def test_duplicate_session_or_note_fails_as_a_duplicate():
+    for lane, rec in (("sessions", _sessions()), ("notes", _notes())):
+        resp = _lane_response(rec)
+        resp["items"].append(dict(resp["items"][0]))
+        failures, _ = compare(lane, rec, resp)
+        assert any(f.startswith("duplicate:") for f in failures), (lane, failures)
+
+
+def test_item_the_reference_dropped_but_the_searcher_returns_fails_by_name():
+    rec = _sessions()
+    resp = _lane_response(rec)
+    extra = "kos://piece/session/newsletter-deleted"
+    resp["items"].append({"uri": extra, "date": "2026-09-01", "summary": None, "passages": []})
+    failures, _ = compare("sessions", rec, resp)
+    assert failures == [f"pieces differ: searcher only {[extra]}, newsletter-assistant only []"]
+
+
+def test_lane_filter_searches_only_those_lanes_one_lane_per_request(tmp_path, monkeypatch, capsys):
+    import httpx
+    import pytest
+    from evals.search import port_check
+
+    bodies = []
+
+    def post(url, json, timeout):
+        bodies.append(json)
+        return httpx.Response(
+            200, json={"status": "ok", "items": []}, request=httpx.Request("POST", url)
+        )
+
+    monkeypatch.setattr(port_check.httpx, "post", post)
+    harvest, probes = _harvest_files(tmp_path)
+    with pytest.raises(SystemExit):
+        port_check.main(
+            ["--harvest", str(harvest), "--probes", str(probes), "--lanes", "sessions", "corpus"]
+        )
+    assert {tuple(b["sources"]) for b in bodies} == {("corpus",)}
+    out = capsys.readouterr().out
+    assert out.count("harvest has no sessions lane") == 4
+    assert "0 of 8 passed" in out
