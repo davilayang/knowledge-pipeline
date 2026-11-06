@@ -22,7 +22,8 @@ the contract's precedence.
   file it reads (`sessions.db`), nested inside `lanes`, not additive;
   `code_rev` comes from the `CODE_REV` environment variable. A lane whose own
   call stops at the deadline is `timed_out`, like one the engine stops waiting
-  for; a timeout before the deadline, or in a search with none, is `failed`.
+  for: `time_limit` raises that expiry as `DeadlineExceeded`. Any other
+  timeout, including the 30 s cap in a search with no deadline, is `failed`.
 
 - **Corpus lane** (`src/searcher/corpus.py`): Chroma's `contents` collection,
   each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is

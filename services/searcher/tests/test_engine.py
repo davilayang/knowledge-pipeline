@@ -392,3 +392,22 @@ def test_a_timeout_well_before_the_deadline_is_a_failure() -> None:
         _req(caller="voice", sources=["notes"]), {"notes": _times_out_now}, deadline=5.0
     )
     assert resp.lanes["notes"].outcome == "failed"
+
+
+def test_an_early_timeout_stays_a_failure_while_another_lane_holds_the_search_open(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def early(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        await asyncio.sleep(0.05)
+        raise TimeoutError("client read timed out")
+
+    resp = _search_now(
+        _req(caller="voice", sources=["sessions", "corpus"]),
+        {"sessions": early, "corpus": _slow(5)},
+        deadline=0.3,
+    )
+    assert resp.lanes["sessions"].outcome == "failed"
+    assert resp.lanes["corpus"].outcome == "timed_out"
+    assert "lane sessions failed" in caplog.text

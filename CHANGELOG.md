@@ -12,7 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **A lane cut off by its own deadline now reports `timed_out`, not `failed`.** A lane bounds its network calls with `time_limit(deadline_at)`, which fires at the deadline a moment before the engine stops waiting, and the resulting `TimeoutError` was counted as a failure, against contract §3. A 5 s Chroma call under a 0.2 s voice deadline gave `failed`; it now gives `timed_out`. Only a `TimeoutError` at or past the search's deadline counts: an earlier one, and any in a search with no deadline (MCP, whose network calls are capped at 30 s), is still `failed` and logged. This fixes the corpus lane too, which has used `time_limit` since 0.43.0. (`services/searcher/src/searcher/engine.py`)
+- **A lane cut off by its own deadline now reports `timed_out`, not `failed`.** A lane bounds its network calls with `time_limit(deadline_at)`, which fires at the deadline a moment before the engine stops waiting, and the resulting `TimeoutError` was counted as a failure, against contract §3. A 5 s Chroma call under a 0.2 s voice deadline gave `failed`; it now gives `timed_out`. Only the deadline's own expiry counts: `time_limit` raises it as `DeadlineExceeded`, a `TimeoutError` subclass. Any other `TimeoutError`, such as a client read, an early timeout while another lane holds the search open, or the 30 s cap on an MCP search with no deadline, is still `failed` and logged. This fixes the corpus lane too, which has used `time_limit` since 0.43.0. (`services/searcher/src/searcher/engine.py`)
 
 ---
 

@@ -5,8 +5,8 @@ import asyncio
 import logging
 import os
 import time
-from collections.abc import Awaitable, Callable, Iterator, Mapping
-from contextlib import AbstractAsyncContextManager, contextmanager
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
 from typing import NamedTuple
 
@@ -57,12 +57,29 @@ def timed(stage: str) -> Iterator[None]:
             stages[stage] = round((time.perf_counter() - began) * 1000, 1)
 
 
-def time_limit(deadline_at: float | None) -> AbstractAsyncContextManager[None]:
+class DeadlineExceeded(TimeoutError):
+    """The search's own deadline ran out. Only this is `timed_out`; any other
+    TimeoutError, such as a client read or the no-deadline cap, is a failure."""
+
+
+@asynccontextmanager
+async def time_limit(deadline_at: float | None) -> AsyncIterator[None]:
     """The search deadline as an elapsed-time limit for one lane's or the
-    embedder's network calls, or `NO_DEADLINE_S` when the search has none."""
+    embedder's network calls, or `NO_DEADLINE_S` when the search has none.
+    The deadline's own expiry raises `DeadlineExceeded`; the cap's stays a plain
+    TimeoutError."""
     if deadline_at is None:
-        return asyncio.timeout(NO_DEADLINE_S)
-    return asyncio.timeout_at(deadline_at)
+        async with asyncio.timeout(NO_DEADLINE_S):
+            yield
+        return
+    limit = asyncio.timeout_at(deadline_at)
+    try:
+        async with limit:
+            yield
+    except TimeoutError as exc:
+        if limit.expired():
+            raise DeadlineExceeded("search deadline reached") from exc
+        raise
 
 
 class Contribution(NamedTuple):
@@ -132,15 +149,9 @@ async def _search(
             outcome[source] = "skipped"
         elif not task.done() or task.cancelled():
             outcome[source] = "timed_out"
-        elif (
-            isinstance(task.exception(), TimeoutError)
-            and deadline_at is not None
-            and loop.time() >= deadline_at
-        ):
+        elif isinstance(task.exception(), DeadlineExceeded):
             # The lane's own `time_limit` fires at the deadline, a moment before
-            # the wait above gives up on it: still a timeout (contract §3). Any
-            # other TimeoutError, and every one in a search with no deadline, is
-            # a failure.
+            # the wait above gives up on it: still a timeout (contract §3).
             outcome[source] = "timed_out"
         elif (exc := task.exception()) is not None:
             log.warning("lane %s failed", source, exc_info=exc)
