@@ -1,9 +1,13 @@
-"""``eval-search-port-check``: compare the searcher's corpus lane with
-newsletter-assistant's, probe by probe, from a harvest of newsletter-assistant's
-results taken at the same moment against the same Chroma and `corpus.db`.
+"""``eval-search-port-check``: compare each searcher lane with newsletter-assistant's,
+probe by probe, from a harvest (format v2) of newsletter-assistant's results taken at the
+same moment against the same Chroma and data. Each lane is searched on its own and
+compared with the lane's reference in newsletter-assistant: its MCP search for corpus,
+sessions and notes, and its voice logic for briefs and wiki.
 
     uv run eval-search-port-check --harvest data/eval_runs/search/harvest.json \
-        --searcher http://localhost:8001
+        --searcher http://localhost:8001 [--lanes sessions notes]
+
+`--lanes` defaults to all five; a lane the searcher has not wired yet fails until it is.
 
 Exits non-zero on any failure. Tie swaps and blank titles replaced by the url pass and are printed.
 """
@@ -12,29 +16,82 @@ import argparse
 import json
 import sys
 from pathlib import Path
+from urllib.parse import unquote
 
 import httpx
 
 from evals.core.manifest import RunManifest, code_rev, format_manifest_line
 from evals.search.cli import DATASETS
 from evals.search.dataset import load_probes
-from evals.search.score import corpus_content_id
 
-TIE_GAP = 1e-4
-FIELDS = ("title", "author", "url", "date")
-# Voice reads 5 corpus chunks; MCP defaults to k=10.
+# The two sides embed the query separately; that alone moves distances by up to 1.1e-3.
+TIE_GAP = 2e-3
+# Fixed for every lane. Voice's own per-lane counts (briefs 20 searched and 3 shown,
+# wiki 3) are caller settings, checked when the callers switch over, not here.
 DEPTHS = [5, 10]
+FORMAT_VERSION = 2
+LANES = ("corpus", "sessions", "notes", "briefs", "wiki")
+# Lanes whose items are matched passages; briefs and wiki items need none.
+PASSAGE_LANES = ("corpus", "sessions", "notes")
+# Every harvested item must carry these, and the searcher's item must equal it on each.
+FIELDS = {
+    "corpus": ("title", "author", "url", "date"),
+    "sessions": ("date", "summary"),
+    "notes": ("title", "date"),
+    "briefs": ("title", "date", "meta.status"),
+    "wiki": (
+        "title",
+        "summary",
+        "meta.num_sources",
+        "meta.stale",
+        "meta.related",
+        "meta.has_user_notes",
+    ),
+}
+_MISSING = object()
 
 
-def compare(record: dict, response: dict) -> tuple[list[str], list[str]]:
-    """Return (failures, listed differences) for one probe at one depth.
+def _get(item: dict, field: str) -> object:
+    """`field`'s value in `item`, reading `meta.<key>` inside `meta`; `_MISSING` if absent."""
+    if field.startswith("meta."):
+        return item.get("meta", {}).get(field.removeprefix("meta."), _MISSING)
+    return item.get(field, _MISSING)
+
+
+def _uri_id(uri: str) -> str:
+    """The id of a `kos://piece/<kind>/<id>` uri, decoded."""
+    return unquote(uri.split("/", 4)[-1])
+
+
+def _chunks_of(lane: str, uri: str, chunks: list[dict]) -> list[dict]:
+    """The harvested chunks that belong to the item at `uri`.
+
+    Notes are indexed under `local:<note_id>.md`; the other lanes carry the id itself.
+    """
+    i = _uri_id(uri)
+    if lane == "notes":
+        return [c for c in chunks if c["source_ref"] == f"local:{i}.md"]
+    key = {
+        "corpus": "content_id",
+        "sessions": "session_id",
+        "briefs": "brief_id",
+        "wiki": "entity_id",
+    }[lane]
+    return [c for c in chunks if c[key] == i]
+
+
+def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[str]]:
+    """Return (failures, listed differences) for one lane of one probe at one depth.
 
     Listed differences pass but are always reported: tie swaps, and a blank
-    newsletter-assistant title the searcher replaced with the item's url.
+    newsletter-assistant title the searcher replaced with the item's url (corpus) or
+    file name (notes, briefs).
 
     Order matches when every pair the searcher returns in the opposite order to
     newsletter-assistant was tied there (best chunk distances within `TIE_GAP`);
-    each such pair is returned as a tie swap, never passed silently.
+    each such pair is returned as a tie swap, never passed silently. Each of the
+    lane's `FIELDS` must be in the harvested item and equal in the searcher's, checked
+    in `FIELDS` order.
     """
     failures: list[str] = []
     ties: list[str] = []
@@ -42,68 +99,102 @@ def compare(record: dict, response: dict) -> tuple[list[str], list[str]]:
     status_failure = []
     if response["status"] != expected:
         status_failure = [f"status: searcher {response['status']!r}, expected {expected!r}"]
-    best: dict[str, float] = {}
-    for c in record["chunks"]:
-        best[c["content_id"]] = min(c["distance"], best.get(c["content_id"], c["distance"]))
+
+    def best(uri: str) -> float | None:
+        ds = [c["distance"] for c in _chunks_of(lane, uri, record["chunks"])]
+        return min(ds) if ds else None
+
     want = [it["uri"] for it in record["items"]]
     got = [it["uri"] for it in response["items"]]
+    dupes = sorted({u for u in got if got.count(u) > 1})
+    if dupes:
+        failures.append(f"duplicate: searcher returned {dupes} more than once")
+        got = list(dict.fromkeys(got))
     if got != want and sorted(got) == sorted(want):
         pos = {u: i for i, u in enumerate(got)}
         for i, a in enumerate(want):
             for b in want[i + 1 :]:
                 if pos[b] < pos[a]:
-                    da, db = best.get(corpus_content_id(a)), best.get(corpus_content_id(b))
+                    da, db = best(a), best(b)
                     if da is None or db is None:
                         failures.append(f"{a} and {b} swapped, distance unknown")
                         continue
                     gap = abs(da - db)
                     pair = f"{a} and {b} swapped, gap {gap:.5f}"
                     (ties if gap < TIE_GAP else failures).append(pair)
-        failures = [f"order: {f}" for f in failures]
+        failures = [f if f.startswith("duplicate:") else f"order: {f}" for f in failures]
     elif sorted(got) != sorted(want):
-        decoded = sorted(map(corpus_content_id, got)) == sorted(map(corpus_content_id, want))
+        decoded = sorted(map(_uri_id, got)) == sorted(map(_uri_id, want))
         what = "uri encoding" if decoded else "pieces"
-        failures.append(f"{what} differ: searcher {got}, newsletter-assistant {want}")
+        only_got = [u for u in got if u not in want]
+        only_want = [u for u in want if u not in got]
+        failures.append(
+            f"{what} differ: searcher only {only_got}, newsletter-assistant only {only_want}"
+        )
     na = {it["uri"]: it for it in record["items"]}
+    # A duplicate is reported once, above; only its first occurrence is compared.
+    first: dict[str, dict] = {}
     for it in response["items"]:
+        first.setdefault(it["uri"], it)
+    for it in first.values():
         if it["uri"] not in na:
             continue
         want_it = na[it["uri"]]
-        for field in FIELDS:
-            if field == "title" and want_it["title"] == "" and want_it["url"] is not None:
-                if it.get("title") == want_it["url"]:
+        for field in FIELDS[lane]:
+            value = _get(want_it, field)
+            if value is _MISSING:
+                failures.append(f"harvest item {it['uri']} lacks {field}")
+                continue
+            got_value = _get(it, field)
+            if field == "title" and value == "" and want_it.get("url") is not None:
+                if got_value == want_it["url"]:
                     # The contract turns a blank stored title into the url.
                     ties.append(
                         f"title: {it['uri']} blank in newsletter-assistant, searcher uses its url"
                     )
                     continue
-            if it.get(field) != want_it[field]:
+            if field == "title" and value == "" and lane in ("notes", "briefs"):
+                files = {
+                    c["source_ref"].removeprefix("local:")
+                    for c in _chunks_of(lane, it["uri"], record["chunks"])
+                }
+                files |= {f.removesuffix(".md") for f in files}
+                if got_value in files:
+                    # A note or brief with no title is shown by its file name, with or
+                    # without `.md`: the lanes have not fixed which form yet.
+                    ties.append(
+                        f"title: {it['uri']} blank in newsletter-assistant, "
+                        "searcher uses its filename"
+                    )
+                    continue
+            if got_value != value:
+                shown = None if got_value is _MISSING else got_value
                 failures.append(
-                    f"{field} of {it['uri']}: searcher {it.get(field)!r}, "
-                    f"newsletter-assistant {want_it[field]!r}"
+                    f"{field} of {it['uri']}: searcher {shown!r}, newsletter-assistant {value!r}"
                 )
-        chunks = [
-            c["chunk"] for c in record["chunks"] if c["content_id"] == corpus_content_id(it["uri"])
-        ]
-        if not it["passages"]:
+        chunks = [c["chunk"] for c in _chunks_of(lane, it["uri"], record["chunks"])]
+        if not it.get("passages") and lane in PASSAGE_LANES:
             failures.append(f"{it['uri']} has no passages")
-        for p in it["passages"]:
+        for p in it.get("passages") or []:
             if not p:
                 failures.append(f"{it['uri']} has an empty passage")
-            # A 3b passage is one whole chunk; 3d loosens this when it sets per-caller length.
+            # A passage must equal one whole harvested chunk until per-caller passage length is set.
             elif p not in chunks:
                 failures.append(f"passage of {it['uri']} is not a whole chunk: {p[:80]!r}")
     return status_failure + failures, ties
 
 
-def _search(searcher: str, query: str, k: int) -> dict:
-    """The one network call: a corpus-only MCP search at depth `k`."""
+def _search(searcher: str, query: str, k: int, lane: str) -> dict:
+    """The one network call: a search of one lane at depth `k`."""
+    # Lanes and `k` are given explicitly, so the reference does not depend on the caller;
+    # `mcp` has no deadline, so no answer is cut short. Per-caller passage length is not
+    # checked until it is set.
     body = {
         "contract_version": 1,
         "query": query,
         "caller": "mcp",
         "k": k,
-        "sources": ["corpus"],
+        "sources": [lane],
     }
     resp = httpx.post(f"{searcher}/v1/search", json=body, timeout=60)
     resp.raise_for_status()
@@ -115,9 +206,12 @@ def main(argv: list[str] | None = None) -> None:
     ap.add_argument("--harvest", type=Path, required=True)
     ap.add_argument("--searcher", default="http://localhost:8001")
     ap.add_argument("--probes", type=Path, default=DATASETS / "probes.jsonl")
+    ap.add_argument("--lanes", nargs="+", choices=LANES, default=list(LANES))
     args = ap.parse_args(argv)
 
     harvest = json.loads(args.harvest.read_text())
+    if harvest.get("format_version") != FORMAT_VERSION:
+        sys.exit(f"harvest format_version {harvest.get('format_version')} is not {FORMAT_VERSION}")
     if harvest["depths"] != DEPTHS:
         sys.exit(f"harvest depths {harvest['depths']} are not {DEPTHS}")
     head, probes = load_probes(args.probes)
@@ -144,19 +238,24 @@ def main(argv: list[str] | None = None) -> None:
     failed = 0
     for pid, probe in sorted(harvest["probes"].items(), key=lambda kv: int(kv[0])):
         for depth in harvest["depths"]:
-            try:
-                resp = _search(args.searcher, probe["ask"], depth)
-            except (httpx.HTTPError, ValueError) as e:
-                failures, ties = [f"searcher request: {e!r}"], []
-            else:
-                failures, ties = compare(probe["depths"][str(depth)], resp)
-            failed += bool(failures)
-            print(f"probe {pid} depth {depth}: {'FAIL' if failures else 'ok'}")
-            for line in failures:
-                print(f"  fail: {line}")
-            for line in ties:
-                print(f"  listed: {line}")
-    total = len(harvest["probes"]) * len(harvest["depths"])
+            for lane in args.lanes:
+                record = probe["depths"][str(depth)]["lanes"].get(lane)
+                if record is None:
+                    failures, ties = [f"harvest has no {lane} lane"], []
+                else:
+                    try:
+                        resp = _search(args.searcher, probe["ask"], depth, lane)
+                    except (httpx.HTTPError, ValueError) as e:
+                        failures, ties = [f"searcher request: {e!r}"], []
+                    else:
+                        failures, ties = compare(lane, record, resp)
+                failed += bool(failures)
+                print(f"probe {pid} depth {depth} {lane}: {'FAIL' if failures else 'ok'}")
+                for line in failures:
+                    print(f"  fail: {line}")
+                for line in ties:
+                    print(f"  listed: {line}")
+    total = len(harvest["probes"]) * len(harvest["depths"]) * len(args.lanes)
     print(f"{total - failed} of {total} passed")
     sys.exit(1 if failed else 0)
 

@@ -1,6 +1,6 @@
 [project]
 name = "searcher"
-version = "0.43.0"
+version = "0.43.1"
 description = "Search service for Knowledge OS: POST /v1/search over everything the user saved or discussed"
 requires-python = ">=3.13"
 dependencies = [

@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-pipeline"
-version = "0.43.0"
+version = "0.43.1"
 description = """
   Knowledge pipeline workspace — RAG indexing, LangGraph wiki synthesis, evaluation, and source backups
 """
@@ -201,8 +201,10 @@ help = """
 [tool.poe.tasks.eval-search-port-check]
 cmd = "eval-search-port-check"
 help = """
-  Compare the searcher's corpus lane with newsletter-assistant's on the search
-  probes, from a harvest taken at the same moment. Pass flags after `--`, e.g.
+  Compare each searcher lane with newsletter-assistant's on the search probes,
+  from a harvest (format v2) taken at the same moment; `--lanes` picks lanes
+  (default all five; a lane not yet wired in the searcher fails until it is).
+  Pass flags after `--`, e.g.
     uv run poe eval-search-port-check -- --harvest data/eval_runs/search/harvest.json
 """
 
