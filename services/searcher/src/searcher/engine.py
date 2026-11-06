@@ -4,8 +4,10 @@ run concurrently, each reports an outcome, and the status follows from them."""
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import AbstractAsyncContextManager
+import time
+from collections.abc import Awaitable, Callable, Iterator, Mapping
+from contextlib import AbstractAsyncContextManager, contextmanager
+from contextvars import ContextVar
 from typing import NamedTuple
 
 from searcher.models import (
@@ -39,6 +41,22 @@ CLEANUP_S = 0.1
 NO_DEADLINE_S = 30.0
 
 
+# The running search's `trace.stages_ms`; lane tasks inherit it, so a lane's
+# blocking read lands in the trace of the search that ran it.
+_STAGES: ContextVar[dict[str, float] | None] = ContextVar("stages", default=None)
+
+
+@contextmanager
+def timed(stage: str) -> Iterator[None]:
+    """Record how long the block takes, in ms, as `stage` in the search's trace."""
+    began = time.perf_counter()
+    try:
+        yield
+    finally:
+        if (stages := _STAGES.get()) is not None:
+            stages[stage] = round((time.perf_counter() - began) * 1000, 1)
+
+
 def time_limit(deadline_at: float | None) -> AbstractAsyncContextManager[None]:
     """The search deadline as an elapsed-time limit for one lane's or the
     embedder's network calls, or `NO_DEADLINE_S` when the search has none."""
@@ -67,6 +85,7 @@ async def search(
     began = loop.time()
     deadline_at = None if deadline is None else began + deadline
     stages: dict[str, float] = {}
+    _STAGES.set(stages)
     sources = list(SOURCES) if req.sources is None else req.sources
     tasks: dict[Source, asyncio.Task[list[Item]]] = {}
     wired = [s for s in sources if s in lanes]
