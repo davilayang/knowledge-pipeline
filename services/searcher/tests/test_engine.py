@@ -3,6 +3,8 @@
 
 import asyncio
 
+import pytest
+
 from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Source
 
@@ -367,3 +369,26 @@ def test_a_lane_stopped_by_its_own_time_limit_is_timed_out_not_failed() -> None:
 
     resp = _search_now(_req(caller="voice", sources=["notes"]), {"notes": bounded}, deadline=0.2)
     assert resp.lanes["notes"].outcome == "timed_out"
+
+
+async def _times_out_now(
+    req: SearchRequest, embedding: list[float], deadline_at: float | None
+) -> list[Item]:
+    raise TimeoutError("client read timed out")
+
+
+def test_a_timeout_in_a_search_with_no_deadline_is_a_failure_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """MCP has no deadline, so it never sees `timed_out`: a client timeout there,
+    such as the 30 s per-call cap, is a failure."""
+    resp = _search_now(_req(caller="mcp", sources=["notes"]), {"notes": _times_out_now})
+    assert resp.lanes["notes"].outcome == "failed"
+    assert "lane notes failed" in caplog.text
+
+
+def test_a_timeout_well_before_the_deadline_is_a_failure() -> None:
+    resp = _search_now(
+        _req(caller="voice", sources=["notes"]), {"notes": _times_out_now}, deadline=5.0
+    )
+    assert resp.lanes["notes"].outcome == "failed"
