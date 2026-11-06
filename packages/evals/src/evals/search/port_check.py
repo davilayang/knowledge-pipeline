@@ -1,11 +1,13 @@
 """``eval-search-port-check``: compare each searcher lane with newsletter-assistant's,
 probe by probe, from a harvest (format v2) of newsletter-assistant's results taken at the
 same moment against the same Chroma and data. Each lane is searched on its own and
-compared with the lane's reference caller in newsletter-assistant: MCP for corpus,
-sessions and notes, voice for briefs and wiki.
+compared with the lane's reference in newsletter-assistant: its MCP search for corpus,
+sessions and notes, and its voice logic for briefs and wiki.
 
     uv run eval-search-port-check --harvest data/eval_runs/search/harvest.json \
         --searcher http://localhost:8001 [--lanes sessions notes]
+
+`--lanes` defaults to all five; a lane the searcher has not wired yet fails until it is.
 
 Exits non-zero on any failure. Tie swaps and blank titles replaced by the url pass and are printed.
 """
@@ -24,12 +26,36 @@ from evals.search.dataset import load_probes
 
 # The two sides embed the query separately; that alone moves distances by up to 1.1e-3.
 TIE_GAP = 2e-3
-# Voice reads 5 corpus chunks; MCP defaults to k=10.
+# Fixed for every lane. Voice's own per-lane counts (briefs 20 searched and 3 shown,
+# wiki 3) are caller settings, checked when the callers switch over, not here.
 DEPTHS = [5, 10]
 FORMAT_VERSION = 2
 LANES = ("corpus", "sessions", "notes", "briefs", "wiki")
 # Lanes whose items are matched passages; briefs and wiki items need none.
 PASSAGE_LANES = ("corpus", "sessions", "notes")
+# Every harvested item must carry these, and the searcher's item must equal it on each.
+FIELDS = {
+    "corpus": ("title", "author", "url", "date"),
+    "sessions": ("date", "summary"),
+    "notes": ("title", "date"),
+    "briefs": ("title", "date", "meta.status"),
+    "wiki": (
+        "title",
+        "summary",
+        "meta.num_sources",
+        "meta.stale",
+        "meta.related",
+        "meta.has_user_notes",
+    ),
+}
+_MISSING = object()
+
+
+def _get(item: dict, field: str) -> object:
+    """`field`'s value in `item`, reading `meta.<key>` inside `meta`; `_MISSING` if absent."""
+    if field.startswith("meta."):
+        return item.get("meta", {}).get(field.removeprefix("meta."), _MISSING)
+    return item.get(field, _MISSING)
 
 
 def _uri_id(uri: str) -> str:
@@ -58,13 +84,14 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
     """Return (failures, listed differences) for one lane of one probe at one depth.
 
     Listed differences pass but are always reported: tie swaps, and a blank
-    newsletter-assistant title the searcher replaced with the item's url.
+    newsletter-assistant title the searcher replaced with the item's url (corpus) or
+    file name (notes, briefs).
 
     Order matches when every pair the searcher returns in the opposite order to
     newsletter-assistant was tied there (best chunk distances within `TIE_GAP`);
-    each such pair is returned as a tie swap, never passed silently. Every field
-    the harvested item carries, and every key of its `meta`, must be equal; a field
-    newsletter-assistant does not produce is absent from the harvest and unchecked.
+    each such pair is returned as a tie swap, never passed silently. Each of the
+    lane's `FIELDS` must be in the harvested item and equal in the searcher's, checked
+    in `FIELDS` order.
     """
     failures: list[str] = []
     ties: list[str] = []
@@ -105,28 +132,43 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
             f"{what} differ: searcher only {only_got}, newsletter-assistant only {only_want}"
         )
     na = {it["uri"]: it for it in record["items"]}
+    # A duplicate is reported once, above; only its first occurrence is compared.
+    first: dict[str, dict] = {}
     for it in response["items"]:
+        first.setdefault(it["uri"], it)
+    for it in first.values():
         if it["uri"] not in na:
             continue
         want_it = na[it["uri"]]
-        for field in want_it.keys() - {"uri", "passages", "meta"}:
-            if field == "title" and want_it["title"] == "" and want_it.get("url") is not None:
-                if it.get("title") == want_it["url"]:
+        for field in FIELDS[lane]:
+            value = _get(want_it, field)
+            if value is _MISSING:
+                failures.append(f"harvest item {it['uri']} lacks {field}")
+                continue
+            got_value = _get(it, field)
+            if field == "title" and value == "" and want_it.get("url") is not None:
+                if got_value == want_it["url"]:
                     # The contract turns a blank stored title into the url.
                     ties.append(
                         f"title: {it['uri']} blank in newsletter-assistant, searcher uses its url"
                     )
                     continue
-            if it.get(field) != want_it[field]:
+            if field == "title" and value == "" and lane in ("notes", "briefs"):
+                files = {
+                    c["source_ref"].removeprefix("local:")
+                    for c in _chunks_of(lane, it["uri"], record["chunks"])
+                }
+                if got_value in files:
+                    # A note or brief with no title is shown by its file name.
+                    ties.append(
+                        f"title: {it['uri']} blank in newsletter-assistant, "
+                        "searcher uses its filename"
+                    )
+                    continue
+            if got_value != value:
+                shown = None if got_value is _MISSING else got_value
                 failures.append(
-                    f"{field} of {it['uri']}: searcher {it.get(field)!r}, "
-                    f"newsletter-assistant {want_it[field]!r}"
-                )
-        for key, value in want_it.get("meta", {}).items():
-            if it.get("meta", {}).get(key) != value:
-                failures.append(
-                    f"meta.{key} of {it['uri']}: searcher {it.get('meta', {}).get(key)!r}, "
-                    f"newsletter-assistant {value!r}"
+                    f"{field} of {it['uri']}: searcher {shown!r}, newsletter-assistant {value!r}"
                 )
         chunks = [c["chunk"] for c in _chunks_of(lane, it["uri"], record["chunks"])]
         if not it.get("passages") and lane in PASSAGE_LANES:
@@ -134,14 +176,17 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
         for p in it.get("passages") or []:
             if not p:
                 failures.append(f"{it['uri']} has an empty passage")
-            # A passage is one whole chunk; 3d loosens this when it sets per-caller length.
+            # A passage must equal one whole harvested chunk until per-caller passage length is set.
             elif p not in chunks:
                 failures.append(f"passage of {it['uri']} is not a whole chunk: {p[:80]!r}")
     return status_failure + failures, ties
 
 
 def _search(searcher: str, query: str, k: int, lane: str) -> dict:
-    """The one network call: an MCP search of one lane at depth `k`."""
+    """The one network call: a search of one lane at depth `k`."""
+    # Always `mcp`, also for briefs and wiki: a lane returns the same items whoever
+    # calls, and `caller` only picks the deadline. `mcp` has none, so the check never
+    # sees a partial answer cut off by voice's.
     body = {
         "contract_version": 1,
         "query": query,

@@ -1,3 +1,4 @@
+import pytest
 from evals.search.port_check import compare
 
 URI_A = "kos://piece/corpus/src::a1"
@@ -213,7 +214,7 @@ def test_harvest_without_format_version_2_is_refused(tmp_path, monkeypatch):
     import pytest
     from evals.search import port_check
 
-    monkeypatch.setattr(port_check, "_search", lambda *a: pytest.fail("searched"))
+    monkeypatch.setattr(port_check.httpx, "post", lambda *a, **k: pytest.fail("searched"))
     harvest, probes = _harvest_files(tmp_path)
     data = json.loads(harvest.read_text())
     del data["format_version"]
@@ -314,9 +315,10 @@ def _wiki() -> dict:
     }
 
 
-def test_notes_and_briefs_and_wiki_exact_matches_pass():
-    for lane, rec in (("notes", _notes()), ("briefs", _briefs()), ("wiki", _wiki())):
-        assert compare(lane, rec, _lane_response(rec)) == ([], []), lane
+@pytest.mark.parametrize("lane", ["notes", "briefs", "wiki"])
+def test_notes_and_briefs_and_wiki_exact_matches_pass(lane):
+    rec = {"notes": _notes, "briefs": _briefs, "wiki": _wiki}[lane]()
+    assert compare(lane, rec, _lane_response(rec)) == ([], [])
 
 
 def test_note_passage_that_is_not_a_whole_chunk_of_that_note_fails():
@@ -335,23 +337,24 @@ def test_brief_status_difference_fails():
     assert failures == [f"meta.status of {B1}: searcher 'done', newsletter-assistant 'queued'"]
 
 
-def test_each_wiki_field_difference_fails():
-    for key, wrong in (
-        ("num_sources", 4),
-        ("stale", True),
-        ("related", []),
-        ("has_user_notes", True),
-    ):
-        rec = _wiki()
-        resp = _lane_response(rec)
-        resp["items"][0]["meta"] = {**rec["items"][0]["meta"], key: wrong}
-        failures, _ = compare("wiki", rec, resp)
-        assert len(failures) == 1 and f"meta.{key}" in failures[0], key
+@pytest.mark.parametrize(
+    "key, wrong",
+    [("num_sources", 4), ("stale", True), ("related", []), ("has_user_notes", True)],
+)
+def test_each_wiki_meta_difference_fails(key, wrong):
+    rec = _wiki()
+    resp = _lane_response(rec)
+    resp["items"][0]["meta"] = {**rec["items"][0]["meta"], key: wrong}
+    failures, _ = compare("wiki", rec, resp)
+    assert len(failures) == 1 and f"meta.{key}" in failures[0]
+
+
+def test_wiki_summary_difference_fails():
     rec = _wiki()
     resp = _lane_response(rec)
     resp["items"][0]["summary"] = "Another summary."
     failures, _ = compare("wiki", rec, resp)
-    assert len(failures) == 1 and "summary" in failures[0]
+    assert len(failures) == 1 and failures[0].startswith(f"summary of {W1}")
 
 
 def test_session_summary_difference_fails():
@@ -375,25 +378,22 @@ def test_session_reorder_fails_and_tied_swap_is_listed():
     assert failures == [] and len(ties) == 1
 
 
-def test_non_ok_status_fails_in_every_lane():
-    for lane, rec in (
-        ("sessions", _sessions()),
-        ("notes", _notes()),
-        ("briefs", _briefs()),
-        ("wiki", _wiki()),
-    ):
-        resp = _lane_response(rec)
-        resp["status"] = "partial"
-        failures, _ = compare(lane, rec, resp)
-        assert failures == ["status: searcher 'partial', expected 'ok'"], lane
+@pytest.mark.parametrize("lane", ["sessions", "notes", "briefs", "wiki"])
+def test_non_ok_status_fails_in_every_lane(lane):
+    rec = {"sessions": _sessions, "notes": _notes, "briefs": _briefs, "wiki": _wiki}[lane]()
+    resp = _lane_response(rec)
+    resp["status"] = "partial"
+    failures, _ = compare(lane, rec, resp)
+    assert failures == ["status: searcher 'partial', expected 'ok'"]
 
 
-def test_duplicate_session_or_note_fails_as_a_duplicate():
-    for lane, rec in (("sessions", _sessions()), ("notes", _notes())):
-        resp = _lane_response(rec)
-        resp["items"].append(dict(resp["items"][0]))
-        failures, _ = compare(lane, rec, resp)
-        assert any(f.startswith("duplicate:") for f in failures), (lane, failures)
+@pytest.mark.parametrize("lane", ["sessions", "notes"])
+def test_duplicate_session_or_note_fails_as_a_duplicate(lane):
+    rec = {"sessions": _sessions, "notes": _notes}[lane]()
+    resp = _lane_response(rec)
+    resp["items"].append(dict(resp["items"][0]))
+    failures, _ = compare(lane, rec, resp)
+    assert any(f.startswith("duplicate:") for f in failures), failures
 
 
 def test_item_the_reference_dropped_but_the_searcher_returns_fails_by_name():
@@ -448,8 +448,8 @@ def test_brief_chunks_are_matched_by_brief_id_not_filename_suffix():
             },
         ],
         "items": [
-            {"uri": B1, "title": "Try evals", "date": "2026-10-01"},
-            {"uri": other, "title": "Other", "date": "2026-10-02"},
+            {"uri": B1, "title": "Try evals", "date": "2026-10-01", "meta": {"status": "queued"}},
+            {"uri": other, "title": "Other", "date": "2026-10-02", "meta": {"status": "queued"}},
         ],
     }
     resp = _lane_response(rec)
@@ -469,3 +469,81 @@ def test_swap_within_query_embedding_jitter_passes_and_beyond_it_fails():
     resp["items"].reverse()
     failures, ties = compare("sessions", rec, resp)
     assert len(failures) == 1 and "order" in failures[0] and ties == []
+
+
+@pytest.mark.parametrize(
+    "lane, field",
+    [
+        ("corpus", "author"),
+        ("sessions", "summary"),
+        ("notes", "date"),
+        ("briefs", "meta.status"),
+        ("wiki", "meta.has_user_notes"),
+    ],
+)
+def test_harvest_item_missing_a_required_field_fails(lane, field):
+    rec = {
+        "corpus": _record,
+        "sessions": _sessions,
+        "notes": _notes,
+        "briefs": _briefs,
+        "wiki": _wiki,
+    }[lane]()
+    resp = _response(rec) if lane == "corpus" else _lane_response(rec)
+    item = rec["items"][0]
+    if field.startswith("meta."):
+        del item["meta"][field.removeprefix("meta.")]
+    else:
+        del item[field]
+    failures, _ = compare(lane, rec, resp)
+    assert f"harvest item {item['uri']} lacks {field}" in failures
+
+
+@pytest.mark.parametrize(
+    "lane, filename",
+    [("notes", "2026-10-01_evals-a1b2c3.md"), ("briefs", "2026-10-01_try-evals-0192a6f0.md")],
+)
+def test_blank_note_or_brief_title_replaced_by_its_filename_passes_and_is_listed(lane, filename):
+    rec = {"notes": _notes, "briefs": _briefs}[lane]()
+    rec["items"][0]["title"] = ""
+    resp = _lane_response(rec)
+    resp["items"][0]["title"] = filename
+    uri = rec["items"][0]["uri"]
+    assert compare(lane, rec, resp) == (
+        [],
+        [f"title: {uri} blank in newsletter-assistant, searcher uses its filename"],
+    )
+
+
+@pytest.mark.parametrize("lane", ["notes", "briefs"])
+def test_blank_note_or_brief_title_replaced_by_something_else_fails(lane):
+    rec = {"notes": _notes, "briefs": _briefs}[lane]()
+    rec["items"][0]["title"] = ""
+    resp = _lane_response(rec)
+    resp["items"][0]["title"] = "Invented"
+    failures, _ = compare(lane, rec, resp)
+    assert len(failures) == 1 and failures[0].startswith("title of ")
+
+
+def test_duplicate_reports_only_the_duplicate_line():
+    rec = _sessions()
+    resp = _lane_response(rec)
+    resp["items"].append({**resp["items"][0], "summary": "A different copy."})
+    failures, _ = compare("sessions", rec, resp)
+    assert failures == [f"duplicate: searcher returned {[S1]} more than once"]
+
+
+def test_field_failures_come_in_fields_order():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][1].update(date="2026-09-30", title="Wrong", url="https://x")
+    failures, _ = compare("corpus", rec, resp)
+    assert [f.split(" of ")[0] for f in failures] == ["title", "url", "date"]
+
+
+def test_empty_session_summary_against_null_fails():
+    rec = _sessions()
+    resp = _lane_response(rec)
+    resp["items"][1]["summary"] = ""
+    failures, _ = compare("sessions", rec, resp)
+    assert failures == [f"summary of {S2}: searcher '', newsletter-assistant None"]
