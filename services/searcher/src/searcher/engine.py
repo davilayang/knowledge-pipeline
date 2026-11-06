@@ -4,8 +4,10 @@ run concurrently, each reports an outcome, and the status follows from them."""
 import asyncio
 import logging
 import os
-from collections.abc import Awaitable, Callable, Mapping
-from contextlib import AbstractAsyncContextManager
+import time
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
+from contextlib import asynccontextmanager, contextmanager
+from contextvars import ContextVar
 from typing import NamedTuple
 
 from searcher.models import (
@@ -39,12 +41,45 @@ CLEANUP_S = 0.1
 NO_DEADLINE_S = 30.0
 
 
-def time_limit(deadline_at: float | None) -> AbstractAsyncContextManager[None]:
+# The running search's `trace.stages_ms`; lane tasks inherit it, so a lane's
+# blocking read lands in the trace of the search that ran it.
+_STAGES: ContextVar[dict[str, float] | None] = ContextVar("stages", default=None)
+
+
+@contextmanager
+def timed(stage: str) -> Iterator[None]:
+    """Record how long the block takes, in ms, as `stage` in the search's trace."""
+    began = time.perf_counter()
+    try:
+        yield
+    finally:
+        if (stages := _STAGES.get()) is not None:
+            stages[stage] = round((time.perf_counter() - began) * 1000, 1)
+
+
+class DeadlineExceeded(TimeoutError):
+    """The search's own deadline ran out. Only this is `timed_out`; any other
+    TimeoutError, such as a client read or the no-deadline cap, is a failure."""
+
+
+@asynccontextmanager
+async def time_limit(deadline_at: float | None) -> AsyncIterator[None]:
     """The search deadline as an elapsed-time limit for one lane's or the
-    embedder's network calls, or `NO_DEADLINE_S` when the search has none."""
+    embedder's network calls, or `NO_DEADLINE_S` when the search has none.
+    The deadline's own expiry raises `DeadlineExceeded`; the cap's stays a plain
+    TimeoutError."""
     if deadline_at is None:
-        return asyncio.timeout(NO_DEADLINE_S)
-    return asyncio.timeout_at(deadline_at)
+        async with asyncio.timeout(NO_DEADLINE_S):
+            yield
+        return
+    limit = asyncio.timeout_at(deadline_at)
+    try:
+        async with limit:
+            yield
+    except TimeoutError as exc:
+        if limit.expired():
+            raise DeadlineExceeded("search deadline reached") from exc
+        raise
 
 
 class Contribution(NamedTuple):
@@ -63,10 +98,24 @@ async def search(
     """Answer one request. `deadline` is seconds for the whole search, embedding
     included; past it, unfinished lanes are `timed_out`. None waits for every lane.
     `embed` is only called when a requested lane is wired."""
+    stages: dict[str, float] = {}
+    token = _STAGES.set(stages)
+    try:
+        return await _search(req, lanes, embed, deadline, stages)
+    finally:
+        _STAGES.reset(token)
+
+
+async def _search(
+    req: SearchRequest,
+    lanes: Mapping[Source, LaneFn],
+    embed: EmbedFn | None,
+    deadline: float | None,
+    stages: dict[str, float],
+) -> SearchResponse:
     loop = asyncio.get_running_loop()
     began = loop.time()
     deadline_at = None if deadline is None else began + deadline
-    stages: dict[str, float] = {}
     sources = list(SOURCES) if req.sources is None else req.sources
     tasks: dict[Source, asyncio.Task[list[Item]]] = {}
     wired = [s for s in sources if s in lanes]
@@ -99,6 +148,10 @@ async def search(
         if task is None:
             outcome[source] = "skipped"
         elif not task.done() or task.cancelled():
+            outcome[source] = "timed_out"
+        elif isinstance(task.exception(), DeadlineExceeded):
+            # The lane's own `time_limit` fires at the deadline, a moment before
+            # the wait above gives up on it: still a timeout (contract §3).
             outcome[source] = "timed_out"
         elif (exc := task.exception()) is not None:
             log.warning("lane %s failed", source, exc_info=exc)

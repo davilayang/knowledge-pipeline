@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **The searcher's sessions lane searches past voice sessions end to end.** It queries Chroma's `conversations` collection without ever creating it, keys each chunk to its session through `source_ref` (`sessions:<id>`), and resolves the sessions in newsletter-assistant's `sessions.db` with one batched read-only query, opened the same way as `corpus.db`. A session appears once, at its best-ranked chunk, with every matching chunk as a whole passage; a session no longer stored, or whose timestamps do not parse, is dropped, as newsletter-assistant's MCP search drops it. The date is the UTC date the session started, `summary` is the stored summary (null until one is written), the title is the indexer's (the summary's first line, or `Session <first 8 characters of the id>`, which also stands in when a chunk carries none), and `since` keeps sessions started on or after it. The `sessions.db` read is timed in `trace.stages_ms` under its file name, through a new `timed()` helper any lane can use. Checked on 2026-11-06 with `eval-search-port-check --lanes sessions corpus` against a fresh newsletter-assistant harvest, both sides reading production Chroma and the same copies of its data: 88 of 88 probe-depth-lane pairs identical (22 probes, depths 5 and 10), 0 tie swaps, 13 blank corpus titles replaced by the url as before; the `sessions.db` read took 2.6 to 3.7 ms. (`services/searcher/src/searcher/sessions.py`, `services/searcher/src/searcher/engine.py`)
+
+### Changed
+
+- **A lane cut off by its own deadline now reports `timed_out`, not `failed`.** A lane bounds its network calls with `time_limit(deadline_at)`, which fires at the deadline a moment before the engine stops waiting, and the resulting `TimeoutError` was counted as a failure, against contract §3. A 5 s Chroma call under a 0.2 s voice deadline gave `failed`; it now gives `timed_out`. Only the deadline's own expiry counts: `time_limit` raises it as `DeadlineExceeded`, a `TimeoutError` subclass. Any other `TimeoutError`, such as a client read, an early timeout while another lane holds the search open, or the 30 s cap on an MCP search with no deadline, is still `failed` and logged. This fixes the corpus lane too, which has used `time_limit` since 0.43.0. (`services/searcher/src/searcher/engine.py`)
+
 ---
 
 ## [0.43.1] — 2026-11-06

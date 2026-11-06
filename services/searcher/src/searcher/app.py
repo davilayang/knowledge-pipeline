@@ -12,6 +12,7 @@ from retrievers.embedding import AsyncQueryEmbedder
 from searcher.corpus import corpus_lane
 from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import SearchRequest, SearchResponse, Source
+from searcher.sessions import sessions_lane
 
 # Voice must answer inside its budget; MCP waits for every lane.
 DEADLINE = {"voice": 5.0, "mcp": None}
@@ -64,5 +65,9 @@ async def _embed(text: str, deadline_at: float | None) -> list[float]:
 NEWSLETTER_DATA = Path(os.environ.get("NEWSLETTER_DATA_DIR", "/newsletter-data"))
 
 app = create_app(
-    lanes={"corpus": corpus_lane(_chroma_client, NEWSLETTER_DATA / "corpus.db")}, embed=_embed
+    lanes={
+        "corpus": corpus_lane(_chroma_client, NEWSLETTER_DATA / "corpus.db"),
+        "sessions": sessions_lane(_chroma_client, NEWSLETTER_DATA / "sessions.db"),
+    },
+    embed=_embed,
 )
