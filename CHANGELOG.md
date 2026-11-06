@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.1] — 2026-11-06
+
 ### Changed
 
 - **The port check compares every search lane, not only corpus.** `eval-search-port-check` reads harvest format v2, where each probe and depth holds `corpus`, `sessions`, `notes`, `briefs` and `wiki` under `lanes`, and refuses any other `format_version`. It searches one lane per request (`--lanes` picks which, default all five; a lane the searcher has not wired yet fails until it is) and checks each against newsletter-assistant's reference for that lane: its MCP search for corpus, sessions and notes, its voice logic for briefs and wiki. Each lane has a fixed field list that every harvested item must carry and the searcher's item must equal: corpus title, author, url and date; session date and summary (null when none is written); note title and date; brief title, date and `meta.status`; wiki title, summary, `meta.num_sources`, `meta.stale`, `meta.related` and `meta.has_user_notes`. A blank title the searcher replaces with the item's url (corpus) or file name, with or without `.md` (notes, briefs), passes and is listed. A uri returned twice fails once, as a duplicate, and an item newsletter-assistant dropped but the searcher returns is named. Corpus, sessions and notes items need whole-chunk passages; briefs and wiki items may have none, and brief chunks are matched to their brief by `brief_id`. Swaps between items whose distances differ by less than 0.002 now pass and are listed (was 0.0001): one pair of newsletter-assistant harvests, 220 probe-lane-depth cells, showed query-embedding jitter up to 0.0011. Checked with a real newsletter-assistant harvest used as both sides through a stub searcher: every probe-depth-lane pair passes, and one fault planted per lane, each run alone, is caught each time. (`packages/evals/src/evals/search/port_check.py`)
