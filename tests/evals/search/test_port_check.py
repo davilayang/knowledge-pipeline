@@ -621,3 +621,31 @@ def test_blank_wiki_title_replaced_by_the_searcher_is_listed(shown):
     failures, listed = compare("wiki", rec, resp)
     assert failures == []
     assert len(listed) == 1 and "blank" in listed[0]
+
+
+def test_a_reference_piece_at_the_cut_off_dropped_by_the_searcher_fails():
+    rec = _wiki_tie()
+    resp = _scored(rec, "ent_d", 0.56464)
+    resp["items"] = resp["items"][:2]  # the searcher keeps a and b, and nothing for c
+    failures, listed = compare("wiki", rec, resp)
+    assert len(failures) == 1 and "pieces differ" in failures[0]
+    assert listed == []
+
+
+def test_a_piece_added_at_the_cut_off_by_the_searcher_fails():
+    rec = _wiki_tie()
+    resp = _scored(rec, "ent_c", 0.56464)  # the reference's own three
+    extra = dict(resp["items"][-1], uri="kos://piece/wiki/ent_d", title="ent_d")
+    extra["summary"] = "ent_d summary."
+    resp["items"].append(extra)
+    failures, listed = compare("wiki", rec, resp)
+    assert len(failures) == 1 and "pieces differ" in failures[0]
+    assert listed == []
+
+
+def test_a_reference_item_repeated_and_merged_by_the_searcher_is_listed():
+    rec = _wiki()
+    rec["items"].append(dict(rec["items"][0]))
+    failures, listed = compare("wiki", rec, _lane_response(_wiki()))
+    assert failures == []
+    assert listed == [f"newsletter-assistant repeats {W1}; searcher merged it"]

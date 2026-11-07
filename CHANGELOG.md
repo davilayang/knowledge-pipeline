@@ -12,7 +12,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **The port check lists ties at the depth cut instead of failing them.** When the searcher and newsletter-assistant keep different pieces, and every piece only one side kept sits within the tie gap of the last piece newsletter-assistant kept, the difference passes and is listed: Chroma may return any of several pieces at one distance at the cut. Four wiki pages at one exact distance made a production probe fail on some runs and pass on others. A blank newsletter-assistant wiki title the searcher replaces with the entity's name or id is also listed. (`packages/evals/src/evals/search/port_check.py`)
+- **The port check lists ties at the depth cut instead of failing them.** In any lane, when the searcher and newsletter-assistant each keep the same number of pieces the other did not, and every such piece sits within the tie gap of the last piece newsletter-assistant kept, the swap passes and is listed: Chroma may return any of several pieces at one distance at the cut. Four wiki pages at one exact distance made a production probe fail on some runs and pass on others. A piece dropped or added at the cut, with nothing swapped for it, still fails. A piece newsletter-assistant's harvest repeats, which the searcher merges into one item, and a blank newsletter-assistant wiki title the searcher replaces with the entity's name or id are also listed. (`packages/evals/src/evals/search/port_check.py`)
 
 ---
 
