@@ -6,6 +6,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **The searcher answers from the entity wiki.** Its wiki lane finds pages through Chroma's `wiki` collection and resolves each hit through kp's `_index/resolve.json` and the rendered page, as newsletter-assistant's voice recall does. A pruned entity, or a page that is missing, unparseable, empty, naming another entity or carrying a malformed field, is dropped on its own, never failing the lane; a page re-rendered since indexing is `stale`; chunks of one long summary become one item with each chunk a passage; `related` holds up to 4 entity titles; `has_user_notes` reads either spelling of the resolve flag. A missing, unparseable or unknown-version `resolve.json` fails the lane rather than answering with no pages. The pages are plain files, so compose mounts kp's `data/wiki` read-only (`WIKI_DIR`). The resolve file and the page reads are timed in `trace.stages_ms` (`resolve.json`, `wiki pages`). Checked against a fresh newsletter-assistant harvest of production data with `eval-search-port-check --lanes wiki corpus`: 88 of 88 probe-depth-lane pairs on each of three runs, with 13 blank corpus titles and, on one run, one cut-off tie listed. (`services/searcher/src/searcher/wiki.py`, `docker-compose.yml`)
+
+### Changed
+
+- **The port check lists ties at the depth cut instead of failing them.** In any lane, when the searcher and newsletter-assistant each keep the same number of pieces the other did not, and every such piece sits within the tie gap of the last piece newsletter-assistant kept, the swap passes and is listed: Chroma may return any of several pieces at one distance at the cut. Four wiki pages at one exact distance made a production probe fail on some runs and pass on others. A piece dropped or added at the cut, with nothing swapped for it, still fails. A piece newsletter-assistant's harvest repeats, which the searcher merges into one item, and a blank newsletter-assistant wiki title the searcher replaces with the entity's name or id are also listed. (`packages/evals/src/evals/search/port_check.py`)
+
 ---
 
 ## [0.43.1] — 2026-11-06

@@ -232,12 +232,16 @@ services:
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       NEWSLETTER_DATA_DIR: /newsletter-data
+      WIKI_DIR: /wiki
     volumes:
       # newsletter-assistant's data directory. Required: falling back to kp's own
       # data/ would start a searcher with no corpus.db. Read-write so SQLite can
       # recreate `-shm` for a cleanly closed WAL database; the searcher opens it
       # `mode=ro` and never writes data.
       - ${BACKUP_SRC_DIR:?set BACKUP_SRC_DIR to newsletter-assistant's data directory}:/newsletter-data
+      # kp's rendered wiki pages and `_index/resolve.json`. Read-only: plain files,
+      # no SQLite, so nothing needs to be created beside them.
+      - ./data/wiki:/wiki:ro
     networks:
       kos_network:
         aliases:

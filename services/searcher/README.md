@@ -18,8 +18,8 @@ the contract's precedence.
   has no deadline; each of its network calls still stops after 30 s. Lanes and
   the embedder are given the deadline so their calls stop inside it.
 - **Trace:** `trace.stages_ms` holds each stage's own duration (`embed`,
-  `lanes`, `merge`) and the `total`; `code_rev` comes from the `CODE_REV`
-  environment variable.
+  `lanes`, `merge`) and the `total`, plus a lane's own blocking reads
+  (`resolve.json`, `wiki pages`); `code_rev` comes from the `CODE_REV` environment variable.
 
 - **Corpus lane** (`src/searcher/corpus.py`): Chroma's `contents` collection,
   each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is
@@ -29,7 +29,15 @@ the contract's precedence.
   `BACKUP_SRC_DIR`, which it requires), so SQLite can recreate the `-shm` file of a WAL database its
   writer has closed. The container runs as UID 1000, the writers' UID.
 
-The other lanes are not wired yet, so they are `skipped` and a request for them
+- **Wiki lane** (`src/searcher/wiki.py`): Chroma's `wiki` collection, each hit
+  resolved through kp's `_index/resolve.json` and the rendered page, read from a
+  read-only mount of kp's `data/wiki` (`WIKI_DIR`). A pruned entity, or a page
+  missing, unparseable or naming another entity, is dropped; a page re-rendered
+  since indexing is `stale`; `related` holds up to 4 titles. An unreadable or
+  unknown-version `resolve.json` fails the lane. No date, so `since` does not
+  filter it.
+
+The sessions, notes and briefs lanes are not wired yet, so they are `skipped` and a request for them
 gets `partial`. No caller uses the service yet.
 
 ## Run
