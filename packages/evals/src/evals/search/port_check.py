@@ -9,12 +9,15 @@ sessions and notes, and its voice logic for briefs and wiki.
 
 `--lanes` defaults to all five; a lane the searcher has not wired yet fails until it is.
 
-Exits non-zero on any failure. Tie swaps and blank titles replaced by the url pass and are printed.
+Exits non-zero on any failure. Tie swaps, one-for-one swaps of pieces tied at the depth cut
+(any lane), repeated reference pieces the searcher merged, and blank titles the searcher
+replaced pass and are printed.
 """
 
 import argparse
 import json
 import sys
+from collections.abc import Callable
 from pathlib import Path
 from urllib.parse import unquote
 
@@ -80,12 +83,43 @@ def _chunks_of(lane: str, uri: str, chunks: list[dict]) -> list[dict]:
     return [c for c in chunks if c[key] == i]
 
 
+def _tied_at_cut_off(
+    only_got: list[str],
+    only_want: list[str],
+    want: list[str],
+    best: Callable[[str], float | None],
+    got_items: list[dict],
+) -> bool:
+    """Whether the two sides swapped pieces tied at the depth cut, in any lane: each
+    kept as many pieces the other did not (a real Chroma tie trades one piece for
+    another, it never drops or adds one), and every such piece sits within
+    `TIE_GAP` of the last piece newsletter-assistant kept. Reference distances are
+    the best harvested chunk's; the searcher's are `1 - matched_by.score`.
+
+    Two rare tie shapes still fail, because the swap is not one-for-one: one side
+    spends the tied Chroma slot on a second chunk of a piece both kept, so it holds
+    one piece fewer; or the tied slot goes to a piece the lane then drops (a missing
+    row or page). A rerun usually settles both."""
+    if not only_got or len(only_got) != len(only_want):
+        return False
+    kept = [d for u in want if (d := best(u)) is not None]
+    if not kept:
+        return False
+    cut = max(kept)
+    score = {it["uri"]: it.get("matched_by", [{}])[0].get("score") for it in got_items}
+    distances = [best(u) for u in only_want]
+    distances += [None if score.get(u) is None else 1 - score[u] for u in only_got]
+    return all(d is not None and abs(d - cut) < TIE_GAP for d in distances)
+
+
 def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[str]]:
     """Return (failures, listed differences) for one lane of one probe at one depth.
 
-    Listed differences pass but are always reported: tie swaps, and a blank
-    newsletter-assistant title the searcher replaced with the item's url (corpus) or
-    file name (notes, briefs).
+    Listed differences pass but are always reported: tie swaps; in any lane, a
+    one-for-one swap of pieces tied at the depth cut; a piece newsletter-assistant
+    repeats that the searcher merged; and a blank newsletter-assistant title the
+    searcher replaced with the item's url (corpus), file name (notes, briefs) or
+    resolve name or id (wiki).
 
     Order matches when every pair the searcher returns in the opposite order to
     newsletter-assistant was tied there (best chunk distances within `TIE_GAP`);
@@ -105,6 +139,11 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
         return min(ds) if ds else None
 
     want = [it["uri"] for it in record["items"]]
+    for uri in sorted({u for u in want if want.count(u) > 1}):
+        # newsletter-assistant's harvest can emit one item per Chroma hit, while a lane
+        # merges a piece's hits into one item, as the contract requires.
+        ties.append(f"newsletter-assistant repeats {uri}; searcher merged it")
+    want = list(dict.fromkeys(want))
     got = [it["uri"] for it in response["items"]]
     dupes = sorted({u for u in got if got.count(u) > 1})
     if dupes:
@@ -128,9 +167,11 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
         what = "uri encoding" if decoded else "pieces"
         only_got = [u for u in got if u not in want]
         only_want = [u for u in want if u not in got]
-        failures.append(
-            f"{what} differ: searcher only {only_got}, newsletter-assistant only {only_want}"
-        )
+        differ = f"{what} differ: searcher only {only_got}, newsletter-assistant only {only_want}"
+        if not decoded and _tied_at_cut_off(only_got, only_want, want, best, response["items"]):
+            ties.append(f"cut-off: {differ}, all tied with the last kept piece")
+        else:
+            failures.append(differ)
     na = {it["uri"]: it for it in record["items"]}
     # A duplicate is reported once, above; only its first occurrence is compared.
     first: dict[str, dict] = {}
@@ -153,6 +194,16 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
                         f"title: {it['uri']} blank in newsletter-assistant, searcher uses its url"
                     )
                     continue
+            if field == "title" and value == "" and lane == "wiki" and got_value:
+                # The contract never shows a blank title: the searcher falls back to
+                # the entity's resolve name, then its id. The harvest carries no
+                # entity name to check against, so any replacement is listed, never
+                # passed silently.
+                ties.append(
+                    f"title: {it['uri']} blank in newsletter-assistant, "
+                    "searcher uses its resolve name or id"
+                )
+                continue
             if field == "title" and value == "" and lane in ("notes", "briefs"):
                 files = {
                     c["source_ref"].removeprefix("local:")

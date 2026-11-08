@@ -4,6 +4,7 @@ import dagster as dg
 from retrievers.embedding import INDEX_DIMS, INDEX_MODEL
 from retrievers.vector_store.chroma import COLLECTION_CONTENTS as COLLECTION_CONTENTS
 from retrievers.vector_store.chroma import COLLECTION_CONVERSATIONS as COLLECTION_CONVERSATIONS
+from retrievers.vector_store.chroma import COLLECTION_WIKI as COLLECTION_WIKI
 
 # 30-min partition; schedule emits the current half-hour key. start set to
 # pipeline land date so backfills don't accidentally enumerate empty history.
@@ -24,7 +25,6 @@ EMBEDDING_MODEL_DEFAULT = INDEX_MODEL
 EMBEDDING_DIMS_DEFAULT = INDEX_DIMS
 
 COLLECTION_NOTES = "notes"
-COLLECTION_WIKI = "wiki"
 COLLECTION_BRIEFINGS = "briefings"
 
 CHUNKER_BY_SOURCE = {
