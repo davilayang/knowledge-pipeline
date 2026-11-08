@@ -49,13 +49,16 @@ _STAGES: ContextVar[dict[str, float] | None] = ContextVar("stages", default=None
 
 @contextmanager
 def timed(stage: str) -> Iterator[None]:
-    """Record how long the block takes, in ms, as `stage` in the search's trace."""
+    """Add how long the block takes, in ms, to `stage` in the search's trace. A
+    stage run more than once in a search, such as a lane's lookup when it fetches
+    again, records the total."""
     began = time.perf_counter()
     try:
         yield
     finally:
         if (stages := _STAGES.get()) is not None:
-            stages[stage] = round((time.perf_counter() - began) * 1000, 1)
+            spent = (time.perf_counter() - began) * 1000
+            stages[stage] = round(stages.get(stage, 0.0) + spent, 1)
 
 
 class DeadlineExceeded(TimeoutError):

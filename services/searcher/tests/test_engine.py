@@ -487,3 +487,28 @@ def test_a_lane_whose_index_runs_out_does_not_fetch_again() -> None:
     resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
     assert sizes == [3]
     assert resp.lanes["corpus"].returned == 1
+
+
+def test_a_stage_timed_in_every_fetch_round_records_their_total() -> None:
+    """A lane that fetches again looks its source up again; the trace shows the
+    lookups' total, since the trace is where blocking reads are measured."""
+    import time
+
+    from searcher.engine import Hit, lane, timed
+
+    async def dense(req, embedding, deadline_at, n) -> list[Hit]:
+        return [Hit(f"p{i // 4}", f"c{i}", {}, 0.5) for i in range(n)]
+
+    def resolve(ids):
+        with timed("source"):
+            time.sleep(0.02)
+        return {i: i for i in ids}
+
+    def build(req, key, row, hit) -> Item:
+        return _item(f"kos://piece/corpus/{key}", "corpus", 0, hit.chunk).model_copy(
+            update={"matched_by": []}
+        )
+
+    run = lane("corpus", {"dense": dense}, resolve, build)
+    resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
+    assert resp.trace.stages_ms["source"] >= 55

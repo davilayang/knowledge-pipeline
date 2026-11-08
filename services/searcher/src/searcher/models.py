@@ -34,7 +34,7 @@ class SearchRequest(BaseModel):
     contract_version: int = Field(ge=CONTRACT_VERSION, le=CONTRACT_VERSION)
     query: str
     caller: Caller
-    # Omitted means the caller's default. The None default is never validated,
+    # Omitted means the service default. The None default is never validated,
     # so an explicit null is rejected rather than read as omitted; `since` alone
     # takes null on the wire. An empty `sources` is rejected, never read as all.
     # `k` is the most items each lane returns; `k_per_source` overrides it per
