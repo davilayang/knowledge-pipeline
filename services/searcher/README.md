@@ -19,7 +19,7 @@ the contract's precedence.
   the embedder are given the deadline so their calls stop inside it.
 - **Trace:** `trace.stages_ms` holds each stage's own duration (`embed`,
   `lanes`, `merge`) and the `total`, plus each lane's blocking reads under the
-  file they read (`sessions.db`, `resolve.json`, `wiki pages`), nested inside
+  file they read (`corpus.db`, `sessions.db`, `resolve.json`, `wiki pages`), nested inside
   `lanes`, not additive; `code_rev` comes from the `CODE_REV` environment
   variable. A lane whose own call stops at the deadline is `timed_out`, like one
   the engine stops waiting for: `time_limit` raises that expiry as

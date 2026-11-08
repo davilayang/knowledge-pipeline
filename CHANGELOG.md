@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Changed
+
+- **The search trace now times the corpus lane's `corpus.db` read,** as `corpus.db` in `trace.stages_ms`, like the sessions lane's `sessions.db` read. The corpus, sessions and wiki lanes now share one Chroma query (`dense_hits`), one passage fold for further chunks of a piece (`add_passage`) and one read-only SQLite open (`open_ro`), all in `services/searcher/src/searcher/engine.py`; results are unchanged. The engine trace test sets `CODE_REV` on the module instead of reloading it, which had replaced engine classes under other tests.
+
 ---
 
 ## [0.43.3] — 2026-11-08

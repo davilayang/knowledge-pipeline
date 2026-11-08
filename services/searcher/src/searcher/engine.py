@@ -4,11 +4,13 @@ run concurrently, each reports an outcome, and the status follows from them."""
 import asyncio
 import logging
 import os
+import sqlite3
 import time
 from collections.abc import AsyncIterator, Awaitable, Callable, Iterator, Mapping
 from contextlib import asynccontextmanager, contextmanager
 from contextvars import ContextVar
-from typing import NamedTuple
+from pathlib import Path
+from typing import Any, NamedTuple
 
 from searcher.models import (
     SOURCES,
@@ -80,6 +82,53 @@ async def time_limit(deadline_at: float | None) -> AsyncIterator[None]:
         if limit.expired():
             raise DeadlineExceeded("search deadline reached") from exc
         raise
+
+
+Hit = tuple[str, dict[str, Any], float]  # chunk text, chunk metadata, distance
+
+
+async def dense_hits(
+    chroma: Callable[[], Awaitable[Any]],
+    collection_name: str,
+    req: SearchRequest,
+    embedding: list[float],
+    deadline_at: float | None,
+) -> list[Hit]:
+    """One lane's Chroma query, best first, inside the search deadline."""
+    async with time_limit(deadline_at):
+        client = await chroma()
+        # get_collection, never get_or_create: a search creates nothing.
+        collection = await client.get_collection(collection_name, embedding_function=None)
+        res = await collection.query(
+            query_embeddings=[embedding],
+            n_results=req.k or K_DEFAULT,
+            include=["documents", "metadatas", "distances"],
+        )
+    return list(zip(res["documents"][0], res["metadatas"][0], res["distances"][0], strict=True))
+
+
+def add_passage(items: dict[str, Item], key: str, chunk: str) -> bool:
+    """Add a further chunk of a piece the lane already has to its passages, once;
+    False when the piece is new. A lane's hits come best first, so the first hit
+    for a piece makes its item and ranks it, and later hits only add passages."""
+    if key not in items:
+        return False
+    if chunk not in items[key].passages:
+        items[key].passages.append(chunk)
+    return True
+
+
+def open_ro(db_path: Path) -> sqlite3.Connection:
+    """A read-only connection to a database newsletter-assistant keeps writing.
+
+    - `mode=ro`, never `immutable`, which would stop SQLite noticing those writes.
+    - A WAL database closed cleanly has no `-shm` file, and SQLite recreates it on
+      open, so the directory must be writable by this process.
+    - `timeout=0`: lanes run one batched primary-key query, with no busy wait.
+    """
+    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=0)
+    conn.row_factory = sqlite3.Row
+    return conn
 
 
 class Contribution(NamedTuple):

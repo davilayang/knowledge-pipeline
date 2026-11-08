@@ -11,7 +11,7 @@ import yaml
 from domains.wiki.io import read_meta
 from retrievers.vector_store.chroma import COLLECTION_WIKI
 
-from searcher.engine import K_DEFAULT, LaneFn, time_limit, timed
+from searcher.engine import LaneFn, add_passage, dense_hits, timed
 from searcher.models import Item, MatchedBy, SearchRequest
 
 # resolve.json schema versions this lane reads. kp writes 1; 2 drops the legacy
@@ -23,16 +23,7 @@ def wiki_lane(chroma: Callable[[], Awaitable[Any]], wiki_dir: Path) -> LaneFn:
     async def lane(
         req: SearchRequest, embedding: list[float], deadline_at: float | None
     ) -> list[Item]:
-        async with time_limit(deadline_at):
-            client = await chroma()
-            # get_collection, never get_or_create: a search creates nothing.
-            collection = await client.get_collection(COLLECTION_WIKI, embedding_function=None)
-            res = await collection.query(
-                query_embeddings=[embedding],
-                n_results=req.k or K_DEFAULT,
-                include=["documents", "metadatas", "distances"],
-            )
-        hits = list(zip(res["documents"][0], res["metadatas"][0], res["distances"][0], strict=True))
+        hits = await dense_hits(chroma, COLLECTION_WIKI, req, embedding, deadline_at)
         # Blocking file reads on the event loop: one resolve.json, plus one small
         # page file per hit.
         with timed("resolve.json"):
@@ -46,9 +37,7 @@ def wiki_lane(chroma: Callable[[], Awaitable[Any]], wiki_dir: Path) -> LaneFn:
             entity_id, ent, page = found
             # The producer chunks a summary like any text, so one long summary can
             # come back as several hits: one item, each chunk a passage.
-            if entity_id in items:
-                if chunk not in items[entity_id].passages:
-                    items[entity_id].passages.append(chunk)
+            if add_passage(items, entity_id, chunk):
                 continue
             item = _item(req.query, entity_id, ent, page, entities, chunk, meta, dist, len(items))
             if item is not None:

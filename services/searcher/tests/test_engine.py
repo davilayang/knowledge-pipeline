@@ -255,21 +255,12 @@ def test_an_embedding_that_uses_up_the_deadline_times_out_every_lane_in_time() -
 
 
 def test_the_trace_holds_each_stage_s_own_duration_and_the_code_rev(monkeypatch) -> None:
-    import importlib
-
     import searcher.engine as engine
 
-    monkeypatch.setenv("CODE_REV", "abc1234")
-    engine = importlib.reload(engine)
-    try:
-        resp = asyncio.run(
-            engine.search(
-                _req(caller="voice", sources=["notes"]), {"notes": _slow(0.05)}, _embed, 1.0
-            )
-        )
-    finally:
-        monkeypatch.delenv("CODE_REV")
-        importlib.reload(engine)
+    monkeypatch.setattr(engine, "CODE_REV", "abc1234")
+    resp = asyncio.run(
+        search(_req(caller="voice", sources=["notes"]), {"notes": _slow(0.05)}, _embed, 1.0)
+    )
     stages = resp.trace.stages_ms
     assert set(stages) == {"embed", "lanes", "merge", "total"}
     assert all(ms >= 0 for ms in stages.values())

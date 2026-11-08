@@ -10,7 +10,7 @@ from urllib.parse import quote
 
 from retrievers.vector_store.chroma import COLLECTION_CONTENTS
 
-from searcher.engine import K_DEFAULT, LaneFn, time_limit
+from searcher.engine import LaneFn, add_passage, dense_hits, open_ro, timed
 from searcher.models import Item, MatchedBy, SearchRequest
 
 
@@ -18,23 +18,13 @@ def corpus_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
     async def lane(
         req: SearchRequest, embedding: list[float], deadline_at: float | None
     ) -> list[Item]:
-        async with time_limit(deadline_at):
-            client = await chroma()
-            # get_collection, never get_or_create: a search creates nothing.
-            collection = await client.get_collection(COLLECTION_CONTENTS, embedding_function=None)
-            res = await collection.query(
-                query_embeddings=[embedding],
-                n_results=req.k or K_DEFAULT,
-                include=["documents", "metadatas", "distances"],
-            )
-        hits = list(zip(res["documents"][0], res["metadatas"][0], res["distances"][0], strict=True))
-        rows = _resolve(db_path, sorted({str(m.get("content_id", "")) for _, m, _ in hits}))
+        hits = await dense_hits(chroma, COLLECTION_CONTENTS, req, embedding, deadline_at)
+        with timed("corpus.db"):
+            rows = _resolve(db_path, sorted({str(m.get("content_id", "")) for _, m, _ in hits}))
         items: dict[str, Item] = {}
         for chunk, meta, dist in hits:
             content_id = str(meta.get("content_id", ""))
-            if content_id in items:
-                if chunk not in items[content_id].passages:
-                    items[content_id].passages.append(chunk)
+            if add_passage(items, content_id, chunk):
                 continue
             row = rows.get(content_id)
             if row is None:
@@ -51,14 +41,9 @@ def corpus_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
 
 
 def _resolve(db_path: Path, content_ids: list[str]) -> dict[str, sqlite3.Row]:
-    """Rows by content_id, in one query. newsletter-assistant keeps writing this
-    database, so it is opened read-only through SQLite (never `immutable`, which
-    would stop SQLite noticing those writes) on a writable directory, where SQLite
-    can recreate the `-shm` file a cleanly closed WAL database lacks."""
-    # The one blocking call in an otherwise async lane: one batched primary-key
-    # query, with no busy wait.
-    conn = sqlite3.connect(f"{db_path.resolve().as_uri()}?mode=ro", uri=True, timeout=0)
-    conn.row_factory = sqlite3.Row
+    """Rows by content_id, in one query: the one blocking call in an otherwise async
+    lane."""
+    conn = open_ro(db_path)
     try:
         marks = ",".join("?" * len(content_ids))
         found = conn.execute(

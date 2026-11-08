@@ -9,8 +9,7 @@ from typing import Any
 import pytest
 from chromadb.errors import NotFoundError
 
-from searcher import engine
-from searcher.engine import search
+from searcher.engine import DeadlineExceeded, search
 from searcher.models import Item, SearchRequest
 from searcher.wiki import wiki_lane
 
@@ -305,8 +304,7 @@ def test_a_slow_chroma_query_is_stopped_at_the_deadline(tmp_path: Path) -> None:
         lane = wiki_lane(_client(FakeChroma(Slow([]))), tmp_path / "wiki")
         return await lane(_req(), [0.0], asyncio.get_running_loop().time() + 0.05)
 
-    # Looked up at run time: test_engine reloads the module, which replaces the class.
-    with pytest.raises(engine.DeadlineExceeded):
+    with pytest.raises(DeadlineExceeded):
         asyncio.run(go())
 
 
