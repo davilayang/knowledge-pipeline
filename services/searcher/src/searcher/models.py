@@ -7,11 +7,11 @@ entry is a contract breach: `tests/test_search.py` pins the field lists.
 
 import re
 from datetime import date
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 
 Caller = Literal["voice", "mcp"]
 # `corpus`: one saved item in corpus.db, whatever its medium (article, talk, podcast, paper).
@@ -34,10 +34,15 @@ class SearchRequest(BaseModel):
     contract_version: int = Field(ge=CONTRACT_VERSION, le=CONTRACT_VERSION)
     query: str
     caller: Caller
-    # Omitted means the caller's default. The None default is never validated,
+    # Omitted means the service default. The None default is never validated,
     # so an explicit null is rejected rather than read as omitted; `since` alone
     # takes null on the wire. An empty `sources` is rejected, never read as all.
+    # `k` is the most items each lane returns; `k_per_source` overrides it per
+    # lane. `deadline_ms` bounds the whole search, so one request cannot hold
+    # an admission slot for long.
     k: int = Field(default=None, ge=1, le=50)
+    k_per_source: dict[Source, Annotated[int, Field(ge=1, le=50)]] = Field(default=None)
+    deadline_ms: int = Field(default=None, ge=1, le=60000)
     sources: list[Source] = Field(default=None, min_length=1)
     since: date | None = None
 
@@ -49,6 +54,15 @@ class SearchRequest(BaseModel):
         if isinstance(v, str) and re.fullmatch(r"[0-9]{4}-[0-9]{2}-[0-9]{2}", v):
             return date.fromisoformat(v)
         return v
+
+    @model_validator(mode="after")
+    def _limits_name_searched_lanes(self) -> "SearchRequest":
+        # A limit for a lane not being searched is a caller mistake, refused
+        # rather than ignored.
+        extra = set(self.k_per_source or ()) - set(self.sources or SOURCES)
+        if extra:
+            raise ValueError(f"k_per_source names lanes not searched: {sorted(extra)}")
+        return self
 
 
 class Lane(BaseModel):

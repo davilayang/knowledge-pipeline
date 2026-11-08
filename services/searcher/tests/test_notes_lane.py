@@ -17,7 +17,7 @@ STEM = "2026-10-02_rag-evals-a1b2c3"
 
 def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate(
-        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["notes"], **kw}
+        {"contract_version": 2, "query": "rag", "caller": "mcp", "sources": ["notes"], **kw}
     )
 
 
@@ -165,7 +165,7 @@ def _search(lane, req: SearchRequest) -> SearchResponse:  # type: ignore[no-unty
     async def embed(text: str, deadline_at: float | None) -> list[float]:
         return [0.0]
 
-    return asyncio.run(search(req, {"notes": lane}, embed, None))
+    return asyncio.run(search(req, {"notes": lane}, embed, 5.0))
 
 
 def test_a_missing_notes_directory_fails_the_lane(tmp_path: Path) -> None:

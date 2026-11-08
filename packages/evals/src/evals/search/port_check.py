@@ -238,13 +238,14 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
 def _search(searcher: str, query: str, k: int, lane: str) -> dict:
     """The one network call: a search of one lane at depth `k`."""
     # Lanes and `k` are given explicitly, so the reference does not depend on the caller;
-    # `mcp` has no deadline, so no answer is cut short. Per-caller passage length is not
-    # checked until it is set.
+    # the longest deadline the contract allows, so no answer is cut short. Per-caller
+    # passage length is not checked until it is set.
     body = {
-        "contract_version": 1,
+        "contract_version": 2,
         "query": query,
         "caller": "mcp",
         "k": k,
+        "deadline_ms": 60000,
         "sources": [lane],
     }
     resp = httpx.post(f"{searcher}/v1/search", json=body, timeout=60)

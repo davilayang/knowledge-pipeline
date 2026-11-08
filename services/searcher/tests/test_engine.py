@@ -10,7 +10,7 @@ from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Sour
 
 
 def _req(**kw: object) -> SearchRequest:
-    return SearchRequest.model_validate({"contract_version": 1, "query": "rag", **kw})
+    return SearchRequest.model_validate({"contract_version": 2, "query": "rag", **kw})
 
 
 async def _embed(text: str, deadline_at: float | None) -> list[float]:
@@ -50,7 +50,7 @@ async def _boom(
 def _search_now(
     req: SearchRequest,
     lanes: dict[Source, LaneFn],
-    deadline: float | None = None,
+    deadline: float = 5.0,
     embed: EmbedFn = _embed,
 ) -> SearchResponse:
     return asyncio.run(search(req, lanes, embed, deadline))
@@ -141,13 +141,6 @@ def test_a_lane_slower_than_the_deadline_is_timed_out_and_the_answer_returns_in_
     assert [i.uri for i in resp.items] == ["kos://piece/corpus/a"]
 
 
-def test_a_search_with_no_deadline_waits_for_a_slow_lane() -> None:
-    slow = _slow(0.3, _item("kos://piece/note/n", "notes", 1, "p"))
-    resp = _search_now(_req(caller="mcp", sources=["notes"]), {"notes": slow}, deadline=None)
-    assert resp.lanes["notes"].outcome == "ok"
-    assert resp.status == "ok"
-
-
 def test_two_lanes_on_one_query_embed_it_once() -> None:
     calls: list[str] = []
 
@@ -156,9 +149,7 @@ def test_two_lanes_on_one_query_embed_it_once() -> None:
         return [0.0]
 
     lanes = {"corpus": _lane(), "notes": _lane()}
-    asyncio.run(
-        search(_req(caller="mcp", sources=["corpus", "notes"]), lanes, counting_embed, None)
-    )
+    asyncio.run(search(_req(caller="mcp", sources=["corpus", "notes"]), lanes, counting_embed, 5.0))
     assert calls == ["rag"]
 
 
@@ -167,6 +158,36 @@ def test_a_lane_cut_by_k_shows_more_candidates_than_returned() -> None:
     resp = _search_now(_req(caller="mcp", sources=["corpus"], k=2), {"corpus": corpus})
     assert [i.uri for i in resp.items] == ["kos://piece/corpus/1", "kos://piece/corpus/2"]
     assert (resp.lanes["corpus"].candidates, resp.lanes["corpus"].returned) == (4, 2)
+
+
+def test_k_caps_each_lane_and_there_is_no_overall_cut() -> None:
+    """Contract §2 rules 5 and 6: `k` is the most items each lane returns; the
+    response holds every lane's items, merged by best rank."""
+    lanes = {
+        lane: _lane(*(_item(f"kos://piece/{lane}/{n}", lane, n, "p") for n in range(1, 4)))
+        for lane in ("corpus", "notes")
+    }
+    resp = _search_now(_req(caller="mcp", sources=["corpus", "notes"], k=2), lanes)
+    assert [i.uri for i in resp.items] == [
+        "kos://piece/corpus/1",
+        "kos://piece/notes/1",
+        "kos://piece/corpus/2",
+        "kos://piece/notes/2",
+    ]
+    assert {s: (lane.candidates, lane.returned) for s, lane in resp.lanes.items()} == {
+        "corpus": (3, 2),
+        "notes": (3, 2),
+    }
+
+
+def test_k_per_source_overrides_k_for_the_lanes_it_names() -> None:
+    lanes = {
+        lane: _lane(*(_item(f"kos://piece/{lane}/{n}", lane, n, "p") for n in range(1, 5)))
+        for lane in ("corpus", "notes")
+    }
+    req = _req(caller="voice", sources=["corpus", "notes"], k=1, k_per_source={"notes": 3})
+    resp = _search_now(req, lanes)
+    assert {s: lane.returned for s, lane in resp.lanes.items()} == {"corpus": 1, "notes": 3}
 
 
 def test_a_piece_found_by_two_lanes_counts_in_both_lanes_returned() -> None:
@@ -189,15 +210,13 @@ def test_a_lane_is_given_the_deadline_so_its_clients_can_time_out_inside_it() ->
         seen.append(deadline_at)
         return []
 
-    async def go(deadline: float | None) -> float:
+    async def go(deadline: float) -> float:
         start = asyncio.get_running_loop().time()
         await search(_req(caller="voice", sources=["notes"]), {"notes": lane}, _embed, deadline)
         return start
 
     start = asyncio.run(go(0.2))
     assert seen[0] is not None and start < seen[0] <= start + 0.2 + 0.05
-    asyncio.run(go(None))
-    assert seen[1] is None
 
 
 def test_a_lane_cut_off_by_the_deadline_is_cancelled_and_finished_before_the_answer() -> None:
@@ -312,7 +331,7 @@ def test_cancelling_a_search_cancels_its_lanes() -> None:
 
     async def scenario() -> bool:
         outer = asyncio.create_task(
-            search(_req(caller="mcp", sources=["corpus"]), {"corpus": lane}, _embed, None)
+            search(_req(caller="mcp", sources=["corpus"]), {"corpus": lane}, _embed, 5.0)
         )
         await asyncio.sleep(0.05)
         outer.cancel()
@@ -368,16 +387,6 @@ async def _times_out_now(
     raise TimeoutError("client read timed out")
 
 
-def test_a_timeout_in_a_search_with_no_deadline_is_a_failure_and_logged(
-    caplog: pytest.LogCaptureFixture,
-) -> None:
-    """MCP has no deadline, so it never sees `timed_out`: a client timeout there,
-    such as the 30 s per-call cap, is a failure."""
-    resp = _search_now(_req(caller="mcp", sources=["notes"]), {"notes": _times_out_now})
-    assert resp.lanes["notes"].outcome == "failed"
-    assert "lane notes failed" in caplog.text
-
-
 def test_a_timeout_well_before_the_deadline_is_a_failure() -> None:
     resp = _search_now(
         _req(caller="voice", sources=["notes"]), {"notes": _times_out_now}, deadline=5.0
@@ -408,8 +417,8 @@ def test_a_lane_with_two_methods_looks_up_once_and_ranks_each_method_on_its_own(
     from searcher.engine import Hit, lane
 
     def method(*keys: str):
-        async def hits(req, embedding, deadline_at) -> list[Hit]:
-            return [Hit(k, f"{k} chunk", {}, 0.5) for k in keys]
+        async def hits(req, embedding, deadline_at, n) -> list[Hit]:
+            return [Hit(k, f"{k} chunk", {}, 0.5) for k in keys][:n]
 
         return hits
 
@@ -435,3 +444,71 @@ def test_a_lane_with_two_methods_looks_up_once_and_ranks_each_method_on_its_own(
         ("kos://piece/corpus/b", [("keyword", 1), ("dense", 2)]),
     ]
     assert res.lanes["corpus"].candidates == 2
+
+
+def _fill_lane(chunks_per_piece: int, pieces: int | None = None):
+    """A one-method lane over an index where each piece has `chunks_per_piece`
+    consecutive chunks, `pieces` of them (None: unlimited). Records each fetch size."""
+    from searcher.engine import Hit, lane
+
+    sizes: list[int] = []
+
+    async def dense(req, embedding, deadline_at, n) -> list[Hit]:
+        sizes.append(n)
+        total = n if pieces is None else min(n, pieces * chunks_per_piece)
+        return [Hit(f"p{i // chunks_per_piece}", f"c{i}", {}, 0.5) for i in range(total)]
+
+    def build(req, key, row, hit) -> Item:
+        return _item(f"kos://piece/corpus/{key}", "corpus", 0, hit.chunk).model_copy(
+            update={"matched_by": []}
+        )
+
+    return lane("corpus", {"dense": dense}, lambda ids: {i: i for i in ids}, build), sizes
+
+
+def test_a_lane_short_of_its_limit_after_duplicates_fetches_again_at_double_size() -> None:
+    """Contract §2 rule 5: a lane fills its limit with distinct pieces, fetching
+    past duplicate chunks with the same embedding."""
+    run, sizes = _fill_lane(chunks_per_piece=4)
+    resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
+    assert sizes == [3, 6, 12]
+    assert [i.uri for i in resp.items] == [f"kos://piece/corpus/p{n}" for n in range(3)]
+
+
+def test_a_lane_stops_fetching_at_100_chunks() -> None:
+    run, sizes = _fill_lane(chunks_per_piece=1000)
+    resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
+    assert sizes == [3, 6, 12, 24, 48, 96, 100]
+    assert resp.lanes["corpus"].returned == 1
+
+
+def test_a_lane_whose_index_runs_out_does_not_fetch_again() -> None:
+    run, sizes = _fill_lane(chunks_per_piece=2, pieces=1)
+    resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
+    assert sizes == [3]
+    assert resp.lanes["corpus"].returned == 1
+
+
+def test_a_stage_timed_in_every_fetch_round_records_their_total() -> None:
+    """A lane that fetches again looks its source up again; the trace shows the
+    lookups' total, since the trace is where blocking reads are measured."""
+    import time
+
+    from searcher.engine import Hit, lane, timed
+
+    async def dense(req, embedding, deadline_at, n) -> list[Hit]:
+        return [Hit(f"p{i // 4}", f"c{i}", {}, 0.5) for i in range(n)]
+
+    def resolve(ids):
+        with timed("source"):
+            time.sleep(0.02)
+        return {i: i for i in ids}
+
+    def build(req, key, row, hit) -> Item:
+        return _item(f"kos://piece/corpus/{key}", "corpus", 0, hit.chunk).model_copy(
+            update={"matched_by": []}
+        )
+
+    run = lane("corpus", {"dense": dense}, resolve, build)
+    resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
+    assert resp.trace.stages_ms["source"] >= 55

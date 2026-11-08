@@ -19,7 +19,7 @@ BRIEF_ID = "0190a1b2-0000-7000-8000-000000000001"
 
 def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate(
-        {"contract_version": 1, "query": "rag", "caller": "voice", "sources": ["briefs"], **kw}
+        {"contract_version": 2, "query": "rag", "caller": "voice", "sources": ["briefs"], **kw}
     )
 
 
@@ -189,7 +189,7 @@ def _search(lane, req: SearchRequest) -> SearchResponse:  # type: ignore[no-unty
     async def embed(text: str, deadline_at: float | None) -> list[float]:
         return [0.0]
 
-    return asyncio.run(search(req, {"briefs": lane}, embed, None))
+    return asyncio.run(search(req, {"briefs": lane}, embed, 5.0))
 
 
 def test_since_keeps_briefs_drafted_on_or_after_it(tmp_path: Path) -> None:
