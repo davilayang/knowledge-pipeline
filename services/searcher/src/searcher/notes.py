@@ -10,10 +10,10 @@ from typing import Any
 from urllib.parse import quote
 
 import yaml
-from domains.wiki.io import read_meta
 from retrievers.vector_store.chroma import COLLECTION_NOTES
 
 from searcher.engine import Hit, LaneFn, dense, lane, timed
+from searcher.frontmatter import read_header
 from searcher.models import Item, SearchRequest
 
 # newsletter-assistant's note naming, `<date>_<slug>-<6 hex>` (`core.notes`).
@@ -48,7 +48,7 @@ def _header(notes_dir: Path, note_id: str) -> dict[str, Any] | None:
     try:
         # newsletter-assistant dates a note by its stem, not the header `date`.
         day = date.fromisoformat(note_id[:10])
-        fm = read_meta(notes_dir / f"{note_id}.md")
+        fm = read_header(notes_dir / f"{note_id}.md")
     except (OSError, ValueError, yaml.YAMLError):
         return None
     if "note_id" in fm and fm["note_id"] != note_id:

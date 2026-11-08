@@ -77,7 +77,12 @@ the contract's precedence.
   dropped. The title is the file's, or its stem when blank; the date is the UTC
   date of `drafted_at`, and `since` filters on it; `meta.status` is the file's
   status. A missing `briefs/` fails the lane. The reads are timed as
-  `brief files`.
+  `brief files`. A blank or non-string `brief_id`, or a `drafted_at` that cannot
+  be converted to UTC, drops the brief; a date-only `drafted_at` gives that day.
+- **Note and brief headers** (`src/searcher/frontmatter.py`) are read by
+  newsletter-assistant's own rule, so both lanes keep and drop the same files it
+  does: the file starts with `---`, the header ends at the next line that is
+  exactly `---`, and an empty header is an empty mapping.
 
 All five lanes are wired. No caller uses the service yet.
 

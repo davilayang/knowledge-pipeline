@@ -3,16 +3,16 @@
 `contracts/note-brief-files.md`)."""
 
 from collections.abc import Awaitable, Callable
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 import yaml
-from domains.wiki.io import read_meta
 from retrievers.vector_store.chroma import COLLECTION_BRIEFINGS
 
 from searcher.engine import Hit, LaneFn, dense, lane, timed
+from searcher.frontmatter import read_header
 from searcher.models import Item, SearchRequest
 
 # The header keys newsletter-assistant needs to read a brief (`core.briefs`).
@@ -46,18 +46,23 @@ def _header(briefs_dir: Path, name: str) -> dict[str, Any] | None:
     if Path(name).name != name or not name.endswith(".md"):
         return None
     try:
-        fm = read_meta(briefs_dir / name)
-        if not _REQUIRED <= fm.keys():
+        fm = read_header(briefs_dir / name)
+        # The uri is built from `brief_id`, so a blank or non-string one cannot name the brief.
+        if not _REQUIRED <= fm.keys() or not isinstance(fm["brief_id"], str) or not fm["brief_id"]:
             return None
         drafted = fm["drafted_at"]
         if isinstance(drafted, str):
             drafted = datetime.fromisoformat(drafted)
-    except (OSError, ValueError, yaml.YAMLError):
+        # An unquoted `drafted_at: 2026-10-02` loads as a date, which
+        # newsletter-assistant keeps; it is taken as midnight UTC.
+        if isinstance(drafted, date) and not isinstance(drafted, datetime):
+            drafted = datetime(drafted.year, drafted.month, drafted.day)
+        if not isinstance(drafted, datetime):
+            return None
+        # Contract §3: dates are UTC dates; newsletter-assistant takes a naive one as UTC.
+        drafted = drafted.replace(tzinfo=UTC) if drafted.tzinfo is None else drafted.astimezone(UTC)
+    except (OSError, ValueError, OverflowError, yaml.YAMLError):
         return None
-    if not isinstance(drafted, datetime):
-        return None
-    # Contract §3: dates are UTC dates; newsletter-assistant takes a naive one as UTC.
-    drafted = drafted.replace(tzinfo=UTC) if drafted.tzinfo is None else drafted.astimezone(UTC)
     return {**fm, "drafted": drafted}
 
 

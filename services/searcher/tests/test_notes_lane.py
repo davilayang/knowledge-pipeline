@@ -192,3 +192,45 @@ def test_the_note_file_reads_are_timed_in_the_trace(tmp_path: Path) -> None:
     _note(tmp_path / "notes")
     resp = _search(_lane([_hit(STEM, "chunk", 0.1)], tmp_path / "notes"), _req())
     assert isinstance(resp.trace.stages_ms["note files"], float)
+
+
+@pytest.mark.parametrize(
+    ("text", "kept"),
+    [
+        ("---\n\n---\n\nbody\n", True),
+        ("\n---\nnote_id: " + STEM + "\n---\n\nbody\n", False),
+        ("---\nnote_id: " + STEM + "\n---", False),
+        ("---\nnote_id: " + STEM + "\n---body\n", False),
+    ],
+    ids=["empty header", "leading newline", "no newline after closing", "text on closing line"],
+)
+def test_a_note_header_is_read_as_newsletter_assistant_reads_it(
+    tmp_path: Path, text: str, kept: bool
+) -> None:
+    """newsletter-assistant's header rule (`core.notes._parse`): the file starts
+    with `---\\n`, the header ends at the next `\\n---\\n`, and an empty header is
+    an empty mapping, so that note is kept."""
+    notes = tmp_path / "notes"
+    _note(notes)
+    (notes / f"{STEM}.md").write_text(text)
+    items = _run(_lane([_hit(STEM, "chunk", 0.1)], notes), _req())
+    assert [i.uri for i in items] == ([f"kos://piece/note/{STEM}"] if kept else [])
+
+
+def test_a_dated_name_outside_newsletter_assistants_naming_is_dropped(tmp_path: Path) -> None:
+    """The stem must be `<date>_<slug>-<6 hex>`; a valid date alone is not enough.
+    The same pattern keeps an id taken from Chroma inside the notes directory."""
+    notes, stray = tmp_path / "notes", "2026-10-02_Draft Notes"
+    _note(notes)
+    (notes / f"{stray}.md").write_text(f"---\nnote_id: {stray}\n---\n\nbody\n")
+    items = _run(_lane([_hit(stray, "stray", 0.1), _hit(STEM, "good", 0.2)], notes), _req())
+    assert [i.uri for i in items] == [f"kos://piece/note/{STEM}"]
+
+
+def test_a_note_without_a_note_id_field_is_kept_under_its_stem(tmp_path: Path) -> None:
+    """Notes saved before the header carried `note_id` have none; the stem stands."""
+    notes = tmp_path / "notes"
+    notes.mkdir()
+    (notes / f"{STEM}.md").write_text("---\ntitle: RAG evals\n---\n\nbody\n")
+    [item] = _run(_lane([_hit(STEM, "chunk", 0.1)], notes), _req())
+    assert item.uri == f"kos://piece/note/{STEM}"

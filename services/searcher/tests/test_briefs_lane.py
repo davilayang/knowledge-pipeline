@@ -223,3 +223,69 @@ def test_the_brief_file_reads_are_timed_in_the_trace(tmp_path: Path) -> None:
     _brief(tmp_path / "briefs")
     resp = _search(_lane([_hit(FILE, "chunk", 0.1)], tmp_path / "briefs"), _req())
     assert isinstance(resp.trace.stages_ms["brief files"], float)
+
+
+def test_a_drafted_at_out_of_range_in_utc_drops_only_that_brief(tmp_path: Path) -> None:
+    """A `drafted_at` newsletter-assistant reads but that cannot be converted to
+    UTC is one unreadable brief, not a failed lane."""
+    briefs, good = tmp_path / "briefs", "2026-10-03_agents-0190c3d4.md"
+    _brief(briefs, good, brief_id="good")
+    _brief(briefs, drafted_at="0001-01-01T00:00:00+01:00")
+    response = _search(_lane([_hit(FILE, "bad", 0.1), _hit(good, "good", 0.2)], briefs), _req())
+    assert response.lanes["briefs"].outcome == "ok"
+    assert [i.uri for i in response.items] == ["kos://piece/brief/good"]
+
+
+@pytest.mark.parametrize("brief_id", [None, "", 7])
+def test_a_brief_whose_brief_id_is_not_a_non_empty_string_is_dropped(
+    tmp_path: Path, brief_id: object
+) -> None:
+    """The uri is built from `brief_id`; without a usable one the brief cannot be
+    named, and two such briefs would merge into one item."""
+    briefs, good = tmp_path / "briefs", "2026-10-03_agents-0190c3d4.md"
+    _brief(briefs, good, brief_id="good")
+    _brief(briefs, brief_id=brief_id)
+    items = _run(_lane([_hit(FILE, "bad", 0.1), _hit(good, "good", 0.2)], briefs), _req())
+    assert [i.uri for i in items] == ["kos://piece/brief/good"]
+
+
+def test_a_drafted_at_without_an_offset_is_utc_whatever_the_machine_zone(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """newsletter-assistant takes a naive `drafted_at` as UTC, never local time."""
+    import time
+
+    monkeypatch.setenv("TZ", "America/New_York")
+    time.tzset()
+    try:
+        _brief(tmp_path / "briefs", drafted_at="2026-10-04T23:30:00")
+        [item] = _run(_lane([_hit(FILE, "a", 0.1)], tmp_path / "briefs"), _req())
+    finally:
+        monkeypatch.undo()
+        time.tzset()
+    assert item.date is not None and item.date.isoformat() == "2026-10-04"
+
+
+@pytest.mark.parametrize("key", ["question", "slug", "title", "drafted_at"])
+def test_a_brief_missing_a_required_key_is_dropped(tmp_path: Path, key: str) -> None:
+    briefs, good = tmp_path / "briefs", "2026-10-03_agents-0190c3d4.md"
+    _brief(briefs, good, brief_id="good")
+    path = _brief(briefs)
+    header = yaml.safe_load(path.read_text().split("---\n")[1])
+    del header[key]
+    path.write_text(f"---\n{yaml.safe_dump(header, sort_keys=False)}---\n\nThe brief.\n")
+    items = _run(_lane([_hit(FILE, "bad", 0.1), _hit(good, "good", 0.2)], briefs), _req())
+    assert [i.uri for i in items] == ["kos://piece/brief/good"]
+
+
+def test_a_date_only_drafted_at_is_kept_with_that_date(tmp_path: Path) -> None:
+    """YAML loads an unquoted `drafted_at: 2026-10-02` as a date;
+    newsletter-assistant's reader keeps that brief, and its date is that day."""
+    path = _brief(tmp_path / "briefs")
+    path.write_text(
+        path.read_text().replace(
+            "drafted_at: '2026-10-02T09:30:00+00:00'", "drafted_at: 2026-10-02"
+        )
+    )
+    [item] = _run(_lane([_hit(FILE, "a", 0.1)], tmp_path / "briefs"), _req(since="2026-10-02"))
+    assert item.date is not None and item.date.isoformat() == "2026-10-02"
