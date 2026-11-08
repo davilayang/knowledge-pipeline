@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+### Added
+
+- **The searcher answers from newsletter-assistant's notes and briefs, so all five lanes are wired.** The notes lane finds notes through Chroma's `notes` collection and reads each back from its file, as newsletter-assistant's MCP search does: the stem is the note id and gives the date, and a stem outside newsletter-assistant's naming, a missing file, an unparseable header or a header `note_id` other than the stem is dropped. The briefs lane finds briefs through Chroma's `briefings` collection and reads each file back, as voice recall does: one item per file, the uri from the header's `brief_id`, the title, the UTC date of `drafted_at` and `meta.status` from the file; a name that is not a flat `*.md`, a missing file, an unparseable header, a missing required key or an unreadable `drafted_at` is dropped. A blank title shows as the file's stem. `since` filters notes on their date and briefs on `drafted_at`. A missing `notes/` or `briefs/` directory fails its lane rather than answering with nothing. The reads are timed in `trace.stages_ms` (`note files`, `brief files`). Both read newsletter-assistant's data directory, already mounted, so compose is unchanged. Checked against a fresh newsletter-assistant harvest of production data: `eval-search-port-check --lanes notes briefs` passed 88 of 88 probe-depth-lane pairs, and all five lanes 220 of 220, with only the 13 blank corpus titles listed. (`services/searcher/src/searcher/notes.py`, `services/searcher/src/searcher/briefs.py`)
+
 ---
 
 ## [0.43.4] — 2026-11-08

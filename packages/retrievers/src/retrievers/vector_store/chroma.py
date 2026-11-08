@@ -3,6 +3,8 @@ import chromadb
 COLLECTION_CONTENTS = "contents"
 COLLECTION_CONVERSATIONS = "conversations"
 COLLECTION_WIKI = "wiki"
+COLLECTION_NOTES = "notes"
+COLLECTION_BRIEFINGS = "briefings"
 
 
 def get_http_client(host: str, port: int) -> chromadb.ClientAPI:

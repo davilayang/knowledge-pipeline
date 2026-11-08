@@ -213,7 +213,7 @@ services:
         max-file: "10"
 
   # POST /v1/search for newsletter-assistant's voice recall and MCP search.
-  # No caller uses it yet; it answers `unavailable` until its lanes are wired.
+  # No caller uses it yet.
   searcher:
     image: ${DOCKER_USER:-local}/searcher
     profiles: [app]

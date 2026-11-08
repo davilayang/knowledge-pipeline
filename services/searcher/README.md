@@ -62,8 +62,24 @@ the contract's precedence.
   unknown-version `resolve.json` fails the lane. No date, so `since` does not
   filter it.
 
-The notes and briefs lanes are not wired yet, so they are `skipped` and a request
-for them gets `partial`. No caller uses the service yet.
+- **Notes lane** (`src/searcher/notes.py`): Chroma's `notes` collection, each
+  hit's `local:<file>` read back as the note file in newsletter-assistant's
+  `notes/`. The note id is the file's stem; a stem outside newsletter-assistant's
+  `<date>_<slug>-<6 hex>` naming, a missing file, an unparseable header, or a
+  header `note_id` other than the stem is dropped. The date is the stem's, and
+  `since` filters on it. The title is the indexed one, or the stem when it is
+  blank. A missing `notes/` fails the lane. The reads are timed as `note files`.
+- **Briefs lane** (`src/searcher/briefs.py`): Chroma's `briefings` collection,
+  each hit's `local:<file>` read back as the brief file in newsletter-assistant's
+  `briefs/`, one item per file. The uri uses the header's `brief_id`, never the
+  file name. A name that is not a flat `*.md` there, a missing file, an
+  unparseable header, a missing required key or an unreadable `drafted_at` is
+  dropped. The title is the file's, or its stem when blank; the date is the UTC
+  date of `drafted_at`, and `since` filters on it; `meta.status` is the file's
+  status. A missing `briefs/` fails the lane. The reads are timed as
+  `brief files`.
+
+All five lanes are wired. No caller uses the service yet.
 
 ## Run
 
