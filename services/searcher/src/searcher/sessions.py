@@ -53,9 +53,7 @@ def _session_id(meta: dict[str, Any]) -> str:
 
 def _resolve(db_path: Path, session_ids: list[str]) -> dict[str, dict[str, Any]]:
     """Stored sessions by id, read in one query; a row whose timestamps do not
-    parse is left out, as newsletter-assistant cannot open it either.
-
-    """
+    parse is left out, as newsletter-assistant cannot open it either."""
     conn = open_ro(db_path)
     try:
         marks = ",".join("?" * len(session_ids))

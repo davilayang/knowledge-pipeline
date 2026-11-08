@@ -55,10 +55,10 @@ class Page(NamedTuple):
 
 
 def _page(wiki_dir: Path, entities: dict[str, Any], entity_id: str) -> Page | None:
-    """The hit's resolve entry and page frontmatter, or None where
-    newsletter-assistant's voice recall drops the hit: pruned since indexing, a
-    malformed resolve entry, a missing, unparseable or empty page, or a page naming
-    another entity."""
+    """One entity's resolve entry and page frontmatter, read once per entity id
+    however many hits name it, or None where newsletter-assistant's voice recall
+    drops the entity: pruned since indexing, a malformed resolve entry, a missing,
+    unparseable or empty page, or a page naming another entity."""
     ent = entities.get(entity_id)
     if not isinstance(ent, dict) or not ent.get("file"):
         return None
