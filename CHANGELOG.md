@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.7] — 2026-11-08
+
 ### Added
 
 - **A burst of MCP searches can no longer starve voice: the searcher runs at most 2 `mcp` searches at once and refuses the next with HTTP 429 at once.** The slot is taken before the query is embedded and released when the search ends, fails or is cancelled; `voice` is never limited (hub search contract v2, rule 11). Measured on a local searcher container with one voice and four concurrent MCP searches: two MCP searches got 429 within 0.02 to 0.04 s, two were answered, and voice took 0.18 to 0.21 s against 0.19 to 0.29 s alone. The limit is per process. (`services/searcher/src/searcher/app.py`)
