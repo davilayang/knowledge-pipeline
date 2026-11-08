@@ -3,7 +3,9 @@
 
 import asyncio
 
-from searcher.engine import EmbedFn, LaneFn, search
+import pytest
+
+from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import Item, MatchedBy, SearchRequest, SearchResponse, Source
 
 
@@ -352,3 +354,60 @@ def test_a_lane_slow_to_unwind_after_the_deadline_is_timed_out_and_not_waited_fo
     resp, took = asyncio.run(timed())
     assert resp.lanes["corpus"].outcome == "timed_out"
     assert took < 0.5
+
+
+def test_a_lane_stopped_by_its_own_time_limit_is_timed_out_not_failed() -> None:
+    """A lane bounds its network calls with `time_limit(deadline_at)`, which fires at
+    the deadline, before the engine stops waiting; that is a timeout, not a failure."""
+
+    async def bounded(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        async with time_limit(deadline_at):
+            await asyncio.sleep(5)
+        return []
+
+    resp = _search_now(_req(caller="voice", sources=["notes"]), {"notes": bounded}, deadline=0.2)
+    assert resp.lanes["notes"].outcome == "timed_out"
+
+
+async def _times_out_now(
+    req: SearchRequest, embedding: list[float], deadline_at: float | None
+) -> list[Item]:
+    raise TimeoutError("client read timed out")
+
+
+def test_a_timeout_in_a_search_with_no_deadline_is_a_failure_and_logged(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    """MCP has no deadline, so it never sees `timed_out`: a client timeout there,
+    such as the 30 s per-call cap, is a failure."""
+    resp = _search_now(_req(caller="mcp", sources=["notes"]), {"notes": _times_out_now})
+    assert resp.lanes["notes"].outcome == "failed"
+    assert "lane notes failed" in caplog.text
+
+
+def test_a_timeout_well_before_the_deadline_is_a_failure() -> None:
+    resp = _search_now(
+        _req(caller="voice", sources=["notes"]), {"notes": _times_out_now}, deadline=5.0
+    )
+    assert resp.lanes["notes"].outcome == "failed"
+
+
+def test_an_early_timeout_stays_a_failure_while_another_lane_holds_the_search_open(
+    caplog: pytest.LogCaptureFixture,
+) -> None:
+    async def early(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        await asyncio.sleep(0.05)
+        raise TimeoutError("client read timed out")
+
+    resp = _search_now(
+        _req(caller="voice", sources=["sessions", "corpus"]),
+        {"sessions": early, "corpus": _slow(5)},
+        deadline=0.3,
+    )
+    assert resp.lanes["sessions"].outcome == "failed"
+    assert resp.lanes["corpus"].outcome == "timed_out"
+    assert "lane sessions failed" in caplog.text

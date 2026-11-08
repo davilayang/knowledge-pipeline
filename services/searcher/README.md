@@ -18,8 +18,12 @@ the contract's precedence.
   has no deadline; each of its network calls still stops after 30 s. Lanes and
   the embedder are given the deadline so their calls stop inside it.
 - **Trace:** `trace.stages_ms` holds each stage's own duration (`embed`,
-  `lanes`, `merge`) and the `total`; `code_rev` comes from the `CODE_REV`
-  environment variable.
+  `lanes`, `merge`) and the `total`, plus each lane's blocking read under the
+  file it reads (`sessions.db`), nested inside `lanes`, not additive;
+  `code_rev` comes from the `CODE_REV` environment variable. A lane whose own
+  call stops at the deadline is `timed_out`, like one the engine stops waiting
+  for: `time_limit` raises that expiry as `DeadlineExceeded`. Any other
+  timeout, including the 30 s cap in a search with no deadline, is `failed`.
 
 - **Corpus lane** (`src/searcher/corpus.py`): Chroma's `contents` collection,
   each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is
@@ -29,8 +33,18 @@ the contract's precedence.
   `BACKUP_SRC_DIR`, which it requires), so SQLite can recreate the `-shm` file of a WAL database its
   writer has closed. The container runs as UID 1000, the writers' UID.
 
-The other lanes are not wired yet, so they are `skipped` and a request for them
-gets `partial`. No caller uses the service yet.
+- **Sessions lane** (`src/searcher/sessions.py`): Chroma's `conversations`
+  collection, keyed to a session by `source_ref` (`sessions:<id>`), each session
+  resolved in newsletter-assistant's `sessions.db`, opened the same way as
+  `corpus.db`. One item per session, at its best-ranked chunk. A session no
+  longer stored, or whose timestamps do not parse, is dropped. The date is when
+  the session started, as a UTC date; `summary` is the stored summary, null
+  until one is written; the title is the indexer's (the summary's first line,
+  or `Session <first 8 characters of the id>`), and that same form when a
+  chunk carries none.
+
+The notes, briefs and wiki lanes are not wired yet, so they are `skipped` and a
+request for them gets `partial`. No caller uses the service yet.
 
 ## Run
 
