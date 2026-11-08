@@ -40,6 +40,9 @@ FORMAT_VERSION = 2
 LANES = ("corpus", "sessions", "notes", "briefs", "wiki")
 # Lanes whose items are matched passages; briefs and wiki items need none.
 PASSAGE_LANES = ("corpus", "sessions", "notes")
+# The search contract's cap on passages per item, kept by the searcher best ranked
+# first; evals does not depend on the searcher package, so it is repeated here.
+PASSAGES_PER_ITEM = 3
 # Every harvested item must carry these, and the searcher's item must equal it on each.
 FIELDS = {
     "corpus": ("title", "author", "url", "date"),
@@ -250,9 +253,12 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
             # The searcher fetches past newsletter-assistant's `k` chunks, so passages
             # the harvest never saw are allowed, after every harvested one. A passage
             # must equal one whole chunk; those the harvest holds are checked here.
+            # Only a piece's first PASSAGES_PER_ITEM harvested chunks must be there.
             # ponytail: passages after the window are unchecked; checking them needs
             # the harvest to record the searcher's fetch depth.
-            missing = [c for c in dict.fromkeys(chunks) if c not in passages]
+            missing = [
+                c for c in list(dict.fromkeys(chunks))[:PASSAGES_PER_ITEM] if c not in passages
+            ]
             for c in missing:
                 failures.append(
                     f"passage of {it['uri']} is not a whole chunk: harvested {c[:80]!r} missing"

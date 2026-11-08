@@ -730,3 +730,29 @@ def test_an_unharvested_passage_before_a_harvested_one_fails():
     resp["items"][0]["passages"] = ["alpha chunk from further down", "alpha chunk text"]
     failures, _ = compare("corpus", rec, resp)
     assert len(failures) == 1 and "passage" in failures[0] and URI_A in failures[0]
+
+
+def _record_with_alpha_chunks(n: int) -> dict:
+    rec = _record()
+    rec["chunks"][1:1] = [
+        {"content_id": "src::a1", "distance": 0.30 + i / 1000, "chunk": f"alpha chunk {i}"}
+        for i in range(1, n)
+    ]
+    return rec
+
+
+def test_passages_cut_to_three_of_more_harvested_chunks_pass():
+    """The searcher keeps an item's 3 best passages, so of a piece's harvested chunks
+    only the first 3 must be there."""
+    rec = _record_with_alpha_chunks(5)
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk text", "alpha chunk 1", "alpha chunk 2"]
+    assert compare("corpus", rec, resp) == ([], [])
+
+
+def test_one_of_the_first_three_harvested_chunks_missing_fails():
+    rec = _record_with_alpha_chunks(5)
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk text", "alpha chunk 1", "alpha chunk 3"]
+    failures, _ = compare("corpus", rec, resp)
+    assert len(failures) == 1 and "alpha chunk 2" in failures[0]

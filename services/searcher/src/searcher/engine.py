@@ -95,6 +95,10 @@ HitsFn = Callable[[SearchRequest, list[float], float, int], Awaitable[list[Hit]]
 
 # The most chunks one method fetches for one lane while filling the lane's limit.
 FETCH_CAP = 100
+# The most passages an item carries, best ranked first: a lane that fetches past
+# duplicate chunks would otherwise attach every chunk of a piece it saw.
+# ponytail: one fixed count; a request field if a caller needs a different one.
+MAX_PASSAGES_PER_ITEM = 3
 # A lane's source lookup: piece id to whatever its builder needs, for the ids every
 # method found, read once; an id left out was not found and its hits are dropped.
 ResolveFn = Callable[[list[str]], Mapping[str, Any]]
@@ -345,7 +349,7 @@ def _within_limit(contributions: list[Contribution], n: int) -> list[Contributio
 def _merge(contributions: list[Contribution]) -> list[Item]:
     """One item per uri, placed at its best contribution's rank (ties by lane
     order); `matched_by` keeps every contribution, `passages` their de-duplicated
-    union, best first."""
+    union, best first, cut to `MAX_PASSAGES_PER_ITEM`."""
     merged: dict[str, Item] = {}
     for c in sorted(contributions, key=lambda c: (c.rank, c.order)):
         if c.item.uri not in merged:
@@ -353,4 +357,6 @@ def _merge(contributions: list[Contribution]) -> list[Item]:
         target = merged[c.item.uri]
         target.matched_by += c.item.matched_by
         target.passages += [p for p in c.item.passages if p not in target.passages]
+    for item in merged.values():
+        del item.passages[MAX_PASSAGES_PER_ITEM:]
     return list(merged.values())
