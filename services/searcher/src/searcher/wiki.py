@@ -4,15 +4,15 @@ through kp's `_index/resolve.json` and the rendered page files."""
 import json
 from collections.abc import Awaitable, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, NamedTuple
 from urllib.parse import quote
 
 import yaml
 from domains.wiki.io import read_meta
 from retrievers.vector_store.chroma import COLLECTION_WIKI
 
-from searcher.engine import LaneFn, add_passage, dense_hits, timed
-from searcher.models import Item, MatchedBy, SearchRequest
+from searcher.engine import Hit, LaneFn, dense, lane, timed
+from searcher.models import Item, SearchRequest
 
 # resolve.json schema versions this lane reads. kp writes 1; 2 drops the legacy
 # `has_derived` key, and `has_user_claims` is read first, so 2 parses unchanged.
@@ -20,31 +20,23 @@ SUPPORTED_SCHEMA = {1, 2}
 
 
 def wiki_lane(chroma: Callable[[], Awaitable[Any]], wiki_dir: Path) -> LaneFn:
-    async def lane(
-        req: SearchRequest, embedding: list[float], deadline_at: float | None
-    ) -> list[Item]:
-        hits = await dense_hits(chroma, COLLECTION_WIKI, req, embedding, deadline_at)
+    def resolve(entity_ids: list[str]) -> dict[str, Page]:
         # Blocking file reads on the event loop: one resolve.json, plus one small
-        # page file per hit.
+        # page file per entity found.
         with timed("resolve.json"):
             entities = _load_entities(wiki_dir)
         with timed("wiki pages"):
-            pages = [_page(wiki_dir, entities, str(m.get("content_id", ""))) for _, m, _ in hits]
-        items: dict[str, Item] = {}
-        for (chunk, meta, dist), found in zip(hits, pages, strict=True):
-            if found is None:
-                continue
-            entity_id, ent, page = found
-            # The producer chunks a summary like any text, so one long summary can
-            # come back as several hits: one item, each chunk a passage.
-            if add_passage(items, entity_id, chunk):
-                continue
-            item = _item(req.query, entity_id, ent, page, entities, chunk, meta, dist, len(items))
-            if item is not None:
-                items[entity_id] = item
-        return list(items.values())
+            pages = {e: _page(wiki_dir, entities, e) for e in entity_ids}
+        return {e: p for e, p in pages.items() if p is not None}
 
-    return lane
+    # The producer chunks a summary like any text, so one long summary can come
+    # back as several hits: the lane folds them into one item, each chunk a passage.
+    return lane(
+        "wiki",
+        {"dense": dense(chroma, COLLECTION_WIKI, lambda m: str(m.get("content_id", "")))},
+        resolve,
+        _item,
+    )
 
 
 def _load_entities(wiki_dir: Path) -> dict[str, Any]:
@@ -56,9 +48,13 @@ def _load_entities(wiki_dir: Path) -> dict[str, Any]:
     return resolve.get("entities", {})
 
 
-def _page(
-    wiki_dir: Path, entities: dict[str, Any], entity_id: str
-) -> tuple[str, dict[str, Any], dict[str, Any]] | None:
+class Page(NamedTuple):
+    ent: dict[str, Any]  # the entity's resolve.json entry
+    page: dict[str, Any]  # the page's frontmatter
+    entities: dict[str, Any]  # every resolve.json entry, for `related` titles
+
+
+def _page(wiki_dir: Path, entities: dict[str, Any], entity_id: str) -> Page | None:
     """The hit's resolve entry and page frontmatter, or None where
     newsletter-assistant's voice recall drops the hit: pruned since indexing, a
     malformed resolve entry, a missing, unparseable or empty page, or a page naming
@@ -72,22 +68,14 @@ def _page(
         return None
     if not page or str(page.get("entity_id", entity_id)) != entity_id:
         return None
-    return entity_id, ent, page
+    return Page(ent, page, entities)
 
 
-def _item(
-    query: str,
-    entity_id: str,
-    ent: dict[str, Any],
-    page: dict[str, Any],
-    entities: dict[str, Any],
-    chunk: str,
-    meta: dict[str, Any],
-    dist: float,
-    ranked: int,
-) -> Item | None:
+def _item(req: SearchRequest, entity_id: str, found: Page, hit: Hit) -> Item | None:
     """One wiki item, or None when a page field is malformed: an unresolvable piece
-    is dropped, not a failed lane (contract §3)."""
+    is dropped, not a failed lane (contract §3). `stale` compares the page with
+    the chunk that built the item."""
+    ent, page, entities = found
     try:
         return Item(
             uri=f"kos://piece/wiki/{quote(entity_id, safe=':')}",
@@ -97,10 +85,10 @@ def _item(
             date=None,
             url=None,
             summary=str(page.get("summary", "")),
-            passages=[chunk],
+            passages=[hit.chunk],
             meta={
                 "num_sources": int(ent.get("num_sources", page.get("num_sources", 0)) or 0),
-                "stale": str(meta.get("page_hash", "")) != ent.get("page_hash"),
+                "stale": str(hit.meta.get("page_hash", "")) != ent.get("page_hash"),
                 # Contract §2: up to 4 related entity titles, as the page lists them.
                 "related": [
                     entities[rid]["name"]
@@ -110,9 +98,7 @@ def _item(
                 # kp writes both spellings at schema 1; `has_derived` is the legacy one.
                 "has_user_notes": bool(ent.get("has_user_claims", ent.get("has_derived", False))),
             },
-            matched_by=[
-                MatchedBy(query=query, lane="wiki", method="dense", rank=ranked + 1, score=1 - dist)
-            ],
+            matched_by=[],
         )
     except (TypeError, ValueError, AttributeError):
         return None

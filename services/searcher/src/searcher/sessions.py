@@ -9,58 +9,41 @@ from urllib.parse import quote
 
 from retrievers.vector_store.chroma import COLLECTION_CONVERSATIONS
 
-from searcher.engine import LaneFn, add_passage, dense_hits, open_ro, timed
-from searcher.models import Item, MatchedBy, SearchRequest
+from searcher.engine import Hit, LaneFn, dense, lane, open_ro, timed
+from searcher.models import Item, SearchRequest
 
 # The producer keys each chunk to its session through `source_ref`.
 _PREFIX = "sessions:"
 
 
 def sessions_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
-    async def lane(
-        req: SearchRequest, embedding: list[float], deadline_at: float | None
-    ) -> list[Item]:
-        hits = [
-            (chunk, _session_id(meta), str(meta.get("title") or ""), dist)
-            for chunk, meta, dist in await dense_hits(
-                chroma, COLLECTION_CONVERSATIONS, req, embedding, deadline_at
-            )
-        ]
+    def resolve(session_ids: list[str]) -> dict[str, dict[str, Any]]:
         with timed("sessions.db"):
-            rows = _resolve(db_path, sorted({sid for _, sid, _, _ in hits if sid}))
-        items: dict[str, Item] = {}
-        for chunk, sid, title, dist in hits:
-            if add_passage(items, sid, chunk):
-                continue
-            row = rows.get(sid)
-            if row is None or (req.since is not None and row["started"].date() < req.since):
-                continue
-            items[sid] = Item(
-                uri=f"kos://piece/session/{quote(sid, safe=':')}",
-                kind="session",
-                # The indexer's title: the summary's first line, or `Session
-                # <first 8 of the id>` when there is none; the same form stands in
-                # when a chunk carries no title.
-                title=title or f"Session {sid[:8]}",
-                author=None,
-                date=row["started"].date(),
-                url=None,
-                summary=row["summary"] or None,
-                passages=[chunk],
-                meta={},
-                matched_by=[
-                    MatchedBy(
-                        query=req.query,
-                        lane="sessions",
-                        method="dense",
-                        rank=len(items) + 1,
-                        score=1 - dist,
-                    )
-                ],
-            )
-        return list(items.values())
+            return _resolve(db_path, session_ids)
 
-    return lane
+    return lane(
+        "sessions", {"dense": dense(chroma, COLLECTION_CONVERSATIONS, _session_id)}, resolve, _item
+    )
+
+
+def _item(req: SearchRequest, sid: str, row: dict[str, Any], hit: Hit) -> Item | None:
+    if req.since is not None and row["started"].date() < req.since:
+        return None
+    return Item(
+        uri=f"kos://piece/session/{quote(sid, safe=':')}",
+        kind="session",
+        # The indexer's title: the summary's first line, or `Session <first 8 of
+        # the id>` when there is none; the same form stands in when a chunk carries
+        # no title.
+        title=str(hit.meta.get("title") or "") or f"Session {sid[:8]}",
+        author=None,
+        date=row["started"].date(),
+        url=None,
+        summary=row["summary"] or None,
+        passages=[hit.chunk],
+        meta={},
+        matched_by=[],
+    )
 
 
 def _session_id(meta: dict[str, Any]) -> str:

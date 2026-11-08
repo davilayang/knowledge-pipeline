@@ -3,41 +3,28 @@ Chroma's `contents` collection and resolved in corpus.db."""
 
 import sqlite3
 from collections.abc import Awaitable, Callable
-from datetime import date, datetime
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 from urllib.parse import quote
 
 from retrievers.vector_store.chroma import COLLECTION_CONTENTS
 
-from searcher.engine import LaneFn, add_passage, dense_hits, open_ro, timed
-from searcher.models import Item, MatchedBy, SearchRequest
+from searcher.engine import Hit, LaneFn, dense, lane, open_ro, timed
+from searcher.models import Item, SearchRequest
 
 
 def corpus_lane(chroma: Callable[[], Awaitable[Any]], db_path: Path) -> LaneFn:
-    async def lane(
-        req: SearchRequest, embedding: list[float], deadline_at: float | None
-    ) -> list[Item]:
-        hits = await dense_hits(chroma, COLLECTION_CONTENTS, req, embedding, deadline_at)
+    def resolve(content_ids: list[str]) -> dict[str, sqlite3.Row]:
         with timed("corpus.db"):
-            rows = _resolve(db_path, sorted({str(m.get("content_id", "")) for _, m, _ in hits}))
-        items: dict[str, Item] = {}
-        for chunk, meta, dist in hits:
-            content_id = str(meta.get("content_id", ""))
-            if add_passage(items, content_id, chunk):
-                continue
-            row = rows.get(content_id)
-            if row is None:
-                continue
-            # stored_at is NOT NULL, so every corpus item has a saved date.
-            saved = datetime.fromisoformat(row["stored_at"]).date()
-            if req.since is None or saved >= req.since:
-                items[content_id] = _item(
-                    req.query, content_id, chunk, meta, dist, row, saved, rank=len(items) + 1
-                )
-        return list(items.values())
+            return _resolve(db_path, content_ids)
 
-    return lane
+    return lane(
+        "corpus",
+        {"dense": dense(chroma, COLLECTION_CONTENTS, lambda m: str(m.get("content_id", "")))},
+        resolve,
+        _item,
+    )
 
 
 def _resolve(db_path: Path, content_ids: list[str]) -> dict[str, sqlite3.Row]:
@@ -56,20 +43,15 @@ def _resolve(db_path: Path, content_ids: list[str]) -> dict[str, sqlite3.Row]:
     return {r["content_id"]: r for r in found}
 
 
-def _item(
-    query: str,
-    content_id: str,
-    chunk: str,
-    meta: dict[str, Any],
-    dist: float,
-    row: sqlite3.Row,
-    saved: date,
-    rank: int,
-) -> Item:
+def _item(req: SearchRequest, content_id: str, row: sqlite3.Row, hit: Hit) -> Item | None:
+    # stored_at is NOT NULL, so every corpus item has a saved date.
+    saved = datetime.fromisoformat(row["stored_at"]).date()
+    if req.since is not None and saved < req.since:
+        return None
     # As newsletter-assistant fills them: a chunk carrying a url keeps its own
     # author; one without takes the url, and a missing author, from the row.
-    url = meta.get("url") or ""
-    author = meta.get("author") or ""
+    url = hit.meta.get("url") or ""
+    author = hit.meta.get("author") or ""
     if not url:
         url = row["url"] or ""
         author = author or row["author"] or ""
@@ -78,14 +60,12 @@ def _item(
         kind="corpus",
         # Contract §2: a title is never empty; a blank one becomes the url, and
         # the content id only where there is no url either.
-        title=meta.get("title") or row["title"] or url or content_id,
+        title=hit.meta.get("title") or row["title"] or url or content_id,
         author=author or None,
         date=saved,
         url=url or None,
         summary=None,
-        passages=[chunk],
+        passages=[hit.chunk],
         meta={},
-        matched_by=[
-            MatchedBy(query=query, lane="corpus", method="dense", rank=rank, score=1 - dist)
-        ],
+        matched_by=[],
     )

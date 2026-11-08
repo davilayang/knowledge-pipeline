@@ -402,3 +402,36 @@ def test_an_early_timeout_stays_a_failure_while_another_lane_holds_the_search_op
     assert resp.lanes["sessions"].outcome == "failed"
     assert resp.lanes["corpus"].outcome == "timed_out"
     assert "lane sessions failed" in caplog.text
+
+
+def test_a_lane_with_two_methods_looks_up_once_and_ranks_each_method_on_its_own() -> None:
+    from searcher.engine import Hit, lane
+
+    def method(*keys: str):
+        async def hits(req, embedding, deadline_at) -> list[Hit]:
+            return [Hit(k, f"{k} chunk", {}, 0.5) for k in keys]
+
+        return hits
+
+    looked_up: list[list[str]] = []
+
+    def resolve(ids: list[str]) -> dict[str, str]:
+        looked_up.append(ids)
+        return {i: i for i in ids if i != "gone"}
+
+    def build(req, key, row, hit) -> Item:
+        return _item(f"kos://piece/corpus/{key}", "corpus", 0, hit.chunk).model_copy(
+            update={"matched_by": []}
+        )
+
+    run = lane(
+        "corpus", {"dense": method("gone", "a", "a", "b"), "keyword": method("b")}, resolve, build
+    )
+    res = _search_now(_req(caller="mcp", sources=["corpus"]), {"corpus": run})
+
+    assert looked_up == [["a", "b", "gone"]]
+    assert [(i.uri, [(m.method, m.rank) for m in i.matched_by]) for i in res.items] == [
+        ("kos://piece/corpus/a", [("dense", 1)]),
+        ("kos://piece/corpus/b", [("keyword", 1), ("dense", 2)]),
+    ]
+    assert res.lanes["corpus"].candidates == 2

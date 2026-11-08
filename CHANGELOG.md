@@ -8,7 +8,7 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ### Changed
 
-- **The search trace now times the corpus lane's `corpus.db` read,** as `corpus.db` in `trace.stages_ms`, like the sessions lane's `sessions.db` read. The corpus, sessions and wiki lanes now share one Chroma query (`dense_hits`), one passage fold for further chunks of a piece (`add_passage`) and one read-only SQLite open (`open_ro`), all in `services/searcher/src/searcher/engine.py`; results are unchanged. The engine trace test sets `CODE_REV` on the module instead of reloading it, which had replaced engine classes under other tests.
+- **The search trace now times the corpus lane's `corpus.db` read,** as `corpus.db` in `trace.stages_ms`, like the sessions lane's `sessions.db` read. The searcher's lanes are now split into methods and a source lookup: `engine.lane` builds each lane from its methods' hit functions (`dense` over a Chroma collection, the only method today), one `resolve` that looks up the source once for every piece found, and one `build` per piece; it folds further chunks into passages, ranks each piece per method and attaches `matched_by`. Adding a `keyword` method later adds a hit function per lane and changes no lookup or builder. The corpus and sessions lanes share one read-only SQLite open (`open_ro`). Results are unchanged: newsletter-assistant's harvest of production data matched on 132 of 132 probe-depth-lane pairs. (`services/searcher/src/searcher/engine.py`) The engine trace test sets `CODE_REV` on the module instead of reloading it, which had replaced engine classes under other tests.
 
 ---
 

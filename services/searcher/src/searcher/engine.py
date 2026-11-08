@@ -16,6 +16,7 @@ from searcher.models import (
     SOURCES,
     Item,
     Lane,
+    MatchedBy,
     Outcome,
     SearchRequest,
     SearchResponse,
@@ -84,38 +85,99 @@ async def time_limit(deadline_at: float | None) -> AsyncIterator[None]:
         raise
 
 
-Hit = tuple[str, dict[str, Any], float]  # chunk text, chunk metadata, distance
+class Hit(NamedTuple):
+    """One chunk a method found, best first in its list."""
+
+    key: str  # the piece's id in its lane; empty when the chunk names no piece
+    chunk: str
+    meta: dict[str, Any]
+    score: float
 
 
-async def dense_hits(
-    chroma: Callable[[], Awaitable[Any]],
-    collection_name: str,
-    req: SearchRequest,
-    embedding: list[float],
-    deadline_at: float | None,
-) -> list[Hit]:
-    """One lane's Chroma query, best first, inside the search deadline."""
-    async with time_limit(deadline_at):
-        client = await chroma()
-        # get_collection, never get_or_create: a search creates nothing.
-        collection = await client.get_collection(collection_name, embedding_function=None)
-        res = await collection.query(
-            query_embeddings=[embedding],
-            n_results=req.k or K_DEFAULT,
-            include=["documents", "metadatas", "distances"],
-        )
-    return list(zip(res["documents"][0], res["metadatas"][0], res["distances"][0], strict=True))
+# A method gets what a lane gets and returns its hits best first.
+HitsFn = Callable[[SearchRequest, list[float], float | None], Awaitable[list[Hit]]]
+# A lane's source lookup: piece id to whatever its builder needs, for the ids every
+# method found, read once; an id left out was not found and its hits are dropped.
+ResolveFn = Callable[[list[str]], Mapping[str, Any]]
+# One item from a piece's first hit, with no `matched_by` yet; None drops the hit.
+BuildFn = Callable[[SearchRequest, str, Any, Hit], Item | None]
 
 
-def add_passage(items: dict[str, Item], key: str, chunk: str) -> bool:
-    """Add a further chunk of a piece the lane already has to its passages, once;
-    False when the piece is new. A lane's hits come best first, so the first hit
-    for a piece makes its item and ranks it, and later hits only add passages."""
-    if key not in items:
-        return False
-    if chunk not in items[key].passages:
-        items[key].passages.append(chunk)
-    return True
+def dense(
+    chroma: Callable[[], Awaitable[Any]], collection_name: str, key: Callable[[dict[str, Any]], str]
+) -> HitsFn:
+    """The dense method over one Chroma collection; `key` reads a chunk's piece id
+    from its metadata."""
+
+    async def hits(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Hit]:
+        async with time_limit(deadline_at):
+            client = await chroma()
+            # get_collection, never get_or_create: a search creates nothing.
+            collection = await client.get_collection(collection_name, embedding_function=None)
+            res = await collection.query(
+                query_embeddings=[embedding],
+                n_results=req.k or K_DEFAULT,
+                include=["documents", "metadatas", "distances"],
+            )
+        return [
+            Hit(key(meta), chunk, meta, 1 - dist)
+            for chunk, meta, dist in zip(
+                res["documents"][0], res["metadatas"][0], res["distances"][0], strict=True
+            )
+        ]
+
+    return hits
+
+
+def lane(
+    source: Source, methods: Mapping[str, HitsFn], resolve: ResolveFn, build: BuildFn
+) -> LaneFn:
+    """A lane: each method's hits, the source looked up once for all of them, then
+    one item per piece per method. A piece's first eligible hit builds it and gives
+    its score; its later hits only add their chunk to its passages. Ranks are
+    1-based per method, counted after dropped hits, so they have no gaps. The lane
+    is all or nothing: a method that fails or times out fails or times out the lane.
+
+    ponytail: methods run one after another and contributions only meet in the
+    engine's best-rank merge. Running methods concurrently, fusing them within the
+    lane (e.g. RRF), and a keyword method that needs no embedding wait until a
+    second method exists.
+    """
+
+    async def run(
+        req: SearchRequest, embedding: list[float], deadline_at: float | None
+    ) -> list[Item]:
+        found = {
+            m: [h for h in await fn(req, embedding, deadline_at) if h.key]
+            for m, fn in methods.items()
+        }
+        resolved = resolve(sorted({h.key for hs in found.values() for h in hs}))
+        out: list[Item] = []
+        for method, hs in found.items():
+            items: dict[str, Item] = {}
+            for h in hs:
+                if h.key in items:
+                    if h.chunk not in items[h.key].passages:
+                        items[h.key].passages.append(h.chunk)
+                    continue
+                if h.key not in resolved or (item := build(req, h.key, resolved[h.key], h)) is None:
+                    continue
+                item.matched_by = [
+                    MatchedBy(
+                        query=req.query,
+                        lane=source,
+                        method=method,
+                        rank=len(items) + 1,
+                        score=h.score,
+                    )
+                ]
+                items[h.key] = item
+            out += items.values()
+        return out
+
+    return run
 
 
 def open_ro(db_path: Path) -> sqlite3.Connection:
