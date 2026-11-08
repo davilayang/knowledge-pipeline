@@ -13,6 +13,7 @@ from searcher.corpus import corpus_lane
 from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import SearchRequest, SearchResponse, Source
 from searcher.sessions import sessions_lane
+from searcher.wiki import wiki_lane
 
 # Voice must answer inside its budget; MCP waits for every lane.
 DEADLINE = {"voice": 5.0, "mcp": None}
@@ -64,10 +65,14 @@ async def _embed(text: str, deadline_at: float | None) -> list[float]:
 # newsletter-assistant's data directory, mounted read-write (see corpus._resolve).
 NEWSLETTER_DATA = Path(os.environ.get("NEWSLETTER_DATA_DIR", "/newsletter-data"))
 
+# kp's own wiki directory, mounted read-only.
+WIKI_DIR = Path(os.environ.get("WIKI_DIR", "/wiki"))
+
 app = create_app(
     lanes={
         "corpus": corpus_lane(_chroma_client, NEWSLETTER_DATA / "corpus.db"),
         "sessions": sessions_lane(_chroma_client, NEWSLETTER_DATA / "sessions.db"),
+        "wiki": wiki_lane(_chroma_client, WIKI_DIR),
     },
     embed=_embed,
 )

@@ -1033,7 +1033,7 @@ wheels = [
 
 [[package]]
 name = "fetcher"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "services/fetcher" }
 dependencies = [
     { name = "arxiv" },
@@ -2048,7 +2048,7 @@ wheels = [
 
 [[package]]
 name = "knowledge-domains"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "packages/domains" }
 dependencies = [
     { name = "psycopg", extra = ["binary"] },
@@ -2067,7 +2067,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-evals"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "packages/evals" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2090,7 +2090,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-orchestrators"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "packages/orchestrators" }
 dependencies = [
     { name = "dagster" },
@@ -2129,7 +2129,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-pipeline"
-version = "0.43.2"
+version = "0.43.3"
 source = { virtual = "." }
 dependencies = [
     { name = "fetcher" },
@@ -2199,7 +2199,7 @@ dev = [
 
 [[package]]
 name = "knowledge-retrievers"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "packages/retrievers" }
 dependencies = [
     { name = "chromadb-client" },
@@ -2222,7 +2222,7 @@ requires-dist = [
 
 [[package]]
 name = "knowledge-workflows"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "packages/workflows" }
 dependencies = [
     { name = "knowledge-domains" },
@@ -4443,13 +4443,14 @@ wheels = [
 
 [[package]]
 name = "searcher"
-version = "0.43.2"
+version = "0.43.3"
 source = { editable = "services/searcher" }
 dependencies = [
     { name = "chromadb-client" },
     { name = "fastapi" },
     { name = "knowledge-retrievers" },
     { name = "pydantic" },
+    { name = "pyyaml" },
     { name = "uvicorn", extra = ["standard"] },
 ]
 
@@ -4459,6 +4460,7 @@ requires-dist = [
     { name = "fastapi", specifier = ">=0.115,<1.0" },
     { name = "knowledge-retrievers", editable = "packages/retrievers" },
     { name = "pydantic", specifier = ">=2.9,<3.0" },
+    { name = "pyyaml" },
     { name = "uvicorn", extras = ["standard"], specifier = ">=0.32,<1.0" },
 ]
 
