@@ -9,6 +9,10 @@ sessions and notes, and its voice logic for briefs and wiki.
 
 `--lanes` defaults to all five; a lane the searcher has not wired yet fails until it is.
 
+The searcher fills each lane to `k` distinct pieces while newsletter-assistant reads `k`
+chunks, so newsletter-assistant's items must come first in the searcher's lane, in order;
+pieces after them pass when newsletter-assistant never saw them.
+
 Exits non-zero on any failure. Tie swaps, one-for-one swaps of pieces tied at the depth cut
 (any lane), repeated reference pieces the searcher merged, and blank titles the searcher
 replaced pass and are printed.
@@ -115,6 +119,11 @@ def _tied_at_cut_off(
 def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[str]]:
     """Return (failures, listed differences) for one lane of one probe at one depth.
 
+    newsletter-assistant's items are compared with the searcher's first ones. A searcher
+    piece after them passes silently when no harvested chunk belongs to it (the searcher
+    filled past newsletter-assistant's `k` chunks), and fails when one does (a piece
+    newsletter-assistant saw and dropped).
+
     Listed differences pass but are always reported: tie swaps; in any lane, a
     one-for-one swap of pieces tied at the depth cut; a piece newsletter-assistant
     repeats that the searcher merged; and a blank newsletter-assistant title the
@@ -129,9 +138,10 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
     """
     failures: list[str] = []
     ties: list[str] = []
+    # An empty reference allows `ok`: the searcher may fill past newsletter-assistant's chunks.
     expected = "ok" if record["items"] else "nothing_matched"
     status_failure = []
-    if response["status"] != expected:
+    if response["status"] not in (expected, "ok"):
         status_failure = [f"status: searcher {response['status']!r}, expected {expected!r}"]
 
     def best(uri: str) -> float | None:
@@ -149,6 +159,13 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
     if dupes:
         failures.append(f"duplicate: searcher returned {dupes} more than once")
         got = list(dict.fromkeys(got))
+    # The searcher fills a lane to `k` pieces; newsletter-assistant reads `k` chunks, so
+    # it holds at most `k` pieces. Its items must come first, in order; a piece after
+    # them passes only if newsletter-assistant never saw it, since a piece it saw and
+    # dropped (a missing row or file) must be dropped by the searcher too.
+    after = [u for u in got[len(want) :] if u not in want]
+    seen_and_dropped = [u for u in after if _chunks_of(lane, u, record["chunks"])]
+    got = [u for u in got if u not in after or u in seen_and_dropped]
     if got != want and sorted(got) == sorted(want):
         pos = {u: i for i, u in enumerate(got)}
         for i, a in enumerate(want):
@@ -224,14 +241,27 @@ def compare(lane: str, record: dict, response: dict) -> tuple[list[str], list[st
                     f"{field} of {it['uri']}: searcher {shown!r}, newsletter-assistant {value!r}"
                 )
         chunks = [c["chunk"] for c in _chunks_of(lane, it["uri"], record["chunks"])]
-        if not it.get("passages") and lane in PASSAGE_LANES:
+        passages = it.get("passages") or []
+        if not passages and lane in PASSAGE_LANES:
             failures.append(f"{it['uri']} has no passages")
-        for p in it.get("passages") or []:
-            if not p:
-                failures.append(f"{it['uri']} has an empty passage")
-            # A passage must equal one whole harvested chunk until per-caller passage length is set.
-            elif p not in chunks:
-                failures.append(f"passage of {it['uri']} is not a whole chunk: {p[:80]!r}")
+        if any(not p for p in passages):
+            failures.append(f"{it['uri']} has an empty passage")
+        if passages and all(passages):
+            # The searcher fetches past newsletter-assistant's `k` chunks, so passages
+            # the harvest never saw are allowed, after every harvested one. A passage
+            # must equal one whole chunk; those the harvest holds are checked here.
+            # ponytail: passages after the window are unchecked; checking them needs
+            # the harvest to record the searcher's fetch depth.
+            missing = [c for c in dict.fromkeys(chunks) if c not in passages]
+            for c in missing:
+                failures.append(
+                    f"passage of {it['uri']} is not a whole chunk: harvested {c[:80]!r} missing"
+                )
+            seen = [i for i, p in enumerate(passages) if p in chunks]
+            if not missing and seen != list(range(len(seen))):
+                failures.append(
+                    f"passage of {it['uri']} is not a whole chunk: an unharvested one comes first"
+                )
     return status_failure + failures, ties
 
 
