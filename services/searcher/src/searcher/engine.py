@@ -28,20 +28,18 @@ from searcher.models import (
 log = logging.getLogger(__name__)
 
 # A lane gets the request, the query's embedding and the deadline as an
-# event-loop time (None: no deadline), and returns its pieces best first, each
+# event-loop time, and returns its pieces best first, each
 # carrying exactly one `matched_by` entry, its own. Lanes must be async all the
 # way down (no `to_thread`): the deadline cancels them, and cancellation cannot
 # stop a thread.
-LaneFn = Callable[[SearchRequest, list[float], float | None], Awaitable[list[Item]]]
+LaneFn = Callable[[SearchRequest, list[float], float], Awaitable[list[Item]]]
 # An embedder gets the query and the same deadline as the lanes.
-EmbedFn = Callable[[str, float | None], Awaitable[list[float]]]
+EmbedFn = Callable[[str, float], Awaitable[list[float]]]
 
-# ponytail: one default until per-caller defaults are set from today's callers.
+# The most items a lane returns when the request sends no `k`.
 K_DEFAULT = 10
 CODE_REV = os.environ.get("CODE_REV")
 CLEANUP_S = 0.1
-# An MCP search has no deadline; each network call in it still gets a finite one.
-NO_DEADLINE_S = 30.0
 
 
 # The running search's `trace.stages_ms`; lane tasks inherit it, so a lane's
@@ -62,19 +60,13 @@ def timed(stage: str) -> Iterator[None]:
 
 class DeadlineExceeded(TimeoutError):
     """The search's own deadline ran out. Only this is `timed_out`; any other
-    TimeoutError, such as a client read or the no-deadline cap, is a failure."""
+    TimeoutError, such as a client read, is a failure."""
 
 
 @asynccontextmanager
-async def time_limit(deadline_at: float | None) -> AsyncIterator[None]:
-    """The search deadline as an elapsed-time limit for one lane's or the
-    embedder's network calls, or `NO_DEADLINE_S` when the search has none.
-    The deadline's own expiry raises `DeadlineExceeded`; the cap's stays a plain
-    TimeoutError."""
-    if deadline_at is None:
-        async with asyncio.timeout(NO_DEADLINE_S):
-            yield
-        return
+async def time_limit(deadline_at: float) -> AsyncIterator[None]:
+    """The search deadline as a limit on one lane's or the embedder's network
+    calls. Its expiry raises `DeadlineExceeded`."""
     limit = asyncio.timeout_at(deadline_at)
     try:
         async with limit:
@@ -94,8 +86,12 @@ class Hit(NamedTuple):
     score: float
 
 
-# A method gets what a lane gets and returns its hits best first.
-HitsFn = Callable[[SearchRequest, list[float], float | None], Awaitable[list[Hit]]]
+# A method gets what a lane gets plus how many chunks to fetch, and returns its
+# hits best first; fewer than asked means the index has no more.
+HitsFn = Callable[[SearchRequest, list[float], float, int], Awaitable[list[Hit]]]
+
+# The most chunks one method fetches for one lane while filling the lane's limit.
+FETCH_CAP = 100
 # A lane's source lookup: piece id to whatever its builder needs, for the ids every
 # method found, read once; an id left out was not found and its hits are dropped.
 ResolveFn = Callable[[list[str]], Mapping[str, Any]]
@@ -110,7 +106,7 @@ def dense(
     from its metadata."""
 
     async def hits(
-        req: SearchRequest, embedding: list[float], deadline_at: float | None
+        req: SearchRequest, embedding: list[float], deadline_at: float, n: int
     ) -> list[Hit]:
         async with time_limit(deadline_at):
             client = await chroma()
@@ -118,7 +114,7 @@ def dense(
             collection = await client.get_collection(collection_name, embedding_function=None)
             res = await collection.query(
                 query_embeddings=[embedding],
-                n_results=req.k or K_DEFAULT,
+                n_results=n,
                 include=["documents", "metadatas", "distances"],
             )
         return [
@@ -140,44 +136,65 @@ def lane(
     1-based per method, counted after dropped hits, so they have no gaps. The lane
     is all or nothing: a method that fails or times out fails or times out the lane.
 
+    Each method first fetches the lane's limit in chunks. While a method has fewer
+    distinct pieces than the limit and its index returned a full page, every method
+    fetches again at double the size, up to `FETCH_CAP`, with the same embedding;
+    duplicate chunks and dropped hits are what it fetches past. The engine then
+    cuts the lane to its limit.
+
     ponytail: methods run one after another and contributions only meet in the
     engine's best-rank merge. Running methods concurrently, fusing them within the
     lane (e.g. RRF), and a keyword method that needs no embedding wait until a
     second method exists.
     """
 
-    async def run(
-        req: SearchRequest, embedding: list[float], deadline_at: float | None
-    ) -> list[Item]:
-        found = {
-            m: [h for h in await fn(req, embedding, deadline_at) if h.key]
-            for m, fn in methods.items()
-        }
-        resolved = resolve(sorted({h.key for hs in found.values() for h in hs}))
-        out: list[Item] = []
-        for method, hs in found.items():
-            items: dict[str, Item] = {}
-            for h in hs:
-                if h.key in items:
-                    if h.chunk not in items[h.key].passages:
-                        items[h.key].passages.append(h.chunk)
-                    continue
-                if h.key not in resolved or (item := build(req, h.key, resolved[h.key], h)) is None:
-                    continue
-                item.matched_by = [
-                    MatchedBy(
-                        query=req.query,
-                        lane=source,
-                        method=method,
-                        rank=len(items) + 1,
-                        score=h.score,
-                    )
-                ]
-                items[h.key] = item
-            out += items.values()
-        return out
+    async def run(req: SearchRequest, embedding: list[float], deadline_at: float) -> list[Item]:
+        want = limit(req, source)
+        n = want
+        while True:
+            fetched = {m: await fn(req, embedding, deadline_at, n) for m, fn in methods.items()}
+            built = _build(req, source, fetched, resolve, build)
+            short = any(len(built[m]) < want and len(fetched[m]) == n for m in methods)
+            if not short or n >= FETCH_CAP:
+                return [i for items in built.values() for i in items]
+            n = min(2 * n, FETCH_CAP)
 
     return run
+
+
+def _build(
+    req: SearchRequest,
+    source: Source,
+    fetched: Mapping[str, list[Hit]],
+    resolve: ResolveFn,
+    build: BuildFn,
+) -> dict[str, list[Item]]:
+    """Each method's items: the source looked up once for every method's keys,
+    one item per piece per method, ranked without gaps."""
+    found = {m: [h for h in hs if h.key] for m, hs in fetched.items()}
+    resolved = resolve(sorted({h.key for hs in found.values() for h in hs}))
+    out: dict[str, list[Item]] = {}
+    for method, hs in found.items():
+        items: dict[str, Item] = {}
+        for h in hs:
+            if h.key in items:
+                if h.chunk not in items[h.key].passages:
+                    items[h.key].passages.append(h.chunk)
+                continue
+            if h.key not in resolved or (item := build(req, h.key, resolved[h.key], h)) is None:
+                continue
+            item.matched_by = [
+                MatchedBy(
+                    query=req.query,
+                    lane=source,
+                    method=method,
+                    rank=len(items) + 1,
+                    score=h.score,
+                )
+            ]
+            items[h.key] = item
+        out[method] = list(items.values())
+    return out
 
 
 def open_ro(db_path: Path) -> sqlite3.Connection:
@@ -204,10 +221,10 @@ async def search(
     req: SearchRequest,
     lanes: Mapping[Source, LaneFn],
     embed: EmbedFn | None,
-    deadline: float | None,
+    deadline: float,
 ) -> SearchResponse:
     """Answer one request. `deadline` is seconds for the whole search, embedding
-    included; past it, unfinished lanes are `timed_out`. None waits for every lane.
+    included; past it, unfinished lanes are `timed_out`.
     `embed` is only called when a requested lane is wired."""
     stages: dict[str, float] = {}
     token = _STAGES.set(stages)
@@ -221,12 +238,12 @@ async def _search(
     req: SearchRequest,
     lanes: Mapping[Source, LaneFn],
     embed: EmbedFn | None,
-    deadline: float | None,
+    deadline: float,
     stages: dict[str, float],
 ) -> SearchResponse:
     loop = asyncio.get_running_loop()
     began = loop.time()
-    deadline_at = None if deadline is None else began + deadline
+    deadline_at = began + deadline
     sources = list(SOURCES) if req.sources is None else req.sources
     tasks: dict[Source, asyncio.Task[list[Item]]] = {}
     wired = [s for s in sources if s in lanes]
@@ -273,7 +290,12 @@ async def _search(
                 Contribution(item.matched_by[0].rank, order, source, item) for item in task.result()
             ]
 
-    items = _merge(contributions)[: req.k or K_DEFAULT]
+    kept = [
+        c
+        for source in sources
+        for c in _within_limit([c for c in contributions if c.source == source], limit(req, source))
+    ]
+    items = _merge(kept)
     lanes_out = {
         source: Lane(
             outcome=outcome[source],
@@ -302,6 +324,19 @@ def _status(lanes: dict[Source, Lane], items: list[Item]) -> Status:
 
 def _ms(loop: asyncio.AbstractEventLoop, since: float) -> float:
     return round((loop.time() - since) * 1000, 1)
+
+
+def limit(req: SearchRequest, source: Source) -> int:
+    """The most items `source`'s lane returns: its `k_per_source` entry, else `k`."""
+    return (req.k_per_source or {}).get(source, req.k or K_DEFAULT)
+
+
+def _within_limit(contributions: list[Contribution], n: int) -> list[Contribution]:
+    """One lane's contributions to its `n` best pieces, ranked by each piece's
+    best rank across the lane's methods, so the limit holds after methods merge."""
+    ranked = dict.fromkeys(c.item.uri for c in sorted(contributions, key=lambda c: c.rank))
+    kept = set(list(ranked)[:n])
+    return [c for c in contributions if c.item.uri in kept]
 
 
 def _merge(contributions: list[Contribution]) -> list[Item]:

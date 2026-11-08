@@ -16,7 +16,7 @@ from searcher.sessions import sessions_lane
 
 def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate(
-        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["sessions"], **kw}
+        {"contract_version": 2, "query": "rag", "caller": "mcp", "sources": ["sessions"], **kw}
     )
 
 
@@ -164,7 +164,7 @@ def test_a_missing_sessions_db_fails_the_lane_and_creates_no_file(tmp_path: Path
 
     async def go() -> SearchResponse:
         return await search(
-            _req(), {"sessions": _lane(chroma, tmp_path / "sessions.db")}, _embed, None
+            _req(), {"sessions": _lane(chroma, tmp_path / "sessions.db")}, _embed, 5.0
         )
 
     resp = asyncio.run(go())
@@ -185,7 +185,7 @@ def test_the_sessions_db_read_is_timed_in_the_trace(tmp_path: Path) -> None:
     chroma = FakeChroma(FakeCollection([_hit("s1", "x", 0.1)]))
 
     async def go() -> SearchResponse:
-        return await search(_req(), {"sessions": _lane(chroma, db)}, _embed, None)
+        return await search(_req(), {"sessions": _lane(chroma, db)}, _embed, 5.0)
 
     stages = asyncio.run(go()).trace.stages_ms
     assert isinstance(stages["sessions.db"], float)

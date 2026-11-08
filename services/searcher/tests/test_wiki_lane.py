@@ -16,7 +16,7 @@ from searcher.wiki import wiki_lane
 
 def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate(
-        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["wiki"], **kw}
+        {"contract_version": 2, "query": "rag", "caller": "mcp", "sources": ["wiki"], **kw}
     )
 
 
@@ -226,7 +226,7 @@ def test_the_file_reads_are_timed_in_the_trace(tmp_path: Path) -> None:
     async def embed(text: str, deadline_at: float | None) -> list[float]:
         return [0.0]
 
-    resp = asyncio.run(search(_req(), {"wiki": wiki_lane(client, wiki)}, embed, None))
+    resp = asyncio.run(search(_req(), {"wiki": wiki_lane(client, wiki)}, embed, 5.0))
     assert resp.status == "ok"
     assert resp.trace.stages_ms["resolve.json"] >= 0
     assert resp.trace.stages_ms["wiki pages"] >= 0

@@ -17,8 +17,8 @@ from searcher.notes import notes_lane
 from searcher.sessions import sessions_lane
 from searcher.wiki import wiki_lane
 
-# Voice must answer inside its budget; MCP waits for every lane.
-DEADLINE = {"voice": 5.0, "mcp": None}
+# A search's deadline when the request sends no `deadline_ms`.
+DEADLINE_MS_DEFAULT = 5000
 
 
 def create_app(
@@ -35,7 +35,7 @@ def create_app(
 
     @app.post("/v1/search")
     async def search_endpoint(req: SearchRequest) -> SearchResponse:
-        return await search(req, wired, embed, DEADLINE[req.caller])
+        return await search(req, wired, embed, (req.deadline_ms or DEADLINE_MS_DEFAULT) / 1000)
 
     return app
 
@@ -56,7 +56,7 @@ async def _chroma_client() -> Any:
     return _chroma
 
 
-async def _embed(text: str, deadline_at: float | None) -> list[float]:
+async def _embed(text: str, deadline_at: float) -> list[float]:
     global _embedder
     if _embedder is None:
         _embedder = AsyncQueryEmbedder()

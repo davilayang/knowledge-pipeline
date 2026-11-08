@@ -16,7 +16,7 @@ from searcher.models import Item, SearchRequest, SearchResponse
 
 def _req(**kw: object) -> SearchRequest:
     return SearchRequest.model_validate(
-        {"contract_version": 1, "query": "rag", "caller": "mcp", "sources": ["corpus"], **kw}
+        {"contract_version": 2, "query": "rag", "caller": "mcp", "sources": ["corpus"], **kw}
     )
 
 
@@ -190,7 +190,7 @@ def test_a_missing_corpus_db_fails_the_lane_and_creates_no_file(tmp_path: Path) 
     chroma = FakeChroma(FakeCollection([_hit("d", "x", 0.1)]))
 
     async def go() -> SearchResponse:
-        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, None)
+        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, 5.0)
 
     resp = asyncio.run(go())
     assert resp.lanes["corpus"].outcome == "failed"
@@ -203,7 +203,7 @@ def test_the_corpus_db_read_is_timed_in_the_trace(tmp_path: Path) -> None:
     chroma = FakeChroma(FakeCollection([_hit("c1", "x", 0.1)]))
 
     async def go() -> SearchResponse:
-        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, None)
+        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, 5.0)
 
     stages = asyncio.run(go()).trace.stages_ms
     assert isinstance(stages["corpus.db"], float)
@@ -217,7 +217,7 @@ def test_each_item_carries_its_query_and_best_hit_score_and_no_repeated_passage(
 
     async def go() -> SearchResponse:
         return await search(
-            _req(), {"corpus": _lane(FakeChroma(FakeCollection(hits)), db)}, _embed, None
+            _req(), {"corpus": _lane(FakeChroma(FakeCollection(hits)), db)}, _embed, 5.0
         )
 
     p, q = asyncio.run(go()).items
