@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.43.4] — 2026-11-08
+
+### Changed
+
+- **Each searcher lane is now built from its methods, one source lookup and one item builder, so a new method such as `keyword` plugs in without touching any lane's lookup or builder.** `engine.lane` runs each method's hit function (`dense` over a Chroma collection, the only method today), looks up the source once for every piece found, builds one item per piece, folds further chunks into passages, ranks each piece per method and attaches `matched_by`. The corpus and sessions lanes share one read-only SQLite open (`open_ro`). Results are unchanged: newsletter-assistant's harvest of production data matched on 132 of 132 probe-depth-lane pairs. (`services/searcher/src/searcher/engine.py`)
+- **The search trace now times the corpus lane's `corpus.db` read,** as `corpus.db` in `trace.stages_ms`, like the sessions lane's `sessions.db` read. (`services/searcher/src/searcher/corpus.py`)
+
+---
+
 ## [0.43.3] — 2026-11-08
 
 ### Added

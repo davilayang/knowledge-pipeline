@@ -62,7 +62,7 @@ async def _embed(text: str, deadline_at: float | None) -> list[float]:
         return await _embedder.embed(text)
 
 
-# newsletter-assistant's data directory, mounted read-write (see corpus._resolve).
+# newsletter-assistant's data directory, mounted read-write (see engine.open_ro).
 NEWSLETTER_DATA = Path(os.environ.get("NEWSLETTER_DATA_DIR", "/newsletter-data"))
 
 # kp's own wiki directory, mounted read-only.

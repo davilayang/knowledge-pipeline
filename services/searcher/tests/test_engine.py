@@ -255,21 +255,12 @@ def test_an_embedding_that_uses_up_the_deadline_times_out_every_lane_in_time() -
 
 
 def test_the_trace_holds_each_stage_s_own_duration_and_the_code_rev(monkeypatch) -> None:
-    import importlib
-
     import searcher.engine as engine
 
-    monkeypatch.setenv("CODE_REV", "abc1234")
-    engine = importlib.reload(engine)
-    try:
-        resp = asyncio.run(
-            engine.search(
-                _req(caller="voice", sources=["notes"]), {"notes": _slow(0.05)}, _embed, 1.0
-            )
-        )
-    finally:
-        monkeypatch.delenv("CODE_REV")
-        importlib.reload(engine)
+    monkeypatch.setattr(engine, "CODE_REV", "abc1234")
+    resp = asyncio.run(
+        search(_req(caller="voice", sources=["notes"]), {"notes": _slow(0.05)}, _embed, 1.0)
+    )
     stages = resp.trace.stages_ms
     assert set(stages) == {"embed", "lanes", "merge", "total"}
     assert all(ms >= 0 for ms in stages.values())
@@ -411,3 +402,36 @@ def test_an_early_timeout_stays_a_failure_while_another_lane_holds_the_search_op
     assert resp.lanes["sessions"].outcome == "failed"
     assert resp.lanes["corpus"].outcome == "timed_out"
     assert "lane sessions failed" in caplog.text
+
+
+def test_a_lane_with_two_methods_looks_up_once_and_ranks_each_method_on_its_own() -> None:
+    from searcher.engine import Hit, lane
+
+    def method(*keys: str):
+        async def hits(req, embedding, deadline_at) -> list[Hit]:
+            return [Hit(k, f"{k} chunk", {}, 0.5) for k in keys]
+
+        return hits
+
+    looked_up: list[list[str]] = []
+
+    def resolve(ids: list[str]) -> dict[str, str]:
+        looked_up.append(ids)
+        return {i: i for i in ids if i != "gone"}
+
+    def build(req, key, row, hit) -> Item:
+        return _item(f"kos://piece/corpus/{key}", "corpus", 0, hit.chunk).model_copy(
+            update={"matched_by": []}
+        )
+
+    run = lane(
+        "corpus", {"dense": method("gone", "a", "a", "b"), "keyword": method("b")}, resolve, build
+    )
+    res = _search_now(_req(caller="mcp", sources=["corpus"]), {"corpus": run})
+
+    assert looked_up == [["a", "b", "gone"]]
+    assert [(i.uri, [(m.method, m.rank) for m in i.matched_by]) for i in res.items] == [
+        ("kos://piece/corpus/a", [("dense", 1)]),
+        ("kos://piece/corpus/b", [("keyword", 1), ("dense", 2)]),
+    ]
+    assert res.lanes["corpus"].candidates == 2

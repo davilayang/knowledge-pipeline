@@ -196,3 +196,31 @@ def test_a_missing_corpus_db_fails_the_lane_and_creates_no_file(tmp_path: Path) 
     assert resp.lanes["corpus"].outcome == "failed"
     assert resp.status == "unavailable"
     assert list(tmp_path.iterdir()) == []
+
+
+def test_the_corpus_db_read_is_timed_in_the_trace(tmp_path: Path) -> None:
+    db = _corpus_db(tmp_path / "corpus.db", [_row("c1")])
+    chroma = FakeChroma(FakeCollection([_hit("c1", "x", 0.1)]))
+
+    async def go() -> SearchResponse:
+        return await search(_req(), {"corpus": _lane(chroma, db)}, _embed, None)
+
+    stages = asyncio.run(go()).trace.stages_ms
+    assert isinstance(stages["corpus.db"], float)
+
+
+def test_each_item_carries_its_query_and_best_hit_score_and_no_repeated_passage(
+    tmp_path: Path,
+) -> None:
+    db = _corpus_db(tmp_path / "corpus.db", [_row("p"), _row("q")])
+    hits = [_hit("p", "x", 0.1), _hit("q", "y", 0.3), _hit("p", "x", 0.5)]
+
+    async def go() -> SearchResponse:
+        return await search(
+            _req(), {"corpus": _lane(FakeChroma(FakeCollection(hits)), db)}, _embed, None
+        )
+
+    p, q = asyncio.run(go()).items
+    assert [(m.query, m.score) for m in p.matched_by] == [("rag", pytest.approx(0.9))]
+    assert [(m.query, m.score) for m in q.matched_by] == [("rag", pytest.approx(0.7))]
+    assert p.passages == ["x"]

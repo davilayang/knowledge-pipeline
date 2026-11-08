@@ -19,12 +19,22 @@ the contract's precedence.
   the embedder are given the deadline so their calls stop inside it.
 - **Trace:** `trace.stages_ms` holds each stage's own duration (`embed`,
   `lanes`, `merge`) and the `total`, plus each lane's blocking reads under the
-  file they read (`sessions.db`, `resolve.json`, `wiki pages`), nested inside
+  file they read (`corpus.db`, `sessions.db`, `resolve.json`, `wiki pages`), nested inside
   `lanes`, not additive; `code_rev` comes from the `CODE_REV` environment
   variable. A lane whose own call stops at the deadline is `timed_out`, like one
   the engine stops waiting for: `time_limit` raises that expiry as
   `DeadlineExceeded`. Any other timeout, including the 30 s cap in a search with
   no deadline, is `failed`.
+- **Lanes and methods:** a lane is a source kind; a method is how it is
+  searched, `dense` (a Chroma query) for every lane today. Each lane is built by
+  `engine.lane` from its methods' hit functions, one `resolve` that looks up the
+  source once for every piece the methods found, and one `build` that turns a
+  piece's first hit into an item. The engine folds later chunks of a piece into
+  its passages and gives each piece a 1-based rank per method, counted after
+  dropped hits, with its `matched_by` entry. A new method (`keyword`) adds a hit
+  function to a lane and changes no `resolve` or `build`. Methods meet only in
+  the best-rank merge; running them concurrently and fusing them within a lane
+  wait until a second method exists.
 
 - **Corpus lane** (`src/searcher/corpus.py`): Chroma's `contents` collection,
   each hit resolved in newsletter-assistant's `corpus.db`. A hit missing there is
