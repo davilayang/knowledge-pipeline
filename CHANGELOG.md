@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.2] — 2026-11-08
+
 ### Added
 
 - **The searcher's sessions lane searches past voice sessions end to end.** It queries Chroma's `conversations` collection without ever creating it, keys each chunk to its session through `source_ref` (`sessions:<id>`), and resolves the sessions in newsletter-assistant's `sessions.db` with one batched read-only query, opened the same way as `corpus.db`. A session appears once, at its best-ranked chunk, with every matching chunk as a whole passage; a session no longer stored, or whose timestamps do not parse, is dropped, as newsletter-assistant's MCP search drops it. The date is the UTC date the session started, `summary` is the stored summary (null until one is written), the title is the indexer's (the summary's first line, or `Session <first 8 characters of the id>`, which also stands in when a chunk carries none), and `since` keeps sessions started on or after it. The `sessions.db` read is timed in `trace.stages_ms` under its file name, through a new `timed()` helper any lane can use. Checked on 2026-11-06 with `eval-search-port-check --lanes sessions corpus` against a fresh newsletter-assistant harvest, both sides reading production Chroma and the same copies of its data: 88 of 88 probe-depth-lane pairs identical (22 probes, depths 5 and 10), 0 tie swaps, 13 blank corpus titles replaced by the url as before; the `sessions.db` read took 2.6 to 3.7 ms. (`services/searcher/src/searcher/sessions.py`, `services/searcher/src/searcher/engine.py`)
