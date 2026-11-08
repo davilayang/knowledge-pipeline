@@ -8,6 +8,15 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.43.7] — 2026-11-08
+
+### Added
+
+- **A burst of MCP searches can no longer starve voice: the searcher runs at most 2 `mcp` searches at once and refuses the next with HTTP 429 at once.** The slot is taken before the query is embedded and released when the search ends, fails or is cancelled; `voice` is never limited (hub search contract v2, rule 11). Measured on a local searcher container with one voice and four concurrent MCP searches: two MCP searches got 429 within 0.02 to 0.04 s, two were answered, and voice took 0.18 to 0.21 s against 0.19 to 0.29 s alone. The limit is per process. (`services/searcher/src/searcher/app.py`)
+- **`eval-search-burst` checks the admission rule against a running searcher.** It fires one voice and four concurrent MCP searches and passes when voice answers `ok` inside 5 s, two MCP searches are answered and two get 429. Standard library only, so it runs inside the searcher container, which publishes no port. (`packages/evals/src/evals/search/burst.py`, `uv run poe eval-search-burst`)
+
+---
+
 ## [0.43.6] — 2026-11-08
 
 ### Changed
