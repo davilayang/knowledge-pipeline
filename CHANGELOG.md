@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.3] — 2026-11-08
+
 ### Added
 
 - **The searcher answers from the entity wiki.** Its wiki lane finds pages through Chroma's `wiki` collection and resolves each hit through kp's `_index/resolve.json` and the rendered page, as newsletter-assistant's voice recall does. A pruned entity, or a page that is missing, unparseable, empty, naming another entity or carrying a malformed field, is dropped on its own, never failing the lane; a page re-rendered since indexing is `stale`; chunks of one long summary become one item with each chunk a passage; `related` holds up to 4 entity titles; `has_user_notes` reads either spelling of the resolve flag. A missing, unparseable or unknown-version `resolve.json` fails the lane rather than answering with no pages. The pages are plain files, so compose mounts kp's `data/wiki` read-only (`WIKI_DIR`). The resolve file and the page reads are timed in `trace.stages_ms` (`resolve.json`, `wiki pages`). Checked against a fresh newsletter-assistant harvest of production data with `eval-search-port-check --lanes wiki corpus`: 88 of 88 probe-depth-lane pairs on each of three runs, with 13 blank corpus titles and, on one run, one cut-off tie listed. (`services/searcher/src/searcher/wiki.py`, `docker-compose.yml`)
