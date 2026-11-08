@@ -400,6 +400,10 @@ def test_item_the_reference_dropped_but_the_searcher_returns_fails_by_name():
     rec = _sessions()
     resp = _lane_response(rec)
     extra = "kos://piece/session/newsletter-deleted"
+    # newsletter-assistant read this chunk and dropped its piece; the searcher kept it.
+    rec["chunks"].append(
+        {"session_id": "newsletter-deleted", "distance": 0.6, "chunk": "gone session window"}
+    )
     resp["items"].append({"uri": extra, "date": "2026-09-01", "summary": None, "passages": []})
     failures, _ = compare("sessions", rec, resp)
     assert failures == [f"pieces differ: searcher only {[extra]}, newsletter-assistant only []"]
@@ -632,15 +636,15 @@ def test_a_reference_piece_at_the_cut_off_dropped_by_the_searcher_fails():
     assert listed == []
 
 
-def test_a_piece_added_at_the_cut_off_by_the_searcher_fails():
+def test_a_piece_after_the_reference_cut_off_passes():
+    """The searcher fills a lane to `k` pieces; newsletter-assistant reads `k` chunks,
+    so a piece after the reference's last one is the searcher filling, not a fault."""
     rec = _wiki_tie()
     resp = _scored(rec, "ent_c", 0.56464)  # the reference's own three
     extra = dict(resp["items"][-1], uri="kos://piece/wiki/ent_d", title="ent_d")
     extra["summary"] = "ent_d summary."
     resp["items"].append(extra)
-    failures, listed = compare("wiki", rec, resp)
-    assert len(failures) == 1 and "pieces differ" in failures[0]
-    assert listed == []
+    assert compare("wiki", rec, resp) == ([], [])
 
 
 def test_a_reference_item_repeated_and_merged_by_the_searcher_is_listed():
@@ -649,3 +653,80 @@ def test_a_reference_item_repeated_and_merged_by_the_searcher_is_listed():
     failures, listed = compare("wiki", rec, _lane_response(_wiki()))
     assert failures == []
     assert listed == [f"newsletter-assistant repeats {W1}; searcher merged it"]
+
+
+def test_searcher_pieces_after_the_reference_pass_when_the_reference_never_saw_them():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"].append(
+        {
+            "uri": "kos://piece/corpus/src::c3",
+            "title": "Gamma",
+            "author": None,
+            "url": None,
+            "date": "2026-10-03",
+            "passages": ["gamma chunk text"],
+        }
+    )
+    assert compare("corpus", rec, resp) == ([], [])
+
+
+def test_a_searcher_piece_before_the_end_of_the_reference_still_fails_as_order():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"].insert(
+        0,
+        {
+            "uri": "kos://piece/corpus/src::c3",
+            "title": "Gamma",
+            "author": None,
+            "url": None,
+            "date": "2026-10-03",
+            "passages": ["gamma chunk text"],
+        },
+    )
+    failures, _ = compare("corpus", rec, resp)
+    assert failures
+
+
+def test_an_empty_reference_passes_a_searcher_that_filled_past_it():
+    rec = {"chunks": [], "items": []}
+    resp = {
+        "status": "ok",
+        "items": [
+            {
+                "uri": "kos://piece/corpus/src::c3",
+                "title": "Gamma",
+                "author": None,
+                "url": None,
+                "date": "2026-10-03",
+                "passages": ["gamma chunk text"],
+            }
+        ],
+    }
+    assert compare("corpus", rec, resp) == ([], [])
+
+
+def test_passages_from_chunks_after_the_reference_window_pass():
+    """The searcher fetches past newsletter-assistant's `k` chunks, so an item can carry
+    passages the harvest never saw; they must come after every harvested chunk."""
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk text", "alpha chunk from further down"]
+    assert compare("corpus", rec, resp) == ([], [])
+
+
+def test_a_harvested_chunk_missing_from_the_passages_fails():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk from further down"]
+    failures, _ = compare("corpus", rec, resp)
+    assert len(failures) == 1 and "passage" in failures[0] and URI_A in failures[0]
+
+
+def test_an_unharvested_passage_before_a_harvested_one_fails():
+    rec = _record()
+    resp = _response(rec)
+    resp["items"][0]["passages"] = ["alpha chunk from further down", "alpha chunk text"]
+    failures, _ = compare("corpus", rec, resp)
+    assert len(failures) == 1 and "passage" in failures[0] and URI_A in failures[0]
