@@ -177,3 +177,103 @@ def test_a_per_lane_limit_for_a_lane_not_searched_is_refused() -> None:
         }
     )
     assert resp.status_code == 422
+
+
+def _held_lane():
+    """A lane that holds every query starting `hold` until released, and
+    records how many are inside it."""
+    release = asyncio.Event()
+    inside = {"n": 0}
+
+    async def lane(req: SearchRequest, embedding: list[float], deadline_at: float) -> list:
+        if req.query.startswith("hold"):
+            inside["n"] += 1
+            await release.wait()
+        return []
+
+    async def embed(text: str, deadline_at: float) -> list[float]:
+        return [0.0]
+
+    return create_app(lanes={"notes": lane}, embed=embed), release, inside
+
+
+def _body(query: str, caller: str) -> dict:
+    return {"contract_version": 2, "query": query, "caller": caller, "sources": ["notes"]}
+
+
+async def _until(cond) -> None:
+    for _ in range(200):
+        if cond():
+            return
+        await asyncio.sleep(0.005)
+    raise AssertionError("condition never held")
+
+
+def _run_admission(scenario) -> None:
+    import httpx
+
+    async def main() -> None:
+        app, release, inside = _held_lane()
+        transport = httpx.ASGITransport(app=app)
+        async with httpx.AsyncClient(transport=transport, base_url="http://s") as client:
+            await scenario(client, release, inside)
+
+    asyncio.run(main())
+
+
+def test_a_third_concurrent_mcp_search_is_refused_at_once() -> None:
+    """Contract §2 rule 11: at most 2 `mcp` searches run at once; the next is
+    refused with 429 at once, not queued."""
+
+    async def scenario(client, release, inside) -> None:
+        held = [
+            asyncio.create_task(client.post("/v1/search", json=_body(f"hold{i}", "mcp")))
+            for i in range(2)
+        ]
+        await _until(lambda: inside["n"] == 2)
+        third = await asyncio.wait_for(
+            client.post("/v1/search", json=_body("hold2", "mcp")), timeout=1
+        )
+        assert third.status_code == 429
+        assert inside["n"] == 2
+        release.set()
+        assert [r.status_code for r in await asyncio.gather(*held)] == [200, 200]
+
+    _run_admission(scenario)
+
+
+def test_voice_is_answered_while_two_mcp_searches_are_running() -> None:
+    """Contract §2 rule 11: `voice` is never limited."""
+
+    async def scenario(client, release, inside) -> None:
+        held = [
+            asyncio.create_task(client.post("/v1/search", json=_body(f"hold{i}", "mcp")))
+            for i in range(2)
+        ]
+        await _until(lambda: inside["n"] == 2)
+        voice = await asyncio.wait_for(
+            client.post("/v1/search", json=_body("now", "voice")), timeout=1
+        )
+        assert voice.status_code == 200
+        release.set()
+        await asyncio.gather(*held)
+
+    _run_admission(scenario)
+
+
+def test_an_mcp_slot_is_freed_when_a_search_finishes_or_is_cancelled() -> None:
+    async def scenario(client, release, inside) -> None:
+        first = asyncio.create_task(client.post("/v1/search", json=_body("hold0", "mcp")))
+        done = await client.post("/v1/search", json=_body("quick", "mcp"))
+        assert done.status_code == 200
+        second = asyncio.create_task(client.post("/v1/search", json=_body("hold1", "mcp")))
+        await _until(lambda: inside["n"] == 2)
+        first.cancel()
+        await asyncio.gather(first, return_exceptions=True)
+        await asyncio.sleep(0.01)
+        third = asyncio.create_task(client.post("/v1/search", json=_body("hold2", "mcp")))
+        await _until(lambda: inside["n"] == 3)
+        release.set()
+        assert [r.status_code for r in await asyncio.gather(second, third)] == [200, 200]
+
+    _run_admission(scenario)

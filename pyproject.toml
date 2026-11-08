@@ -208,6 +208,14 @@ help = """
     uv run poe eval-search-port-check -- --harvest data/eval_runs/search/harvest.json
 """
 
+[tool.poe.tasks.eval-search-burst]
+cmd = "eval-search-burst"
+help = """
+  Fire one voice search and four concurrent MCP searches at a running searcher;
+  pass when voice answers ok inside 5 s, two MCP searches are answered and two get 429.
+    uv run poe eval-search-burst -- --searcher http://localhost:8000
+"""
+
 [tool.poe.tasks.wiki-eval]
 cmd = "python -m evals.wiki.cli"
 help = "Run the wiki-quality eval harness — six quality dimensions across synthesized wiki pages. Not yet implemented; reserved for the layer that evaluates wiki output beyond plain retrieval."

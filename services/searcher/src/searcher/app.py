@@ -7,6 +7,7 @@ from typing import Any
 
 import chromadb
 from fastapi import FastAPI
+from fastapi.responses import JSONResponse
 from retrievers.embedding import AsyncQueryEmbedder
 
 from searcher.briefs import briefs_lane
@@ -20,6 +21,12 @@ from searcher.wiki import wiki_lane
 # A search's deadline when the request sends no `deadline_ms`.
 DEADLINE_MS_DEFAULT = 5000
 
+# The most `mcp` searches running at once; the next is refused, never queued, so
+# a burst of MCP searches cannot starve voice. `voice` is not limited.
+# ponytail: a per-process counter; several workers would each allow this many,
+# so a shared limit needs a shared store if workers are added.
+MCP_MAX_IN_FLIGHT = 2
+
 
 def create_app(
     lanes: Mapping[Source, LaneFn] | None = None, embed: EmbedFn | None = None
@@ -28,14 +35,25 @@ def create_app(
     status precedence, the answer is `unavailable`."""
     app = FastAPI(title="kp-searcher")
     wired = lanes or {}
+    in_flight = {"mcp": 0}
 
     @app.get("/healthz")
     async def healthz() -> dict[str, bool]:
         return {"ok": True}
 
-    @app.post("/v1/search")
-    async def search_endpoint(req: SearchRequest) -> SearchResponse:
-        return await search(req, wired, embed, (req.deadline_ms or DEADLINE_MS_DEFAULT) / 1000)
+    @app.post("/v1/search", response_model=SearchResponse)
+    async def search_endpoint(req: SearchRequest) -> SearchResponse | JSONResponse:
+        # Checked and taken with no await in between, on the one event loop, so
+        # two requests cannot both take the last slot.
+        if req.caller == "mcp":
+            if in_flight["mcp"] >= MCP_MAX_IN_FLIGHT:
+                return JSONResponse({"detail": "search is busy"}, status_code=429)
+            in_flight["mcp"] += 1
+        try:
+            return await search(req, wired, embed, (req.deadline_ms or DEADLINE_MS_DEFAULT) / 1000)
+        finally:
+            if req.caller == "mcp":
+                in_flight["mcp"] -= 1
 
     return app
 
