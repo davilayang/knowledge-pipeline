@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.43.9] — 2026-11-08
+
+### Changed
+
+- **A search item now carries at most 3 passages, its best-ranked chunks.** A lane that fetches past duplicate chunks attached every chunk of a piece it saw: on the production port-check run of 2026-11-08 one corpus item carried 51 passages across 22 voice-shaped requests (median 1), and voice puts passages into the model's context. The cap is applied after the merge, so it holds for the item the caller receives; the port check now requires only a piece's first 3 harvested chunks among its passages. (`services/searcher/src/searcher/engine.py`, `MAX_PASSAGES_PER_ITEM`; `packages/evals/src/evals/search/port_check.py`)
+
+---
+
 ## [0.43.8] — 2026-11-08
 
 ### Changed

@@ -512,3 +512,13 @@ def test_a_stage_timed_in_every_fetch_round_records_their_total() -> None:
     run = lane("corpus", {"dense": dense}, resolve, build)
     resp = _search_now(_req(caller="voice", sources=["corpus"], k=3), {"corpus": run})
     assert resp.trace.stages_ms["source"] >= 55
+
+
+def test_an_item_carries_at_most_three_passages_the_best_ranked() -> None:
+    """Contract §2: an item's passages, their union across contributions, are cut to
+    the 3 best ranked, so a piece with many matching chunks cannot flood a caller."""
+    item = _item("kos://piece/corpus/a", "corpus", 1, "c0").model_copy(
+        update={"passages": ["c0", "c1", "c2", "c3", "c4"]}
+    )
+    resp = _search_now(_req(caller="voice", sources=["corpus"]), {"corpus": _lane(item)})
+    assert resp.items[0].passages == ["c0", "c1", "c2"]
