@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.8] — 2026-11-08
+
 ### Changed
 
 - **The search port check accepts a lane the searcher fills past newsletter-assistant's chunks.** The searcher now fills each lane to `k` distinct pieces, while newsletter-assistant reads `k` chunks, so the check requires newsletter-assistant's items first, in order, and lets the searcher add pieces after them that newsletter-assistant never saw (a piece it saw and dropped still fails). Each item's passages must hold every harvested chunk of that piece, with any further passages after them. On fresh read-only production copies, 220 of 220 probe checks passed across all five lanes, and the burst check passed 3 of 3 (2 MCP searches refused with 429 in about 0.02 s, voice `ok` in 0.52 to 0.64 s, against 0.55 to 0.61 s alone). (`packages/evals/src/evals/search/port_check.py`)
