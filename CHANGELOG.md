@@ -6,6 +6,10 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ## [Unreleased]
 
+---
+
+## [0.43.6] — 2026-11-08
+
 ### Changed
 
 - **The searcher serves search contract version 2: each caller sets how many items each lane returns, and its own deadline.** `k` is now the most items per lane rather than one cut across all lanes, an optional `k_per_source` overrides it for the lanes it names (an entry for a lane not searched is refused with 422), and the response holds every lane's items merged by best rank with no overall cap. A lane keeps fetching past duplicate chunks and dropped hits, doubling its fetch with the same embedding up to 100 chunks per method, so it returns its limit in distinct pieces unless the index runs out; on production Chroma on 2026-11-08, fetching twice the limit still left the corpus lane short in 26 of 30 sampled queries, because a corpus item averages about 18 chunks. The limit is applied after a lane's methods merge, so a second method keeps lane quotas right. The deadline now comes from an optional `deadline_ms` (default 5000, at most 60000) instead of `caller`, which is only a label; every search has a deadline, and the no-deadline path with its 30 s per-call cap is gone. Only version 2 is accepted. The port check sends version 2 with a 60 s deadline. (`services/searcher/src/searcher/models.py`, `services/searcher/src/searcher/engine.py`, `services/searcher/src/searcher/app.py`, `packages/evals/src/evals/search/port_check.py`)
