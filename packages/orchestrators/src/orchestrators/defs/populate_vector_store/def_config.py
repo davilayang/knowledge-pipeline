@@ -2,8 +2,10 @@
 
 import dagster as dg
 from retrievers.embedding import INDEX_DIMS, INDEX_MODEL
+from retrievers.vector_store.chroma import COLLECTION_BRIEFINGS as COLLECTION_BRIEFINGS
 from retrievers.vector_store.chroma import COLLECTION_CONTENTS as COLLECTION_CONTENTS
 from retrievers.vector_store.chroma import COLLECTION_CONVERSATIONS as COLLECTION_CONVERSATIONS
+from retrievers.vector_store.chroma import COLLECTION_NOTES as COLLECTION_NOTES
 from retrievers.vector_store.chroma import COLLECTION_WIKI as COLLECTION_WIKI
 
 # 30-min partition; schedule emits the current half-hour key. start set to
@@ -23,9 +25,6 @@ MAX_PER_TICK_DEFAULT = 50
 # embedder: changing either invalidates every vector in the Chroma collections.
 EMBEDDING_MODEL_DEFAULT = INDEX_MODEL
 EMBEDDING_DIMS_DEFAULT = INDEX_DIMS
-
-COLLECTION_NOTES = "notes"
-COLLECTION_BRIEFINGS = "briefings"
 
 CHUNKER_BY_SOURCE = {
     "raw_store": "markdown",

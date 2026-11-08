@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.43.5] — 2026-11-08
+
+### Added
+
+- **The searcher answers from newsletter-assistant's notes and briefs, so all five lanes are wired.** The notes lane finds notes through Chroma's `notes` collection and reads each back from its file, as newsletter-assistant's MCP search does: the stem is the note id and gives the date, and a stem outside newsletter-assistant's naming, a missing file, an unparseable header or a header `note_id` other than the stem is dropped. The briefs lane finds briefs through Chroma's `briefings` collection and reads each file back, as voice recall does: one item per file, the uri from the header's `brief_id`, the title, the UTC date of `drafted_at` and `meta.status` from the file; a name that is not a flat `*.md`, a missing file, an unparseable header, a missing required key or an unreadable `drafted_at` is dropped. Both read a file's header by newsletter-assistant's own rule: the file starts with `---`, the header ends at the next line that is exactly `---`, and an empty header is kept. A brief whose `brief_id` is blank or not a string, or whose `drafted_at` cannot be converted to UTC, is dropped rather than failing the lane; a date-only `drafted_at` is kept with that day as its date. A blank title shows as the file's stem. `since` filters notes on their date and briefs on `drafted_at`. A missing `notes/` or `briefs/` directory fails its lane rather than answering with nothing. The reads are timed in `trace.stages_ms` (`note files`, `brief files`). Both read newsletter-assistant's data directory, already mounted, so compose is unchanged. Checked against a fresh newsletter-assistant harvest of production data: `eval-search-port-check --lanes notes briefs` passed 88 of 88 probe-depth-lane pairs, and all five lanes 220 of 220, with only the 13 blank corpus titles listed; after the review fixes, all five lanes again passed 220 of 220. (`services/searcher/src/searcher/notes.py`, `services/searcher/src/searcher/briefs.py`, `services/searcher/src/searcher/frontmatter.py`)
+
+---
+
 ## [0.43.4] — 2026-11-08
 
 ### Changed

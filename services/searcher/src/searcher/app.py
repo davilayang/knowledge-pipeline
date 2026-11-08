@@ -9,9 +9,11 @@ import chromadb
 from fastapi import FastAPI
 from retrievers.embedding import AsyncQueryEmbedder
 
+from searcher.briefs import briefs_lane
 from searcher.corpus import corpus_lane
 from searcher.engine import EmbedFn, LaneFn, search, time_limit
 from searcher.models import SearchRequest, SearchResponse, Source
+from searcher.notes import notes_lane
 from searcher.sessions import sessions_lane
 from searcher.wiki import wiki_lane
 
@@ -72,6 +74,8 @@ app = create_app(
     lanes={
         "corpus": corpus_lane(_chroma_client, NEWSLETTER_DATA / "corpus.db"),
         "sessions": sessions_lane(_chroma_client, NEWSLETTER_DATA / "sessions.db"),
+        "notes": notes_lane(_chroma_client, NEWSLETTER_DATA / "notes"),
+        "briefs": briefs_lane(_chroma_client, NEWSLETTER_DATA / "briefs"),
         "wiki": wiki_lane(_chroma_client, WIKI_DIR),
     },
     embed=_embed,
