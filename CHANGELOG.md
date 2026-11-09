@@ -8,6 +8,14 @@ Format: [Keep a Changelog](https://keepachangelog.com/en/1.1.0/)
 
 ---
 
+## [0.43.10] — 2026-11-09
+
+### Removed
+
+- **The searcher port check (`eval-search-port-check`) is retired.** It compared each searcher lane with newsletter-assistant's own search, from a harvest NA's `scripts/harvest_search_baseline.py` recorded. NA's voice recall and MCP search now call the searcher (NA 0.68.0), so NA has no search of its own to compare with, and that harvest script is deleted. Its last runs passed 500 of 500 on the deployed searcher (28 recorded recall queries plus 22 probes, five lanes, depths 5 and 10). `eval-search-burst` stays. (`packages/evals/src/evals/search/port_check.py`, `tests/evals/search/test_port_check.py`, `packages/evals/pyproject.toml`, `pyproject.toml`)
+
+---
+
 ## [0.43.9] — 2026-11-08
 
 ### Changed

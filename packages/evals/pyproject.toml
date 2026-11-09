@@ -1,6 +1,6 @@
 [project]
 name = "knowledge-evals"
-version = "0.43.9"
+version = "0.43.10"
 description = "Eval harnesses — retrieval (Recall@K / MRR / nDCG), generation quality (faithfulness / relevance / grounding), wiki dimensions"
 requires-python = ">=3.13"
 dependencies = [
@@ -23,7 +23,6 @@ eval-retrieval      = "evals.retrieval.cli:main"
 eval-narrative-coverage = "evals.extraction.coverage_cli:main"
 eval-extract-claims = "evals.wiki.claims.benchmark:main"
 eval-search-score   = "evals.search.cli:main"
-eval-search-port-check = "evals.search.port_check:main"
 eval-search-burst  = "evals.search.burst:main"
 
 [build-system]

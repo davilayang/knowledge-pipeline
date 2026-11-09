@@ -56,7 +56,7 @@ packages/evals/
 │   │   ├── validate.py           # fail-closed checks before scoring
 │   │   ├── score.py              # credit hits against the gold
 │   │   ├── legacy_run.py         # read runs harvested from newsletter-assistant's own search tools
-│   │   ├── port_check.py         # eval-search-port-check: each searcher lane against newsletter-assistant's, from a v2 harvest
+│   │   ├── burst.py              # eval-search-burst: a burst of MCP searches must not starve voice (429 past 2 in flight)
 │   │   └── cli.py                # eval-search-score console script
 │   └── wiki/                     # ✅ active wiki page-quality judges + extract-claims harness
 │       ├── judges.py             # FaithfulnessJudge, SpecificityJudge, TaggingJudge (injected chat_fn)
