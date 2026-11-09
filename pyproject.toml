@@ -198,16 +198,6 @@ help = """
     uv run poe retrieval-eval -- --raw-store-db /backup/raw_store.db --limit 50
 """
 
-[tool.poe.tasks.eval-search-port-check]
-cmd = "eval-search-port-check"
-help = """
-  Compare each searcher lane with newsletter-assistant's on the search probes,
-  from a harvest (format v2) taken at the same moment; `--lanes` picks lanes
-  (default all five; a lane not yet wired in the searcher fails until it is).
-  Pass flags after `--`, e.g.
-    uv run poe eval-search-port-check -- --harvest data/eval_runs/search/harvest.json
-"""
-
 [tool.poe.tasks.eval-search-burst]
 cmd = "eval-search-burst"
 help = """
